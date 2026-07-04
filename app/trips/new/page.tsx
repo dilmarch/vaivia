@@ -1,0 +1,175 @@
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+
+async function createTrip(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/sign-in");
+    }
+
+    const title = formData.get("title") as string;
+    const destination = formData.get("destination") as string;
+    const startDate = formData.get("start_date") as string;
+    const endDate = formData.get("end_date") as string;
+    const notes = formData.get("notes") as string;
+
+    const { error } = await supabase.from("trips").insert({
+        user_id: user.id,
+        title,
+        destination,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        notes,
+    });
+
+    if (error) {
+        console.error("Error creating trip:", error);
+        throw new Error("Could not create trip");
+    }
+
+    redirect("/");
+}
+
+export default async function NewTripPage() {
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/sign-in");
+    }
+
+    return (
+        <main className="min-h-screen bg-slate-50 px-6 py-10">
+            <div className="mx-auto max-w-2xl">
+                <a href="/" className="text-sm text-slate-600 hover:text-slate-900">
+                    ← Back to dashboard
+                </a>
+
+                <header className="mt-6 mb-8">
+                    <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+                        VAIVIA
+                    </p>
+                    <h1 className="mt-2 text-3xl font-bold text-slate-900">
+                        New Trip
+                    </h1>
+                    <p className="mt-2 text-slate-600">
+                        Add the basic details for your trip.
+                    </p>
+                </header>
+
+                <form
+                    action={createTrip}
+                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                >
+                    <div className="space-y-5">
+                        <div>
+                            <label
+                                htmlFor="title"
+                                className="block text-sm font-medium text-slate-700"
+                            >
+                                Trip title
+                            </label>
+                            <input
+                                id="title"
+                                name="title"
+                                type="text"
+                                required
+                                placeholder="Berlin & Asia 2026"
+                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
+                        </div>
+
+                        <div>
+                            <label
+                                htmlFor="destination"
+                                className="block text-sm font-medium text-slate-700"
+                            >
+                                Destination
+                            </label>
+                            <input
+                                id="destination"
+                                name="destination"
+                                type="text"
+                                placeholder="Berlin, Seoul, Tokyo"
+                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
+                        </div>
+
+                        <div className="grid gap-5 md:grid-cols-2">
+                            <div>
+                                <label
+                                    htmlFor="start_date"
+                                    className="block text-sm font-medium text-slate-700"
+                                >
+                                    Start date
+                                </label>
+                                <input
+                                    id="start_date"
+                                    name="start_date"
+                                    type="date"
+                                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                />
+                            </div>
+
+                            <div>
+                                <label
+                                    htmlFor="end_date"
+                                    className="block text-sm font-medium text-slate-700"
+                                >
+                                    End date
+                                </label>
+                                <input
+                                    id="end_date"
+                                    name="end_date"
+                                    type="date"
+                                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label
+                                htmlFor="notes"
+                                className="block text-sm font-medium text-slate-700"
+                            >
+                                Notes
+                            </label>
+                            <textarea
+                                id="notes"
+                                name="notes"
+                                rows={4}
+                                placeholder="Anything important about this trip..."
+                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="mt-8 flex items-center justify-end gap-3">
+                        <a
+                            href="/"
+                            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                        >
+                            Cancel
+                        </a>
+                        <button
+                            type="submit"
+                            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                        >
+                            Save trip
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    );
+}

@@ -1,57 +1,103 @@
-import { DeployButton } from "@/components/deploy-button";
-import { EnvVarWarning } from "@/components/env-var-warning";
-import { AuthButton } from "@/components/auth-button";
-import { Hero } from "@/components/hero";
-import { ThemeSwitcher } from "@/components/theme-switcher";
-import { ConnectSupabaseSteps } from "@/components/tutorial/connect-supabase-steps";
-import { SignUpUserSteps } from "@/components/tutorial/sign-up-user-steps";
-import { hasEnvVars } from "@/lib/utils";
-import Link from "next/link";
-import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/sign-in");
+  }
+
+  const { data: trips, error } = await supabase
+    .from("trips")
+    .select("*")
+    .order("start_date", { ascending: true });
+
+  if (error) {
+    console.error("Error loading trips:", error);
+  }
+
   return (
-    <main className="min-h-screen flex flex-col items-center">
-      <div className="flex-1 w-full flex flex-col gap-20 items-center">
-        <nav className="w-full flex justify-center border-b border-b-foreground/10 h-16">
-          <div className="w-full max-w-5xl flex justify-between items-center p-3 px-5 text-sm">
-            <div className="flex gap-5 items-center font-semibold">
-              <Link href={"/"}>Next.js Supabase Starter</Link>
-              <div className="flex items-center gap-2">
-                <DeployButton />
-              </div>
-            </div>
-            {!hasEnvVars ? (
-              <EnvVarWarning />
-            ) : (
-              <Suspense>
-                <AuthButton />
-              </Suspense>
-            )}
-          </div>
-        </nav>
-        <div className="flex-1 flex flex-col gap-20 max-w-5xl p-5">
-          <Hero />
-          <main className="flex-1 flex flex-col gap-6 px-4">
-            <h2 className="font-medium text-xl mb-4">Next steps</h2>
-            {hasEnvVars ? <SignUpUserSteps /> : <ConnectSupabaseSteps />}
-          </main>
-        </div>
-
-        <footer className="w-full flex items-center justify-center border-t mx-auto text-center text-xs gap-8 py-16">
-          <p>
-            Powered by{" "}
-            <a
-              href="https://supabase.com/?utm_source=create-next-app&utm_medium=template&utm_term=nextjs"
-              target="_blank"
-              className="font-bold hover:underline"
-              rel="noreferrer"
-            >
-              Supabase
-            </a>
+    <main className="min-h-screen bg-slate-50 px-6 py-10">
+      <div className="mx-auto max-w-5xl">
+        <header className="mb-10">
+          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+            VAIVIA
           </p>
-          <ThemeSwitcher />
-        </footer>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
+            My Travel Plans
+          </h1>
+          <p className="mt-3 text-slate-600">
+            Organize trips, itinerary items, work obligations, activities, and
+            budgets in one place.
+          </p>
+        </header>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                My Trips
+              </h2>
+              <p className="text-sm text-slate-500">
+                Your saved travel plans will appear here.
+              </p>
+            </div>
+
+            <a
+              href="/trips/new"
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            >
+              + New Trip
+            </a>
+          </div>
+
+          {trips && trips.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {trips.map((trip) => (
+                <a
+                  key={trip.id}
+                  href={`/trips/${trip.id}`}
+                  className="rounded-xl border border-slate-200 p-5 transition hover:border-slate-400 hover:shadow-sm"
+                >
+                  <h3 className="text-lg font-semibold text-slate-900">
+                    {trip.title}
+                  </h3>
+
+                  {trip.destination && (
+                    <p className="mt-1 text-sm text-slate-600">
+                      {trip.destination}
+                    </p>
+                  )}
+
+                  <p className="mt-3 text-sm text-slate-500">
+                    {trip.start_date || "No start date"} →{" "}
+                    {trip.end_date || "No end date"}
+                  </p>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
+              <h3 className="text-lg font-medium text-slate-900">
+                No trips yet
+              </h3>
+              <p className="mt-2 text-sm text-slate-500">
+                Create your first VAIVIA trip to start planning.
+              </p>
+              <a
+                href="/trips/new"
+                className="mt-5 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+              >
+                Create first trip
+              </a>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );
