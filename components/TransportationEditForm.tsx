@@ -3,6 +3,20 @@
 import { useState } from "react";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 
+const TRANSPORTATION_STATUS_OPTIONS = [
+    { value: "planned", label: "Planned" },
+    { value: "booked", label: "Booked" },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "completed", label: "Completed" },
+] as const;
+
+function getTransportationFormStatus(status?: string | null) {
+    return TRANSPORTATION_STATUS_OPTIONS.some((option) => option.value === status)
+        ? status ?? "planned"
+        : "planned";
+}
+
 type TransportationEditFormProps = {
     tripId: string;
     itemId: string;
@@ -233,12 +247,14 @@ export default function TransportationEditForm({
 
             <select
                 name="status"
-                defaultValue={initialItem.status || "tentative"}
+                defaultValue={getTransportationFormStatus(initialItem.status)}
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
             >
-                <option value="booked">Booked</option>
-                <option value="price_watching">Price Watching</option>
-                <option value="tentative">Tentative</option>
+                {TRANSPORTATION_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                        {option.label}
+                    </option>
+                ))}
             </select>
 
             <div className="flex justify-end gap-2">

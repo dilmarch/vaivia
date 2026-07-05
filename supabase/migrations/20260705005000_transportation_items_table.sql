@@ -4,7 +4,7 @@ create table if not exists public.transportation_items (
     trip_id uuid not null references public.trips(id) on delete cascade,
     title text,
     transportation_mode text,
-    status text not null default 'tentative',
+    status text not null default 'planned',
     item_date date,
     end_date date,
     start_time time,

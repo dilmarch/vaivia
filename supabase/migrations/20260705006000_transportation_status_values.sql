@@ -5,9 +5,10 @@ alter table public.transportation_items
 add constraint transportation_items_status_check
 check (
     status in (
-        'tentative',
-        'confirmed',
+        'planned',
         'booked',
-        'price_watching'
+        'confirmed',
+        'cancelled',
+        'completed'
     )
 );

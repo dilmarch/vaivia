@@ -451,8 +451,7 @@ async function createItineraryItem(formData: FormData) {
     const tripId = formData.get("trip_id") as string;
     const title = formData.get("title") as string;
     const category = formData.get("category") as string;
-    const rawStatus = String(formData.get("status") || "").trim();
-    const transportationStatus = getTransportationDbStatus(rawStatus);
+    const status = formData.get("status") as string;
     const itemDate = formData.get("item_date") as string;
     const startTime = formData.get("start_time") as string;
     const endTime = formData.get("end_time") as string;
@@ -527,7 +526,8 @@ async function createTransportationItem(formData: FormData) {
     const endDate = formData.get("end_date") as string;
     const startTime = formData.get("start_time") as string;
     const endTime = formData.get("end_time") as string;
-    const status = formData.get("status") as string;
+    const rawStatus = String(formData.get("status") || "").trim();
+    const transportationStatus = getTransportationDbStatus(rawStatus);
     const airlineName = formData.get("airline_name") as string;
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
@@ -703,7 +703,8 @@ async function updateTransportationItem(formData: FormData) {
     const endDate = formData.get("end_date") as string;
     const startTime = formData.get("start_time") as string;
     const endTime = formData.get("end_time") as string;
-    const status = formData.get("status") as string;
+    const rawStatus = String(formData.get("status") || "").trim();
+    const transportationStatus = getTransportationDbStatus(rawStatus);
     const airlineName = formData.get("airline_name") as string;
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
@@ -720,7 +721,7 @@ async function updateTransportationItem(formData: FormData) {
           }`;
     const payload: TransportationItemPayload = {
         title,
-        status: getTransportationDbStatus(status),
+        status: transportationStatus,
         item_date: itemDate || null,
         date: itemDate || null,
         departure_date: itemDate || null,
