@@ -1,27 +1,40 @@
-create table if not exists public.trip_ideas (
-    id uuid primary key default gen_random_uuid(),
-    created_by uuid not null references auth.users(id) on delete cascade,
-    trip_id uuid not null references public.trips(id) on delete cascade,
-    title text not null,
-    description text,
-    category text not null default 'Other',
-    tags jsonb not null default '[]'::jsonb,
-    days_of_week jsonb not null default '[]'::jsonb,
-    time_of_day jsonb not null default '[]'::jsonb,
-    opens_at time,
-    closes_at time,
-    is_archived boolean not null default false,
-    created_at timestamp with time zone not null default timezone('utc'::text, now()),
-    updated_at timestamp with time zone not null default timezone('utc'::text, now())
-);
+alter table public.trip_ideas
+add column if not exists created_by uuid references auth.users(id) on delete cascade;
 
-create index if not exists trip_ideas_trip_id_idx
-on public.trip_ideas(trip_id);
+do $$
+begin
+    if exists (
+        select 1
+        from information_schema.columns
+        where table_schema = 'public'
+        and table_name = 'trip_ideas'
+        and column_name = 'user_id'
+    ) then
+        execute '
+            update public.trip_ideas
+            set created_by = user_id
+            where created_by is null
+        ';
+    end if;
+
+    if not exists (
+        select 1
+        from public.trip_ideas
+        where created_by is null
+    ) then
+        alter table public.trip_ideas
+        alter column created_by set not null;
+    end if;
+end
+$$;
 
 create index if not exists trip_ideas_created_by_idx
 on public.trip_ideas(created_by);
 
-alter table public.trip_ideas enable row level security;
+drop policy if exists "Users can view their own trip ideas" on public.trip_ideas;
+drop policy if exists "Users can create ideas for their own trips" on public.trip_ideas;
+drop policy if exists "Users can update their own trip ideas" on public.trip_ideas;
+drop policy if exists "Users can delete their own trip ideas" on public.trip_ideas;
 
 create policy "Users can view their own trip ideas"
 on public.trip_ideas

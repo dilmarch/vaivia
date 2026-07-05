@@ -19,6 +19,7 @@ const IATA_TO_ICAO_AIRLINE_CODES: Record<string, string> = {
     IB: "IBE",
     EI: "EIN",
     FR: "RYR",
+    RK: "RUK",
     U2: "EZY",
     W6: "WZZ",
     VY: "VLG",

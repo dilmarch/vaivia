@@ -27,6 +27,7 @@ import {
     getAirlineBrandTheme,
     getReadableTextColor,
 } from "@/lib/airlineBrandTheme";
+import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripIdea } from "@/lib/tripIdeas";
 
@@ -68,6 +69,8 @@ type ItineraryCalendarProps = {
     ideas?: TripIdea[];
     tripStartDate?: string | null;
     tripDestination?: string | null;
+    title?: string;
+    listOnly?: boolean;
     deleteAction: (formData: FormData) => Promise<void>;
     createAction: (formData: FormData) => Promise<void>;
     updateTransportationAction: (formData: FormData) => Promise<void>;
@@ -708,9 +711,22 @@ function getFlightDisplayData(item: ItineraryCalendarItem): FlightDisplayData | 
     const firstLeg = legs[0];
     const lastLeg = legs.at(-1);
     const routeParts = splitRouteLabel(item.location);
-    const airlineName = item.airline_name || firstLeg?.airlineName || "";
-    const airlineCode = item.airline_code || firstLeg?.airlineCode || "";
     const flightNumber = item.flight_number || firstLeg?.flightNumber || "";
+    const storedAirlineCode =
+        getAirlineCodeFromFlightNumber(item.airline_code) || item.airline_code || "";
+    const legAirlineCode =
+        getAirlineCodeFromFlightNumber(firstLeg?.airlineCode) ||
+        firstLeg?.airlineCode ||
+        "";
+    const inferredAirlineCode =
+        getAirlineCodeFromFlightNumber(flightNumber) ||
+        getAirlineCodeFromFlightNumber(item.title);
+    const airlineCode =
+        storedAirlineCode ||
+        legAirlineCode ||
+        inferredAirlineCode ||
+        "";
+    const airlineName = item.airline_name || firstLeg?.airlineName || "";
     const originName =
         item.departure_location || firstLeg?.originName || routeParts.originName || "";
     const destinationName =
@@ -986,22 +1002,22 @@ function FlightListCard({
     const airlineTheme = getAirlineBrandTheme(flight.airlineCode);
     const cardThemeStyle = {
         "--airline-card-primary": airlineTheme.primary,
-        "--airline-card-secondary": airlineTheme.secondary,
-        "--airline-card-text": getReadableTextColor(airlineTheme.secondary),
+        "--airline-card-accent": airlineTheme.accent,
+        "--airline-card-text": getReadableTextColor(airlineTheme.accent),
         "--airline-card-primary-text": getReadableTextColor(airlineTheme.primary),
         "--airline-card-muted": ensureReadableColor({
             foreground: "#475569",
-            background: airlineTheme.secondary,
+            background: airlineTheme.accent,
         }),
         ...(isTentativeStatus(item.status)
-            ? getTentativeStripeStyle(airlineTheme.secondary)
+            ? getTentativeStripeStyle(airlineTheme.accent)
             : {}),
     } as CSSProperties;
 
     return (
         <div
             style={cardThemeStyle}
-            className="rounded-md border border-white/70 border-l-4 border-l-[var(--airline-card-primary)] bg-[var(--airline-card-secondary)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            className="rounded-md border border-white/70 border-l-4 border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
         >
             <button
                 type="button"
@@ -1138,6 +1154,10 @@ function sortItems(items: ItineraryCalendarItem[]) {
 
 function isScheduledItineraryItem(item: ItineraryCalendarItem) {
     const status = item.status.toLowerCase();
+
+    if (item.category === "transportation" || item.transportation_mode) {
+        return Boolean(item.item_date && item.start_time);
+    }
 
     return (
         Boolean(item.item_date && item.start_time) &&
@@ -1458,14 +1478,14 @@ function EventCard({
     const flightCardThemeStyle = airlineTheme
         ? ({
               "--airline-card-primary": airlineTheme.primary,
-              "--airline-card-secondary": airlineTheme.secondary,
-              "--airline-card-text": getReadableTextColor(airlineTheme.secondary),
+              "--airline-card-accent": airlineTheme.accent,
+              "--airline-card-text": getReadableTextColor(airlineTheme.accent),
               "--airline-card-muted": ensureReadableColor({
                   foreground: "#475569",
-                  background: airlineTheme.secondary,
+                  background: airlineTheme.accent,
               }),
               ...(isTentativeStatus(item.status)
-                  ? getTentativeStripeStyle(airlineTheme.secondary)
+                  ? getTentativeStripeStyle(airlineTheme.accent)
                   : {}),
           } as CSSProperties)
         : isTentativeStatus(item.status)
@@ -1476,7 +1496,7 @@ function EventCard({
         return (
             <div
                 style={flightCardThemeStyle}
-                className={`w-full rounded-md border border-slate-200 border-l-4 border-l-[var(--airline-card-primary)] bg-[var(--airline-card-secondary)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`w-full rounded-md border border-slate-200 border-l-4 border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                     fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
                 }`}
             >
@@ -1484,10 +1504,12 @@ function EventCard({
                     type="button"
                     onClick={() => onOpen(item)}
                     className={`w-full p-3 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
-                        fillHeight ? "min-h-0 flex-1 overflow-hidden" : ""
+                        fillHeight
+                            ? "flex min-h-0 flex-1 flex-col justify-start overflow-hidden"
+                            : ""
                     }`}
                 >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
                         <div className="flex min-w-0 gap-3">
                             <FlightIconStack flight={flightDisplay} />
                             <div className="min-w-0">
@@ -1551,7 +1573,7 @@ function EventCard({
             style={flightCardThemeStyle}
             className={`w-full border-l-4 text-left ${
                 flightDisplay
-                    ? "border-l-[var(--airline-card-primary)] bg-[var(--airline-card-secondary)] text-[var(--airline-card-text)]"
+                    ? "border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)]"
                     : `${getCategoryAccent(item.category)} bg-white`
             } ${
                 fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
@@ -1561,10 +1583,12 @@ function EventCard({
                 type="button"
                 onClick={() => onOpen(item)}
                 className={`w-full p-3 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
-                    fillHeight ? "min-h-0 flex-1 overflow-hidden" : ""
+                    fillHeight
+                        ? "flex min-h-0 flex-1 flex-col justify-start overflow-hidden"
+                        : ""
                 }`}
             >
-            <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
                 <div className="flex min-w-0 gap-3">
                     {flightDisplay && compact ? (
                         <FlightIconStack flight={flightDisplay} />
@@ -1923,13 +1947,11 @@ function ItineraryItemModal({
     const modalThemeStyle = airlineTheme
         ? ({
               "--airline-primary": airlineTheme.primary,
-              "--airline-secondary": airlineTheme.secondary,
-              "--airline-accent": airlineTheme.accent ?? airlineTheme.primary,
+              "--airline-accent": airlineTheme.accent,
               "--airline-primary-text": getReadableTextColor(airlineTheme.primary),
-              "--airline-secondary-text": getReadableTextColor(airlineTheme.secondary),
               "--airline-accent-text": ensureReadableColor({
-                  foreground: getReadableTextColor(airlineTheme.accent ?? airlineTheme.primary),
-                  background: airlineTheme.accent ?? airlineTheme.primary,
+                  foreground: getReadableTextColor(airlineTheme.accent),
+                  background: airlineTheme.accent,
               }),
           } as CSSProperties)
         : undefined;
@@ -1981,7 +2003,7 @@ function ItineraryItemModal({
                 style={modalThemeStyle}
                 className={`max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md shadow-xl ${
                     flightDisplay
-                        ? "bg-[var(--airline-secondary)] text-[var(--airline-secondary-text)]"
+                        ? "bg-[var(--airline-accent)] text-[var(--airline-accent-text)]"
                         : "bg-white"
                 }`}
                 onClick={(event) => event.stopPropagation()}
@@ -2563,6 +2585,8 @@ export default function ItineraryCalendar({
     ideas = [],
     tripStartDate,
     tripDestination,
+    title = "Itinerary",
+    listOnly = false,
     deleteAction,
     createAction,
     updateTransportationAction,
@@ -2570,6 +2594,7 @@ export default function ItineraryCalendar({
     onQuickAddDateChange,
 }: ItineraryCalendarProps) {
     const [view, setView] = useState<CalendarView>("list");
+    const effectiveView: CalendarView = listOnly ? "list" : view;
     const [browserTimezone, setBrowserTimezone] = useState("UTC");
     const [activeTimezone, setActiveTimezone] = useState("UTC");
     const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -2616,14 +2641,14 @@ export default function ItineraryCalendar({
     const visibleDateRange = useMemo(
         () =>
             getVisibleDateRange(
-                view,
+                effectiveView,
                 anchorDate,
                 weekStart,
                 listStartDate,
                 listEndDate,
                 items
             ),
-        [anchorDate, items, listEndDate, listStartDate, view, weekStart]
+        [anchorDate, effectiveView, items, listEndDate, listStartDate, weekStart]
     );
     const destinationTimezones = useMemo(
         () =>
@@ -2635,11 +2660,12 @@ export default function ItineraryCalendar({
             ),
         [items, tripTimezone, visibleDateRange.endKey, visibleDateRange.startKey]
     );
-    const selectedTimezoneDate = view === "list" ? listStartDate : anchorDate;
+    const selectedTimezoneDate =
+        effectiveView === "list" ? listStartDate : anchorDate;
     const quickAddDateKey =
-        view === "day"
+        effectiveView === "day"
             ? getLocalDateKey(anchorDate)
-            : view === "week"
+            : effectiveView === "week"
               ? getLocalDateKey(weekStart)
               : getLocalDateKey(listStartDate);
     const currentTimezoneOption = useMemo(
@@ -2828,25 +2854,25 @@ export default function ItineraryCalendar({
     }
 
     function shiftBackward() {
-        if (view === "list") {
+        if (effectiveView === "list") {
             updateListStartDate(addDays(listStartDate, -7));
             return;
         }
 
-        updateAnchorDate(addDays(anchorDate, view === "day" ? -1 : -7));
+        updateAnchorDate(addDays(anchorDate, effectiveView === "day" ? -1 : -7));
     }
 
     function shiftForward() {
-        if (view === "list") {
+        if (effectiveView === "list") {
             updateListStartDate(addDays(listStartDate, 7));
             return;
         }
 
-        updateAnchorDate(addDays(anchorDate, view === "day" ? 1 : 7));
+        updateAnchorDate(addDays(anchorDate, effectiveView === "day" ? 1 : 7));
     }
 
     function goToToday() {
-        if (view === "list") {
+        if (effectiveView === "list") {
             updateListStartDate(parseDateKey(getLocalDateKey(new Date())));
             return;
         }
@@ -2856,7 +2882,7 @@ export default function ItineraryCalendar({
 
     function selectDate(dateString: string) {
         if (!dateString) return;
-        if (view === "list") {
+        if (effectiveView === "list") {
             updateListStartDate(parseDateKey(dateString));
             return;
         }
@@ -2931,38 +2957,45 @@ export default function ItineraryCalendar({
                 <div className="flex flex-col gap-4">
                     <div>
                         <h2 className="text-2xl font-semibold text-slate-900">
-                            Itinerary
+                            {title}
                         </h2>
                         <p className="mt-1 text-sm text-slate-500">
-                            {view === "list"
+                            {effectiveView === "list"
                                 ? formatDateRange(listStartDate, listEndDate)
-                                : formatViewTitle(view, anchorDate)}
+                                : formatViewTitle(effectiveView, anchorDate)}
                         </p>
                     </div>
 
                     <div className="flex flex-col gap-3">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="grid grid-cols-3 rounded-md border border-slate-300 bg-slate-50 p-1">
-                                {[
-                                    { key: "list", label: "List", icon: List },
-                                    { key: "day", label: "Day", icon: CalendarDays },
-                                    { key: "week", label: "Week", icon: Columns3 },
-                                ].map(({ key, label, icon: Icon }) => (
-                                    <button
-                                        key={key}
-                                        type="button"
-                                        onClick={() => changeView(key as CalendarView)}
-                                        className={`flex min-h-9 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition ${
-                                            view === key
-                                                ? "bg-white text-slate-950 shadow-sm"
-                                                : "text-slate-600 hover:text-slate-950"
-                                        }`}
-                                    >
-                                        <Icon className="h-4 w-4" aria-hidden="true" />
-                                        {label}
-                                    </button>
-                                ))}
-                            </div>
+                            {!listOnly && (
+                                <div className="grid grid-cols-3 rounded-md border border-slate-300 bg-slate-50 p-1">
+                                    {[
+                                        { key: "list", label: "List", icon: List },
+                                        { key: "day", label: "Day", icon: CalendarDays },
+                                        { key: "week", label: "Week", icon: Columns3 },
+                                    ].map(({ key, label, icon: Icon }) => (
+                                        <button
+                                            key={key}
+                                            type="button"
+                                            onClick={() =>
+                                                changeView(key as CalendarView)
+                                            }
+                                            className={`flex min-h-9 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition ${
+                                                view === key
+                                                    ? "bg-white text-slate-950 shadow-sm"
+                                                    : "text-slate-600 hover:text-slate-950"
+                                            }`}
+                                        >
+                                            <Icon
+                                                className="h-4 w-4"
+                                                aria-hidden="true"
+                                            />
+                                            {label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
                             <label className="flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700">
                                 <span>Date</span>
@@ -2975,7 +3008,7 @@ export default function ItineraryCalendar({
                                     data-lpignore="true"
                                     data-1p-ignore="true"
                                     value={
-                                        view === "list"
+                                        effectiveView === "list"
                                             ? getLocalDateKey(listStartDate)
                                             : getLocalDateKey(anchorDate)
                                     }
@@ -3040,10 +3073,10 @@ export default function ItineraryCalendar({
             </div>
 
             <div
-                key={`${view}-${motionKey}`}
+                key={`${effectiveView}-${motionKey}`}
                 className="animate-in fade-in slide-in-from-bottom-2 duration-300"
             >
-                {view === "list" && (
+                {effectiveView === "list" && (
                     <div className="p-4 sm:p-6">
                         <ListView
                             groupedPastEvents={groupedPastEvents}
@@ -3056,7 +3089,7 @@ export default function ItineraryCalendar({
                     </div>
                 )}
 
-                {view === "day" && (
+                {!listOnly && effectiveView === "day" && (
                     <div className="grid lg:grid-cols-[minmax(0,1fr)_340px]">
                         <div className="overflow-x-auto">
                             <div className="min-w-[680px]">
@@ -3081,7 +3114,7 @@ export default function ItineraryCalendar({
                     </div>
                 )}
 
-                {view === "week" && (
+                {!listOnly && effectiveView === "week" && (
                     <div className="overflow-x-auto">
                         <div className="grid min-w-[1120px] grid-cols-7 divide-x divide-slate-200">
                             {weekDates.map((date) => (

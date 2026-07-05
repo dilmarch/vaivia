@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import IdeasTab from "@/components/IdeasTab";
 import ItineraryCalendar, {
     type ItineraryCalendarItem,
@@ -23,9 +23,10 @@ type ItineraryTabsProps = {
     archiveIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
+    initialTab?: ActiveTab;
 };
 
-type ActiveTab = "itinerary" | "ideas";
+type ActiveTab = "itinerary" | "journey" | "ideas";
 
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
@@ -56,16 +57,26 @@ export default function ItineraryTabs({
     archiveIdeaAction,
     deleteIdeaAction,
     promoteIdeaAction,
+    initialTab = "itinerary",
 }: ItineraryTabsProps) {
-    const [activeTab, setActiveTab] = useState<ActiveTab>("itinerary");
+    const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
     const [quickAddDate, setQuickAddDate] = useState(() =>
         getInitialQuickAddDate(tripStartDate)
+    );
+    const transportationItems = useMemo(
+        () =>
+            items.filter(
+                (item) =>
+                    item.category === "transportation" ||
+                    Boolean(item.transportation_mode)
+            ),
+        [items]
     );
 
     return (
         <section className="space-y-6">
             <div className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-7">
                     <button
                         type="button"
                         onClick={() => setActiveTab("itinerary")}
@@ -89,6 +100,18 @@ export default function ItineraryTabs({
                         }`}
                     >
                         Ideas
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setActiveTab("journey")}
+                        aria-pressed={activeTab === "journey"}
+                        className={`rounded-md px-4 py-3 text-sm font-semibold transition ${
+                            activeTab === "journey"
+                                ? "bg-slate-900 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                    >
+                        Journey
                     </button>
                     <button
                         type="button"
@@ -142,37 +165,48 @@ export default function ItineraryTabs({
             </div>
 
             {activeTab === "itinerary" ? (
-                <>
-                    <ItineraryCalendar
-                        tripId={tripId}
-                        items={items}
-                        tripStartDate={tripStartDate}
-                        tripDestination={tripDestination}
-                        ideas={ideas}
-                        promoteIdeaAction={promoteIdeaAction}
-                        deleteAction={deleteItineraryAction}
-                        createAction={createItineraryAction}
-                        updateTransportationAction={updateTransportationAction}
-                        onQuickAddDateChange={setQuickAddDate}
-                    />
-                    <ItineraryQuickAdd
-                        tripId={tripId}
-                        createItineraryAction={createItineraryAction}
-                        createTransportationAction={createTransportationAction}
-                        createIdeaAction={createIdeaAction}
-                        defaultDate={quickAddDate}
-                    />
-                </>
+                <ItineraryCalendar
+                    tripId={tripId}
+                    items={items}
+                    tripStartDate={tripStartDate}
+                    tripDestination={tripDestination}
+                    ideas={ideas}
+                    promoteIdeaAction={promoteIdeaAction}
+                    deleteAction={deleteItineraryAction}
+                    createAction={createItineraryAction}
+                    updateTransportationAction={updateTransportationAction}
+                    onQuickAddDateChange={setQuickAddDate}
+                />
+            ) : activeTab === "journey" ? (
+                <ItineraryCalendar
+                    tripId={tripId}
+                    items={transportationItems}
+                    tripStartDate={tripStartDate}
+                    tripDestination={tripDestination}
+                    title="Journey"
+                    listOnly
+                    deleteAction={deleteItineraryAction}
+                    createAction={createItineraryAction}
+                    updateTransportationAction={updateTransportationAction}
+                    onQuickAddDateChange={setQuickAddDate}
+                />
             ) : (
                 <IdeasTab
                     tripId={tripId}
                     ideas={ideas}
-                    createIdeaAction={createIdeaAction}
                     updateIdeaAction={updateIdeaAction}
                     archiveIdeaAction={archiveIdeaAction}
                     deleteIdeaAction={deleteIdeaAction}
                 />
             )}
+
+            <ItineraryQuickAdd
+                tripId={tripId}
+                createItineraryAction={createItineraryAction}
+                createTransportationAction={createTransportationAction}
+                createIdeaAction={createIdeaAction}
+                defaultDate={quickAddDate}
+            />
         </section>
     );
 }

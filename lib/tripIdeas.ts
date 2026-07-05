@@ -21,12 +21,30 @@ export const IDEA_DAYS = [
     "Sunday",
 ] as const;
 
+export const IDEA_DAY_VALUES = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+] as const;
+
 export const IDEA_TIME_OF_DAY_OPTIONS = [
     "Early morning",
     "Morning",
     "Afternoon",
     "Evening",
     "Late night",
+] as const;
+
+export const IDEA_TIME_OF_DAY_VALUES = [
+    "early_morning",
+    "morning",
+    "afternoon",
+    "evening",
+    "late_night",
 ] as const;
 
 export const IDEA_TIME_WINDOWS: Record<IdeaTimeOfDay, string> = {
@@ -37,14 +55,41 @@ export const IDEA_TIME_WINDOWS: Record<IdeaTimeOfDay, string> = {
     "Late night": "10:00 PM - 3:00 AM",
 };
 
+export const IDEA_TIME_EXACT_WINDOWS: Record<
+    IdeaTimeOfDay,
+    { opensAt: string; closesAt: string }
+> = {
+    "Early morning": { opensAt: "05:00", closesAt: "08:00" },
+    Morning: { opensAt: "08:00", closesAt: "12:00" },
+    Afternoon: { opensAt: "12:00", closesAt: "17:00" },
+    Evening: { opensAt: "17:00", closesAt: "22:00" },
+    "Late night": { opensAt: "22:00", closesAt: "03:00" },
+};
+
+export const IDEA_TICKET_POLICIES = [
+    { value: "free", label: "Free" },
+    { value: "advance_ticket", label: "Advance ticket" },
+    { value: "door_ticket", label: "Door ticket" },
+    { value: "any", label: "Any ticket" },
+] as const;
+
+export const IDEA_AGE_POLICIES = [
+    { value: "all_ages", label: "All ages" },
+    { value: "nineteen_plus", label: "19+" },
+] as const;
+
 export type IdeaCategory = (typeof IDEA_CATEGORIES)[number];
 export type IdeaDay = (typeof IDEA_DAYS)[number];
+export type IdeaDayValue = (typeof IDEA_DAY_VALUES)[number];
 export type IdeaTimeOfDay = (typeof IDEA_TIME_OF_DAY_OPTIONS)[number];
+export type IdeaTimeOfDayValue = (typeof IDEA_TIME_OF_DAY_VALUES)[number];
+export type IdeaTicketPolicy = (typeof IDEA_TICKET_POLICIES)[number]["value"];
+export type IdeaAgePolicy = (typeof IDEA_AGE_POLICIES)[number]["value"];
 
 export type TripIdea = {
     id: string;
     trip_id: string;
-    user_id?: string | null;
+    created_by?: string | null;
     title: string;
     description?: string | null;
     category: IdeaCategory | string;
@@ -53,15 +98,23 @@ export type TripIdea = {
     time_of_day: IdeaTimeOfDay[];
     opens_at?: string | null;
     closes_at?: string | null;
+    location?: string | null;
     address?: string | null;
     formatted_address?: string | null;
     google_place_id?: string | null;
     location_lat?: number | null;
     location_lng?: number | null;
     location_city?: string | null;
+    location_region?: string | null;
+    location_country?: string | null;
+    location_country_code?: string | null;
+    location_postal_code?: string | null;
+    location_website?: string | null;
+    ticket_website?: string | null;
     is_24_hours?: boolean;
+    ticket_policy?: IdeaTicketPolicy | string | null;
     ticket_type?: string | null;
-    age_policy?: string | null;
+    age_policy?: IdeaAgePolicy | string | null;
     dress_code?: string | null;
     other_notes?: string | null;
     is_archived: boolean;
@@ -86,11 +139,106 @@ export function normalizeStringArray(value: unknown) {
     return [];
 }
 
+export function toIdeaDayValue(day: string) {
+    return day.trim().toLowerCase();
+}
+
+export function toIdeaDayLabel(day: string) {
+    const normalizedDay = toIdeaDayValue(day);
+    const matchingDay = IDEA_DAYS.find(
+        (candidate) => candidate.toLowerCase() === normalizedDay
+    );
+
+    return matchingDay || day;
+}
+
+export function toIdeaTimeOfDayValue(time: string): IdeaTimeOfDayValue {
+    const normalizedValue = time.trim().toLowerCase().replace(/\s+/g, "_");
+
+    if (
+        normalizedValue === "early_morning" ||
+        normalizedValue === "morning" ||
+        normalizedValue === "afternoon" ||
+        normalizedValue === "evening" ||
+        normalizedValue === "late_night"
+    ) {
+        return normalizedValue;
+    }
+
+    return "evening";
+}
+
+export function toIdeaTimeOfDayLabel(time: string): IdeaTimeOfDay {
+    const normalizedValue = toIdeaTimeOfDayValue(time);
+    const matchingTime = IDEA_TIME_OF_DAY_OPTIONS.find(
+        (candidate) => toIdeaTimeOfDayValue(candidate) === normalizedValue
+    );
+
+    return matchingTime || "Evening";
+}
+
+export function normalizeIdeaTicketPolicy(value: unknown): IdeaTicketPolicy {
+    if (typeof value !== "string") return "any";
+
+    const normalizedValue = value.trim().toLowerCase().replace(/\s+/g, "_");
+
+    if (
+        normalizedValue === "free" ||
+        normalizedValue === "advance_ticket" ||
+        normalizedValue === "door_ticket" ||
+        normalizedValue === "any"
+    ) {
+        return normalizedValue;
+    }
+
+    if (normalizedValue === "any_ticket") return "any";
+
+    return "any";
+}
+
+export function normalizeIdeaAgePolicy(value: unknown): IdeaAgePolicy {
+    if (typeof value !== "string") return "all_ages";
+
+    const normalizedValue = value.trim().toLowerCase().replace(/\s+/g, "_");
+
+    if (normalizedValue === "nineteen_plus" || normalizedValue === "19+") {
+        return "nineteen_plus";
+    }
+
+    return "all_ages";
+}
+
+export function formatIdeaTicketPolicy(value?: string | null) {
+    const normalizedValue = normalizeIdeaTicketPolicy(value);
+    return (
+        IDEA_TICKET_POLICIES.find((option) => option.value === normalizedValue)
+            ?.label || "Any ticket"
+    );
+}
+
+export function formatIdeaAgePolicy(value?: string | null) {
+    const normalizedValue = normalizeIdeaAgePolicy(value);
+    return (
+        IDEA_AGE_POLICIES.find((option) => option.value === normalizedValue)
+            ?.label || "All ages"
+    );
+}
+
 export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
+    const rawDays =
+        record.days_of_week === undefined
+            ? record.days_available
+            : record.days_of_week;
+
     return {
         id: String(record.id || ""),
         trip_id: String(record.trip_id || ""),
-        user_id: typeof record.user_id === "string" ? record.user_id : null,
+        created_by:
+            typeof record.created_by === "string"
+                ? record.created_by
+                : typeof record.user_id === "string"
+                  ? record.user_id
+                  : null,
         title: String(record.title || ""),
         description:
             typeof record.description === "string" ? record.description : null,
@@ -99,10 +247,18 @@ export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
                 ? record.category
                 : "Other",
         tags: normalizeStringArray(record.tags),
-        days_available: normalizeStringArray(record.days_available) as IdeaDay[],
-        time_of_day: normalizeStringArray(record.time_of_day) as IdeaTimeOfDay[],
+        days_available: normalizeStringArray(rawDays).map(toIdeaDayLabel) as IdeaDay[],
+        time_of_day: normalizeStringArray(record.time_of_day).map(
+            toIdeaTimeOfDayLabel
+        ) as IdeaTimeOfDay[],
         opens_at: typeof record.opens_at === "string" ? record.opens_at : null,
         closes_at: typeof record.closes_at === "string" ? record.closes_at : null,
+        location:
+            typeof record.location === "string"
+                ? record.location
+                : typeof record.address === "string"
+                  ? record.address
+                  : null,
         address: typeof record.address === "string" ? record.address : null,
         formatted_address:
             typeof record.formatted_address === "string"
@@ -118,11 +274,37 @@ export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
             typeof record.location_lng === "number" ? record.location_lng : null,
         location_city:
             typeof record.location_city === "string" ? record.location_city : null,
+        location_region:
+            typeof record.location_region === "string"
+                ? record.location_region
+                : null,
+        location_country:
+            typeof record.location_country === "string"
+                ? record.location_country
+                : null,
+        location_country_code:
+            typeof record.location_country_code === "string"
+                ? record.location_country_code
+                : null,
+        location_postal_code:
+            typeof record.location_postal_code === "string"
+                ? record.location_postal_code
+                : null,
+        location_website:
+            typeof record.location_website === "string"
+                ? record.location_website
+                : null,
+        ticket_website:
+            typeof record.ticket_website === "string"
+                ? record.ticket_website
+                : null,
         is_24_hours: Boolean(record.is_24_hours),
+        ticket_policy: normalizeIdeaTicketPolicy(
+            record.ticket_policy ?? record.ticket_type
+        ),
         ticket_type:
             typeof record.ticket_type === "string" ? record.ticket_type : null,
-        age_policy:
-            typeof record.age_policy === "string" ? record.age_policy : null,
+        age_policy: normalizeIdeaAgePolicy(record.age_policy),
         dress_code:
             typeof record.dress_code === "string" ? record.dress_code : null,
         other_notes:

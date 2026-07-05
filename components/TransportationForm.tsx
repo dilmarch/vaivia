@@ -103,6 +103,10 @@ function getLegDuration(leg: FlightLeg) {
     );
 }
 
+function normalizeFlightNumberInput(value: string) {
+    return value.trim().toUpperCase().replace(/[\s-]+/g, "");
+}
+
 function isValidIsoDate(value: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
 
@@ -187,7 +191,8 @@ export default function TransportationForm({
 
     const firstLeg = flightLegs[0] || createEmptyLeg(defaultDate);
     const lastLeg = flightLegs.at(-1) || firstLeg;
-    const firstAirlineCode = inferAirlineCodeFromFlightNumber(firstLeg.flightNumber);
+    const firstFlightNumber = normalizeFlightNumberInput(firstLeg.flightNumber);
+    const firstAirlineCode = inferAirlineCodeFromFlightNumber(firstFlightNumber);
     const logoUrl = useMemo(
         () => getAirlineLogoUrl(firstAirlineCode),
         [firstAirlineCode]
@@ -498,7 +503,11 @@ export default function TransportationForm({
                             value={lastLeg.arrivalTimezone}
                         />
                         <input type="hidden" name="airline_name" value={firstLeg.airlineName} />
-                        <input type="hidden" name="flight_number" value={firstLeg.flightNumber} />
+                        <input
+                            type="hidden"
+                            name="flight_number"
+                            value={firstFlightNumber}
+                        />
 
                         <div>
                             <p className="block text-sm font-medium text-slate-700">
@@ -560,9 +569,11 @@ export default function TransportationForm({
                         {shouldShowDetails && mode === "airplane" ? (
                             <div className="space-y-4">
                                 {flightLegs.map((leg, index) => {
-                                    const legAirlineCode = inferAirlineCodeFromFlightNumber(
+                                    const legFlightNumber = normalizeFlightNumberInput(
                                         leg.flightNumber
                                     );
+                                    const legAirlineCode =
+                                        inferAirlineCodeFromFlightNumber(legFlightNumber);
                                     const legDuration = getLegDuration(leg);
 
                                     return (
@@ -583,6 +594,11 @@ export default function TransportationForm({
                                                 type="hidden"
                                                 name={`leg_${index}_airline_code`}
                                                 value={legAirlineCode}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${index}_flight_number`}
+                                                value={legFlightNumber}
                                             />
 
                                             <div className="grid gap-3 md:grid-cols-2">
@@ -732,7 +748,7 @@ export default function TransportationForm({
                                                     className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                                 />
                                                 <input
-                                                    name={`leg_${index}_flight_number`}
+                                                    id={`flightLeg${index}FlightNumber`}
                                                     value={leg.flightNumber}
                                                     onChange={(event) =>
                                                         updateLeg(
@@ -743,6 +759,7 @@ export default function TransportationForm({
                                                     }
                                                     placeholder="Flight number, e.g. AC692"
                                                     className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                 />
                                                 <input
                                                     name={`leg_${index}_airline_name`}

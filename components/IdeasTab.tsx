@@ -1,24 +1,30 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     IDEA_CATEGORIES,
+    IDEA_AGE_POLICIES,
     IDEA_DAYS,
+    IDEA_TIME_EXACT_WINDOWS,
+    IDEA_TICKET_POLICIES,
     IDEA_TIME_OF_DAY_OPTIONS,
     IDEA_TIME_WINDOWS,
+    formatIdeaAgePolicy,
     type IdeaDay,
     type IdeaTimeOfDay,
     type TripIdea,
     formatIdeaDayLabel,
+    formatIdeaTicketPolicy,
     formatIdeaTimeLabel,
+    toIdeaDayValue,
+    toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
 
 type IdeasTabProps = {
     tripId: string;
     ideas: TripIdea[];
-    createIdeaAction: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     archiveIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
@@ -76,8 +82,10 @@ function travelInputProps() {
     };
 }
 
-function getCityFromPlace(place: google.maps.places.PlaceResult) {
+function getLocationPartsFromPlace(place: google.maps.places.PlaceResult) {
     const components = place.address_components || [];
+    const findComponent = (type: string) =>
+        components.find((component) => component.types.includes(type));
     const locality =
         components.find((component) => component.types.includes("locality")) ||
         components.find((component) =>
@@ -89,11 +97,26 @@ function getCityFromPlace(place: google.maps.places.PlaceResult) {
         components.find((component) =>
             component.types.includes("administrative_area_level_1")
         );
+    const region = findComponent("administrative_area_level_1");
+    const country = findComponent("country");
+    const postalCode = findComponent("postal_code");
 
-    return locality?.long_name || "";
+    return {
+        city: locality?.long_name || "",
+        region: region?.long_name || "",
+        country: country?.long_name || "",
+        countryCode: country?.short_name || "",
+        postalCode: postalCode?.long_name || "",
+    };
 }
 
-function IdeaAvailabilityControls({ idea }: { idea?: TripIdea | null }) {
+function IdeaAvailabilityControls({
+    idea,
+    onTimeSelected,
+}: {
+    idea?: TripIdea | null;
+    onTimeSelected?: (time: IdeaTimeOfDay) => void;
+}) {
     const [selectedDays, setSelectedDays] = useState<string[]>(
         idea?.days_available || []
     );
@@ -183,7 +206,12 @@ function IdeaAvailabilityControls({ idea }: { idea?: TripIdea | null }) {
                     })}
                 </div>
                 {selectedDays.map((day) => (
-                    <input key={day} type="hidden" name="days_available" value={day} />
+                    <input
+                        key={day}
+                        type="hidden"
+                        name="days_of_week"
+                        value={toIdeaDayValue(day)}
+                    />
                 ))}
             </div>
 
@@ -199,9 +227,14 @@ function IdeaAvailabilityControls({ idea }: { idea?: TripIdea | null }) {
                             <button
                                 key={time}
                                 type="button"
-                                onClick={() =>
-                                    toggleValue(time, selectedTimes, setSelectedTimes)
-                                }
+                                onClick={() => {
+                                    toggleValue(
+                                        time,
+                                        selectedTimes,
+                                        setSelectedTimes
+                                    );
+                                    if (!isSelected) onTimeSelected?.(time);
+                                }}
                                 aria-pressed={isSelected}
                                 className={`rounded-md border px-3 py-2 text-left transition ${
                                     isSelected
@@ -224,7 +257,12 @@ function IdeaAvailabilityControls({ idea }: { idea?: TripIdea | null }) {
                     })}
                 </div>
                 {selectedTimes.map((time) => (
-                    <input key={time} type="hidden" name="time_of_day" value={time} />
+                    <input
+                        key={time}
+                        type="hidden"
+                        name="time_of_day"
+                        value={toIdeaTimeOfDayValue(time)}
+                    />
                 ))}
             </div>
         </div>
@@ -244,7 +282,8 @@ export function IdeaForm({
 }) {
     const addressInputRef = useRef<HTMLInputElement | null>(null);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
-    const [address, setAddress] = useState(idea?.address || "");
+    const [title, setTitle] = useState(idea?.title || "");
+    const [location, setLocation] = useState(idea?.location || idea?.address || "");
     const [formattedAddress, setFormattedAddress] = useState(
         idea?.formatted_address || ""
     );
@@ -256,11 +295,27 @@ export function IdeaForm({
         idea?.location_lng?.toString() || ""
     );
     const [locationCity, setLocationCity] = useState(idea?.location_city || "");
+    const [locationRegion, setLocationRegion] = useState(
+        idea?.location_region || ""
+    );
+    const [locationCountry, setLocationCountry] = useState(
+        idea?.location_country || ""
+    );
+    const [locationCountryCode, setLocationCountryCode] = useState(
+        idea?.location_country_code || ""
+    );
+    const [locationPostalCode, setLocationPostalCode] = useState(
+        idea?.location_postal_code || ""
+    );
+    const [locationWebsite, setLocationWebsite] = useState(
+        idea?.location_website || ""
+    );
+    const [ticketWebsite, setTicketWebsite] = useState(idea?.ticket_website || "");
     const [is24Hours, setIs24Hours] = useState(Boolean(idea?.is_24_hours));
     const [opensAt, setOpensAt] = useState(idea?.opens_at?.slice(0, 5) || "");
     const [closesAt, setClosesAt] = useState(idea?.closes_at?.slice(0, 5) || "");
-    const [ticketType, setTicketType] = useState(idea?.ticket_type || "");
-    const [agePolicy, setAgePolicy] = useState(idea?.age_policy || "");
+    const [ticketPolicy, setTicketPolicy] = useState(idea?.ticket_policy || "any");
+    const [agePolicy, setAgePolicy] = useState(idea?.age_policy || "all_ages");
 
     useEffect(() => {
         if (!isGoogleReady) return;
@@ -276,6 +331,7 @@ export function IdeaForm({
                     "formatted_address",
                     "geometry",
                     "address_components",
+                    "website",
                 ],
             }
         );
@@ -284,15 +340,25 @@ export function IdeaForm({
             const place = autocomplete.getPlace();
             const name = place.name || "";
             const nextFormattedAddress = place.formatted_address || "";
+            const website = place.website || "";
             const lat = place.geometry?.location?.lat();
             const lng = place.geometry?.location?.lng();
+            const locationParts = getLocationPartsFromPlace(place);
 
-            setAddress(name || nextFormattedAddress || addressInputRef.current?.value || "");
+            setLocation(
+                name || nextFormattedAddress || addressInputRef.current?.value || ""
+            );
             setFormattedAddress(nextFormattedAddress);
             setGooglePlaceId(place.place_id || "");
-            setLocationCity(getCityFromPlace(place));
+            setLocationCity(locationParts.city);
+            setLocationRegion(locationParts.region);
+            setLocationCountry(locationParts.country);
+            setLocationCountryCode(locationParts.countryCode);
+            setLocationPostalCode(locationParts.postalCode);
+            setLocationWebsite(website);
             setLocationLat(typeof lat === "number" ? lat.toString() : "");
             setLocationLng(typeof lng === "number" ? lng.toString() : "");
+            setTitle((currentTitle) => (currentTitle.trim() ? currentTitle : name));
         });
 
         return () => listener.remove();
@@ -302,6 +368,13 @@ export function IdeaForm({
         setIs24Hours(true);
         setOpensAt("00:00");
         setClosesAt("23:59");
+    }
+
+    function applyTimeWindow(time: IdeaTimeOfDay) {
+        const window = IDEA_TIME_EXACT_WINDOWS[time];
+        setIs24Hours(false);
+        setOpensAt(window.opensAt);
+        setClosesAt(window.closesAt);
     }
 
     return (
@@ -319,6 +392,23 @@ export function IdeaForm({
             <input type="hidden" name="location_lat" value={locationLat} />
             <input type="hidden" name="location_lng" value={locationLng} />
             <input type="hidden" name="location_city" value={locationCity} />
+            <input type="hidden" name="location_region" value={locationRegion} />
+            <input type="hidden" name="location_country" value={locationCountry} />
+            <input
+                type="hidden"
+                name="location_country_code"
+                value={locationCountryCode}
+            />
+            <input
+                type="hidden"
+                name="location_postal_code"
+                value={locationPostalCode}
+            />
+            <input
+                type="hidden"
+                name="location_website"
+                value={locationWebsite}
+            />
             <input type="hidden" name="is_24_hours" value={is24Hours ? "true" : "false"} />
 
             <div className="grid gap-4 md:grid-cols-[1fr_220px]">
@@ -334,7 +424,8 @@ export function IdeaForm({
                         name="title"
                         type="text"
                         required
-                        defaultValue={idea?.title || ""}
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
                         {...travelInputProps()}
                         className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                     />
@@ -371,14 +462,19 @@ export function IdeaForm({
                 <input
                     id={idea ? `idea-address-${idea.id}` : "idea-address"}
                     ref={addressInputRef}
-                    name="address"
+                    name="location"
                     type="text"
-                    value={address}
+                    value={location}
                     onChange={(event) => {
-                        setAddress(event.target.value);
+                        setLocation(event.target.value);
                         setFormattedAddress("");
                         setGooglePlaceId("");
                         setLocationCity("");
+                        setLocationRegion("");
+                        setLocationCountry("");
+                        setLocationCountryCode("");
+                        setLocationPostalCode("");
+                        setLocationWebsite("");
                         setLocationLat("");
                         setLocationLng("");
                     }}
@@ -428,7 +524,65 @@ export function IdeaForm({
                 />
             </div>
 
-            <IdeaAvailabilityControls idea={idea} />
+            <IdeaAvailabilityControls
+                idea={idea}
+                onTimeSelected={applyTimeWindow}
+            />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                    <label
+                        htmlFor={
+                            idea
+                                ? `idea-location-website-${idea.id}`
+                                : "idea-location-website"
+                        }
+                        className="block text-sm font-medium text-slate-700"
+                    >
+                        Location website
+                    </label>
+                    <input
+                        id={
+                            idea
+                                ? `idea-location-website-${idea.id}`
+                                : "idea-location-website"
+                        }
+                        name="location_website_visible"
+                        type="url"
+                        value={locationWebsite}
+                        onChange={(event) => setLocationWebsite(event.target.value)}
+                        placeholder="https://venue.com"
+                        {...travelInputProps()}
+                        className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                </div>
+                <div>
+                    <label
+                        htmlFor={
+                            idea
+                                ? `idea-ticket-website-${idea.id}`
+                                : "idea-ticket-website"
+                        }
+                        className="block text-sm font-medium text-slate-700"
+                    >
+                        Ticket website
+                    </label>
+                    <input
+                        id={
+                            idea
+                                ? `idea-ticket-website-${idea.id}`
+                                : "idea-ticket-website"
+                        }
+                        name="ticket_website"
+                        type="url"
+                        value={ticketWebsite}
+                        onChange={(event) => setTicketWebsite(event.target.value)}
+                        placeholder="https://eventbrite.com/..."
+                        {...travelInputProps()}
+                        className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                </div>
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -488,41 +642,39 @@ export function IdeaForm({
             <div>
                 <p className="text-sm font-medium text-slate-700">Tickets</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                    {["Free", "Advance ticket", "Door ticket", "Any ticket"].map(
-                        (option) => (
-                            <button
-                                key={option}
-                                type="button"
-                                onClick={() => setTicketType(option)}
-                                className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
-                                    ticketType === option
-                                        ? "border-slate-900 bg-slate-900 text-white"
-                                        : "border-slate-300 text-slate-700 hover:bg-slate-50"
-                                }`}
-                            >
-                                {option}
-                            </button>
-                        )
-                    )}
+                    {IDEA_TICKET_POLICIES.map((option) => (
+                        <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setTicketPolicy(option.value)}
+                            className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                                ticketPolicy === option.value
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                            }`}
+                        >
+                            {option.label}
+                        </button>
+                    ))}
                 </div>
-                <input type="hidden" name="ticket_type" value={ticketType} />
+                <input type="hidden" name="ticket_policy" value={ticketPolicy} />
             </div>
 
             <div>
                 <p className="text-sm font-medium text-slate-700">Age policy</p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                    {["19+", "All ages"].map((option) => (
+                    {IDEA_AGE_POLICIES.map((option) => (
                         <button
-                            key={option}
+                            key={option.value}
                             type="button"
-                            onClick={() => setAgePolicy(option)}
+                            onClick={() => setAgePolicy(option.value)}
                             className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
-                                agePolicy === option
+                                agePolicy === option.value
                                     ? "border-slate-900 bg-slate-900 text-white"
                                     : "border-slate-300 text-slate-700 hover:bg-slate-50"
                             }`}
                         >
-                            {option}
+                            {option.label}
                         </button>
                     ))}
                 </div>
@@ -611,12 +763,25 @@ function IdeaCard({
     }
 
     return (
-        <article className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+        <article
+            className={`rounded-md border p-4 shadow-sm ${
+                idea.is_archived
+                    ? "border-slate-200 bg-slate-50 opacity-75"
+                    : "border-slate-200 bg-white"
+            }`}
+        >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {idea.category}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            {idea.category}
+                        </p>
+                        {idea.is_archived && (
+                            <span className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                Archived
+                            </span>
+                        )}
+                    </div>
                     <h3 className="mt-1 text-lg font-semibold text-slate-950">
                         {idea.title}
                     </h3>
@@ -625,9 +790,15 @@ function IdeaCard({
                             {idea.description}
                         </p>
                     )}
-                    {(idea.location_city || idea.address || idea.formatted_address) && (
+                    {(idea.location_city ||
+                        idea.location ||
+                        idea.address ||
+                        idea.formatted_address) && (
                         <p className="mt-2 text-sm font-medium text-slate-700">
-                            {idea.location_city || idea.address || idea.formatted_address}
+                            {idea.location_city ||
+                                idea.location ||
+                                idea.address ||
+                                idea.formatted_address}
                         </p>
                     )}
                 </div>
@@ -699,12 +870,14 @@ function IdeaCard({
                             : formatIdeaTimeLabel(idea.time_of_day)}
                     </dd>
                 </div>
-                {idea.ticket_type && (
+                {idea.ticket_policy && (
                     <div className="rounded-md bg-slate-50 p-3">
                         <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Tickets
                         </dt>
-                        <dd className="mt-1 text-slate-800">{idea.ticket_type}</dd>
+                        <dd className="mt-1 text-slate-800">
+                            {formatIdeaTicketPolicy(idea.ticket_policy)}
+                        </dd>
                     </div>
                 )}
                 {idea.age_policy && (
@@ -712,7 +885,9 @@ function IdeaCard({
                         <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Age
                         </dt>
-                        <dd className="mt-1 text-slate-800">{idea.age_policy}</dd>
+                        <dd className="mt-1 text-slate-800">
+                            {formatIdeaAgePolicy(idea.age_policy)}
+                        </dd>
                     </div>
                 )}
             </dl>
@@ -734,6 +909,30 @@ function IdeaCard({
                     )}
                 </div>
             )}
+            {(idea.location_website || idea.ticket_website) && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                    {idea.location_website && (
+                        <a
+                            href={idea.location_website}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                            Venue
+                        </a>
+                    )}
+                    {idea.ticket_website && (
+                        <a
+                            href={idea.ticket_website}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700"
+                        >
+                            Tickets
+                        </a>
+                    )}
+                </div>
+            )}
         </article>
     );
 }
@@ -741,7 +940,6 @@ function IdeaCard({
 export default function IdeasTab({
     tripId,
     ideas,
-    createIdeaAction,
     updateIdeaAction,
     archiveIdeaAction,
     deleteIdeaAction,
@@ -751,27 +949,36 @@ export default function IdeasTab({
     const [dayFilter, setDayFilter] = useState<DayFilter>("");
     const [tagFilter, setTagFilter] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [showArchived, setShowArchived] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const activeIdeas = ideas.filter((idea) => !idea.is_archived);
+    const visibleIdeas = showArchived
+        ? ideas
+        : ideas.filter((idea) => !idea.is_archived);
+    const hasAnyActiveIdeas = ideas.some((idea) => !idea.is_archived);
     const today = getIdeaDayForDate(new Date());
     const tomorrow = getIdeaDayForDate(addDays(new Date(), 1));
     const filteredIdeas = useMemo(() => {
         const requestedTags = parseTags(tagFilter.toLowerCase());
         const query = searchQuery.trim().toLowerCase();
 
-        return activeIdeas.filter((idea) => {
+        return visibleIdeas.filter((idea) => {
             if (
                 query &&
                 ![
                     idea.title,
                     idea.description || "",
                     idea.category,
+                    idea.location || "",
                     idea.address || "",
                     idea.formatted_address || "",
                     idea.location_city || "",
-                    idea.ticket_type || "",
+                    idea.location_website || "",
+                    idea.ticket_website || "",
+                    idea.ticket_policy
+                        ? formatIdeaTicketPolicy(idea.ticket_policy)
+                        : "",
                     idea.age_policy || "",
+                    idea.age_policy ? formatIdeaAgePolicy(idea.age_policy) : "",
                     idea.dress_code || "",
                     idea.other_notes || "",
                     ...idea.tags,
@@ -836,13 +1043,13 @@ export default function IdeasTab({
             return true;
         });
     }, [
-        activeIdeas,
         categoryFilter,
         dayFilter,
         searchQuery,
         tagFilter,
         timeFilter,
         today,
+        visibleIdeas,
         tomorrow,
     ]);
 
@@ -856,13 +1063,6 @@ export default function IdeasTab({
                         nights, and plans that are still taking shape.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="w-fit rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-                >
-                    Add activity idea
-                </button>
             </div>
 
             <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
@@ -897,117 +1097,90 @@ export default function IdeasTab({
             {showFilters && (
                 <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="grid gap-3 md:grid-cols-4">
-                    <label className="block text-sm font-medium text-slate-700">
-                        Category
-                        <select
-                            value={categoryFilter}
-                            onChange={(event) => setCategoryFilter(event.target.value)}
-                            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                        >
-                            <option value="">All categories</option>
-                            {IDEA_CATEGORIES.map((category) => (
-                                <option key={category} value={category}>
-                                    {category}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                        Day
-                        <select
-                            value={dayFilter}
-                            onChange={(event) =>
-                                setDayFilter(event.target.value as DayFilter)
-                            }
-                            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                        >
-                            <option value="">All days</option>
-                            <option value="Today">Today</option>
-                            <option value="Tomorrow">Tomorrow</option>
-                            <option value="Weekdays">Weekdays</option>
-                            <option value="Weekends">Weekends</option>
-                            {IDEA_DAYS.map((day) => (
-                                <option key={day} value={day}>
-                                    {day}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                        Time
-                        <select
-                            value={timeFilter}
-                            onChange={(event) => setTimeFilter(event.target.value)}
-                            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                        >
-                            <option value="">All times</option>
-                            {IDEA_TIME_OF_DAY_OPTIONS.map((time) => (
-                                <option key={time} value={time}>
-                                    {time}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
-                    <label className="block text-sm font-medium text-slate-700">
-                        Tags
-                        <input
-                            type="text"
-                            value={tagFilter}
-                            onChange={(event) => setTagFilter(event.target.value)}
-                            placeholder="cheap, rainy day"
-                            {...travelInputProps()}
-                            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                        />
-                    </label>
-                    </div>
-                </div>
-            )}
-
-            {isAddModalOpen && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
-                    onClick={() => setIsAddModalOpen(false)}
-                >
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="add-idea-title"
-                        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md bg-white shadow-xl"
-                        onClick={(event) => event.stopPropagation()}
-                    >
-                        <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
-                            <div>
-                                <h2
-                                    id="add-idea-title"
-                                    className="text-xl font-semibold text-slate-900"
-                                >
-                                    Add activity idea
-                                </h2>
-                                <p className="mt-1 text-sm text-slate-500">
-                                    Capture something you might want to do later.
-                                </p>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => setIsAddModalOpen(false)}
-                                className="rounded-md border border-slate-300 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
-                                aria-label="Close add idea modal"
+                        <label className="block text-sm font-medium text-slate-700">
+                            Category
+                            <select
+                                value={categoryFilter}
+                                onChange={(event) =>
+                                    setCategoryFilter(event.target.value)
+                                }
+                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                             >
-                                <X className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                        </div>
-                        <div className="p-5">
-                            <IdeaForm
-                                tripId={tripId}
-                                action={createIdeaAction}
-                                onCancel={() => setIsAddModalOpen(false)}
+                                <option value="">All categories</option>
+                                {IDEA_CATEGORIES.map((category) => (
+                                    <option key={category} value={category}>
+                                        {category}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                            Day
+                            <select
+                                value={dayFilter}
+                                onChange={(event) =>
+                                    setDayFilter(event.target.value as DayFilter)
+                                }
+                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                            >
+                                <option value="">All days</option>
+                                <option value="Today">Today</option>
+                                <option value="Tomorrow">Tomorrow</option>
+                                <option value="Weekdays">Weekdays</option>
+                                <option value="Weekends">Weekends</option>
+                                {IDEA_DAYS.map((day) => (
+                                    <option key={day} value={day}>
+                                        {day}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                            Time
+                            <select
+                                value={timeFilter}
+                                onChange={(event) =>
+                                    setTimeFilter(event.target.value)
+                                }
+                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                            >
+                                <option value="">All times</option>
+                                {IDEA_TIME_OF_DAY_OPTIONS.map((time) => (
+                                    <option key={time} value={time}>
+                                        {time}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className="block text-sm font-medium text-slate-700">
+                            Tags
+                            <input
+                                type="text"
+                                value={tagFilter}
+                                onChange={(event) =>
+                                    setTagFilter(event.target.value)
+                                }
+                                placeholder="cheap, rainy day"
+                                {...travelInputProps()}
+                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                             />
-                        </div>
+                        </label>
                     </div>
+                    <label className="mt-4 flex w-fit items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
+                        <input
+                            type="checkbox"
+                            checked={showArchived}
+                            onChange={(event) =>
+                                setShowArchived(event.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-slate-900"
+                        />
+                        Show archived
+                    </label>
                 </div>
             )}
 
-            {activeIdeas.length === 0 ? (
+            {!hasAnyActiveIdeas && !showArchived ? (
                 <div className="rounded-md border border-dashed border-slate-300 bg-white p-8 text-center">
                     <h3 className="text-lg font-medium text-slate-900">
                         No ideas yet

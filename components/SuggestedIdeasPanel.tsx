@@ -1,6 +1,7 @@
 "use client";
 
 import {
+    IDEA_TIME_EXACT_WINDOWS,
     IDEA_TIME_OF_DAY_OPTIONS,
     type IdeaTimeOfDay,
     type TripIdea,
@@ -15,13 +16,22 @@ type SuggestedIdeasPanelProps = {
     selectedDate: Date;
     dayItems?: Array<{
         title?: string | null;
+        item_date?: string | null;
+        end_date?: string | null;
+        start_time?: string | null;
+        end_time?: string | null;
+        category?: string | null;
         location?: string | null;
         departure_location?: string | null;
         arrival_location?: string | null;
         formatted_address?: string | null;
+        transportation_mode?: string | null;
+        source_table?: string | null;
     }>;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
 };
+
+type DayItem = NonNullable<SuggestedIdeasPanelProps["dayItems"]>[number];
 
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
@@ -60,7 +70,63 @@ function normalizeText(value?: string | null) {
     return (value || "")
         .toLowerCase()
         .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "");
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function parseTimeToMinutes(time?: string | null) {
+    if (!time) return null;
+    const [hourText, minuteText] = time.slice(0, 5).split(":");
+    const hours = Number(hourText);
+    const minutes = Number(minuteText);
+
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    return hours * 60 + minutes;
+}
+
+function rangesOverlap(
+    first: { start: number; end: number },
+    second: { start: number; end: number }
+) {
+    return first.start < second.end && second.start < first.end;
+}
+
+function getIdeaTimeRanges(idea: TripIdea) {
+    if (idea.is_24_hours || idea.time_of_day.length === 0) {
+        return [{ start: 0, end: 1440 }];
+    }
+
+    return idea.time_of_day.flatMap((time) => {
+        const window = IDEA_TIME_EXACT_WINDOWS[time];
+        const start = parseTimeToMinutes(window.opensAt) ?? 0;
+        const end = parseTimeToMinutes(window.closesAt) ?? 1440;
+
+        if (end > start) return [{ start, end }];
+
+        return [
+            { start, end: 1440 },
+            { start: 0, end },
+        ];
+    });
+}
+
+function getItemEndMinutes(item: DayItem, selectedDateKey: string) {
+    const startMinutes = parseTimeToMinutes(item.start_time);
+    const endMinutes = parseTimeToMinutes(item.end_time);
+    const itemStartDate = item.item_date || selectedDateKey;
+    const itemEndDate = item.end_date || itemStartDate;
+
+    if (endMinutes === null) {
+        return startMinutes === null ? null : Math.min(startMinutes + 60, 1440);
+    }
+
+    if (itemEndDate !== itemStartDate && itemEndDate === selectedDateKey) {
+        return endMinutes;
+    }
+
+    if (startMinutes !== null && endMinutes <= startMinutes) return 1440;
+    return endMinutes;
 }
 
 function getDayLocationText(
@@ -93,6 +159,121 @@ function ideaMatchesDayLocation(idea: TripIdea, dayLocationText: string) {
     if (!dayLocationText) return false;
 
     return dayLocationText.includes(normalizeText(idea.location_city));
+}
+
+function getDayLocationWindows(
+    dayItems: SuggestedIdeasPanelProps["dayItems"] = [],
+    selectedDateKey: string
+) {
+    const windows: Array<{ text: string; start: number; end: number }> = [];
+
+    for (const item of dayItems) {
+        const isTransportation = Boolean(
+            item.source_table === "transportation_items" ||
+                item.category === "transportation" ||
+                item.transportation_mode
+        );
+        const startMinutes = parseTimeToMinutes(item.start_time);
+        const endMinutes = getItemEndMinutes(item, selectedDateKey);
+        const itemStartDate = item.item_date || selectedDateKey;
+        const itemEndDate = item.end_date || itemStartDate;
+
+        if (isTransportation) {
+            if (
+                item.departure_location &&
+                itemStartDate === selectedDateKey &&
+                startMinutes !== null &&
+                startMinutes > 0
+            ) {
+                windows.push({
+                    text: normalizeText(item.departure_location),
+                    start: 0,
+                    end: startMinutes,
+                });
+            }
+
+            if (
+                item.arrival_location &&
+                itemEndDate === selectedDateKey &&
+                endMinutes !== null &&
+                endMinutes < 1440
+            ) {
+                windows.push({
+                    text: normalizeText(item.arrival_location),
+                    start: endMinutes,
+                    end: 1440,
+                });
+            }
+
+            continue;
+        }
+
+        const itemLocationText = normalizeText(
+            [item.location, item.formatted_address, item.title]
+                .filter(Boolean)
+                .join(" ")
+        );
+
+        if (!itemLocationText || startMinutes === null) continue;
+
+        windows.push({
+            text: itemLocationText,
+            start: startMinutes,
+            end: endMinutes ?? Math.min(startMinutes + 60, 1440),
+        });
+    }
+
+    return windows.filter((window) => window.end > window.start);
+}
+
+function hasTransportationLocationSplit(
+    dayItems: SuggestedIdeasPanelProps["dayItems"] = [],
+    selectedDateKey: string
+) {
+    return dayItems.some((item) => {
+        const isTransportation = Boolean(
+            item.source_table === "transportation_items" ||
+                item.category === "transportation" ||
+                item.transportation_mode
+        );
+
+        if (!isTransportation) return false;
+
+        const itemStartDate = item.item_date || selectedDateKey;
+        const itemEndDate = item.end_date || itemStartDate;
+
+        return Boolean(
+            item.departure_location &&
+                item.arrival_location &&
+                item.departure_location !== item.arrival_location &&
+                (itemStartDate === selectedDateKey || itemEndDate === selectedDateKey)
+        );
+    });
+}
+
+function ideaMatchesTimedDayLocation(
+    idea: TripIdea,
+    dayLocationText: string,
+    dayLocationWindows: Array<{ text: string; start: number; end: number }>,
+    shouldUseTimedLocationWindows: boolean
+) {
+    if (!idea.location_city) return ideaMatchesDayLocation(idea, dayLocationText);
+    if (!dayLocationText.includes(normalizeText(idea.location_city))) return false;
+    if (!shouldUseTimedLocationWindows || dayLocationWindows.length === 0) {
+        return true;
+    }
+
+    const ideaCity = normalizeText(idea.location_city);
+    const matchingWindows = dayLocationWindows.filter((window) =>
+        window.text.includes(ideaCity)
+    );
+
+    if (matchingWindows.length === 0) return false;
+
+    const ideaTimeRanges = getIdeaTimeRanges(idea);
+    return matchingWindows.some((window) =>
+        ideaTimeRanges.some((range) => rangesOverlap(window, range))
+    );
 }
 
 function IdeaSuggestionCard({
@@ -240,16 +421,26 @@ export default function SuggestedIdeasPanel({
     const selectedDay = getIdeaDayForDate(selectedDate);
     const selectedDateKey = getLocalDateKey(selectedDate);
     const dayLocationText = getDayLocationText(dayItems);
+    const dayLocationWindows = getDayLocationWindows(dayItems, selectedDateKey);
+    const shouldUseTimedLocationWindows = hasTransportationLocationSplit(
+        dayItems,
+        selectedDateKey
+    );
     const suggestions = ideas.filter(
         (idea) =>
             !idea.is_archived &&
             idea.days_available.includes(selectedDay) &&
-            ideaMatchesDayLocation(idea, dayLocationText)
+            ideaMatchesTimedDayLocation(
+                idea,
+                dayLocationText,
+                dayLocationWindows,
+                shouldUseTimedLocationWindows
+            )
     );
 
     return (
         <aside className="border-t border-slate-200 bg-slate-50 p-4 lg:border-l lg:border-t-0">
-            <div className="sticky top-4 space-y-4">
+            <div className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
                 <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Suggested ideas

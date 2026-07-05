@@ -9,14 +9,23 @@ import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripDestinationLine from "@/components/TripDestinationLine";
 import TripHeaderCover from "@/components/TripHeaderCover";
 import {
+    formatIdeaAgePolicy,
     formatIdeaDayLabel,
+    formatIdeaTicketPolicy,
     formatIdeaTimeLabel,
+    normalizeIdeaAgePolicy,
+    normalizeIdeaTicketPolicy,
     normalizeTripIdea,
+    toIdeaDayValue,
+    toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
 
 type PageProps = {
     params: Promise<{
         tripId: string;
+    }>;
+    searchParams?: Promise<{
+        tab?: string;
     }>;
 };
 
@@ -50,24 +59,30 @@ type ItineraryItemPayload = {
 type TransportationItemPayload = Record<string, string | number | null>;
 
 type TripIdeaPayload = {
-    user_id: string;
+    created_by: string;
     trip_id: string;
     title: string;
     description: string | null;
     category: string;
     tags: string[];
-    days_available: string[];
+    days_of_week: string[];
     time_of_day: string[];
     opens_at: string | null;
     closes_at: string | null;
-    address: string | null;
+    location: string | null;
     formatted_address: string | null;
     google_place_id: string | null;
     location_lat: number | null;
     location_lng: number | null;
     location_city: string | null;
+    location_region: string | null;
+    location_country: string | null;
+    location_country_code: string | null;
+    location_postal_code: string | null;
+    location_website: string | null;
+    ticket_website: string | null;
     is_24_hours: boolean;
-    ticket_type: string | null;
+    ticket_policy: string;
     age_policy: string | null;
     dress_code: string | null;
     other_notes: string | null;
@@ -146,6 +161,57 @@ function getTransportationDbStatus(rawStatus: string) {
         : "planned";
 }
 
+function normalizeAirlineCode(rawCode?: string | null) {
+    const compactCode = String(rawCode || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+    const codeFromFlightNumber = compactCode.match(/^([A-Z0-9]{2})(\d+)/)?.[1];
+
+    return codeFromFlightNumber || compactCode;
+}
+
+function normalizeFlightNumber({
+    flightNumber,
+    airlineCode,
+    fallbackFlightNumber,
+}: {
+    flightNumber?: string | null;
+    airlineCode?: string | null;
+    fallbackFlightNumber?: string | null;
+}) {
+    const compactFlightNumber = String(flightNumber || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+    const compactFallback = String(fallbackFlightNumber || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+    const normalizedAirlineCode = normalizeAirlineCode(airlineCode);
+
+    if (/\d/.test(compactFlightNumber)) {
+        if (/^[A-Z0-9]{2}\d/.test(compactFlightNumber)) {
+            return compactFlightNumber;
+        }
+
+        if (/^\d+[A-Z]?$/.test(compactFlightNumber) && normalizedAirlineCode) {
+            return `${normalizedAirlineCode}${compactFlightNumber}`;
+        }
+
+        return compactFlightNumber;
+    }
+
+    if (/\d/.test(compactFallback)) {
+        return normalizeFlightNumber({
+            flightNumber: compactFallback,
+            airlineCode: normalizedAirlineCode || compactFlightNumber,
+        });
+    }
+
+    return "";
+}
+
 async function insertItineraryPayloadWithFallback(
     payload: ItineraryItemPayload,
     context: string
@@ -218,6 +284,66 @@ async function insertTransportationPayloadWithFallback(
 
         console.warn(
             `Transportation items table is missing optional column "${missingColumn}". Retrying without it.`,
+            error
+        );
+
+        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
+        void _removedColumn;
+        attempt = nextAttempt;
+    }
+
+    return lastError;
+}
+
+async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
+    const supabase = await createClient();
+    const optionalColumns = new Set([
+        "location",
+        "formatted_address",
+        "google_place_id",
+        "location_lat",
+        "location_lng",
+        "location_city",
+        "location_region",
+        "location_country",
+        "location_country_code",
+        "location_postal_code",
+        "location_website",
+        "ticket_website",
+        "is_24_hours",
+        "ticket_policy",
+        "age_policy",
+        "dress_code",
+        "other_notes",
+    ]);
+    let attempt: Record<string, unknown> = { ...payload };
+    let lastError: {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+    } | null = null;
+
+    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
+        const { error } = await supabase.from("trip_ideas").insert(attempt);
+
+        if (!error) return null;
+
+        lastError = error;
+
+        if (error.code !== "42703" && error.code !== "PGRST204") break;
+
+        const missingColumn = getMissingColumnName(error);
+        if (
+            !missingColumn ||
+            !(missingColumn in attempt) ||
+            !optionalColumns.has(missingColumn)
+        ) {
+            break;
+        }
+
+        console.warn(
+            `Trip ideas table is missing optional column "${missingColumn}". Retrying without it.`,
             error
         );
 
@@ -364,19 +490,37 @@ function parseTagsInput(value: string) {
 
 function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
     const tags = parseTagsInput((formData.get("tags") as string) || "");
+    const daysOfWeek = [
+        ...parseFormStringArray(formData, "days_of_week"),
+        ...parseFormStringArray(formData, "days_available"),
+    ].map(toIdeaDayValue);
+    const is24Hours =
+        formData.get("is_24_hours") === "on" ||
+        formData.get("is_24_hours") === "true";
+    const ticketPolicy = normalizeIdeaTicketPolicy(
+        formData.get("ticket_policy") || formData.get("ticket_type")
+    );
+    const agePolicy = normalizeIdeaAgePolicy(formData.get("age_policy"));
+    const dressCode = ((formData.get("dress_code") as string) || "").trim();
 
     return {
-        user_id: userId,
+        created_by: userId,
         trip_id: formData.get("trip_id") as string,
         title: ((formData.get("title") as string) || "").trim(),
         description: ((formData.get("description") as string) || "").trim() || null,
         category: (formData.get("category") as string) || "Other",
         tags,
-        days_available: parseFormStringArray(formData, "days_available"),
-        time_of_day: parseFormStringArray(formData, "time_of_day"),
+        days_of_week: [...new Set(daysOfWeek)],
+        time_of_day: [
+            ...new Set(
+                parseFormStringArray(formData, "time_of_day").map(
+                    toIdeaTimeOfDayValue
+                )
+            ),
+        ],
         opens_at: (formData.get("opens_at") as string) || null,
         closes_at: (formData.get("closes_at") as string) || null,
-        address: ((formData.get("address") as string) || "").trim() || null,
+        location: ((formData.get("location") as string) || "").trim() || null,
         formatted_address:
             ((formData.get("formatted_address") as string) || "").trim() || null,
         google_place_id:
@@ -389,10 +533,24 @@ function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
             : null,
         location_city:
             ((formData.get("location_city") as string) || "").trim() || null,
-        is_24_hours: formData.get("is_24_hours") === "true",
-        ticket_type: ((formData.get("ticket_type") as string) || "").trim() || null,
-        age_policy: ((formData.get("age_policy") as string) || "").trim() || null,
-        dress_code: ((formData.get("dress_code") as string) || "").trim() || null,
+        location_region:
+            ((formData.get("location_region") as string) || "").trim() || null,
+        location_country:
+            ((formData.get("location_country") as string) || "").trim() || null,
+        location_country_code:
+            ((formData.get("location_country_code") as string) || "").trim() ||
+            null,
+        location_postal_code:
+            ((formData.get("location_postal_code") as string) || "").trim() ||
+            null,
+        location_website:
+            ((formData.get("location_website") as string) || "").trim() || null,
+        ticket_website:
+            ((formData.get("ticket_website") as string) || "").trim() || null,
+        is_24_hours: is24Hours,
+        ticket_policy: ticketPolicy,
+        age_policy: agePolicy,
+        dress_code: dressCode || null,
         other_notes: ((formData.get("other_notes") as string) || "").trim() || null,
     };
 }
@@ -598,10 +756,24 @@ async function createTransportationItem(formData: FormData) {
             .filter(Boolean)
             .join("\n");
     }).filter(Boolean);
+    const firstLegFlightNumber = String(
+        formData.get("leg_0_flight_number") || ""
+    ).trim();
+    const firstLegAirlineCode = String(
+        formData.get("leg_0_airline_code") || ""
+    ).trim();
+    const effectiveAirlineCode = normalizeAirlineCode(
+        airlineCode || firstLegAirlineCode
+    );
+    const effectiveFlightNumber = normalizeFlightNumber({
+        flightNumber,
+        airlineCode: effectiveAirlineCode,
+        fallbackFlightNumber: firstLegFlightNumber,
+    });
     const modeLabel = mode ? mode[0].toUpperCase() + mode.slice(1) : "Transportation";
     const title =
-        mode === "airplane" && flightNumber
-            ? `${flightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
+        mode === "airplane" && effectiveFlightNumber
+            ? `${effectiveFlightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
             : `${modeLabel}: ${departureLocation || "Departure"} to ${
                   arrivalLocation || "Arrival"
               }`;
@@ -642,8 +814,8 @@ async function createTransportationItem(formData: FormData) {
         arrival_timezone: arrivalTimezone || null,
         timezone: departureTimezone || null,
         airline_name: airlineName || null,
-        airline_code: airlineCode || null,
-        flight_number: flightNumber || null,
+        airline_code: effectiveAirlineCode || null,
+        flight_number: effectiveFlightNumber || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
@@ -714,8 +886,13 @@ async function updateTransportationItem(formData: FormData) {
     const arrivalTimezone = formData.get("arrival_timezone") as string;
     const duration = formData.get("duration") as string;
     const notes = formData.get("notes") as string;
-    const title = flightNumber
-        ? `${flightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
+    const effectiveAirlineCode = normalizeAirlineCode(airlineCode);
+    const effectiveFlightNumber = normalizeFlightNumber({
+        flightNumber,
+        airlineCode: effectiveAirlineCode,
+    });
+    const title = effectiveFlightNumber
+        ? `${effectiveFlightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
         : `Airplane: ${departureLocation || "Departure"} to ${
               arrivalLocation || "Arrival"
           }`;
@@ -738,8 +915,8 @@ async function updateTransportationItem(formData: FormData) {
         arrival_timezone: arrivalTimezone || null,
         timezone: departureTimezone || null,
         airline_name: airlineName || null,
-        airline_code: airlineCode || null,
-        flight_number: flightNumber || null,
+        airline_code: effectiveAirlineCode || null,
+        flight_number: effectiveFlightNumber || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
@@ -862,14 +1039,24 @@ async function createTripIdea(formData: FormData) {
         throw new Error("Could not create trip idea");
     }
 
-    const { error } = await supabase.from("trip_ideas").insert(payload);
+    const error = await insertTripIdeaPayloadWithFallback(payload);
 
     if (error) {
-        console.error("Error creating trip idea:", error);
-        throw new Error("Could not create trip idea");
+        console.error("Error creating trip idea:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+        });
+        throw new Error(
+            `Could not create trip idea: ${
+                error.message ?? "Unknown Supabase error"
+            }`
+        );
     }
 
-    redirect(`/trips/${payload.trip_id}`);
+    redirect(`/trips/${payload.trip_id}?tab=ideas`);
 }
 
 async function updateTripIdea(formData: FormData) {
@@ -887,8 +1074,8 @@ async function updateTripIdea(formData: FormData) {
 
     const ideaId = formData.get("idea_id") as string;
     const payload = getIdeaPayload(formData, user.id);
-    const { user_id: _userId, trip_id: _tripId, ...updatePayload } = payload;
-    void _userId;
+    const { created_by: _createdBy, trip_id: _tripId, ...updatePayload } = payload;
+    void _createdBy;
     void _tripId;
 
     const { data: trip, error: tripError } = await supabase
@@ -911,14 +1098,14 @@ async function updateTripIdea(formData: FormData) {
         })
         .eq("id", ideaId)
         .eq("trip_id", payload.trip_id)
-        .eq("user_id", user.id);
+        .eq("created_by", user.id);
 
     if (error) {
         console.error("Error updating trip idea:", error);
         throw new Error("Could not update trip idea");
     }
 
-    redirect(`/trips/${payload.trip_id}`);
+    redirect(`/trips/${payload.trip_id}?tab=ideas`);
 }
 
 async function archiveTripIdea(formData: FormData) {
@@ -957,14 +1144,14 @@ async function archiveTripIdea(formData: FormData) {
         })
         .eq("id", ideaId)
         .eq("trip_id", tripId)
-        .eq("user_id", user.id);
+        .eq("created_by", user.id);
 
     if (error) {
         console.error("Error archiving trip idea:", error);
         throw new Error("Could not archive trip idea");
     }
 
-    redirect(`/trips/${tripId}`);
+    redirect(`/trips/${tripId}?tab=ideas`);
 }
 
 async function deleteTripIdea(formData: FormData) {
@@ -1000,14 +1187,14 @@ async function deleteTripIdea(formData: FormData) {
         .delete()
         .eq("id", ideaId)
         .eq("trip_id", tripId)
-        .eq("user_id", user.id);
+        .eq("created_by", user.id);
 
     if (error) {
         console.error("Error deleting trip idea:", error);
         throw new Error("Could not delete trip idea");
     }
 
-    redirect(`/trips/${tripId}`);
+    redirect(`/trips/${tripId}?tab=ideas`);
 }
 
 async function promoteIdeaToItinerary(formData: FormData) {
@@ -1046,7 +1233,7 @@ async function promoteIdeaToItinerary(formData: FormData) {
         .select("*")
         .eq("id", ideaId)
         .eq("trip_id", tripId)
-        .eq("user_id", user.id)
+        .eq("created_by", user.id)
         .single();
 
     if (ideaError || !idea) {
@@ -1057,8 +1244,12 @@ async function promoteIdeaToItinerary(formData: FormData) {
     const normalizedIdea = normalizeTripIdea(idea as Record<string, unknown>);
     const notes = [
         normalizedIdea.description || "",
-        normalizedIdea.ticket_type ? `Tickets: ${normalizedIdea.ticket_type}` : "",
-        normalizedIdea.age_policy ? `Age: ${normalizedIdea.age_policy}` : "",
+        normalizedIdea.ticket_policy
+            ? `Tickets: ${formatIdeaTicketPolicy(normalizedIdea.ticket_policy)}`
+            : "",
+        normalizedIdea.age_policy
+            ? `Age: ${formatIdeaAgePolicy(normalizedIdea.age_policy)}`
+            : "",
         normalizedIdea.dress_code
             ? `Dress code:\n${normalizedIdea.dress_code}`
             : "",
@@ -1083,6 +1274,7 @@ async function promoteIdeaToItinerary(formData: FormData) {
         start_time: startTime || null,
         end_time: endTime || null,
         location:
+            normalizedIdea.location ||
             normalizedIdea.address ||
             normalizedIdea.location_city ||
             normalizedIdea.formatted_address ||
@@ -1094,8 +1286,8 @@ async function promoteIdeaToItinerary(formData: FormData) {
         timezone: null,
         timezone_source: "manual",
         url: null,
-        ticket_website: null,
-        location_website: null,
+        ticket_website: normalizedIdea.ticket_website || null,
+        location_website: normalizedIdea.location_website || null,
         cover_image_url: null,
         notes,
     };
@@ -1113,10 +1305,17 @@ async function promoteIdeaToItinerary(formData: FormData) {
     redirect(`/trips/${tripId}`);
 }
 
-async function TripDetailContent({ params }: PageProps) {
+async function TripDetailContent({ params, searchParams }: PageProps) {
     await connection();
 
     const { tripId } = await params;
+    const resolvedSearchParams = searchParams ? await searchParams : {};
+    const initialTab =
+        resolvedSearchParams.tab === "ideas"
+            ? "ideas"
+            : resolvedSearchParams.tab === "journey"
+              ? "journey"
+              : "itinerary";
 
     const supabase = await createClient();
 
@@ -1163,7 +1362,7 @@ async function TripDetailContent({ params }: PageProps) {
         .from("trip_ideas")
         .select("*")
         .eq("trip_id", tripId)
-        .eq("user_id", user.id)
+        .eq("created_by", user.id)
         .order("created_at", { ascending: true });
 
     if (tripIdeasError) {
@@ -1271,6 +1470,7 @@ async function TripDetailContent({ params }: PageProps) {
                         archiveIdeaAction={archiveTripIdea}
                         deleteIdeaAction={deleteTripIdea}
                         promoteIdeaAction={promoteIdeaToItinerary}
+                        initialTab={initialTab}
                     />
                 </section>
             </div>
@@ -1278,7 +1478,7 @@ async function TripDetailContent({ params }: PageProps) {
     );
 }
 
-export default function TripDetailPage({ params }: PageProps) {
+export default function TripDetailPage({ params, searchParams }: PageProps) {
     return (
         <Suspense
             fallback={
@@ -1289,7 +1489,7 @@ export default function TripDetailPage({ params }: PageProps) {
                 </main>
             }
         >
-            <TripDetailContent params={params} />
+            <TripDetailContent params={params} searchParams={searchParams} />
         </Suspense>
     );
 }
