@@ -186,7 +186,7 @@ export default function TripDestinationPicker({
             <input type="hidden" name="destination" value={destinationValue} />
             <input
                 type="hidden"
-                name="trip_cover_image_url"
+                name="cover_image_url"
                 value={coverImageUrl}
             />
 

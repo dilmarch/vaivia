@@ -12,7 +12,7 @@ type TripPayload = {
     start_date: string | null;
     end_date: string | null;
     notes: string;
-    trip_cover_image_url?: string | null;
+    cover_image_url?: string | null;
 };
 
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
@@ -22,15 +22,15 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
         error.code === "42703" ||
         error.code === "PGRST204" ||
         (message.includes("column") &&
-            (message.includes("trip_cover_image_url") ||
+            (message.includes("cover_image_url") ||
                 message.includes("schema cache")))
     );
 }
 
 function removeTripCoverColumn(payload: TripPayload) {
-    const { trip_cover_image_url, ...fallbackPayload } = payload;
+    const { cover_image_url, ...fallbackPayload } = payload;
 
-    void trip_cover_image_url;
+    void cover_image_url;
 
     return fallbackPayload;
 }
@@ -52,7 +52,7 @@ async function createTrip(formData: FormData) {
     const destination = formData.get("destination") as string;
     const startDate = formData.get("start_date") as string;
     const endDate = formData.get("end_date") as string;
-    const tripCoverImageUrl = formData.get("trip_cover_image_url") as string;
+    const tripCoverImageUrl = String(formData.get("cover_image_url") || "").trim();
     const notes = formData.get("notes") as string;
 
     const payload: TripPayload = {
@@ -61,7 +61,7 @@ async function createTrip(formData: FormData) {
         destination,
         start_date: startDate || null,
         end_date: endDate || null,
-        trip_cover_image_url: tripCoverImageUrl || null,
+        cover_image_url: tripCoverImageUrl || null,
         notes,
     };
 

@@ -23,6 +23,7 @@ export type DashboardTrip = {
     id: string;
     title: string;
     destination?: string | null;
+    cover_image_url?: string | null;
     trip_cover_image_url?: string | null;
     start_date?: string | null;
     end_date?: string | null;
@@ -773,7 +774,10 @@ export default function TripDashboardClient({
                             <TripDestinationPicker
                                 inputId="tripEditDestination"
                                 initialDestination={selectedTrip.destination}
-                                initialCoverImageUrl={selectedTrip.trip_cover_image_url}
+                                initialCoverImageUrl={
+                                    selectedTrip.cover_image_url ||
+                                    selectedTrip.trip_cover_image_url
+                                }
                                 onChange={() => setHasUnsavedChanges(true)}
                             />
 

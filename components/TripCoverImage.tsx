@@ -7,6 +7,7 @@ export type TripCoverTrip = {
     id: string;
     title: string;
     destination?: string | null;
+    cover_image_url?: string | null;
     trip_cover_image_url?: string | null;
 };
 
@@ -27,38 +28,27 @@ export function getLocalTripCoverImageKey(tripId: string) {
     return `vaivia.tripCoverImage.${tripId}`;
 }
 
+export function getPersistedTripCoverImageUrl(trip: TripCoverTrip) {
+    return (
+        trip.cover_image_url?.trim() ||
+        trip.trip_cover_image_url?.trim() ||
+        ""
+    );
+}
+
 export function useTripCoverImage(
     trip: TripCoverTrip,
     isGoogleReady: boolean,
     fallbackEnabled = true
 ) {
     const firstDestination = stripFlag(parseDestinationList(trip.destination)[0] || "");
-    const [localCoverImageUrl, setLocalCoverImageUrl] = useState("");
     const [fallbackCoverImageUrl, setFallbackCoverImageUrl] = useState("");
-    const coverImageUrl =
-        localCoverImageUrl || trip.trip_cover_image_url || fallbackCoverImageUrl;
-
-    useEffect(() => {
-        const localCoverKey = getLocalTripCoverImageKey(trip.id);
-
-        function refreshLocalCover() {
-            setLocalCoverImageUrl(localStorage.getItem(localCoverKey) || "");
-        }
-
-        refreshLocalCover();
-        window.addEventListener("storage", refreshLocalCover);
-        window.addEventListener("vaivia-trip-cover-updated", refreshLocalCover);
-
-        return () => {
-            window.removeEventListener("storage", refreshLocalCover);
-            window.removeEventListener("vaivia-trip-cover-updated", refreshLocalCover);
-        };
-    }, [trip.id]);
+    const persistedCoverImageUrl = getPersistedTripCoverImageUrl(trip);
+    const coverImageUrl = persistedCoverImageUrl || fallbackCoverImageUrl;
 
     useEffect(() => {
         if (!fallbackEnabled) return;
-        if (localCoverImageUrl) return;
-        if (trip.trip_cover_image_url) return;
+        if (persistedCoverImageUrl) return;
         if (!firstDestination) return;
         if (!isGoogleReady) return;
         if (!window.google?.maps?.places?.PlacesService) return;
@@ -98,8 +88,7 @@ export function useTripCoverImage(
         fallbackEnabled,
         firstDestination,
         isGoogleReady,
-        localCoverImageUrl,
-        trip.trip_cover_image_url,
+        persistedCoverImageUrl,
     ]);
 
     return coverImageUrl;
@@ -117,12 +106,22 @@ export default function TripCoverImage({
     className?: string;
 }) {
     const coverImageUrl = useTripCoverImage(trip, isGoogleReady);
+    const [hasImageLoadError, setHasImageLoadError] = useState(false);
 
-    if (!coverImageUrl) return null;
+    useEffect(() => {
+        setHasImageLoadError(false);
+    }, [coverImageUrl]);
+
+    if (!coverImageUrl || hasImageLoadError) return null;
 
     const image = (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={coverImageUrl} alt="" className={className} />
+        <img
+            src={coverImageUrl}
+            alt=""
+            className={className}
+            onError={() => setHasImageLoadError(true)}
+        />
     );
 
     if (!clickable) return image;

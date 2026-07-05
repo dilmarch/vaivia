@@ -96,7 +96,7 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
         error.code === "42703" ||
         error.code === "PGRST204" ||
         (message.includes("column") &&
-            (message.includes("trip_cover_image_url") ||
+            (message.includes("cover_image_url") ||
                 message.includes("schema cache")))
     );
 }
@@ -989,12 +989,12 @@ async function updateTripCoverImage(formData: FormData) {
 
     const tripId = formData.get("trip_id") as string;
     const shouldReset = formData.get("reset_to_default") === "true";
-    const coverImageUrl = formData.get("trip_cover_image_url") as string;
+    const coverImageUrl = String(formData.get("cover_image_url") || "").trim();
 
     const { error } = await supabase
         .from("trips")
         .update({
-            trip_cover_image_url: shouldReset ? null : coverImageUrl || null,
+            cover_image_url: shouldReset ? null : coverImageUrl || null,
         })
         .eq("id", tripId)
         .eq("user_id", user.id);

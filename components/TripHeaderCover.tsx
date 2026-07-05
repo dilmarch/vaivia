@@ -5,7 +5,7 @@ import { ImagePlus, RotateCcw, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import {
-    getLocalTripCoverImageKey,
+    getPersistedTripCoverImageUrl,
     useTripCoverImage,
     type TripCoverTrip,
 } from "@/components/TripCoverImage";
@@ -40,7 +40,7 @@ export default function TripHeaderCover({
                 onReady={() => setIsGoogleReady(true)}
             />
 
-            {coverImageUrl && (
+            {coverImageUrl && !coverLoadError && (
                 <div className="relative overflow-hidden rounded-t-2xl">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -76,9 +76,14 @@ export default function TripHeaderCover({
                 </div>
             )}
 
-            {!coverImageUrl && (
+            {(!coverImageUrl || coverLoadError) && (
                 <div className="relative flex min-h-72 items-end overflow-hidden rounded-t-2xl bg-slate-900 p-6 sm:p-8">
                     {children}
+                    {coverLoadError && (
+                        <div className="absolute left-4 top-4 max-w-lg rounded-md bg-white/95 px-3 py-2 text-sm text-red-700 shadow-sm">
+                            {coverLoadError}
+                        </div>
+                    )}
                     <button
                         type="button"
                         onClick={() => setIsModalOpen(true)}
@@ -126,21 +131,16 @@ export default function TripHeaderCover({
                                 const submitter = event.nativeEvent.submitter as
                                     | HTMLButtonElement
                                     | null;
-                                const localCoverKey = getLocalTripCoverImageKey(trip.id);
 
                                 if (submitter?.name === "reset_to_default") {
-                                    localStorage.removeItem(localCoverKey);
-                                    window.dispatchEvent(
-                                        new Event("vaivia-trip-cover-updated")
-                                    );
                                     setImageUrlError("");
                                     return;
                                 }
 
                                 const formData = new FormData(event.currentTarget);
                                 const nextImageUrl = String(
-                                    formData.get("trip_cover_image_url") || ""
-                                );
+                                    formData.get("cover_image_url") || ""
+                                ).trim();
 
                                 if (nextImageUrl && !isSupportedImageUrl(nextImageUrl)) {
                                     event.preventDefault();
@@ -149,15 +149,6 @@ export default function TripHeaderCover({
                                     );
                                     return;
                                 }
-
-                                if (nextImageUrl) {
-                                    localStorage.setItem(localCoverKey, nextImageUrl);
-                                } else {
-                                    localStorage.removeItem(localCoverKey);
-                                }
-                                window.dispatchEvent(
-                                    new Event("vaivia-trip-cover-updated")
-                                );
                                 setImageUrlError("");
                             }}
                         >
@@ -170,9 +161,9 @@ export default function TripHeaderCover({
                             </label>
                             <input
                                 id="tripCoverImageUrl"
-                                name="trip_cover_image_url"
+                                name="cover_image_url"
                                 type="url"
-                                defaultValue={trip.trip_cover_image_url || ""}
+                                defaultValue={getPersistedTripCoverImageUrl(trip)}
                                 placeholder="https://example.com/photo.jpg"
                                 className="w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                 aria-describedby={
