@@ -1,5 +1,39 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import TripDestinationPicker from "@/components/TripDestinationPicker";
+
+type TripPayload = {
+    user_id: string;
+    title: string;
+    destination: string;
+    start_date: string | null;
+    end_date: string | null;
+    notes: string;
+    trip_cover_image_url?: string | null;
+};
+
+function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
+    const message = error.message?.toLowerCase() || "";
+
+    return (
+        error.code === "42703" ||
+        error.code === "PGRST204" ||
+        (message.includes("column") &&
+            (message.includes("trip_cover_image_url") ||
+                message.includes("schema cache")))
+    );
+}
+
+function removeTripCoverColumn(payload: TripPayload) {
+    const { trip_cover_image_url, ...fallbackPayload } = payload;
+
+    void trip_cover_image_url;
+
+    return fallbackPayload;
+}
 
 async function createTrip(formData: FormData) {
     "use server";
@@ -18,16 +52,28 @@ async function createTrip(formData: FormData) {
     const destination = formData.get("destination") as string;
     const startDate = formData.get("start_date") as string;
     const endDate = formData.get("end_date") as string;
+    const tripCoverImageUrl = formData.get("trip_cover_image_url") as string;
     const notes = formData.get("notes") as string;
 
-    const { error } = await supabase.from("trips").insert({
+    const payload: TripPayload = {
         user_id: user.id,
         title,
         destination,
         start_date: startDate || null,
         end_date: endDate || null,
+        trip_cover_image_url: tripCoverImageUrl || null,
         notes,
-    });
+    };
+
+    let { error } = await supabase.from("trips").insert(payload);
+
+    if (error && isMissingTripCoverColumnError(error)) {
+        console.warn(
+            "Optional trip cover column is missing. Falling back to legacy trip fields.",
+            error
+        );
+        ({ error } = await supabase.from("trips").insert(removeTripCoverColumn(payload)));
+    }
 
     if (error) {
         console.error("Error creating trip:", error);
@@ -37,7 +83,9 @@ async function createTrip(formData: FormData) {
     redirect("/");
 }
 
-export default async function NewTripPage() {
+async function NewTripContent() {
+    await connection();
+
     const supabase = await createClient();
 
     const {
@@ -51,9 +99,9 @@ export default async function NewTripPage() {
     return (
         <main className="min-h-screen bg-slate-50 px-6 py-10">
             <div className="mx-auto max-w-2xl">
-                <a href="/" className="text-sm text-slate-600 hover:text-slate-900">
+                <Link href="/" className="text-sm text-slate-600 hover:text-slate-900">
                     ← Back to dashboard
-                </a>
+                </Link>
 
                 <header className="mt-6 mb-8">
                     <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
@@ -89,21 +137,7 @@ export default async function NewTripPage() {
                             />
                         </div>
 
-                        <div>
-                            <label
-                                htmlFor="destination"
-                                className="block text-sm font-medium text-slate-700"
-                            >
-                                Destination
-                            </label>
-                            <input
-                                id="destination"
-                                name="destination"
-                                type="text"
-                                placeholder="Berlin, Seoul, Tokyo"
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                            />
-                        </div>
+                        <TripDestinationPicker inputId="tripCreateDestination" />
 
                         <div className="grid gap-5 md:grid-cols-2">
                             <div>
@@ -155,12 +189,12 @@ export default async function NewTripPage() {
                     </div>
 
                     <div className="mt-8 flex items-center justify-end gap-3">
-                        <a
+                        <Link
                             href="/"
                             className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
                         >
                             Cancel
-                        </a>
+                        </Link>
                         <button
                             type="submit"
                             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
@@ -171,5 +205,21 @@ export default async function NewTripPage() {
                 </form>
             </div>
         </main>
+    );
+}
+
+export default function NewTripPage() {
+    return (
+        <Suspense
+            fallback={
+                <main className="min-h-screen bg-slate-50 px-6 py-10">
+                    <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+                        Loading trip form...
+                    </div>
+                </main>
+            }
+        >
+            <NewTripContent />
+        </Suspense>
     );
 }
