@@ -22,11 +22,14 @@ type ItineraryTabsProps = {
     updateIdeaAction: (formData: FormData) => Promise<void>;
     archiveIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
+    toggleIdeaReactionAction: (formData: FormData) => Promise<void>;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
     initialTab?: ActiveTab;
+    defaultItineraryView?: CalendarView;
 };
 
 type ActiveTab = "itinerary" | "journey" | "ideas";
+type CalendarView = "list" | "day" | "week";
 
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
@@ -56,8 +59,10 @@ export default function ItineraryTabs({
     updateIdeaAction,
     archiveIdeaAction,
     deleteIdeaAction,
+    toggleIdeaReactionAction,
     promoteIdeaAction,
     initialTab = "itinerary",
+    defaultItineraryView = "list",
 }: ItineraryTabsProps) {
     const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -170,8 +175,10 @@ export default function ItineraryTabs({
                     items={items}
                     tripStartDate={tripStartDate}
                     tripDestination={tripDestination}
+                    defaultView={defaultItineraryView}
                     ideas={ideas}
                     promoteIdeaAction={promoteIdeaAction}
+                    toggleIdeaReactionAction={toggleIdeaReactionAction}
                     deleteAction={deleteItineraryAction}
                     createAction={createItineraryAction}
                     updateTransportationAction={updateTransportationAction}
@@ -197,6 +204,7 @@ export default function ItineraryTabs({
                     updateIdeaAction={updateIdeaAction}
                     archiveIdeaAction={archiveIdeaAction}
                     deleteIdeaAction={deleteIdeaAction}
+                    toggleReactionAction={toggleIdeaReactionAction}
                 />
             )}
 

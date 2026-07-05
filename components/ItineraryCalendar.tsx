@@ -19,6 +19,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AirlineIcon } from "@/components/AirlineIcon";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
+import JourneyMap from "@/components/JourneyMap";
 import SuggestedIdeasPanel from "@/components/SuggestedIdeasPanel";
 import { TrackFlightButton } from "@/components/TrackFlightButton";
 import TransportationEditForm from "@/components/TransportationEditForm";
@@ -71,10 +72,12 @@ type ItineraryCalendarProps = {
     tripDestination?: string | null;
     title?: string;
     listOnly?: boolean;
+    defaultView?: CalendarView;
     deleteAction: (formData: FormData) => Promise<void>;
     createAction: (formData: FormData) => Promise<void>;
     updateTransportationAction: (formData: FormData) => Promise<void>;
     promoteIdeaAction?: (formData: FormData) => Promise<void>;
+    toggleIdeaReactionAction?: (formData: FormData) => Promise<void>;
     onQuickAddDateChange?: (dateKey: string) => void;
 };
 
@@ -2587,13 +2590,15 @@ export default function ItineraryCalendar({
     tripDestination,
     title = "Itinerary",
     listOnly = false,
+    defaultView = "list",
     deleteAction,
     createAction,
     updateTransportationAction,
     promoteIdeaAction,
+    toggleIdeaReactionAction,
     onQuickAddDateChange,
 }: ItineraryCalendarProps) {
-    const [view, setView] = useState<CalendarView>("list");
+    const [view, setView] = useState<CalendarView>(defaultView);
     const effectiveView: CalendarView = listOnly ? "list" : view;
     const [browserTimezone, setBrowserTimezone] = useState("UTC");
     const [activeTimezone, setActiveTimezone] = useState("UTC");
@@ -2966,9 +2971,9 @@ export default function ItineraryCalendar({
                         </p>
                     </div>
 
-                    <div className="flex flex-col gap-3">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            {!listOnly && (
+                    {!listOnly && (
+                        <div className="flex flex-col gap-3">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                 <div className="grid grid-cols-3 rounded-md border border-slate-300 bg-slate-50 p-1">
                                     {[
                                         { key: "list", label: "List", icon: List },
@@ -2995,80 +3000,88 @@ export default function ItineraryCalendar({
                                         </button>
                                     ))}
                                 </div>
-                            )}
 
-                            <label className="flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700">
-                                <span>Date</span>
-                                <input
-                                    id="itineraryViewDate"
-                                    name="itineraryViewDate"
-                                    type="date"
-                                    autoComplete="off"
-                                    data-form-type="other"
-                                    data-lpignore="true"
-                                    data-1p-ignore="true"
-                                    value={
-                                        effectiveView === "list"
-                                            ? getLocalDateKey(listStartDate)
-                                            : getLocalDateKey(anchorDate)
-                                    }
-                                    onChange={(event) => selectDate(event.target.value)}
-                                    className="bg-transparent text-sm text-slate-900 outline-none"
-                                />
-                            </label>
+                                <label className="flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700">
+                                    <span>Date</span>
+                                    <input
+                                        id="itineraryViewDate"
+                                        name="itineraryViewDate"
+                                        type="date"
+                                        autoComplete="off"
+                                        data-form-type="other"
+                                        data-lpignore="true"
+                                        data-1p-ignore="true"
+                                        value={
+                                            effectiveView === "list"
+                                                ? getLocalDateKey(listStartDate)
+                                                : getLocalDateKey(anchorDate)
+                                        }
+                                        onChange={(event) =>
+                                            selectDate(event.target.value)
+                                        }
+                                        className="bg-transparent text-sm text-slate-900 outline-none"
+                                    />
+                                </label>
 
-                            <div className="flex items-center gap-2">
-                                <button
-                                    type="button"
-                                    onClick={shiftBackward}
-                                    className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
-                                    aria-label="Previous"
-                                >
-                                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={goToToday}
-                                    className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
-                                >
-                                    TODAY
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={shiftForward}
-                                    className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
-                                    aria-label="Next"
-                                >
-                                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={shiftBackward}
+                                        className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                                        aria-label="Previous"
+                                    >
+                                        <ChevronLeft
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={goToToday}
+                                        className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                        TODAY
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={shiftForward}
+                                        className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                                        aria-label="Next"
+                                    >
+                                        <ChevronRight
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="rounded-md border border-slate-300 bg-slate-50 p-3">
+                                <p className="mb-3 text-sm font-semibold text-slate-900">
+                                    Viewing time zone
+                                </p>
+                                <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
+                                    <section>
+                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                            Current location
+                                        </p>
+                                        {renderTimezoneCard(currentTimezoneOption)}
+                                    </section>
+
+                                    <section>
+                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                            Destination time zones
+                                        </p>
+                                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                            {destinationTimezoneOptions.map((option) =>
+                                                renderTimezoneCard(option)
+                                            )}
+                                        </div>
+                                    </section>
+                                </div>
                             </div>
                         </div>
-
-                        <div className="rounded-md border border-slate-300 bg-slate-50 p-3">
-                            <p className="mb-3 text-sm font-semibold text-slate-900">
-                                Viewing time zone
-                            </p>
-                            <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
-                                <section>
-                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                                        Current location
-                                    </p>
-                                    {renderTimezoneCard(currentTimezoneOption)}
-                                </section>
-
-                                <section>
-                                    <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
-                                        Destination time zones
-                                    </p>
-                                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                                        {destinationTimezoneOptions.map((option) =>
-                                            renderTimezoneCard(option)
-                                        )}
-                                    </div>
-                                </section>
-                            </div>
-                        </div>
-                    </div>
+                    )}
                 </div>
             </div>
 
@@ -3078,6 +3091,7 @@ export default function ItineraryCalendar({
             >
                 {effectiveView === "list" && (
                     <div className="p-4 sm:p-6">
+                        {listOnly && <JourneyMap items={items} />}
                         <ListView
                             groupedPastEvents={groupedPastEvents}
                             groupedEarlierItems={groupedEarlierItems}
@@ -3109,6 +3123,7 @@ export default function ItineraryCalendar({
                                 selectedDate={anchorDate}
                                 dayItems={selectedDayItems}
                                 promoteIdeaAction={promoteIdeaAction}
+                                toggleReactionAction={toggleIdeaReactionAction}
                             />
                         ) : null}
                     </div>

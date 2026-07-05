@@ -1,5 +1,6 @@
 "use client";
 
+import IdeaReactionBar from "@/components/IdeaReactionBar";
 import {
     IDEA_TIME_EXACT_WINDOWS,
     IDEA_TIME_OF_DAY_OPTIONS,
@@ -29,6 +30,7 @@ type SuggestedIdeasPanelProps = {
         source_table?: string | null;
     }>;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
+    toggleReactionAction?: (formData: FormData) => Promise<void>;
 };
 
 type DayItem = NonNullable<SuggestedIdeasPanelProps["dayItems"]>[number];
@@ -281,11 +283,13 @@ function IdeaSuggestionCard({
     tripId,
     selectedDateKey,
     promoteIdeaAction,
+    toggleReactionAction,
 }: {
     idea: TripIdea;
     tripId: string;
     selectedDateKey: string;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
+    toggleReactionAction?: (formData: FormData) => Promise<void>;
 }) {
     const firstTime = idea.time_of_day[0] || "Afternoon";
 
@@ -354,6 +358,17 @@ function IdeaSuggestionCard({
                 )}
             </dl>
 
+            {toggleReactionAction ? (
+                <IdeaReactionBar
+                    tripId={tripId}
+                    ideaId={idea.id}
+                    summaries={idea.reaction_summaries}
+                    currentUserReaction={idea.current_user_reaction}
+                    toggleReactionAction={toggleReactionAction}
+                    compact
+                />
+            ) : null}
+
             <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                 <summary className="cursor-pointer text-xs font-semibold text-slate-800">
                     Add to itinerary
@@ -417,6 +432,7 @@ export default function SuggestedIdeasPanel({
     selectedDate,
     dayItems = [],
     promoteIdeaAction,
+    toggleReactionAction,
 }: SuggestedIdeasPanelProps) {
     const selectedDay = getIdeaDayForDate(selectedDate);
     const selectedDateKey = getLocalDateKey(selectedDate);
@@ -475,6 +491,7 @@ export default function SuggestedIdeasPanel({
                                             tripId={tripId}
                                             selectedDateKey={selectedDateKey}
                                             promoteIdeaAction={promoteIdeaAction}
+                                            toggleReactionAction={toggleReactionAction}
                                         />
                                     ))}
                                 </section>
@@ -495,6 +512,7 @@ export default function SuggestedIdeasPanel({
                                             tripId={tripId}
                                             selectedDateKey={selectedDateKey}
                                             promoteIdeaAction={promoteIdeaAction}
+                                            toggleReactionAction={toggleReactionAction}
                                         />
                                     ))}
                             </section>

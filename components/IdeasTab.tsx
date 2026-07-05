@@ -3,6 +3,7 @@
 import { Search, SlidersHorizontal } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
+import IdeaReactionBar from "@/components/IdeaReactionBar";
 import {
     IDEA_CATEGORIES,
     IDEA_AGE_POLICIES,
@@ -28,6 +29,7 @@ type IdeasTabProps = {
     updateIdeaAction: (formData: FormData) => Promise<void>;
     archiveIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
+    toggleReactionAction: (formData: FormData) => Promise<void>;
 };
 
 type DayFilter =
@@ -742,12 +744,14 @@ function IdeaCard({
     updateIdeaAction,
     archiveIdeaAction,
     deleteIdeaAction,
+    toggleReactionAction,
 }: {
     idea: TripIdea;
     tripId: string;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     archiveIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
+    toggleReactionAction: (formData: FormData) => Promise<void>;
 }) {
     const [isEditing, setIsEditing] = useState(false);
 
@@ -933,6 +937,13 @@ function IdeaCard({
                     )}
                 </div>
             )}
+            <IdeaReactionBar
+                tripId={tripId}
+                ideaId={idea.id}
+                summaries={idea.reaction_summaries}
+                currentUserReaction={idea.current_user_reaction}
+                toggleReactionAction={toggleReactionAction}
+            />
         </article>
     );
 }
@@ -943,6 +954,7 @@ export default function IdeasTab({
     updateIdeaAction,
     archiveIdeaAction,
     deleteIdeaAction,
+    toggleReactionAction,
 }: IdeasTabProps) {
     const [categoryFilter, setCategoryFilter] = useState("");
     const [timeFilter, setTimeFilter] = useState("");
@@ -1209,6 +1221,7 @@ export default function IdeasTab({
                             updateIdeaAction={updateIdeaAction}
                             archiveIdeaAction={archiveIdeaAction}
                             deleteIdeaAction={deleteIdeaAction}
+                            toggleReactionAction={toggleReactionAction}
                         />
                     ))}
                 </div>

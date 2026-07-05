@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { connection } from "next/server";
+import { revalidatePath } from "next/cache";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { ItineraryCalendarItem } from "@/components/ItineraryCalendar";
@@ -16,6 +17,10 @@ import {
     normalizeIdeaAgePolicy,
     normalizeIdeaTicketPolicy,
     normalizeTripIdea,
+    type IdeaReactionProfile,
+    type IdeaReactionSummary,
+    type IdeaReactionType,
+    type TripIdea,
     toIdeaDayValue,
     toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
@@ -1305,6 +1310,205 @@ async function promoteIdeaToItinerary(formData: FormData) {
     redirect(`/trips/${tripId}`);
 }
 
+function getDefaultItineraryView(value: unknown): "list" | "day" | "week" {
+    return value === "day" || value === "week" ? value : "list";
+}
+
+type TripIdeaReactionRecord = {
+    idea_id: string;
+    user_id: string;
+    reaction: string;
+};
+
+type UserProfileRecord = {
+    id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    username?: string | null;
+    avatar_url?: string | null;
+};
+
+const IDEA_REACTION_VALUES: Record<IdeaReactionType, 2 | 1 | -1> = {
+    heart: 2,
+    thumbs_up: 1,
+    thumbs_down: -1,
+};
+
+function normalizeIdeaReaction(value: unknown): IdeaReactionType | null {
+    if (
+        value === "heart" ||
+        value === "thumbs_up" ||
+        value === "thumbs_down"
+    ) {
+        return value;
+    }
+
+    return null;
+}
+
+function attachIdeaReactions({
+    ideas,
+    reactions,
+    profiles,
+    currentUserId,
+}: {
+    ideas: TripIdea[];
+    reactions: TripIdeaReactionRecord[];
+    profiles: UserProfileRecord[];
+    currentUserId: string;
+}) {
+    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+    const reactionsByIdeaId = new Map<string, TripIdeaReactionRecord[]>();
+
+    reactions.forEach((reaction) => {
+        const normalizedReaction = normalizeIdeaReaction(reaction.reaction);
+        if (!normalizedReaction) return;
+
+        const ideaReactions = reactionsByIdeaId.get(reaction.idea_id) || [];
+        ideaReactions.push({ ...reaction, reaction: normalizedReaction });
+        reactionsByIdeaId.set(reaction.idea_id, ideaReactions);
+    });
+
+    return ideas.map((idea) => {
+        const ideaReactions = reactionsByIdeaId.get(idea.id) || [];
+        const currentUserReaction =
+            normalizeIdeaReaction(
+                ideaReactions.find((reaction) => reaction.user_id === currentUserId)
+                    ?.reaction
+            ) || null;
+        const reactionSummaries = (
+            ["heart", "thumbs_up", "thumbs_down"] as IdeaReactionType[]
+        ).map((reactionType): IdeaReactionSummary => {
+            const matchingReactions = ideaReactions.filter(
+                (reaction) => reaction.reaction === reactionType
+            );
+            const reactionProfiles = matchingReactions.map((reaction) => {
+                const profile = profilesById.get(reaction.user_id);
+                return {
+                    user_id: reaction.user_id,
+                    avatar_url: profile?.avatar_url || null,
+                    first_name: profile?.first_name || null,
+                    last_name: profile?.last_name || null,
+                    username: profile?.username || null,
+                } satisfies IdeaReactionProfile;
+            });
+
+            return {
+                reaction: reactionType,
+                value: IDEA_REACTION_VALUES[reactionType],
+                count: matchingReactions.length,
+                profiles: reactionProfiles,
+            };
+        });
+
+        return {
+            ...idea,
+            current_user_reaction: currentUserReaction,
+            reaction_summaries: reactionSummaries,
+        };
+    });
+}
+
+async function toggleTripIdeaReaction(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/sign-in");
+    }
+
+    const tripId = String(formData.get("trip_id") || "");
+    const ideaId = String(formData.get("idea_id") || "");
+    const reaction = normalizeIdeaReaction(formData.get("reaction"));
+
+    if (!tripId || !ideaId || !reaction) {
+        throw new Error("Could not update idea reaction: missing reaction data");
+    }
+
+    const { data: existingReaction, error: existingReactionError } = await supabase
+        .from("trip_idea_reactions")
+        .select("id,reaction")
+        .eq("trip_id", tripId)
+        .eq("idea_id", ideaId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (existingReactionError) {
+        console.error("Error loading idea reaction:", {
+            message: existingReactionError.message,
+            code: existingReactionError.code,
+            details: existingReactionError.details,
+            hint: existingReactionError.hint,
+        });
+        throw new Error(
+            `Could not update idea reaction: ${
+                existingReactionError.message || "Unknown Supabase error"
+            }`
+        );
+    }
+
+    if (
+        existingReaction &&
+        normalizeIdeaReaction(
+            (existingReaction as { reaction?: unknown }).reaction
+        ) === reaction
+    ) {
+        const { error } = await supabase
+            .from("trip_idea_reactions")
+            .delete()
+            .eq("trip_id", tripId)
+            .eq("idea_id", ideaId)
+            .eq("user_id", user.id);
+
+        if (error) {
+            console.error("Error deleting idea reaction:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+            });
+            throw new Error(
+                `Could not update idea reaction: ${
+                    error.message || "Unknown Supabase error"
+                }`
+            );
+        }
+    } else {
+        const payload = {
+            trip_id: tripId,
+            idea_id: ideaId,
+            user_id: user.id,
+            reaction,
+            updated_at: new Date().toISOString(),
+        };
+        const { error } = await supabase
+            .from("trip_idea_reactions")
+            .upsert(payload, { onConflict: "idea_id,user_id" });
+
+        if (error) {
+            console.error("Error upserting idea reaction:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+                payload,
+            });
+            throw new Error(
+                `Could not update idea reaction: ${
+                    error.message || "Unknown Supabase error"
+                }`
+            );
+        }
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+}
+
 async function TripDetailContent({ params, searchParams }: PageProps) {
     await connection();
 
@@ -1326,6 +1530,25 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     if (!user) {
         redirect("/sign-in");
     }
+
+    const { data: userPreferences, error: userPreferencesError } = await supabase
+        .from("user_preferences")
+        .select("itinerary_default_view")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (userPreferencesError) {
+        console.warn("Could not load user itinerary preferences:", {
+            message: userPreferencesError.message,
+            code: userPreferencesError.code,
+            details: userPreferencesError.details,
+        });
+    }
+
+    const defaultItineraryView = getDefaultItineraryView(
+        (userPreferences as { itinerary_default_view?: unknown } | null)
+            ?.itinerary_default_view
+    );
 
     const { data: trip, error: tripError } = await supabase
         .from("trips")
@@ -1374,9 +1597,60 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         });
     }
 
-    const ideas = ((tripIdeas || []) as Record<string, unknown>[]).map(
+    const normalizedIdeas = ((tripIdeas || []) as Record<string, unknown>[]).map(
         normalizeTripIdea
     );
+    const ideaIds = normalizedIdeas.map((idea) => idea.id).filter(Boolean);
+    let tripIdeaReactions: TripIdeaReactionRecord[] = [];
+    let ideaReactionProfiles: UserProfileRecord[] = [];
+
+    if (ideaIds.length > 0) {
+        const { data: reactionRows, error: reactionsError } = await supabase
+            .from("trip_idea_reactions")
+            .select("idea_id,user_id,reaction")
+            .eq("trip_id", tripId)
+            .in("idea_id", ideaIds);
+
+        if (reactionsError) {
+            console.warn("Could not load trip idea reactions.", {
+                code: reactionsError.code,
+                message: reactionsError.message,
+                details: reactionsError.details,
+                hint: reactionsError.hint,
+            });
+        } else {
+            tripIdeaReactions = (reactionRows || []) as TripIdeaReactionRecord[];
+        }
+
+        const reactionUserIds = Array.from(
+            new Set(tripIdeaReactions.map((reaction) => reaction.user_id))
+        );
+
+        if (reactionUserIds.length > 0) {
+            const { data: profileRows, error: profilesError } = await supabase
+                .from("user_profiles")
+                .select("id,first_name,last_name,username,avatar_url")
+                .in("id", reactionUserIds);
+
+            if (profilesError) {
+                console.warn("Could not load idea reaction profiles.", {
+                    code: profilesError.code,
+                    message: profilesError.message,
+                    details: profilesError.details,
+                    hint: profilesError.hint,
+                });
+            } else {
+                ideaReactionProfiles = (profileRows || []) as UserProfileRecord[];
+            }
+        }
+    }
+
+    const ideas = attachIdeaReactions({
+        ideas: normalizedIdeas,
+        reactions: tripIdeaReactions,
+        profiles: ideaReactionProfiles,
+        currentUserId: user.id,
+    });
 
     const calendarItems = [
         ...(((itineraryItems || []) as ItineraryCalendarItem[]).map((item) => ({
@@ -1469,8 +1743,10 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         updateIdeaAction={updateTripIdea}
                         archiveIdeaAction={archiveTripIdea}
                         deleteIdeaAction={deleteTripIdea}
+                        toggleIdeaReactionAction={toggleTripIdeaReaction}
                         promoteIdeaAction={promoteIdeaToItinerary}
                         initialTab={initialTab}
+                        defaultItineraryView={defaultItineraryView}
                     />
                 </section>
             </div>

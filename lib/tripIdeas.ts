@@ -85,6 +85,22 @@ export type IdeaTimeOfDay = (typeof IDEA_TIME_OF_DAY_OPTIONS)[number];
 export type IdeaTimeOfDayValue = (typeof IDEA_TIME_OF_DAY_VALUES)[number];
 export type IdeaTicketPolicy = (typeof IDEA_TICKET_POLICIES)[number]["value"];
 export type IdeaAgePolicy = (typeof IDEA_AGE_POLICIES)[number]["value"];
+export type IdeaReactionType = "heart" | "thumbs_up" | "thumbs_down";
+
+export type IdeaReactionProfile = {
+    user_id: string;
+    avatar_url?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    username?: string | null;
+};
+
+export type IdeaReactionSummary = {
+    reaction: IdeaReactionType;
+    value: 2 | 1 | -1;
+    count: number;
+    profiles: IdeaReactionProfile[];
+};
 
 export type TripIdea = {
     id: string;
@@ -118,6 +134,8 @@ export type TripIdea = {
     dress_code?: string | null;
     other_notes?: string | null;
     is_archived: boolean;
+    reaction_summaries?: IdeaReactionSummary[];
+    current_user_reaction?: IdeaReactionType | null;
     created_at?: string | null;
     updated_at?: string | null;
 };
