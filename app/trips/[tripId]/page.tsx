@@ -1771,6 +1771,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const initialTab =
         resolvedSearchParams.tab === "ideas"
             ? "ideas"
+            : resolvedSearchParams.tab === "journey-planning"
+              ? "journey-planning"
             : resolvedSearchParams.tab === "journey"
               ? "journey"
               : "itinerary";
