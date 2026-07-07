@@ -1,9 +1,10 @@
 "use client";
 
 import Script from "next/script";
-import { AlertTriangle, Pencil, Trash2, X } from "lucide-react";
+import { AlertTriangle, Pencil, Share2, Trash2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
+import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import {
     useTripCoverImage,
@@ -25,6 +26,7 @@ export default function TripHeaderCover({
 }: TripHeaderCoverProps) {
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
@@ -98,6 +100,14 @@ export default function TripHeaderCover({
                     >
                         <Pencil className="h-4 w-4" aria-hidden="true" />
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsShareModalOpen(true)}
+                        className="absolute bottom-4 right-[4.25rem] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15"
+                        aria-label="Share trip"
+                    >
+                        <Share2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
                 </div>
             )}
 
@@ -117,8 +127,23 @@ export default function TripHeaderCover({
                     >
                         <Pencil className="h-4 w-4" aria-hidden="true" />
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setIsShareModalOpen(true)}
+                        className="absolute bottom-4 right-[4.25rem] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15"
+                        aria-label="Share trip"
+                    >
+                        <Share2 className="h-4 w-4" aria-hidden="true" />
+                    </button>
                 </div>
             )}
+
+            <ShareTripModal
+                tripId={trip.id}
+                tripTitle={trip.title}
+                open={isShareModalOpen}
+                onOpenChange={setIsShareModalOpen}
+            />
 
             {isModalOpen && (
                 <div

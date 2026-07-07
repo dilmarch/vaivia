@@ -1,8 +1,9 @@
 "use client";
 
 import Script from "next/script";
-import { AlertTriangle, Pencil, Trash2, X } from "lucide-react";
+import { AlertTriangle, Pencil, Share2, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import {
     DashboardTripCard,
@@ -55,6 +56,7 @@ export default function TripsIndexClient({
     const formRef = useRef<HTMLFormElement | null>(null);
     const [filter, setFilter] = useState<TripFilter>("upcoming");
     const [selectedTrip, setSelectedTrip] = useState<DashboardTrip | null>(null);
+    const [shareTrip, setShareTrip] = useState<DashboardTrip | null>(null);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
@@ -170,13 +172,36 @@ export default function TripsIndexClient({
                                     />
                                     <button
                                         type="button"
-                                        onClick={() => openEditModal(trip)}
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            openEditModal(trip);
+                                        }}
                                         className={`absolute z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950 ${getEditButtonPosition(
                                             index
                                         )}`}
                                         aria-label={`Edit ${getTripLabel(trip)}`}
                                     >
                                         <Pencil
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            setShareTrip(trip);
+                                        }}
+                                        className={`absolute z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/55 text-slate-100 shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15 ${
+                                            index % 3 === 1
+                                                ? "bottom-9 left-[6.8rem]"
+                                                : "bottom-10 right-[7.3rem]"
+                                        }`}
+                                        aria-label={`Share ${getTripLabel(trip)}`}
+                                    >
+                                        <Share2
                                             className="h-4 w-4"
                                             aria-hidden="true"
                                         />
@@ -198,6 +223,15 @@ export default function TripsIndexClient({
                     )}
                 </div>
             </section>
+
+            <ShareTripModal
+                tripId={shareTrip?.id || ""}
+                tripTitle={shareTrip?.title}
+                open={Boolean(shareTrip)}
+                onOpenChange={(open) => {
+                    if (!open) setShareTrip(null);
+                }}
+            />
 
             {selectedTrip ? (
                 <div

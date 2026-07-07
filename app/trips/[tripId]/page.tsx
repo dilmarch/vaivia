@@ -35,6 +35,7 @@ type PageProps = {
 
 type ItineraryItemPayload = {
     trip_id: string;
+    created_by?: string;
     title: string;
     category: string;
     status: string;
@@ -137,6 +138,7 @@ function isMissingOptionalColumnError(error: { code?: string; message?: string }
                     message.includes("airline_name") ||
                     message.includes("airline_code") ||
                     message.includes("flight_number") ||
+                    message.includes("created_by") ||
                     message.includes("is_private") ||
                     message.includes("schema cache")))
     );
@@ -151,6 +153,7 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
         airline_name,
         airline_code,
         flight_number,
+        created_by,
         is_private,
         ...fallbackPayload
     } = payload;
@@ -162,6 +165,7 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
     void airline_name;
     void airline_code;
     void flight_number;
+    void created_by;
     void is_private;
 
     return fallbackPayload;
@@ -384,8 +388,7 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
 async function updateTripIdeaPayloadWithFallback(
     payload: Record<string, unknown>,
     ideaId: string,
-    tripId: string,
-    userId: string
+    tripId: string
 ) {
     const supabase = await createClient();
     let attempt = { ...payload };
@@ -401,8 +404,7 @@ async function updateTripIdeaPayloadWithFallback(
             .from("trip_ideas")
             .update(attempt)
             .eq("id", ideaId)
-            .eq("trip_id", tripId)
-            .eq("created_by", userId);
+            .eq("trip_id", tripId);
 
         if (!error) return null;
 
@@ -699,7 +701,7 @@ async function createItineraryItem(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -728,6 +730,7 @@ async function createItineraryItem(formData: FormData) {
 
     const payload: ItineraryItemPayload = {
         trip_id: tripId,
+        created_by: user.id,
         title,
         category,
         status,
@@ -760,6 +763,18 @@ async function createItineraryItem(formData: FormData) {
         throw new Error("Could not create itinerary item");
     }
 
+    if (!isPrivate) {
+        await supabase.rpc("notify_trip_members", {
+            target_trip_id: tripId,
+            notification_type: "trip_item_added",
+            notification_title: "Trip item added",
+            notification_body: `${title || "An itinerary item"} was added to the trip.`,
+            notification_metadata: {
+                itemType: "itinerary_item",
+            },
+        });
+    }
+
     redirect(`/trips/${tripId}`);
 }
 
@@ -773,7 +788,7 @@ async function createTransportationItem(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -895,6 +910,7 @@ async function createTransportationItem(formData: FormData) {
 
     const transportationPayload: TransportationItemPayload = {
         user_id: user.id,
+        created_by: user.id,
         trip_id: tripId,
         title,
         transportation_mode: mode || null,
@@ -954,6 +970,18 @@ async function createTransportationItem(formData: FormData) {
         );
     }
 
+    if (!isPrivate) {
+        await supabase.rpc("notify_trip_members", {
+            target_trip_id: tripId,
+            notification_type: "trip_item_added",
+            notification_title: "Trip item added",
+            notification_body: `${title || "A transportation item"} was added to the trip.`,
+            notification_metadata: {
+                itemType: "transportation_item",
+            },
+        });
+    }
+
     redirect(`/trips/${tripId}`);
 }
 
@@ -967,7 +995,7 @@ async function updateTransportationItem(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1055,7 +1083,7 @@ async function deleteItineraryItem(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1092,7 +1120,7 @@ async function updateTrip(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1115,8 +1143,7 @@ async function updateTrip(formData: FormData) {
     let { error } = await supabase
         .from("trips")
         .update(payload)
-        .eq("id", tripId)
-        .eq("user_id", user.id);
+        .eq("id", tripId);
 
     if (error && isMissingTripCoverColumnError(error)) {
         console.warn(
@@ -1126,14 +1153,23 @@ async function updateTrip(formData: FormData) {
         ({ error } = await supabase
             .from("trips")
             .update(removeTripCoverColumn(payload))
-            .eq("id", tripId)
-            .eq("user_id", user.id));
+            .eq("id", tripId));
     }
 
     if (error) {
         console.error("Error updating trip:", error);
         throw new Error("Could not update trip");
     }
+
+    await supabase.rpc("notify_trip_members", {
+        target_trip_id: tripId,
+        notification_type: "trip_updated",
+        notification_title: "Trip updated",
+        notification_body: "A trip detail was updated.",
+        notification_metadata: {
+            changedArea: "trip",
+        },
+    });
 
     redirect(`/trips/${tripId}`);
 }
@@ -1148,7 +1184,7 @@ async function deleteTrip(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1157,12 +1193,21 @@ async function deleteTrip(formData: FormData) {
         .from("trips")
         .select("id")
         .eq("id", tripId)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
         console.error("Error finding trip to delete:", tripError);
         throw new Error("Could not delete trip");
+    }
+
+    const { count: activeMemberCount, error: memberCountError } = await supabase
+        .from("trip_members")
+        .select("id", { count: "exact", head: true })
+        .eq("trip_id", tripId)
+        .eq("status", "active");
+
+    if (!memberCountError && (activeMemberCount || 0) > 1) {
+        throw new Error("Shared trips cannot be deleted. Leave the trip instead.");
     }
 
     const { error: itineraryError } = await supabase
@@ -1219,7 +1264,7 @@ async function createTripIdea(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const payload = getIdeaPayload(formData, user.id);
@@ -1228,7 +1273,6 @@ async function createTripIdea(formData: FormData) {
         .from("trips")
         .select("id")
         .eq("id", payload.trip_id)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
@@ -1253,6 +1297,18 @@ async function createTripIdea(formData: FormData) {
         );
     }
 
+    if (!payload.is_private) {
+        await supabase.rpc("notify_trip_members", {
+            target_trip_id: payload.trip_id,
+            notification_type: "trip_item_added",
+            notification_title: "Trip idea added",
+            notification_body: `${payload.title || "An idea"} was added to the trip.`,
+            notification_metadata: {
+                itemType: "trip_idea",
+            },
+        });
+    }
+
     redirect(`/trips/${payload.trip_id}?tab=ideas`);
 }
 
@@ -1266,7 +1322,7 @@ async function updateTripIdea(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const ideaId = formData.get("idea_id") as string;
@@ -1279,7 +1335,6 @@ async function updateTripIdea(formData: FormData) {
         .from("trips")
         .select("id")
         .eq("id", payload.trip_id)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
@@ -1293,8 +1348,7 @@ async function updateTripIdea(formData: FormData) {
             updated_at: new Date().toISOString(),
         },
         ideaId,
-        payload.trip_id,
-        user.id
+        payload.trip_id
     );
 
     if (error) {
@@ -1315,7 +1369,7 @@ async function archiveTripIdea(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1325,7 +1379,6 @@ async function archiveTripIdea(formData: FormData) {
         .from("trips")
         .select("id")
         .eq("id", tripId)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
@@ -1340,8 +1393,7 @@ async function archiveTripIdea(formData: FormData) {
             updated_at: new Date().toISOString(),
         })
         .eq("id", ideaId)
-        .eq("trip_id", tripId)
-        .eq("created_by", user.id);
+        .eq("trip_id", tripId);
 
     if (error) {
         console.error("Error archiving trip idea:", error);
@@ -1361,7 +1413,7 @@ async function deleteTripIdea(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1371,7 +1423,6 @@ async function deleteTripIdea(formData: FormData) {
         .from("trips")
         .select("id")
         .eq("id", tripId)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
@@ -1383,8 +1434,7 @@ async function deleteTripIdea(formData: FormData) {
         .from("trip_ideas")
         .delete()
         .eq("id", ideaId)
-        .eq("trip_id", tripId)
-        .eq("created_by", user.id);
+        .eq("trip_id", tripId);
 
     if (error) {
         console.error("Error deleting trip idea:", error);
@@ -1404,7 +1454,7 @@ async function promoteIdeaToItinerary(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -1417,7 +1467,6 @@ async function promoteIdeaToItinerary(formData: FormData) {
         .from("trips")
         .select("id")
         .eq("id", tripId)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
@@ -1430,7 +1479,6 @@ async function promoteIdeaToItinerary(formData: FormData) {
         .select("*")
         .eq("id", ideaId)
         .eq("trip_id", tripId)
-        .eq("created_by", user.id)
         .single();
 
     if (ideaError || !idea) {
@@ -1625,7 +1673,7 @@ async function toggleTripIdeaReaction(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = String(formData.get("trip_id") || "");
@@ -1734,7 +1782,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const { data: userPreferences, error: userPreferencesError } = await supabase
@@ -1760,7 +1808,6 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         .from("trips")
         .select("*")
         .eq("id", tripId)
-        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
@@ -1791,7 +1838,6 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         .from("trip_ideas")
         .select("*")
         .eq("trip_id", tripId)
-        .eq("created_by", user.id)
         .order("created_at", { ascending: true });
 
     if (tripIdeasError) {

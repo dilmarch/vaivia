@@ -80,7 +80,7 @@ async function updateItineraryItem(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -167,7 +167,7 @@ async function updateTransportationItem(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -254,7 +254,7 @@ async function EditItineraryItemContent({
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const { data: trip, error: tripError } = await supabase

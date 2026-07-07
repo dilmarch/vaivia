@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Bell, Plus, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import TripInviteReviewModal from "@/components/TripInviteReviewModal";
+import { createClient } from "@/lib/supabase/client";
 
 type TopNavTrip = {
     id: string;
@@ -11,30 +13,21 @@ type TopNavTrip = {
 
 type AppTopActionBarProps = {
     trips: TopNavTrip[];
+    notifications?: AppNotification[];
 };
 
-const notifications = [
-    {
-        title: "Berlin check-in opens soon",
-        text: "WS 50 to LGW opens in 12 hours.",
-    },
-    {
-        title: "Passport looks good",
-        text: "Valid for your upcoming trips.",
-    },
-    {
-        title: "3 bookings need attention",
-        text: "Review missing confirmations.",
-    },
-    {
-        title: "Taipei weather update",
-        text: "Light rain expected on arrival.",
-    },
-    {
-        title: "Budget insight ready",
-        text: "Berlin prices are down 12% this month.",
-    },
-];
+export type AppNotification = {
+    id: string;
+    type: string | null;
+    title: string | null;
+    body: string | null;
+    read_at: string | null;
+    created_at: string | null;
+    trip_id: string | null;
+    invitation_id: string | null;
+    metadata?: Record<string, unknown> | null;
+    actor_user_id: string | null;
+};
 
 type AddAction = {
     key: string;
@@ -55,12 +48,27 @@ function tripLabel(trip: TopNavTrip) {
     return trip.title?.trim() || "Untitled trip";
 }
 
-export default function AppTopActionBar({ trips }: AppTopActionBarProps) {
+export default function AppTopActionBar({
+    trips,
+    notifications = [],
+}: AppTopActionBarProps) {
     const [openMenu, setOpenMenu] = useState<"add" | "notifications" | null>(
         null
     );
     const [tripPickerAction, setTripPickerAction] = useState<string | null>(null);
+    const [visibleNotifications, setVisibleNotifications] =
+        useState<AppNotification[]>(notifications);
+    const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
+    const [activeInviteNotification, setActiveInviteNotification] =
+        useState<AppNotification | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const unreadCount = visibleNotifications.filter(
+        (notification) => !notification.read_at
+    ).length;
+
+    useEffect(() => {
+        setVisibleNotifications(notifications);
+    }, [notifications]);
 
     useEffect(() => {
         if (!openMenu) return;
@@ -91,17 +99,93 @@ export default function AppTopActionBar({ trips }: AppTopActionBarProps) {
         };
     }, [openMenu]);
 
+    async function refreshNotifications() {
+        setIsLoadingNotifications(true);
+
+        const supabase = createClient();
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+
+        if (!user) {
+            setVisibleNotifications([]);
+            setIsLoadingNotifications(false);
+            return;
+        }
+
+        const { data, error } = await supabase
+            .from("notifications")
+            .select(
+                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id"
+            )
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        if (error) {
+            console.warn("Could not refresh notifications:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+            });
+        } else {
+            setVisibleNotifications((data || []) as AppNotification[]);
+        }
+
+        setIsLoadingNotifications(false);
+    }
+
     function toggleMenu(menu: "add" | "notifications") {
-        setOpenMenu((current) => (current === menu ? null : menu));
+        setOpenMenu((current) => {
+            const nextMenu = current === menu ? null : menu;
+
+            if (nextMenu === "notifications") {
+                void refreshNotifications();
+            }
+
+            return nextMenu;
+        });
         setTripPickerAction(null);
     }
 
+    async function markNotificationRead(notification: AppNotification) {
+        if (notification.read_at) return;
+
+        const supabase = createClient();
+        await supabase.rpc("mark_app_alert_read", {
+            alert_id: notification.id,
+        });
+    }
+
+    async function handleNotificationClick(notification: AppNotification) {
+        if (notification.type === "trip_invite_received") {
+            setActiveInviteNotification(notification);
+            return;
+        }
+
+        await markNotificationRead(notification);
+        setVisibleNotifications((current) =>
+            current.map((currentNotification) =>
+                currentNotification.id === notification.id
+                    ? {
+                          ...currentNotification,
+                          read_at:
+                              currentNotification.read_at ||
+                              new Date().toISOString(),
+                      }
+                    : currentNotification
+            )
+        );
+    }
+
     return (
-        <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-4 pt-4 md:left-24 md:px-8 md:pt-6">
-            <div
-                ref={wrapperRef}
-                className="pointer-events-auto ml-auto flex w-fit items-start gap-3"
-            >
+        <>
+            <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-4 pt-4 md:left-24 md:px-8 md:pt-6">
+                <div
+                    ref={wrapperRef}
+                    className="pointer-events-auto ml-auto flex w-fit items-start gap-3"
+                >
                 <div
                     className="relative"
                     onMouseLeave={() => {
@@ -200,7 +284,11 @@ export default function AppTopActionBar({ trips }: AppTopActionBarProps) {
                         aria-expanded={openMenu === "notifications"}
                     >
                         <Bell className="h-5 w-5" aria-hidden="true" />
-                        <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-lime-300 shadow-[0_0_14px_rgba(190,242,100,0.9)]" />
+                        {unreadCount > 0 ? (
+                            <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime-300 px-1 text-[10px] font-black text-slate-950 shadow-[0_0_14px_rgba(190,242,100,0.9)]">
+                                {unreadCount}
+                            </span>
+                        ) : null}
                     </button>
 
                     {openMenu === "notifications" ? (
@@ -210,26 +298,48 @@ export default function AppTopActionBar({ trips }: AppTopActionBarProps) {
                                     Notifications
                                 </p>
                             </div>
-                            {notifications.map((notification) => (
-                                <button
-                                    key={notification.title}
-                                    type="button"
-                                    className="block w-full rounded-2xl px-3 py-2 text-left transition hover:bg-white/10"
-                                >
-                                    <span className="block text-sm font-semibold text-white">
-                                        {notification.title}
-                                    </span>
-                                    <span className="mt-0.5 block text-xs text-slate-400">
-                                        {notification.text}
-                                    </span>
-                                </button>
-                            ))}
-                            <button
-                                type="button"
-                                className="mt-2 w-full rounded-2xl border border-lime-300/20 bg-lime-300/10 px-3 py-2 text-sm font-bold text-lime-100 transition hover:bg-lime-300/15"
-                            >
-                                Load more
-                            </button>
+                            {isLoadingNotifications ? (
+                                <p className="px-3 py-6 text-center text-sm text-slate-400">
+                                    Loading notifications...
+                                </p>
+                            ) : visibleNotifications.length > 0 ? (
+                                visibleNotifications.map((notification) => (
+                                    <button
+                                        key={notification.id}
+                                        type="button"
+                                        onClick={() =>
+                                            handleNotificationClick(notification)
+                                        }
+                                        className={`block w-full rounded-2xl px-3 py-2 text-left transition hover:bg-white/10 ${
+                                            notification.read_at
+                                                ? "bg-transparent"
+                                                : "bg-lime-300/10"
+                                        }`}
+                                    >
+                                        <span className="flex items-start gap-2 text-sm font-semibold text-white">
+                                            {!notification.read_at ? (
+                                                <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-lime-300" />
+                                            ) : null}
+                                            <span className="block">
+                                                {notification.title || "Notification"}
+                                            </span>
+                                        </span>
+                                        <span className="mt-0.5 block text-xs text-slate-400">
+                                            {notification.body}
+                                        </span>
+                                        {notification.type ===
+                                        "trip_invite_received" ? (
+                                            <span className="mt-2 inline-flex rounded-full bg-lime-300 px-3 py-1 text-xs font-black text-slate-950">
+                                                Review
+                                            </span>
+                                        ) : null}
+                                    </button>
+                                ))
+                            ) : (
+                                <p className="px-3 py-6 text-center text-sm text-slate-400">
+                                    No notifications yet.
+                                </p>
+                            )}
                         </div>
                     ) : null}
                 </div>
@@ -246,7 +356,19 @@ export default function AppTopActionBar({ trips }: AppTopActionBarProps) {
                         type="search"
                     />
                 </div>
+                </div>
             </div>
-        </div>
+            <TripInviteReviewModal
+                notification={activeInviteNotification}
+                open={Boolean(activeInviteNotification)}
+                onOpenChange={(open) => {
+                    if (!open) setActiveInviteNotification(null);
+                }}
+                onHandled={() => {
+                    setActiveInviteNotification(null);
+                    void refreshNotifications();
+                }}
+            />
+        </>
     );
 }

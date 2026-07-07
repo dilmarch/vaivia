@@ -2,8 +2,9 @@ import Link from "next/link";
 import { connection } from "next/server";
 import type { UserPreferences, UserProfile } from "@/components/AccountMenu";
 import AppSidebarNav from "@/components/AppSidebarNav";
-import AppTopActionBar from "@/components/AppTopActionBar";
+import AppTopActionBar, { type AppNotification } from "@/components/AppTopActionBar";
 import { createClient } from "@/lib/supabase/server";
+import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
 import {
     getUserProfileDefaults,
     mergeProfileWithAuthDefaults,
@@ -65,15 +66,15 @@ export default async function AppNav() {
     } = await supabase.auth.getUser();
 
     let upcomingTrips: NavTrip[] = [];
+    let notifications: AppNotification[] = [];
     let profile: Partial<UserProfile> | null = null;
     let preferences: Partial<UserPreferences> | null = null;
 
     if (user) {
-        const { data: trips, error: tripsError } = await supabase
-            .from("trips")
-            .select("id,title,destination,start_date,end_date")
-            .eq("user_id", user.id)
-            .order("start_date", { ascending: true });
+        const { trips, error: tripsError } = await loadActiveMemberTrips(
+            supabase,
+            user.id
+        );
 
         if (tripsError) {
             console.warn("Could not load navigation trips:", {
@@ -82,7 +83,26 @@ export default async function AppNav() {
                 details: tripsError.details,
             });
         } else {
-            upcomingTrips = getUpcomingTrips((trips || []) as NavTrip[]);
+            upcomingTrips = getUpcomingTrips((trips || []) as SharedTrip[]);
+        }
+
+        const { data: notificationRows, error: notificationsError } = await supabase
+            .from("notifications")
+            .select(
+                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id"
+            )
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        if (notificationsError) {
+            console.warn("Could not load notifications:", {
+                message: notificationsError.message,
+                code: notificationsError.code,
+                details: notificationsError.details,
+            });
+        } else {
+            notifications = (notificationRows || []) as AppNotification[];
         }
 
         const { data: profileData, error: profileError } = await supabase
@@ -133,7 +153,12 @@ export default async function AppNav() {
                 preferences={preferences}
                 firstTripId={upcomingTrips[0]?.id || null}
             />
-            {user ? <AppTopActionBar trips={upcomingTrips} /> : null}
+            {user ? (
+                <AppTopActionBar
+                    trips={upcomingTrips}
+                    notifications={notifications}
+                />
+            ) : null}
         </>
     );
 }

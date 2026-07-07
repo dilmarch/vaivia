@@ -9,10 +9,12 @@ import {
     Minus,
     Pencil,
     Plus,
+    Share2,
     Trash2,
     X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import { useTripCoverImage } from "@/components/TripCoverImage";
 
@@ -394,10 +396,12 @@ function TripsGrid({
     trips,
     isGoogleReady,
     onEditTrip,
+    onShareTrip,
 }: {
     trips: DashboardTrip[];
     isGoogleReady: boolean;
     onEditTrip: (trip: DashboardTrip) => void;
+    onShareTrip: (trip: DashboardTrip) => void;
 }) {
     if (trips.length === 0) {
         return (
@@ -451,13 +455,33 @@ function TripsGrid({
                             />
                             <button
                                 type="button"
-                                onClick={() => onEditTrip(trip)}
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onEditTrip(trip);
+                                }}
                                 className={`absolute z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950 ${getEditButtonPosition(
                                     index
                                 )}`}
                                 aria-label={`Edit ${trip.title || "trip"}`}
                             >
                                 <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    onShareTrip(trip);
+                                }}
+                                className={`absolute z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/55 text-slate-100 shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15 ${
+                                    index % 3 === 1
+                                        ? "bottom-9 left-[6.8rem]"
+                                        : "bottom-10 right-[7.3rem]"
+                                }`}
+                                aria-label={`Share ${trip.title || "trip"}`}
+                            >
+                                <Share2 className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </div>
                     ))}
@@ -806,6 +830,7 @@ export default function TripDashboardClient({
 }: TripDashboardClientProps) {
     const formRef = useRef<HTMLFormElement | null>(null);
     const [selectedTrip, setSelectedTrip] = useState<DashboardTrip | null>(null);
+    const [shareTrip, setShareTrip] = useState<DashboardTrip | null>(null);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
@@ -865,11 +890,21 @@ export default function TripDashboardClient({
                     trips={trips}
                     isGoogleReady={isGoogleReady}
                     onEditTrip={openEditModal}
+                    onShareTrip={setShareTrip}
                 />
                 <DashboardMonthCalendar trips={trips} />
             </div>
 
             <QuickAddFan trips={trips} />
+
+            <ShareTripModal
+                tripId={shareTrip?.id || ""}
+                tripTitle={shareTrip?.title}
+                open={Boolean(shareTrip)}
+                onOpenChange={(open) => {
+                    if (!open) setShareTrip(null);
+                }}
+            />
 
             {selectedTrip && (
                 <div

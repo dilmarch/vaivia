@@ -6,6 +6,7 @@ import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
   type DashboardTrip,
 } from "@/components/TripDashboardClient";
+import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
 
@@ -52,7 +53,7 @@ async function updateTrip(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/auth/login");
   }
 
   const tripId = formData.get("trip_id") as string;
@@ -75,8 +76,7 @@ async function updateTrip(formData: FormData) {
   let { error } = await supabase
     .from("trips")
     .update(payload)
-    .eq("id", tripId)
-    .eq("user_id", user.id);
+    .eq("id", tripId);
 
   if (error && isMissingTripCoverColumnError(error)) {
     console.warn(
@@ -86,14 +86,23 @@ async function updateTrip(formData: FormData) {
     ({ error } = await supabase
       .from("trips")
       .update(removeTripCoverColumn(payload))
-      .eq("id", tripId)
-      .eq("user_id", user.id));
+      .eq("id", tripId));
   }
 
   if (error) {
     console.error("Error updating trip:", error);
     throw new Error("Could not update trip");
   }
+
+  await supabase.rpc("notify_trip_members", {
+    target_trip_id: tripId,
+    notification_type: "trip_updated",
+    notification_title: "Trip updated",
+    notification_body: "A trip detail was updated.",
+    notification_metadata: {
+      changedArea: "trip",
+    },
+  });
 
   redirect("/");
 }
@@ -108,7 +117,7 @@ async function deleteTrip(formData: FormData) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/auth/login");
   }
 
   const tripId = formData.get("trip_id") as string;
@@ -117,12 +126,21 @@ async function deleteTrip(formData: FormData) {
     .from("trips")
     .select("id")
     .eq("id", tripId)
-    .eq("user_id", user.id)
     .single();
 
   if (tripError || !trip) {
     console.error("Error finding trip to delete:", tripError);
     throw new Error("Could not delete trip");
+  }
+
+  const { count: activeMemberCount, error: memberCountError } = await supabase
+    .from("trip_members")
+    .select("id", { count: "exact", head: true })
+    .eq("trip_id", tripId)
+    .eq("status", "active");
+
+  if (!memberCountError && (activeMemberCount || 0) > 1) {
+    throw new Error("Shared trips cannot be deleted. Leave the trip instead.");
   }
 
   const { error: itineraryError } = await supabase
@@ -159,13 +177,10 @@ async function TripsDashboard() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/sign-in");
+    redirect("/auth/login");
   }
 
-  const { data: trips, error } = await supabase
-    .from("trips")
-    .select("*")
-    .order("start_date", { ascending: true });
+  const { trips, error } = await loadActiveMemberTrips(supabase, user.id);
 
   if (error) {
     console.error("Error loading trips:", error);
@@ -188,20 +203,9 @@ async function TripsDashboard() {
   }
 
   const authProfileDefaults = getUserProfileDefaults(user);
-  const fullProfileName = [profile?.first_name, profile?.last_name]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  const fullAuthName = [
-    authProfileDefaults.first_name,
-    authProfileDefaults.last_name,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
   const dashboardName =
-    fullProfileName ||
-    fullAuthName ||
+    profile?.first_name ||
+    authProfileDefaults.first_name ||
     profile?.username ||
     authProfileDefaults.username ||
     profile?.email?.split("@")[0] ||

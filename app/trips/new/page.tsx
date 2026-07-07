@@ -45,7 +45,7 @@ async function createTrip(formData: FormData) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     const title = formData.get("title") as string;
@@ -93,7 +93,7 @@ async function NewTripContent() {
     } = await supabase.auth.getUser();
 
     if (!user) {
-        redirect("/sign-in");
+        redirect("/auth/login");
     }
 
     return (
