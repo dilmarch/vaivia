@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { createClient } from "@/lib/supabase/server";
 import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
   type DashboardTrip,
 } from "@/components/TripDashboardClient";
+import { createClient } from "@/lib/supabase/server";
+import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
 
 export const metadata: Metadata = {
   title: "Dashboard – VIVIA",
@@ -172,7 +173,7 @@ async function TripsDashboard() {
 
   const { data: profile, error: profileError } = await supabase
     .from("user_profiles")
-    .select("first_name,username,email")
+    .select("first_name,last_name,username,email")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -186,11 +187,25 @@ async function TripsDashboard() {
     });
   }
 
+  const authProfileDefaults = getUserProfileDefaults(user);
+  const fullProfileName = [profile?.first_name, profile?.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const fullAuthName = [
+    authProfileDefaults.first_name,
+    authProfileDefaults.last_name,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   const dashboardName =
-    profile?.first_name ||
+    fullProfileName ||
+    fullAuthName ||
     profile?.username ||
+    authProfileDefaults.username ||
     profile?.email?.split("@")[0] ||
-    user.email?.split("@")[0] ||
+    authProfileDefaults.email?.split("@")[0] ||
     "traveller";
 
   return (

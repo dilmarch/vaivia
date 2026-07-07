@@ -1,5 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getUserProfileDefaults,
+  mergeProfileWithAuthDefaults,
+} from "@/lib/userProfileDefaults";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -23,6 +27,53 @@ export async function GET(request: NextRequest) {
       error.message || "Google sign-in could not be completed.",
     );
     return NextResponse.redirect(loginUrl);
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.warn("Google sign-in completed, but user profile could not be read:", {
+      message: userError.message,
+    });
+  }
+
+  if (user) {
+    const defaults = getUserProfileDefaults(user);
+    const { data: existingProfile, error: profileReadError } = await supabase
+      .from("user_profiles")
+      .select("id,first_name,last_name,username,email,avatar_url,join_date")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileReadError) {
+      console.warn("Could not load user profile after Google sign-in:", {
+        message: profileReadError.message,
+        code: profileReadError.code,
+        details: profileReadError.details,
+        userId: user.id,
+      });
+    }
+
+    const profilePayload = {
+      ...mergeProfileWithAuthDefaults(existingProfile, defaults),
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error: profileUpsertError } = await supabase
+      .from("user_profiles")
+      .upsert(profilePayload, { onConflict: "id" });
+
+    if (profileUpsertError) {
+      console.warn("Could not seed user profile after Google sign-in:", {
+        message: profileUpsertError.message,
+        code: profileUpsertError.code,
+        details: profileUpsertError.details,
+        payload: profilePayload,
+      });
+    }
   }
 
   return NextResponse.redirect(redirectTo);

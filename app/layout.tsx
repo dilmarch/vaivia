@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Suspense } from "react";
+import AppLayoutShell from "@/components/AppLayoutShell";
 import AppNav, { AppNavFallback } from "@/components/AppNav";
 import "./globals.css";
 
@@ -35,10 +36,15 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <Suspense fallback={<AppNavFallback />}>
-            <AppNav />
-          </Suspense>
-          <div className="min-h-screen pb-20 md:pb-0 md:pl-24">{children}</div>
+          <AppLayoutShell
+            nav={
+              <Suspense fallback={<AppNavFallback />}>
+                <AppNav />
+              </Suspense>
+            }
+          >
+            {children}
+          </AppLayoutShell>
         </ThemeProvider>
       </body>
     </html>

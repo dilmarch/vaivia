@@ -4,6 +4,10 @@ import type { UserPreferences, UserProfile } from "@/components/AccountMenu";
 import AppSidebarNav from "@/components/AppSidebarNav";
 import AppTopActionBar from "@/components/AppTopActionBar";
 import { createClient } from "@/lib/supabase/server";
+import {
+    getUserProfileDefaults,
+    mergeProfileWithAuthDefaults,
+} from "@/lib/userProfileDefaults";
 
 type NavTrip = {
     id: string;
@@ -96,6 +100,11 @@ export default async function AppNav() {
         } else {
             profile = profileData as Partial<UserProfile> | null;
         }
+
+        profile = mergeProfileWithAuthDefaults(
+            profile,
+            getUserProfileDefaults(user)
+        );
 
         const { data: preferencesData, error: preferencesError } = await supabase
             .from("user_preferences")
