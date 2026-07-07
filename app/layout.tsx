@@ -38,8 +38,7 @@ export default function RootLayout({
           <Suspense fallback={<AppNavFallback />}>
             <AppNav />
           </Suspense>
-          <div className="h-16" aria-hidden="true" />
-          {children}
+          <div className="pb-20 md:pb-0 md:pl-24">{children}</div>
         </ThemeProvider>
       </body>
     </html>

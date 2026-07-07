@@ -1,9 +1,9 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
   type DashboardTrip,
 } from "@/components/TripDashboardClient";
@@ -170,47 +170,41 @@ async function TripsDashboard() {
     console.error("Error loading trips:", error);
   }
 
+  const { data: profile, error: profileError } = await supabase
+    .from("user_profiles")
+    .select("first_name,username,email")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.warn("Could not load dashboard user profile:", {
+      message: profileError.message,
+      code: profileError.code,
+      details: profileError.details,
+      hint: profileError.hint,
+      userId: user.id,
+    });
+  }
+
+  const dashboardName =
+    profile?.first_name ||
+    profile?.username ||
+    profile?.email?.split("@")[0] ||
+    user.email?.split("@")[0] ||
+    "traveller";
+
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-10">
-      <div className="mx-auto max-w-5xl">
-        <header className="mb-10">
-          <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
-            VAIVIA
-          </p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-900">
-            My Travel Plans
-          </h1>
-          <p className="mt-3 text-slate-600">
-            Organize trips, itinerary items, work obligations, activities, and
-            budgets in one place.
-          </p>
-        </header>
+    <main className="min-h-screen bg-[#0c0115] text-white">
+      <div className="space-y-1.5">
+        <DashboardHero name={dashboardName} />
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-6 flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900">
-                My Trips
-              </h2>
-              <p className="text-sm text-slate-500">
-                Your saved travel plans will appear here.
-              </p>
-            </div>
-
-            <Link
-              href="/trips/new"
-              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-            >
-              + New Trip
-            </Link>
-          </div>
-
+        <div className="mx-4 md:mx-8">
           <TripDashboardClient
             trips={(trips || []) as DashboardTrip[]}
             updateTripAction={updateTrip}
             deleteTripAction={deleteTrip}
           />
-        </section>
+        </div>
       </div>
     </main>
   );
@@ -220,8 +214,8 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-slate-50 px-6 py-10">
-          <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+        <main className="min-h-screen bg-slate-950 px-6 py-10">
+          <div className="mx-auto max-w-5xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
             Loading trips...
           </div>
         </main>

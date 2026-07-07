@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Camera, LogOut, UserRound, X } from "lucide-react";
+import { Camera, LogOut, Settings, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,7 @@ type AccountMenuProps = {
     joinedAt?: string | null;
     profile?: Partial<UserProfile> | null;
     preferences?: Partial<UserPreferences> | null;
+    variant?: "top" | "sidebar-profile" | "sidebar-settings";
 };
 
 function getBrowserTimezone() {
@@ -66,12 +67,35 @@ function getAvatarExtension(file: File) {
     return (mimeExtension || nameExtension || "jpg").replace("jpeg", "jpg");
 }
 
+function getErrorDetails(error: unknown) {
+    if (error && typeof error === "object") {
+        const record = error as Record<string, unknown>;
+        return {
+            message:
+                record.message instanceof Error
+                    ? record.message.message
+                    : typeof record.message === "string"
+                      ? record.message
+                      : undefined,
+            code: typeof record.code === "string" ? record.code : undefined,
+            details:
+                typeof record.details === "string" ? record.details : undefined,
+            hint: typeof record.hint === "string" ? record.hint : undefined,
+        };
+    }
+
+    return {
+        message: error instanceof Error ? error.message : "Unknown error",
+    };
+}
+
 export default function AccountMenu({
     userId,
     email,
     joinedAt,
     profile,
     preferences,
+    variant = "top",
 }: AccountMenuProps) {
     const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
@@ -125,7 +149,16 @@ export default function AccountMenu({
                 upsert: true,
             });
 
-        if (uploadError) throw uploadError;
+        if (uploadError) {
+            console.error("Error uploading account avatar:", {
+                ...getErrorDetails(uploadError),
+                bucket: "avatars",
+                path,
+                fileType: avatarFile.type,
+                fileSize: avatarFile.size,
+            });
+            throw uploadError;
+        }
 
         const { data } = supabase.storage.from("avatars").getPublicUrl(path);
         return data.publicUrl || null;
@@ -169,7 +202,14 @@ export default function AccountMenu({
 
             if (authUpdates.email || authUpdates.password) {
                 const { error } = await supabase.auth.updateUser(authUpdates);
-                if (error) throw error;
+                if (error) {
+                    console.error("Error updating Supabase Auth account:", {
+                        ...getErrorDetails(error),
+                        attemptedEmailChange: Boolean(authUpdates.email),
+                        attemptedPasswordChange: Boolean(authUpdates.password),
+                    });
+                    throw error;
+                }
             }
 
             const profilePayload = {
@@ -179,7 +219,8 @@ export default function AccountMenu({
                 username: username.trim() || null,
                 email: nextEmail,
                 avatar_url: nextAvatarUrl,
-                join_date: profile?.join_date || joinedAt || new Date().toISOString(),
+                join_date:
+                    profile?.join_date || joinedAt || new Date().toISOString(),
                 updated_at: new Date().toISOString(),
             };
 
@@ -187,7 +228,13 @@ export default function AccountMenu({
                 .from("user_profiles")
                 .upsert(profilePayload, { onConflict: "id" });
 
-            if (profileError) throw profileError;
+            if (profileError) {
+                console.error("Error saving user profile:", {
+                    ...getErrorDetails(profileError),
+                    payload: profilePayload,
+                });
+                throw profileError;
+            }
 
             const preferencesPayload = {
                 user_id: userId,
@@ -201,7 +248,13 @@ export default function AccountMenu({
                 .from("user_preferences")
                 .upsert(preferencesPayload, { onConflict: "user_id" });
 
-            if (preferencesError) throw preferencesError;
+            if (preferencesError) {
+                console.error("Error saving user preferences:", {
+                    ...getErrorDetails(preferencesError),
+                    payload: preferencesPayload,
+                });
+                throw preferencesError;
+            }
 
             setAvatarFile(null);
             setAvatarUrl(nextAvatarUrl || "");
@@ -214,6 +267,10 @@ export default function AccountMenu({
             );
             router.refresh();
         } catch (error) {
+            console.error("Could not save account preferences:", {
+                ...getErrorDetails(error),
+                userId,
+            });
             setErrorMessage(
                 error instanceof Error ? error.message : "Could not save account."
             );
@@ -231,25 +288,67 @@ export default function AccountMenu({
 
     return (
         <>
-            <button
-                type="button"
-                onClick={() => setIsOpen(true)}
-                className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
-            >
-                {avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                        src={avatarUrl}
-                        alt=""
-                        className="h-7 w-7 rounded-full border border-slate-200 object-cover"
-                    />
-                ) : (
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-100">
-                        <UserRound className="h-4 w-4" aria-hidden="true" />
+            {variant === "sidebar-settings" ? (
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(true)}
+                    className="group/item flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border border-transparent p-0 text-slate-400 transition-all duration-300 ease-out hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:px-3 group-hover/sidebar:py-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:px-3 group-focus-within/sidebar:py-2"
+                    aria-label="Settings"
+                >
+                    <Settings className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <span className="pointer-events-none w-0 max-w-0 translate-x-2 overflow-hidden whitespace-nowrap text-sm font-semibold opacity-0 transition-all duration-300 group-hover/sidebar:pointer-events-auto group-hover/sidebar:w-40 group-hover/sidebar:max-w-40 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100 group-focus-within/sidebar:pointer-events-auto group-focus-within/sidebar:w-40 group-focus-within/sidebar:max-w-40 group-focus-within/sidebar:translate-x-0 group-focus-within/sidebar:opacity-100">
+                        Settings
                     </span>
-                )}
-                My account
-            </button>
+                </button>
+            ) : variant === "sidebar-profile" ? (
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(true)}
+                    className="flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border border-lime-300/25 bg-white/[0.04] p-0 text-left shadow-[0_0_20px_rgba(190,242,100,0.12)] transition-all duration-300 ease-out hover:border-lime-300/45 hover:bg-white/[0.07] focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:p-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:p-2"
+                    aria-label="My account"
+                >
+                    {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={avatarUrl}
+                            alt=""
+                            className="h-9 w-9 shrink-0 rounded-full border-2 border-lime-300/80 object-cover shadow-[0_0_20px_rgba(190,242,100,0.30)]"
+                        />
+                    ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-lime-300/70 bg-lime-400/10 text-lime-200 shadow-[0_0_20px_rgba(190,242,100,0.22)]">
+                            <UserRound className="h-5 w-5" aria-hidden="true" />
+                        </span>
+                    )}
+                    <span className="pointer-events-none w-0 max-w-0 translate-x-2 overflow-hidden opacity-0 transition-all duration-300 group-hover/sidebar:pointer-events-auto group-hover/sidebar:w-40 group-hover/sidebar:max-w-40 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100 group-focus-within/sidebar:pointer-events-auto group-focus-within/sidebar:w-40 group-focus-within/sidebar:max-w-40 group-focus-within/sidebar:translate-x-0 group-focus-within/sidebar:opacity-100">
+                        <span className="block truncate text-sm font-semibold text-white">
+                            {displayName}
+                        </span>
+                        <span className="block truncate text-xs text-slate-400">
+                            {username ? `@${username}` : emailAddress}
+                        </span>
+                    </span>
+                </button>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 hover:text-slate-950"
+                >
+                    {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={avatarUrl}
+                            alt=""
+                            className="h-7 w-7 rounded-full border border-slate-200 object-cover"
+                        />
+                    ) : (
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-slate-100">
+                            <UserRound className="h-4 w-4" aria-hidden="true" />
+                        </span>
+                    )}
+                    My account
+                </button>
+            )}
 
             {isOpen ? (
                 <Portal>
