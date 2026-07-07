@@ -660,7 +660,7 @@ export default function JourneyPlanningTab({
                                 <button
                                     type="submit"
                                     disabled={!scenarioReady || Boolean(selectedScenarioId)}
-                                    className="rounded-full bg-lime-300 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-40"
+                                    className="rounded-full bg-lime-300 px-4 py-3 text-sm font-black uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                     Add this travel plan to itinerary
                                 </button>

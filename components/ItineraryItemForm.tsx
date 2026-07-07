@@ -3,6 +3,10 @@
 import { AlertTriangle, Lock, Plus, X } from "lucide-react";
 import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+    FALLBACK_CATEGORY_LABEL,
+    type UserCategory,
+} from "@/lib/itineraryCategories";
 
 type InitialItem = {
     title?: string;
@@ -11,6 +15,10 @@ type InitialItem = {
     start_time?: string | null;
     end_time?: string | null;
     category?: string;
+    category_id?: string | null;
+    category_name?: string | null;
+    category_color_hex?: string | null;
+    category_owner_id?: string | null;
     status?: string;
     location?: string | null;
     timezone?: string | null;
@@ -37,6 +45,7 @@ type ItineraryItemFormProps = {
     defaultDate?: string;
     duplicateMode?: boolean;
     onClose?: () => void;
+    categories?: UserCategory[];
 };
 
 type TimezoneOption = {
@@ -77,6 +86,17 @@ const FALLBACK_TIMEZONES = [
     "Asia/Bangkok",
     "Asia/Singapore",
 ];
+
+const LABEL_CLASS =
+    "block text-sm font-bold uppercase tracking-wide text-slate-300";
+const FIELD_CLASS =
+    "mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2 text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50 focus:bg-white/[0.12] focus:ring-2 focus:ring-lime-300/20 [color-scheme:dark]";
+const HELP_TEXT_CLASS = "mt-1 text-xs text-slate-400";
+const FORM_BODY_CLASS = "bg-[#080511] p-6 text-white space-y-4";
+const SUBTLE_BUTTON_CLASS =
+    "rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white";
+const PRIMARY_BUTTON_CLASS =
+    "rounded-xl bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-slate-500 disabled:text-slate-200 disabled:shadow-none";
 
 function addOneDay(dateString: string) {
     if (!dateString) return "";
@@ -201,6 +221,7 @@ export default function ItineraryItemForm({
     defaultDate = "",
     duplicateMode = false,
     onClose,
+    categories = [],
 }: ItineraryItemFormProps) {
     const isEditMode = Boolean(initialItem) && !duplicateMode;
     const formRef = useRef<HTMLFormElement | null>(null);
@@ -250,6 +271,21 @@ export default function ItineraryItemForm({
     const [isModalOpen, setIsModalOpen] = useState(isEditMode || duplicateMode);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
+    const initialCategoryId = initialItem?.category_id || "";
+    const initialCategoryName =
+        initialItem?.category_name || initialItem?.category || FALLBACK_CATEGORY_LABEL;
+    const initialCategoryIsSelectable =
+        !initialCategoryId ||
+        categories.some((category) => category.id === initialCategoryId);
+    const [selectedCategoryId, setSelectedCategoryId] = useState(
+        initialCategoryIsSelectable
+            ? initialCategoryId || categories[0]?.id || ""
+            : "__shared__"
+    );
+    const selectedCategoryName =
+        categories.find((category) => category.id === selectedCategoryId)?.name ||
+        initialCategoryName ||
+        FALLBACK_CATEGORY_LABEL;
 
     const locationInputRef = useRef<HTMLInputElement | null>(null);
     const previousOpenSignalRef = useRef(openSignal);
@@ -477,7 +513,7 @@ export default function ItineraryItemForm({
                 <button
                     type="button"
                     onClick={() => setIsModalOpen(true)}
-                    className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+                    className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                     aria-label="Add itinerary item"
                 >
                     <Plus className="h-6 w-6" aria-hidden="true" />
@@ -496,7 +532,7 @@ export default function ItineraryItemForm({
                     <aside
                         className={
                             isEditMode
-                                ? "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                                ? "vaivia-modal-panel max-w-2xl"
                                 : "vaivia-modal-panel max-w-2xl"
                         }
                         onClick={(event) => event.stopPropagation()}
@@ -504,7 +540,7 @@ export default function ItineraryItemForm({
                         <div
                             className={
                                 isEditMode
-                                    ? ""
+                                    ? "vaivia-modal-header"
                                     : "vaivia-modal-header flex items-center justify-between gap-4"
                             }
                         >
@@ -514,7 +550,7 @@ export default function ItineraryItemForm({
                                         Quick add
                                     </p>
                                 )}
-                                <h2 className={isEditMode ? "text-xl font-semibold text-slate-900" : "vaivia-modal-title"}>
+                                <h2 className="vaivia-modal-title">
                                     {isEditMode ? "Edit itinerary item" : submitLabel}
                                 </h2>
                             </div>
@@ -535,7 +571,7 @@ export default function ItineraryItemForm({
                             ref={formRef}
                             action={submitAction}
                             onChange={() => setHasUnsavedChanges(true)}
-                            className={isEditMode ? "mt-5 space-y-4" : "vaivia-modal-body space-y-4"}
+                            className={FORM_BODY_CLASS}
                         >
                     <input type="hidden" name="trip_id" value={tripId} />
                     <input type="hidden" name="timezone_source" value={timezoneSource} />
@@ -543,7 +579,7 @@ export default function ItineraryItemForm({
                     <div>
                         <label
                             htmlFor="itineraryItemTitle"
-                            className="block text-sm font-medium text-slate-700"
+                            className={LABEL_CLASS}
                         >
                             Title
                         </label>
@@ -558,14 +594,14 @@ export default function ItineraryItemForm({
                             data-1p-ignore="true"
                             defaultValue={initialItem?.title || ""}
                             placeholder="Flight to Berlin"
-                            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            className={FIELD_CLASS}
                         />
                     </div>
 
                     <div>
                         <label
                             htmlFor="itineraryItemDate"
-                            className="block text-sm font-medium text-slate-700"
+                            className={LABEL_CLASS}
                         >
                             {endsNextDay ? "Start date" : "Date"}
                         </label>
@@ -580,7 +616,7 @@ export default function ItineraryItemForm({
                             data-1p-ignore="true"
                             value={startDate}
                             onChange={(event) => setStartDate(event.target.value)}
-                            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            className={FIELD_CLASS}
                         />
                     </div>
 
@@ -588,7 +624,7 @@ export default function ItineraryItemForm({
                         <div>
                             <label
                                 htmlFor="itineraryItemEndDate"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 End date
                             </label>
@@ -603,7 +639,7 @@ export default function ItineraryItemForm({
                                 data-1p-ignore="true"
                                 value={endDate}
                                 onChange={(event) => setEndDate(event.target.value)}
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                className={FIELD_CLASS}
                             />
                         </div>
                     )}
@@ -612,7 +648,7 @@ export default function ItineraryItemForm({
                         <div>
                             <label
                                 htmlFor="start_time"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 Start time, optional
                             </label>
@@ -622,14 +658,14 @@ export default function ItineraryItemForm({
                                 type="time"
                                 value={startTime}
                                 onChange={(event) => setStartTime(event.target.value)}
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                className={FIELD_CLASS}
                             />
                         </div>
 
                         <div>
                             <label
                                 htmlFor="end_time"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 End time, optional
                             </label>
@@ -639,13 +675,13 @@ export default function ItineraryItemForm({
                                 type="time"
                                 value={endTime}
                                 onChange={(event) => setEndTime(event.target.value)}
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                className={FIELD_CLASS}
                             />
                         </div>
                     </div>
 
                     {endTimeIsBeforeStartTime && (
-                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                        <div className="rounded-xl border border-amber-300/50 bg-amber-300/15 p-4 text-sm text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.12)]">
                             <p className="font-medium">
                                 End time can&apos;t be before the start time.
                             </p>
@@ -664,7 +700,7 @@ export default function ItineraryItemForm({
                         startTime &&
                         endTime &&
                         endTime < startTime && (
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                            <div className="rounded-xl border border-emerald-300/40 bg-emerald-300/15 p-4 text-sm text-emerald-100">
                                 This event will end on {endDate || "the next day"}.
                             </div>
                         )}
@@ -673,27 +709,45 @@ export default function ItineraryItemForm({
                         <div>
                             <label
                                 htmlFor="category"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 Category
                             </label>
+                            <input
+                                type="hidden"
+                                name="category"
+                                value={selectedCategoryName}
+                            />
                             <select
                                 id="category"
-                                name="category"
-                                defaultValue={initialItem?.category || "activity"}
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                name="category_id"
+                                value={selectedCategoryId}
+                                onChange={(event) =>
+                                    setSelectedCategoryId(event.target.value)
+                                }
+                                className={FIELD_CLASS}
                             >
-                                <option value="travel">Travel</option>
-                                <option value="work">Work</option>
-                                <option value="activity">Activity</option>
-                                <option value="other">Other</option>
+                                {!initialCategoryIsSelectable && initialCategoryId ? (
+                                    <option value="__shared__">
+                                        {initialCategoryName} (Shared category)
+                                    </option>
+                                ) : null}
+                                {categories.length === 0 ? (
+                                    <option value="">{FALLBACK_CATEGORY_LABEL}</option>
+                                ) : (
+                                    categories.map((category) => (
+                                        <option key={category.id} value={category.id}>
+                                            {category.name}
+                                        </option>
+                                    ))
+                                )}
                             </select>
                         </div>
 
                         <div>
                             <label
                                 htmlFor="status"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 Status
                             </label>
@@ -701,7 +755,7 @@ export default function ItineraryItemForm({
                                 id="status"
                                 name="status"
                                 defaultValue={initialItem?.status || "tentative"}
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                className={FIELD_CLASS}
                             >
                                 <option value="tentative">Tentative</option>
                                 <option value="confirmed">Confirmed</option>
@@ -709,19 +763,19 @@ export default function ItineraryItemForm({
                         </div>
                     </div>
 
-                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                    <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-4 text-sm text-slate-300 shadow-inner shadow-black/10">
                         <input
                             type="checkbox"
                             name="is_private"
                             defaultChecked={Boolean(initialItem?.is_private)}
-                            className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                            className="mt-1 h-4 w-4 rounded border-white/20 bg-white/10 text-lime-300 focus:ring-lime-300/40"
                         />
                         <span>
-                            <span className="flex items-center gap-2 font-semibold text-slate-900">
+                            <span className="flex items-center gap-2 font-semibold text-white">
                                 <Lock className="h-4 w-4" aria-hidden="true" />
                                 Private
                             </span>
-                            <span className="mt-1 block text-xs text-slate-500">
+                            <span className="mt-1 block text-xs text-slate-400">
                                 Mark this item as visible only to you when trip sharing is enabled.
                             </span>
                         </span>
@@ -730,7 +784,7 @@ export default function ItineraryItemForm({
                     <div>
                         <label
                             htmlFor="location_search"
-                            className="block text-sm font-medium text-slate-700"
+                            className={LABEL_CLASS}
                         >
                             Location
                         </label>
@@ -747,7 +801,7 @@ export default function ItineraryItemForm({
                                 initialItem?.formatted_address || initialItem?.location || ""
                             }
                             placeholder="Search for a place..."
-                            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            className={FIELD_CLASS}
                         />
 
                         <input type="hidden" name="location" value={locationName} />
@@ -770,14 +824,14 @@ export default function ItineraryItemForm({
                         />
 
                         {(locationName || formattedAddress || googlePlaceId) && (
-                            <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                            <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.06] p-3 text-sm text-slate-300">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         {locationName && (
                                             <p className="font-medium">{locationName}</p>
                                         )}
                                         {formattedAddress && (
-                                            <p className="mt-1 text-slate-500">
+                                            <p className="mt-1 text-slate-400">
                                                 {formattedAddress}
                                             </p>
                                         )}
@@ -785,7 +839,7 @@ export default function ItineraryItemForm({
                                     <button
                                         type="button"
                                         onClick={clearValidatedLocation}
-                                        className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                                        className="shrink-0 rounded-md border border-white/10 bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14]"
                                     >
                                         Clear location
                                     </button>
@@ -793,7 +847,7 @@ export default function ItineraryItemForm({
                             </div>
                         )}
 
-                        <p className="mt-1 text-xs text-slate-500">
+                        <p className={HELP_TEXT_CLASS}>
                             Start typing to search Google Places. Selecting a result will save
                             the location details.
                         </p>
@@ -802,7 +856,7 @@ export default function ItineraryItemForm({
                     <div>
                         <label
                             htmlFor="timezone"
-                            className="block text-sm font-medium text-slate-700"
+                            className={LABEL_CLASS}
                         >
                             Time zone
                         </label>
@@ -814,7 +868,7 @@ export default function ItineraryItemForm({
                                 setTimezone(event.target.value);
                                 setTimezoneSource("manual");
                             }}
-                            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            className={FIELD_CLASS}
                         >
                             {timezoneOptionGroups.length === 0 && (
                                 <option value={timezone}>{timezone}</option>
@@ -831,7 +885,7 @@ export default function ItineraryItemForm({
                             ))}
                         </select>
 
-                        <div className="mt-1 space-y-1 text-xs text-slate-500">
+                        <div className="mt-1 space-y-1 text-xs text-slate-400">
                             {isDetectingTimezone && <p>Detecting time zone from location...</p>}
 
                             {!isDetectingTimezone && timezoneSource === "auto" && (
@@ -842,7 +896,7 @@ export default function ItineraryItemForm({
                                 <p>You can manually override the time zone.</p>
                             )}
 
-                            {timezoneError && <p className="text-amber-700">{timezoneError}</p>}
+                            {timezoneError && <p className="text-amber-200">{timezoneError}</p>}
                         </div>
                     </div>
 
@@ -850,7 +904,7 @@ export default function ItineraryItemForm({
                         <div>
                             <label
                                 htmlFor="location_website"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 Location website
                             </label>
@@ -863,14 +917,14 @@ export default function ItineraryItemForm({
                                     setLocationWebsite(event.target.value)
                                 }
                                 placeholder="https://venue.com"
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                className={FIELD_CLASS}
                             />
                         </div>
 
                         <div>
                             <label
                                 htmlFor="ticket_website"
-                                className="block text-sm font-medium text-slate-700"
+                                className={LABEL_CLASS}
                             >
                                 Ticket website
                             </label>
@@ -881,7 +935,7 @@ export default function ItineraryItemForm({
                                 value={ticketWebsite}
                                 onChange={(event) => setTicketWebsite(event.target.value)}
                                 placeholder="https://eventbrite.com/..."
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                className={FIELD_CLASS}
                             />
                             <input type="hidden" name="url" value={ticketWebsite} />
                         </div>
@@ -890,7 +944,7 @@ export default function ItineraryItemForm({
                     <div>
                         <label
                             htmlFor="notes"
-                            className="block text-sm font-medium text-slate-700"
+                            className={LABEL_CLASS}
                         >
                             Notes
                         </label>
@@ -900,7 +954,7 @@ export default function ItineraryItemForm({
                             rows={4}
                             defaultValue={initialItem?.notes || ""}
                             placeholder="Booking details, reminders, confirmation numbers..."
-                            className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            className={FIELD_CLASS}
                         />
                     </div>
 
@@ -908,14 +962,14 @@ export default function ItineraryItemForm({
                         className={
                             isEditMode
                                 ? "space-y-3"
-                                : "flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end"
+                                : "flex flex-col-reverse gap-2 border-t border-white/10 pt-5 sm:flex-row sm:justify-end"
                         }
                     >
                         {!isEditMode && (
                             <button
                                 type="button"
                                 onClick={requestCloseModal}
-                                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                className={SUBTLE_BUTTON_CLASS}
                             >
                                 Cancel
                             </button>
@@ -926,8 +980,8 @@ export default function ItineraryItemForm({
                             disabled={Boolean(endTimeIsBeforeStartTime)}
                             className={
                                 isEditMode
-                                    ? "w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                                    : "rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                    ? `w-full ${PRIMARY_BUTTON_CLASS}`
+                                    : PRIMARY_BUTTON_CLASS
                             }
                         >
                             {isEditMode ? submitLabel : "SAVE"}
@@ -947,21 +1001,21 @@ export default function ItineraryItemForm({
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="unsaved-itinerary-title"
-                        className="vaivia-modal-confirm"
+                        className="w-full max-w-md rounded-[24px] border border-white/10 bg-[#080511] p-5 text-white shadow-2xl shadow-black/60"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-300/40 bg-amber-300/15 text-amber-100">
                                 <AlertTriangle className="h-5 w-5" aria-hidden="true" />
                             </div>
                             <div>
                                 <h2
                                     id="unsaved-itinerary-title"
-                                    className="text-lg font-semibold text-slate-950"
+                                    className="text-lg font-semibold text-white"
                                 >
                                     Save changes before leaving?
                                 </h2>
-                                <p className="mt-2 text-sm leading-6 text-slate-600">
+                                <p className="mt-2 text-sm leading-6 text-slate-300">
                                     You have unsaved changes in this itinerary item.
                                 </p>
                             </div>
@@ -971,21 +1025,21 @@ export default function ItineraryItemForm({
                             <button
                                 type="button"
                                 onClick={() => setShowCloseWarning(false)}
-                                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                className="rounded-md border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14]"
                             >
                                 Cancel
                             </button>
                             <button
                                 type="button"
                                 onClick={discardChangesAndClose}
-                                className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-50"
+                                className="rounded-md border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/25"
                             >
                                 Discard
                             </button>
                             <button
                                 type="button"
                                 onClick={() => formRef.current?.requestSubmit()}
-                                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                                className="rounded-md bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200"
                             >
                                 SAVE
                             </button>

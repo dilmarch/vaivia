@@ -11,6 +11,7 @@ export type SocialAuthProvider = "google" | "apple" | "azure" | "facebook";
 const SOCIAL_PROVIDER_LABELS: Record<SocialAuthProvider, string> = {
   google: "Google",
   apple: "Apple",
+  // Microsoft login uses Supabase's "azure" provider; enable Azure in Supabase Auth -> Providers -> Azure.
   azure: "Microsoft",
   facebook: "Facebook",
 };

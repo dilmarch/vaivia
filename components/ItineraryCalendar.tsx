@@ -32,6 +32,10 @@ import {
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripIdea } from "@/lib/tripIdeas";
+import {
+    FALLBACK_CATEGORY_COLOR,
+    FALLBACK_CATEGORY_LABEL,
+} from "@/lib/itineraryCategories";
 
 export type ItineraryCalendarItem = {
     id: string;
@@ -41,6 +45,11 @@ export type ItineraryCalendarItem = {
     start_time?: string | null;
     end_time?: string | null;
     category: string;
+    category_id?: string | null;
+    category_name?: string | null;
+    category_color_hex?: string | null;
+    category_color_key?: string | null;
+    category_owner_id?: string | null;
     status: string;
     location?: string | null;
     timezone?: string | null;
@@ -504,19 +513,30 @@ function getDisplayEventRange(
 
 function getStatusClasses(status: string) {
     if (["confirmed", "booked"].includes(status.toLowerCase())) {
-        return "border-emerald-200 bg-emerald-50 text-emerald-800";
+        return "border-emerald-300/40 bg-emerald-300/15 text-emerald-100";
     }
 
-    return "border-amber-200 bg-amber-50 text-amber-800";
+    if (status.toLowerCase() === "tentative") {
+        return "border-amber-300/60 bg-amber-300/20 text-amber-100 shadow-[0_0_18px_rgba(251,191,36,0.14)]";
+    }
+
+    return "border-sky-300/40 bg-sky-300/15 text-sky-100";
 }
 
 function isTentativeStatus(status: string) {
     return status.toLowerCase() === "tentative";
 }
 
-function getTentativeStripeStyle(baseColor = "#ffffff") {
+function formatStatusLabel(status: string) {
+    return status.trim().toUpperCase();
+}
+
+function getTentativeStripeStyle(
+    baseColor = "#ffffff",
+    stripeColor = "rgba(255,255,255,0.78)"
+) {
     return {
-        backgroundImage: `repeating-linear-gradient(135deg, ${baseColor} 0, ${baseColor} 10px, rgba(255,255,255,0.78) 10px, rgba(255,255,255,0.78) 20px)`,
+        backgroundImage: `repeating-linear-gradient(135deg, ${baseColor} 0, ${baseColor} 10px, ${stripeColor} 10px, ${stripeColor} 20px)`,
     } as CSSProperties;
 }
 
@@ -544,12 +564,12 @@ function PrivateLockBadge({
     );
 }
 
-function getCategoryAccent(category: string) {
-    if (category === "travel") return "border-l-sky-500";
-    if (category === "transportation") return "border-l-indigo-500";
-    if (category === "work") return "border-l-violet-500";
-    if (category === "activity") return "border-l-teal-500";
-    return "border-l-slate-400";
+function getItemCategoryLabel(item: ItineraryCalendarItem) {
+    return item.category_name || item.category || FALLBACK_CATEGORY_LABEL;
+}
+
+function getItemCategoryColor(item: ItineraryCalendarItem) {
+    return item.category_color_hex || FALLBACK_CATEGORY_COLOR;
 }
 
 function getTransportationEmoji(mode?: string | null) {
@@ -1012,8 +1032,8 @@ function FlightListCard({
             ? {
                   className:
                       arrivalDayDifference >= 2
-                          ? "border-red-200 bg-red-50 text-red-800"
-                          : "border-amber-200 bg-amber-50 text-amber-800",
+                          ? "border-red-400/50 bg-red-500/15 text-red-100 shadow-[0_0_24px_rgba(239,68,68,0.14)]"
+                          : "border-amber-300/50 bg-amber-300/15 text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.14)]",
                   text:
                       arrivalDayDifference >= 2
                           ? `Flight arrives two days later on ${formatDateHeader(
@@ -1042,7 +1062,7 @@ function FlightListCard({
     return (
         <div
             style={cardThemeStyle}
-            className="rounded-md border border-white/70 border-l-4 border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            className="rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
         >
             <button
                 type="button"
@@ -1079,7 +1099,7 @@ function FlightListCard({
                                 item.status
                             )}`}
                         >
-                            {item.status}
+                            {formatStatusLabel(item.status)}
                         </span>
                     </div>
                 </div>
@@ -1419,13 +1439,15 @@ function EventCardActions({
     const buttonClass = `inline-flex items-center justify-center rounded-md border text-xs font-semibold transition ${
         compact ? "min-h-7 px-2 py-1" : "min-h-8 px-3 py-1.5"
     }`;
+    const subtleButtonClass =
+        "border-white/10 bg-white/[0.08] text-slate-100 hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white";
 
     return (
         <div className="flex flex-wrap justify-start gap-2">
             <button
                 type="button"
                 onClick={() => onOpen(item)}
-                className={`${buttonClass} border-slate-300 bg-white/90 text-slate-800 hover:bg-slate-100`}
+                className={`${buttonClass} ${subtleButtonClass}`}
             >
                 Details
             </button>
@@ -1434,7 +1456,7 @@ function EventCardActions({
                     href={ticketWebsite}
                     target="_blank"
                     rel="noreferrer"
-                    className={`${buttonClass} border-slate-900 bg-slate-900 text-white hover:bg-slate-700`}
+                    className={`${buttonClass} border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.18)] hover:bg-lime-200`}
                 >
                     Buy Tickets
                 </a>
@@ -1444,7 +1466,7 @@ function EventCardActions({
                     href={mapsUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className={`${buttonClass} border-slate-300 bg-white/90 text-slate-800 hover:bg-slate-100`}
+                    className={`${buttonClass} ${subtleButtonClass}`}
                 >
                     Location
                 </a>
@@ -1454,7 +1476,7 @@ function EventCardActions({
                     href={venueWebsite}
                     target="_blank"
                     rel="noreferrer"
-                    className={`${buttonClass} border-slate-300 bg-white/90 text-slate-800 hover:bg-slate-100`}
+                    className={`${buttonClass} ${subtleButtonClass}`}
                 >
                     Venue
                 </a>
@@ -1517,14 +1539,14 @@ function EventCard({
                   : {}),
           } as CSSProperties)
         : isTentativeStatus(item.status)
-          ? getTentativeStripeStyle("#f1f5f9")
+          ? getTentativeStripeStyle("#080b16", "rgba(251,191,36,0.16)")
           : undefined;
 
     if (flightDisplay && compact) {
         return (
             <div
                 style={flightCardThemeStyle}
-                className={`w-full rounded-md border border-slate-200 border-l-4 border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`w-full rounded-md border border-slate-200 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                     fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
                 }`}
             >
@@ -1576,7 +1598,7 @@ function EventCard({
                                     item.status
                                 )}`}
                             >
-                                {item.status}
+                                {formatStatusLabel(item.status)}
                             </span>
                         </div>
                     </div>
@@ -1601,14 +1623,19 @@ function EventCard({
 
     return (
         <div
-            style={flightCardThemeStyle}
-            className={`w-full border-l-4 text-left ${
+            style={
+                flightCardThemeStyle ||
+                ({
+                    borderLeftColor: getItemCategoryColor(item),
+                } as CSSProperties)
+            }
+            className={`w-full border-l-[16px] text-left ${
                 flightDisplay
                     ? "border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)]"
-                    : `${getCategoryAccent(item.category)} bg-white`
+                    : "bg-[#080b16]/95 text-white"
             } ${
                 fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
-            } rounded-md border border-slate-200 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md`}
+            } rounded-[1.25rem] border border-white/10 shadow-[0_18px_45px_rgba(0,0,0,0.28)] transition duration-200 hover:-translate-y-0.5 hover:border-lime-300/20 hover:shadow-[0_24px_60px_rgba(0,0,0,0.38)]`}
         >
             <button
                 type="button"
@@ -1633,7 +1660,11 @@ function EventCard({
                     ) : (
                         transportationEmoji && (
                             <span
-                                className={`flex shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 ${
+                                className={`flex shrink-0 items-center justify-center rounded-md border ${
+                                    flightDisplay
+                                        ? "border-slate-200 bg-slate-50"
+                                        : "border-white/10 bg-white/[0.08] shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.10)]"
+                                } ${
                                     compact ? "h-8 w-8 text-base" : "h-10 w-10 text-xl"
                                 }`}
                             >
@@ -1646,7 +1677,7 @@ function EventCard({
                         className={`text-xs font-medium ${
                             flightDisplay
                                 ? "text-[var(--airline-card-muted)]"
-                                : "text-slate-500"
+                                : "text-lime-200/80"
                         }`}
                     >
                         {timeLabel ||
@@ -1659,7 +1690,7 @@ function EventCard({
                             className={`mt-1 text-sm font-semibold ${
                                 flightDisplay
                                     ? "text-[var(--airline-card-text)]"
-                                    : "text-slate-950"
+                                    : "text-white"
                             }`}
                         >
                             Departs {transportationDepartureLabel}
@@ -1669,7 +1700,7 @@ function EventCard({
                         className={`mt-1 font-semibold ${
                             flightDisplay
                                 ? "text-[var(--airline-card-text)]"
-                                : "text-slate-900"
+                                : "text-white"
                         } ${
                             compact ? "text-sm" : "text-base"
                         }`}
@@ -1681,7 +1712,7 @@ function EventCard({
                             className={`mt-1 truncate text-xs ${
                                 flightDisplay
                                     ? "text-[var(--airline-card-muted)]"
-                                    : "text-slate-600"
+                                    : "text-slate-300"
                             }`}
                         >
                             {item.location}
@@ -1694,32 +1725,32 @@ function EventCard({
                     <span
                         className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
                             item.status
-                        )}`}
-                    >
-                        {item.status}
-                    </span>
+                    )}`}
+                >
+                    {formatStatusLabel(item.status)}
+                </span>
                 </div>
             </div>
 
             {!compact && (
                 <>
                     <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700">
-                            {item.category}
+                        <span className="rounded-md border border-white/10 bg-white/[0.08] px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-200">
+                            {getItemCategoryLabel(item)}
                         </span>
                     </div>
 
                     {(!hideTimezone || item.category === "transportation") &&
                         item.timezone && (
-                        <p className="mt-2 text-xs text-slate-500">{item.timezone}</p>
+                        <p className="mt-2 text-xs text-slate-400">{item.timezone}</p>
                     )}
 
                     {noteLines && noteLines.length > 0 && (
                         <div
                             className={`mt-3 space-y-1 text-sm leading-6 ${
                                 item.category === "transportation"
-                                    ? "rounded-md bg-slate-50 p-3 text-slate-700"
-                                    : "text-slate-600"
+                                    ? "rounded-md border border-white/10 bg-white/[0.06] p-3 text-slate-300"
+                                    : "text-slate-300"
                             }`}
                         >
                             {noteLines.map((line, index) => (
@@ -1727,7 +1758,7 @@ function EventCard({
                                     key={`${line}-${index}`}
                                     className={
                                         line.endsWith(":")
-                                            ? "pt-1 text-xs font-semibold uppercase tracking-wide text-slate-500 first:pt-0"
+                                            ? "pt-1 text-xs font-semibold uppercase tracking-wide text-lime-200/80 first:pt-0"
                                             : ""
                                     }
                                 >
@@ -1881,7 +1912,10 @@ function FlightModalContent({
                         label="Arrival terminal"
                         value={flight.arrivalTerminal}
                     />
-                    <FlightDetailGridRow label="Status" value={item.status} />
+                    <FlightDetailGridRow
+                        label="Status"
+                        value={formatStatusLabel(item.status)}
+                    />
                     <FlightDetailGridRow
                         label="Transportation mode"
                         value={flight.mode || "airplane"}
@@ -2067,7 +2101,7 @@ function ItineraryItemModal({
                                         : "text-slate-500"
                                 }`}
                             >
-                                {item.category} / {item.status}
+                                {getItemCategoryLabel(item)} / {formatStatusLabel(item.status)}
                             </p>
                             {item.is_private ? (
                                 <PrivateLockBadge compact className="border-white/30 bg-slate-950/70" />
@@ -2378,10 +2412,10 @@ function ListView({
                     <button
                         type="button"
                         onClick={() => setShowPastEvents((isVisible) => !isVisible)}
-                        className="text-sm font-medium text-slate-700 underline decoration-slate-300 underline-offset-4 transition hover:text-slate-950 hover:decoration-slate-700"
+                        className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-300 shadow-sm transition hover:border-white/20 hover:bg-white/[0.10] hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-400/40"
                         aria-expanded={showPastEvents}
                     >
-                        {showPastEvents ? "Hide Past Itinerary items" : "Show Past Itinerary items"}
+                        {showPastEvents ? "Hide Past Items" : "Show Past Items"}
                         {pastEventCount > 0 ? ` (${pastEventCount})` : ""}
                     </button>
 
@@ -2394,16 +2428,16 @@ function ListView({
                     >
                         <div className="min-h-0 overflow-hidden">
                             <div
-                                className={`space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4 transition-transform duration-300 ease-out ${
+                                className={`space-y-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20 transition-transform duration-300 ease-out ${
                                     showPastEvents ? "translate-y-0" : "-translate-y-2"
                                 }`}
                             >
-                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
                                     Past events
                                 </p>
                                 {pastDateKeys.map((dateKey) => (
                                     <section key={dateKey} className="space-y-3">
-                                        <h3 className="border-b border-slate-200 pb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                        <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
                                             {formatDateHeader(dateKey)}
                                         </h3>
                                         <div className="space-y-3">
@@ -2427,13 +2461,13 @@ function ListView({
 
             <div className="space-y-6">
                 {earlierDateKeys.length > 0 && (
-                    <div className="space-y-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div className="space-y-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
+                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
                             Earlier events
                         </p>
                         {earlierDateKeys.map((dateKey) => (
                             <section key={dateKey} className="space-y-3">
-                                <h3 className="border-b border-slate-200 pb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                                <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
                                     {formatDateHeader(dateKey)}
                                 </h3>
                                 <div className="space-y-3">
@@ -2454,7 +2488,7 @@ function ListView({
 
                 {upcomingDateKeys.map((dateKey) => (
                     <section key={dateKey} className="space-y-3">
-                        <h3 className="border-b border-slate-200 pb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                        <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
                             {formatDateHeader(dateKey)}
                         </h3>
                         <div className="space-y-3">
@@ -2514,17 +2548,17 @@ function DayColumn({
     );
 
     return (
-        <div className="min-w-0 border-slate-200 bg-white">
+        <div className="min-w-0 border-white/10 bg-slate-900/85">
             {showDateHeader && (
-                <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-3 py-3">
-                    <p className="text-sm font-semibold text-slate-900">
+                <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-950/95 px-3 py-3 backdrop-blur">
+                    <p className="text-sm font-bold text-lime-300">
                         {formatShortDate(date)}
                     </p>
                 </div>
             )}
 
             {timezoneWarning && (
-                <div className="border-b border-red-300 bg-red-100 px-3 py-3 text-sm text-red-950">
+                <div className="border-b border-red-400/50 bg-red-500/15 px-3 py-3 text-sm text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(239,68,68,0.10)]">
                     <p className="font-semibold">
                         <span className="mr-1" aria-hidden="true">
                             ⚠️
@@ -2542,7 +2576,7 @@ function DayColumn({
             )}
 
             {overnightWarning && (
-                <div className="border-b border-amber-300 bg-amber-100 px-3 py-3 text-sm font-semibold text-amber-950">
+                <div className="border-b border-amber-300/50 bg-amber-300/15 px-3 py-3 text-sm font-semibold text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(251,191,36,0.10)]">
                     <span className="mr-1" aria-hidden="true">
                         ⚠️
                     </span>
@@ -2552,7 +2586,7 @@ function DayColumn({
             )}
 
             {untimedItems.length > 0 && (
-                <div className="space-y-2 border-b border-slate-200 bg-slate-50 p-3">
+                <div className="space-y-2 border-b border-white/10 bg-slate-950/50 p-3">
                     {untimedItems.map((item) => (
                         <EventCard
                             key={item.id}
@@ -2568,13 +2602,13 @@ function DayColumn({
                 {HOURS.map((hour) => (
                     <div
                         key={hour}
-                        className="grid h-20 grid-cols-[52px_1fr] border-b border-slate-100"
+                        className="grid h-20 grid-cols-[52px_1fr] border-b border-white/10"
                     >
-                        <div className="border-r border-slate-100 px-2 pt-1 text-[11px] font-medium text-slate-400">
+                        <div className="border-r border-white/10 bg-slate-950/30 px-2 pt-1 text-[11px] font-medium text-slate-400">
                             {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
                             {hour >= 12 ? " PM" : " AM"}
                         </div>
-                        <div />
+                        <div className="bg-slate-900/55" />
                     </div>
                 ))}
 
@@ -2961,7 +2995,7 @@ export default function ItineraryCalendar({
                 onClick={() => changeActiveTimezone(option.timezone)}
                 className={`min-h-20 rounded-2xl border px-3 py-2 text-left transition hover:bg-white/10 ${
                     isActive
-                        ? "border-lime-300/40 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.18)]"
+                        ? "border-lime-300/40 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]"
                         : "border-white/10 bg-white/[0.06] text-slate-300 hover:text-white"
                 }`}
             >
@@ -2994,7 +3028,7 @@ export default function ItineraryCalendar({
                 onReady={() => setIsGoogleReady(true)}
             />
 
-            <div className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(255,54,190,0.18),transparent_26%),radial-gradient(circle_at_8%_100%,rgba(212,255,47,0.10),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)] p-4 sm:p-6">
+            <div className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(255,54,190,0.18),transparent_26%),radial-gradient(circle_at_8%_100%,rgba(var(--vaivia-neon-soft-rgb),0.10),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)] p-4 sm:p-6">
                 <div className="flex flex-col gap-4">
                     <div>
                         <p className="text-xs font-bold uppercase tracking-[0.55em] text-lime-200/80">
@@ -3027,7 +3061,7 @@ export default function ItineraryCalendar({
                                             }
                                             className={`flex min-h-9 items-center justify-center gap-2 rounded-full px-3 text-sm font-black uppercase tracking-wide transition ${
                                                 view === key
-                                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(190,242,100,0.20)]"
+                                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
                                                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                                             }`}
                                         >
@@ -3077,7 +3111,7 @@ export default function ItineraryCalendar({
                                     <button
                                         type="button"
                                         onClick={goToToday}
-                                        className="h-9 rounded-full bg-lime-300 px-4 text-xs font-black uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.18)] transition hover:bg-lime-200"
+                                        className="h-9 rounded-full bg-lime-300 px-4 text-xs font-black uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
                                     >
                                         TODAY
                                     </button>
@@ -3170,7 +3204,7 @@ export default function ItineraryCalendar({
 
                 {!listOnly && effectiveView === "week" && (
                     <div className="overflow-x-auto">
-                        <div className="grid min-w-[1120px] grid-cols-7 divide-x divide-slate-200">
+                        <div className="grid min-w-[1120px] grid-cols-7 divide-x divide-white/10">
                             {weekDates.map((date) => (
                                 <DayColumn
                                     key={getLocalDateKey(date)}

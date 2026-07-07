@@ -954,7 +954,7 @@ function IdeaCard({
                             href={idea.ticket_website}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-full bg-lime-300 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.2)] transition hover:bg-lime-200"
+                            className="rounded-full bg-lime-300 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
                         >
                             Tickets
                         </a>

@@ -8,6 +8,7 @@ import ItineraryCalendar, {
 } from "@/components/ItineraryCalendar";
 import ItineraryQuickAdd from "@/components/ItineraryQuickAdd";
 import JourneyPlanningTab from "@/components/JourneyPlanningTab";
+import type { UserCategory } from "@/lib/itineraryCategories";
 import type { TripIdea } from "@/lib/tripIdeas";
 
 type ItineraryTabsProps = {
@@ -28,6 +29,7 @@ type ItineraryTabsProps = {
     promoteIdeaAction: (formData: FormData) => Promise<void>;
     initialTab?: ActiveTab;
     defaultItineraryView?: CalendarView;
+    categories?: UserCategory[];
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
@@ -65,6 +67,7 @@ export default function ItineraryTabs({
     promoteIdeaAction,
     initialTab = "itinerary",
     defaultItineraryView = "list",
+    categories = [],
 }: ItineraryTabsProps) {
     const activeTab = initialTab;
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -107,7 +110,7 @@ export default function ItineraryTabs({
                             }
                             className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
                                 activeTab === "journey"
-                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(190,242,100,0.20)]"
+                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
                                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                             }`}
                         >
@@ -122,7 +125,7 @@ export default function ItineraryTabs({
                             }
                             className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
                                 activeTab === "journey-planning"
-                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(190,242,100,0.20)]"
+                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
                                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                             }`}
                         >
@@ -168,6 +171,7 @@ export default function ItineraryTabs({
                 createTransportationAction={createTransportationAction}
                 createIdeaAction={createIdeaAction}
                 defaultDate={quickAddDate}
+                categories={categories}
             />
         </section>
     );

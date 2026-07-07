@@ -9,6 +9,11 @@ import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripDestinationLine from "@/components/TripDestinationLine";
 import TripHeaderCover from "@/components/TripHeaderCover";
 import {
+    FALLBACK_CATEGORY_LABEL,
+    sortCategoriesByName,
+    type UserCategory,
+} from "@/lib/itineraryCategories";
+import {
     formatIdeaAgePolicy,
     formatIdeaDayLabel,
     formatIdeaTicketPolicy,
@@ -38,6 +43,7 @@ type ItineraryItemPayload = {
     created_by?: string;
     title: string;
     category: string;
+    category_id?: string | null;
     status: string;
     item_date: string;
     end_date: string | null;
@@ -140,6 +146,7 @@ function isMissingOptionalColumnError(error: { code?: string; message?: string }
                     message.includes("flight_number") ||
                     message.includes("created_by") ||
                     message.includes("is_private") ||
+                    message.includes("category_id") ||
                     message.includes("schema cache")))
     );
 }
@@ -155,6 +162,7 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
         flight_number,
         created_by,
         is_private,
+        category_id,
         ...fallbackPayload
     } = payload;
 
@@ -167,8 +175,71 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
     void flight_number;
     void created_by;
     void is_private;
+    void category_id;
 
     return fallbackPayload;
+}
+
+async function getUserCategories(userId: string) {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from("user_categories")
+        .select("id,user_id,name,color_key,is_default,created_at,updated_at")
+        .eq("user_id", userId);
+
+    if (error) {
+        console.warn("Could not load user itinerary categories:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+        });
+        return [];
+    }
+
+    return sortCategoriesByName((data || []) as UserCategory[]);
+}
+
+async function getCategorySelectionForPayload({
+    categoryId,
+    fallbackName,
+    userId,
+}: {
+    categoryId: string;
+    fallbackName: string;
+    userId: string;
+}) {
+    const cleanCategoryId = categoryId && categoryId !== "__shared__" ? categoryId : "";
+    if (!cleanCategoryId) {
+        return {
+            category_id: null,
+            category: fallbackName || FALLBACK_CATEGORY_LABEL,
+        };
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from("user_categories")
+        .select("id,name,user_id")
+        .eq("id", cleanCategoryId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("Could not resolve itinerary category. Falling back to text.", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            categoryId: cleanCategoryId,
+        });
+    }
+
+    return {
+        category_id: data ? cleanCategoryId : null,
+        category:
+            ((data as { name?: string | null } | null)?.name || fallbackName || FALLBACK_CATEGORY_LABEL).trim(),
+    };
 }
 
 function isCategoryConstraintError(error: { code?: string; message?: string }) {
@@ -178,6 +249,17 @@ function isCategoryConstraintError(error: { code?: string; message?: string }) {
         error.code === "23514" &&
         (message.includes("category") || message.includes("itinerary_items"))
     );
+}
+
+function getLegacyItineraryCategory(category?: string | null) {
+    const normalizedCategory = String(category || "").trim().toLowerCase();
+
+    return normalizedCategory === "travel" ||
+        normalizedCategory === "work" ||
+        normalizedCategory === "activity" ||
+        normalizedCategory === "other"
+        ? normalizedCategory
+        : "other";
 }
 
 function getTransportationDbStatus(rawStatus: string) {
@@ -248,7 +330,10 @@ async function insertItineraryPayloadWithFallback(
     const supabase = await createClient();
     const fallbackCategoryPayload = {
         ...payload,
-        category: payload.category === "transportation" ? "travel" : payload.category,
+        category:
+            payload.category === "transportation"
+                ? "travel"
+                : getLegacyItineraryCategory(payload.category),
     };
     const attempts = [
         payload,
@@ -706,7 +791,11 @@ async function createItineraryItem(formData: FormData) {
 
     const tripId = formData.get("trip_id") as string;
     const title = formData.get("title") as string;
-    const category = formData.get("category") as string;
+    const categorySelection = await getCategorySelectionForPayload({
+        categoryId: String(formData.get("category_id") || ""),
+        fallbackName: String(formData.get("category") || FALLBACK_CATEGORY_LABEL),
+        userId: user.id,
+    });
     const status = formData.get("status") as string;
     const itemDate = formData.get("item_date") as string;
     const startTime = formData.get("start_time") as string;
@@ -732,7 +821,8 @@ async function createItineraryItem(formData: FormData) {
         trip_id: tripId,
         created_by: user.id,
         title,
-        category,
+        category: categorySelection.category,
+        category_id: categorySelection.category_id,
         status,
         item_date: itemDate,
         end_date: endDate || null,
@@ -759,8 +849,18 @@ async function createItineraryItem(formData: FormData) {
     );
 
     if (error) {
-        console.error("Error creating itinerary item:", error);
-        throw new Error("Could not create itinerary item");
+        console.error("Error creating itinerary item:", {
+            authenticatedUserId: user.id,
+            tripId,
+            message: error.message,
+            code: error.code,
+            payload,
+        });
+        throw new Error(
+            `Could not create itinerary item: ${
+                error.message ?? "Unknown Supabase error"
+            }`
+        );
     }
 
     if (!isPrivate) {
@@ -945,24 +1045,32 @@ async function createTransportationItem(formData: FormData) {
         notes,
     };
 
-    console.log("Creating transportation item:", {
-        rawStatus,
-        transportationStatus,
-        transportationPayload,
-    });
+    if (process.env.NODE_ENV !== "production") {
+        console.log("Creating transportation item:", {
+            authenticatedUserId: user.id,
+            tripId,
+            rawStatus,
+            transportationStatus,
+            payload: transportationPayload,
+        });
+    }
 
     const error = await insertTransportationPayloadWithFallback(
         transportationPayload
     );
 
     if (error) {
-        console.error("Error creating transportation item:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            payload: transportationPayload,
-        });
+        if (process.env.NODE_ENV !== "production") {
+            console.error("Error creating transportation item:", {
+                authenticatedUserId: user.id,
+                tripId,
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+                payload: transportationPayload,
+            });
+        }
         throw new Error(
             `Could not create transportation item: ${
                 error.message ?? "Unknown Supabase error"
@@ -1836,6 +1944,68 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         console.error("Error loading transportation items:", transportationError);
     }
 
+    const userCategories = await getUserCategories(user.id);
+    const categoryIds = Array.from(
+        new Set(
+            ((itineraryItems || []) as Record<string, unknown>[])
+                .map((item) => String(item.category_id || ""))
+                .filter(Boolean)
+        )
+    );
+    const colorKeys = new Set(userCategories.map((category) => category.color_key).filter(Boolean));
+    let itineraryCategories: UserCategory[] = [];
+
+    if (categoryIds.length > 0) {
+        const { data: categoryRows, error: categoryRowsError } = await supabase
+            .from("user_categories")
+            .select("id,user_id,name,color_key,is_default,created_at,updated_at")
+            .in("id", categoryIds);
+
+        if (categoryRowsError) {
+            console.warn("Could not load itinerary item categories:", {
+                message: categoryRowsError.message,
+                code: categoryRowsError.code,
+                details: categoryRowsError.details,
+                hint: categoryRowsError.hint,
+            });
+        } else {
+            itineraryCategories = (categoryRows || []) as UserCategory[];
+            itineraryCategories.forEach((category) => {
+                if (category.color_key) colorKeys.add(category.color_key);
+            });
+        }
+    }
+
+    const { data: colorRows, error: colorRowsError } =
+        colorKeys.size > 0
+            ? await supabase
+                  .from("category_color_options")
+                  .select("key,label,hex,sort_order")
+                  .in("key", Array.from(colorKeys))
+            : { data: [], error: null };
+
+    if (colorRowsError) {
+        console.warn("Could not load category color options:", {
+            message: colorRowsError.message,
+            code: colorRowsError.code,
+            details: colorRowsError.details,
+            hint: colorRowsError.hint,
+        });
+    }
+
+    const categoryColorsByKey = new Map(
+        ((colorRows || []) as { key: string; hex: string }[]).map((color) => [
+            color.key,
+            color.hex,
+        ])
+    );
+    const categoriesById = new Map(
+        [...userCategories, ...itineraryCategories].map((category) => [
+            category.id,
+            category,
+        ])
+    );
+
     const { data: tripIdeas, error: tripIdeasError } = await supabase
         .from("trip_ideas")
         .select("*")
@@ -1919,6 +2089,19 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const calendarItems = [
         ...(((itineraryItems || []) as ItineraryCalendarItem[]).map((item) => ({
             ...item,
+            category_name:
+                categoriesById.get(String(item.category_id || ""))?.name ||
+                item.category ||
+                FALLBACK_CATEGORY_LABEL,
+            category_color_hex:
+                categoryColorsByKey.get(
+                    String(
+                        categoriesById.get(String(item.category_id || ""))?.color_key ||
+                            ""
+                    )
+                ) || undefined,
+            category_owner_id:
+                categoriesById.get(String(item.category_id || ""))?.user_id || null,
             source_table: "itinerary_items" as const,
         }))),
         ...((transportationItems || []) as Record<string, unknown>[]).map(
@@ -1971,7 +2154,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                     {formatTripDate(trip.end_date)}
                                 </p>
                             </div>
-                            <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(190,242,100,0.24)]">
+                            <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
                                 <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
                                 <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
                                 <div className="relative">
@@ -2021,6 +2204,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         promoteIdeaAction={promoteIdeaToItinerary}
                         initialTab={initialTab}
                         defaultItineraryView={defaultItineraryView}
+                        categories={userCategories}
                     />
                 </section>
             </div>

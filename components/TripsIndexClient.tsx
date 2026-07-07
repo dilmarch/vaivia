@@ -119,7 +119,7 @@ export default function TripsIndexClient({
 
             <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] px-5 py-6 text-white shadow-2xl shadow-black/30 md:px-8 md:py-8">
                 <div className="pointer-events-none absolute inset-0">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_8%,rgba(255,54,190,0.20),transparent_25%),radial-gradient(circle_at_8%_84%,rgba(212,255,47,0.14),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.14),transparent_42%)]" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_8%,rgba(255,54,190,0.20),transparent_25%),radial-gradient(circle_at_8%_84%,rgba(var(--vaivia-neon-soft-rgb),0.14),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.14),transparent_42%)]" />
                     <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_24%,rgba(0,0,0,0.36))]" />
                 </div>
 
@@ -146,7 +146,7 @@ export default function TripsIndexClient({
                                     onClick={() => setFilter(option)}
                                     className={`rounded-full px-4 py-2 text-sm font-black uppercase tracking-wide transition ${
                                         filter === option
-                                            ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(190,242,100,0.20)]"
+                                            ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
                                             : "text-slate-300 hover:bg-white/10 hover:text-white"
                                     }`}
                                     aria-pressed={filter === option}
@@ -245,7 +245,7 @@ export default function TripsIndexClient({
                         className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/10 bg-[#080511] text-white shadow-2xl shadow-black/60"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(190,242,100,0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6">
+                        <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(var(--vaivia-neon-rgb),0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6">
                             <div>
                                 <p className="text-xs font-bold uppercase tracking-[0.4em] text-lime-200/80">
                                     Trip settings
@@ -374,7 +374,7 @@ export default function TripsIndexClient({
 
                                 <button
                                     type="submit"
-                                    className="rounded-xl bg-lime-300 px-5 py-2 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.20)] transition hover:bg-lime-200"
+                                    className="rounded-xl bg-lime-300 px-5 py-2 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.20)] transition hover:bg-lime-200"
                                 >
                                     Save
                                 </button>

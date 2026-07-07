@@ -58,7 +58,10 @@ export function LoginForm({
         <CardContent>
           <form onSubmit={handleLogin}>
             <div className="flex flex-col gap-6">
-              <SocialLoginButton provider="google" />
+              <div className="grid gap-3">
+                <SocialLoginButton provider="google" />
+                <SocialLoginButton provider="azure" />
+              </div>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
                   <span className="w-full border-t" />

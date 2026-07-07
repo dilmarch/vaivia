@@ -36,7 +36,7 @@ type TripDashboardClientProps = {
 };
 
 const fallbackAccentColors = [
-    "#d7ff2f",
+    "var(--vaivia-neon-soft-solid)",
     "#7c3cff",
     "#ff3ca6",
     "#ff7a1a",
@@ -79,6 +79,36 @@ function travelInputProps() {
 
 function getEditButtonPosition(index: number) {
     return index % 3 === 1 ? "bottom-9 left-14" : "bottom-10 right-16";
+}
+
+function getPrimaryDestinationFontSize(destination: string) {
+    const characterCount = destination.trim().length;
+
+    if (characterCount <= 5) {
+        return "clamp(4.2rem, 16vw, 5.3rem)";
+    }
+
+    if (characterCount <= 7) {
+        return "clamp(3.7rem, 13.5vw, 4.75rem)";
+    }
+
+    if (characterCount <= 9) {
+        return "clamp(3.05rem, 11vw, 4rem)";
+    }
+
+    if (characterCount <= 12) {
+        return "clamp(2.55rem, 9vw, 3.35rem)";
+    }
+
+    return "clamp(2.15rem, 7.5vw, 2.9rem)";
+}
+
+function getPrimaryDestinationLetterSpacing(destination: string) {
+    const characterCount = destination.trim().length;
+
+    if (characterCount <= 7) return "-0.08em";
+    if (characterCount <= 12) return "-0.055em";
+    return "-0.035em";
 }
 
 function parseDestinationList(destination?: string | null) {
@@ -266,7 +296,6 @@ export function DashboardTripCard({
     const primaryDestination = destinations[0] ?? getPrimaryDestination(trip);
     const secondLineDestinations = destinations.slice(1, 3);
     const thirdLineDestinations = destinations.slice(3, 5);
-    const isLongName = primaryDestination.length > 8;
     const days = getTripDays(trip.start_date, trip.end_date);
     const accent = fallbackAccentColors[index % fallbackAccentColors.length];
     const variant = tripCardVariants[index % tripCardVariants.length];
@@ -355,12 +384,13 @@ export function DashboardTripCard({
                 className={`absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
             >
                 <h3
-                    className={`font-black uppercase leading-[0.78] tracking-[-0.08em] ${
-                        isLongName
-                            ? "text-[3.4rem] md:text-[3.8rem] lg:text-[4.2rem]"
-                            : "text-[4.2rem] md:text-[4.8rem] lg:text-[5.3rem]"
-                    }`}
-                    style={{ color: accent }}
+                    className="max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
+                    style={{
+                        color: accent,
+                        fontSize: getPrimaryDestinationFontSize(primaryDestination),
+                        letterSpacing:
+                            getPrimaryDestinationLetterSpacing(primaryDestination),
+                    }}
                 >
                     {primaryDestination}
                 </h3>
@@ -412,7 +442,7 @@ function TripsGrid({
                 </p>
                 <Link
                     href="/trips/new"
-                    className="mt-5 inline-block rounded-full bg-lime-300 px-5 py-2.5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                    className="mt-5 inline-block rounded-full bg-lime-300 px-5 py-2.5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                 >
                     Create first trip
                 </Link>
@@ -423,7 +453,7 @@ function TripsGrid({
     return (
         <section className="relative min-h-[620px] w-full overflow-hidden rounded-[2rem] bg-[#03030a] px-6 py-8 text-white md:px-8 md:py-9">
             <div className="pointer-events-none absolute inset-0">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_12%,rgba(255,54,190,0.24),transparent_24%),radial-gradient(circle_at_8%_88%,rgba(212,255,47,0.16),transparent_26%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)]" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_12%,rgba(255,54,190,0.24),transparent_24%),radial-gradient(circle_at_8%_88%,rgba(var(--vaivia-neon-soft-rgb),0.16),transparent_26%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)]" />
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent_22%,rgba(0,0,0,0.3))]" />
             </div>
 
@@ -435,7 +465,7 @@ function TripsGrid({
 
                     <Link
                         href="/trips"
-                        className="text-sm font-extrabold text-[#d7ff2f] transition hover:text-white"
+                        className="text-sm font-extrabold text-[var(--vaivia-neon-soft-solid)] transition hover:text-white"
                     >
                         See all trips →
                     </Link>
@@ -559,7 +589,7 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
                     <button
                         type="button"
                         onClick={returnToThisMonth}
-                        className="h-9 rounded-full bg-lime-300 px-4 text-xs font-bold uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.18)] transition hover:bg-lime-200"
+                        className="h-9 rounded-full bg-lime-300 px-4 text-xs font-bold uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
                     >
                         This month
                     </button>
@@ -709,7 +739,7 @@ function QuickAddFan({ trips }: { trips: DashboardTrip[] }) {
     }
 
     const quickAddBubbleClass =
-        "animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200";
+        "animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200";
 
     return (
         <div
@@ -803,7 +833,7 @@ function QuickAddFan({ trips }: { trips: DashboardTrip[] }) {
             <button
                 type="button"
                 onClick={() => setIsOpen((current) => !current)}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                className="flex h-14 w-14 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                 aria-label={isOpen ? "Close quick add menu" : "Open quick add menu"}
                 aria-expanded={isOpen}
             >

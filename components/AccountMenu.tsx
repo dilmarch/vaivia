@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Camera, LogOut, Settings, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -289,9 +290,8 @@ export default function AccountMenu({
     return (
         <>
             {variant === "sidebar-settings" ? (
-                <button
-                    type="button"
-                    onClick={() => setIsOpen(true)}
+                <Link
+                    href="/settings"
                     className="group/item flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border border-transparent p-0 text-slate-400 transition-all duration-300 ease-out hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:px-3 group-hover/sidebar:py-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:px-3 group-focus-within/sidebar:py-2"
                     aria-label="Settings"
                 >
@@ -299,12 +299,12 @@ export default function AccountMenu({
                     <span className="pointer-events-none w-0 max-w-0 translate-x-2 overflow-hidden whitespace-nowrap text-sm font-semibold opacity-0 transition-all duration-300 group-hover/sidebar:pointer-events-auto group-hover/sidebar:w-40 group-hover/sidebar:max-w-40 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100 group-focus-within/sidebar:pointer-events-auto group-focus-within/sidebar:w-40 group-focus-within/sidebar:max-w-40 group-focus-within/sidebar:translate-x-0 group-focus-within/sidebar:opacity-100">
                         Settings
                     </span>
-                </button>
+                </Link>
             ) : variant === "sidebar-profile" ? (
                 <button
                     type="button"
                     onClick={() => setIsOpen(true)}
-                    className="flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border border-lime-300/25 bg-white/[0.04] p-0 text-left shadow-[0_0_20px_rgba(190,242,100,0.12)] transition-all duration-300 ease-out hover:border-lime-300/45 hover:bg-white/[0.07] focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:p-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:p-2"
+                    className="flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border border-lime-300/25 bg-white/[0.04] p-0 text-left shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)] transition-all duration-300 ease-out hover:border-lime-300/45 hover:bg-white/[0.07] focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:p-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:p-2"
                     aria-label="My account"
                 >
                     {avatarUrl ? (
@@ -312,10 +312,10 @@ export default function AccountMenu({
                         <img
                             src={avatarUrl}
                             alt=""
-                            className="h-9 w-9 shrink-0 rounded-full border-2 border-lime-300/80 object-cover shadow-[0_0_20px_rgba(190,242,100,0.30)]"
+                            className="h-9 w-9 shrink-0 rounded-full border-2 border-lime-300/80 object-cover shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.30)]"
                         />
                     ) : (
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-lime-300/70 bg-lime-400/10 text-lime-200 shadow-[0_0_20px_rgba(190,242,100,0.22)]">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-lime-300/70 bg-lime-400/10 text-lime-200 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.22)]">
                             <UserRound className="h-5 w-5" aria-hidden="true" />
                         </span>
                     )}

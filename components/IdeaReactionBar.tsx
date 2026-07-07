@@ -111,7 +111,7 @@ export default function IdeaReactionBar({
                             aria-pressed={isSelected}
                             className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] transition duration-300 hover:-translate-y-0.5 ${
                                 isSelected
-                                    ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.22)]"
+                                    ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)]"
                                     : "border-white/10 bg-white/[0.06] text-slate-200 hover:border-lime-300/50 hover:bg-white/[0.1] hover:text-white"
                             }`}
                             title={`${option.label} (${option.valueLabel})`}

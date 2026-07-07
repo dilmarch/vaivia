@@ -429,7 +429,7 @@ export default function TransportationForm({
                     onClick={(event) => event.stopPropagation()}
                 >
                     <div className="vaivia-modal-header flex min-h-32 items-center gap-4">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/90 text-3xl text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.12)]">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/90 text-3xl text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.12)]">
                             {mode === "airplane" && logoUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img

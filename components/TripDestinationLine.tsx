@@ -125,7 +125,7 @@ export function DestinationTile({
 }: DestinationTileProps) {
     return (
         <div className="flex h-30 w-24 flex-col items-center justify-start gap-2 rounded-[1.25rem] border border-white/10 bg-white/[0.06] px-3 py-3 shadow-xl shadow-black/20 sm:h-32 sm:w-28">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950/70 text-2xl ring-1 ring-lime-300/25 shadow-[0_0_22px_rgba(190,242,100,0.16)] sm:h-12 sm:w-12 sm:text-3xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950/70 text-2xl ring-1 ring-lime-300/25 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.16)] sm:h-12 sm:w-12 sm:text-3xl">
                 <span aria-hidden="true">{flag || "📍"}</span>
             </div>
 

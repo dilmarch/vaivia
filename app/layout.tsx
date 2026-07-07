@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Suspense } from "react";
 import AppLayoutShell from "@/components/AppLayoutShell";
 import AppNav, { AppNavFallback } from "@/components/AppNav";
+import PinkModeProvider from "@/components/PinkModeProvider";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -36,6 +37,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <PinkModeProvider />
           <AppLayoutShell
             nav={
               <Suspense fallback={<AppNavFallback />}>

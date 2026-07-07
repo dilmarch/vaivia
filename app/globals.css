@@ -29,6 +29,16 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+    --vaivia-neon-rgb: 190,242,100;
+    --vaivia-neon-soft-rgb: 212,255,47;
+    --vaivia-neon-solid: #bef264;
+    --vaivia-neon-soft-solid: #d4ff2f;
+  }
+  :root[data-pink-mode="true"] {
+    --vaivia-neon-rgb: 255,54,190;
+    --vaivia-neon-soft-rgb: 244,114,182;
+    --vaivia-neon-solid: #ff36be;
+    --vaivia-neon-soft-solid: #f472b6;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -68,10 +78,196 @@
 }
 
 @layer utilities {
+  :root[data-pink-mode="true"] .bg-lime-300 {
+    --tw-bg-opacity: 1;
+    background-color: rgb(255 54 190 / var(--tw-bg-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-50 {
+    --tw-bg-opacity: 1;
+    background-color: rgb(253 242 248 / var(--tw-bg-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-100 {
+    --tw-bg-opacity: 1;
+    background-color: rgb(252 231 243 / var(--tw-bg-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-200 {
+    --tw-bg-opacity: 1;
+    background-color: rgb(251 207 232 / var(--tw-bg-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-400 {
+    --tw-bg-opacity: 1;
+    background-color: rgb(244 114 182 / var(--tw-bg-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/10 {
+    background-color: rgb(255 54 190 / 0.1) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/15 {
+    background-color: rgb(255 54 190 / 0.15) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/20 {
+    background-color: rgb(255 54 190 / 0.2) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/25 {
+    background-color: rgb(255 54 190 / 0.25) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/30 {
+    background-color: rgb(255 54 190 / 0.3) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/40 {
+    background-color: rgb(255 54 190 / 0.4) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-300\/50 {
+    background-color: rgb(255 54 190 / 0.5) !important;
+  }
+
+  :root[data-pink-mode="true"] .bg-lime-400\/10 {
+    background-color: rgb(244 114 182 / 0.1) !important;
+  }
+
+  :root[data-pink-mode="true"] .hover\:bg-lime-300:hover,
+  :root[data-pink-mode="true"] .hover\:bg-lime-200:hover,
+  :root[data-pink-mode="true"] .hover\:bg-lime-100:hover,
+  :root[data-pink-mode="true"] .focus\:bg-lime-300:focus,
+  :root[data-pink-mode="true"] .focus-visible\:bg-lime-300:focus-visible {
+    --tw-bg-opacity: 1;
+    background-color: rgb(244 114 182 / var(--tw-bg-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .hover\:bg-lime-300\/10:hover {
+    background-color: rgb(255 54 190 / 0.1) !important;
+  }
+
+  :root[data-pink-mode="true"] .hover\:bg-lime-300\/20:hover {
+    background-color: rgb(255 54 190 / 0.2) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-300 {
+    --tw-text-opacity: 1;
+    color: rgb(255 54 190 / var(--tw-text-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-100 {
+    --tw-text-opacity: 1;
+    color: rgb(252 231 243 / var(--tw-text-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-200 {
+    --tw-text-opacity: 1;
+    color: rgb(251 207 232 / var(--tw-text-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-100\/80 {
+    color: rgb(252 231 243 / 0.8) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-200\/80 {
+    color: rgb(251 207 232 / 0.8) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-300\/80 {
+    color: rgb(255 54 190 / 0.8) !important;
+  }
+
+  :root[data-pink-mode="true"] .text-lime-800 {
+    --tw-text-opacity: 1;
+    color: rgb(157 23 77 / var(--tw-text-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .hover\:text-lime-300:hover,
+  :root[data-pink-mode="true"] .hover\:text-lime-200:hover,
+  :root[data-pink-mode="true"] .hover\:text-lime-100:hover,
+  :root[data-pink-mode="true"] .focus\:text-lime-300:focus,
+  :root[data-pink-mode="true"] .focus-visible\:text-lime-300:focus-visible {
+    --tw-text-opacity: 1;
+    color: rgb(255 54 190 / var(--tw-text-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300 {
+    --tw-border-opacity: 1;
+    border-color: rgb(255 54 190 / var(--tw-border-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-200 {
+    --tw-border-opacity: 1;
+    border-color: rgb(251 207 232 / var(--tw-border-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/20 {
+    border-color: rgb(255 54 190 / 0.2) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/25 {
+    border-color: rgb(255 54 190 / 0.25) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/30 {
+    border-color: rgb(255 54 190 / 0.3) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/35 {
+    border-color: rgb(255 54 190 / 0.35) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/40 {
+    border-color: rgb(255 54 190 / 0.4) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/70 {
+    border-color: rgb(255 54 190 / 0.7) !important;
+  }
+
+  :root[data-pink-mode="true"] .border-lime-300\/80 {
+    border-color: rgb(255 54 190 / 0.8) !important;
+  }
+
+  :root[data-pink-mode="true"] .hover\:border-lime-300:hover,
+  :root[data-pink-mode="true"] .hover\:border-lime-300\/20:hover,
+  :root[data-pink-mode="true"] .hover\:border-lime-300\/30:hover,
+  :root[data-pink-mode="true"] .hover\:border-lime-300\/45:hover,
+  :root[data-pink-mode="true"] .hover\:border-lime-300\/50:hover,
+  :root[data-pink-mode="true"] .focus\:border-lime-300:focus,
+  :root[data-pink-mode="true"] .focus-visible\:border-lime-300:focus-visible {
+    --tw-border-opacity: 1;
+    border-color: rgb(255 54 190 / var(--tw-border-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .ring-lime-300 {
+    --tw-ring-opacity: 1;
+    --tw-ring-color: rgb(255 54 190 / var(--tw-ring-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .ring-lime-300\/25 {
+    --tw-ring-color: rgb(255 54 190 / 0.25) !important;
+  }
+
+  :root[data-pink-mode="true"] .focus\:ring-lime-300:focus,
+  :root[data-pink-mode="true"] .focus\:ring-lime-300\/20:focus,
+  :root[data-pink-mode="true"] .focus\:ring-lime-300\/40:focus,
+  :root[data-pink-mode="true"] .focus\:ring-lime-300\/50:focus,
+  :root[data-pink-mode="true"] .focus-visible\:ring-lime-300:focus-visible {
+    --tw-ring-opacity: 1;
+    --tw-ring-color: rgb(255 54 190 / var(--tw-ring-opacity, 1)) !important;
+  }
+
+  :root[data-pink-mode="true"] .decoration-lime-300 {
+    text-decoration-color: rgb(255 54 190 / 1) !important;
+  }
+
   .vaivia-page-bg {
     background:
       radial-gradient(circle at 80% 8%, rgba(255, 54, 190, 0.16), transparent 24%),
-      radial-gradient(circle at 8% 82%, rgba(212, 255, 47, 0.1), transparent 28%),
+      radial-gradient(circle at 8% 82%, rgba(var(--vaivia-neon-soft-rgb), 0.1), transparent 28%),
       linear-gradient(180deg, #0c0115 0%, #05030b 48%, #0c0115 100%);
   }
 
@@ -84,7 +280,7 @@
   }
 
   .vaivia-modal-header {
-    @apply border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(190,242,100,0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6;
+    @apply border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(var(--vaivia-neon-rgb),0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6;
   }
 
   .vaivia-modal-eyebrow {

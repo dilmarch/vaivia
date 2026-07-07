@@ -425,7 +425,7 @@ function IdeaSuggestionCard({
                     </div>
                     <button
                         type="submit"
-                        className="w-full rounded-full bg-lime-300 px-3 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.2)] transition hover:bg-lime-200"
+                        className="w-full rounded-full bg-lime-300 px-3 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
                     >
                         Add tentative item
                     </button>

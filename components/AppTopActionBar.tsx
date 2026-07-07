@@ -198,7 +198,7 @@ export default function AppTopActionBar({
                     <button
                         type="button"
                         onClick={() => toggleMenu("add")}
-                        className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                        className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                         aria-label="Open add menu"
                         aria-haspopup="menu"
                         aria-expanded={openMenu === "add"}
@@ -208,7 +208,7 @@ export default function AppTopActionBar({
                     </button>
 
                     {openMenu === "add" ? (
-                        <div className="absolute right-0 top-14 flex w-80 flex-col items-end gap-2">
+                        <div className="absolute -right-4 top-12 flex w-[22rem] flex-col items-end gap-2 p-4">
                             {tripPickerAction ? (
                                 <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
                                     <button
@@ -227,7 +227,7 @@ export default function AppTopActionBar({
                                                 <Link
                                                     key={trip.id}
                                                     href={`/trips/${trip.id}`}
-                                                    className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                                                    className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                                                     style={{
                                                         animationDelay: `${index * 34}ms`,
                                                     }}
@@ -248,7 +248,7 @@ export default function AppTopActionBar({
                                         <Link
                                             key={action.key}
                                             href={action.href}
-                                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                                             style={{
                                                 animationDelay: `${index * 34}ms`,
                                             }}
@@ -260,7 +260,7 @@ export default function AppTopActionBar({
                                             key={action.key}
                                             type="button"
                                             onClick={() => setTripPickerAction(action.key)}
-                                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                                             style={{
                                                 animationDelay: `${index * 34}ms`,
                                             }}
@@ -285,7 +285,7 @@ export default function AppTopActionBar({
                     >
                         <Bell className="h-5 w-5" aria-hidden="true" />
                         {unreadCount > 0 ? (
-                            <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime-300 px-1 text-[10px] font-black text-slate-950 shadow-[0_0_14px_rgba(190,242,100,0.9)]">
+                            <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime-300 px-1 text-[10px] font-black text-slate-950 shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.9)]">
                                 {unreadCount}
                             </span>
                         ) : null}

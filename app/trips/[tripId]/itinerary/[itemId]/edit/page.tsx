@@ -5,6 +5,11 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import TransportationEditForm from "@/components/TransportationEditForm";
+import {
+    FALLBACK_CATEGORY_LABEL,
+    sortCategoriesByName,
+    type UserCategory,
+} from "@/lib/itineraryCategories";
 
 type PageProps = {
     params: Promise<{
@@ -16,6 +21,7 @@ type PageProps = {
 type ItineraryItemUpdatePayload = {
     title: string;
     category: string;
+    category_id?: string | null;
     status: string;
     item_date: string;
     end_date: string | null;
@@ -49,6 +55,7 @@ function isMissingOptionalColumnError(error: { code?: string; message?: string }
                 message.includes("location_website") ||
                 message.includes("cover_image_url") ||
                 message.includes("is_private") ||
+                message.includes("category_id") ||
                 message.includes("schema cache")))
     );
 }
@@ -59,6 +66,7 @@ function removeOptionalLinkColumns(payload: ItineraryItemUpdatePayload) {
         location_website,
         cover_image_url,
         is_private,
+        category_id,
         ...fallbackPayload
     } = payload;
 
@@ -66,8 +74,53 @@ function removeOptionalLinkColumns(payload: ItineraryItemUpdatePayload) {
     void location_website;
     void cover_image_url;
     void is_private;
+    void category_id;
 
     return fallbackPayload;
+}
+
+async function getCategorySelectionForPayload({
+    categoryId,
+    fallbackName,
+    userId,
+}: {
+    categoryId: string;
+    fallbackName: string;
+    userId: string;
+}) {
+    const cleanCategoryId = categoryId && categoryId !== "__shared__" ? categoryId : "";
+    if (!cleanCategoryId) {
+        return {
+            category_id: null,
+            category: fallbackName || FALLBACK_CATEGORY_LABEL,
+        };
+    }
+
+    const supabase = await createClient();
+    const { data, error } = await supabase
+        .from("user_categories")
+        .select("id,name")
+        .eq("id", cleanCategoryId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("Could not resolve itinerary category for update:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            categoryId: cleanCategoryId,
+        });
+    }
+
+    return {
+        category_id: data ? cleanCategoryId : null,
+        category:
+            ((data as { name?: string | null } | null)?.name ||
+                fallbackName ||
+                FALLBACK_CATEGORY_LABEL).trim(),
+    };
 }
 
 async function updateItineraryItem(formData: FormData) {
@@ -86,7 +139,11 @@ async function updateItineraryItem(formData: FormData) {
     const tripId = formData.get("trip_id") as string;
     const itemId = formData.get("item_id") as string;
     const title = formData.get("title") as string;
-    const category = formData.get("category") as string;
+    const categorySelection = await getCategorySelectionForPayload({
+        categoryId: String(formData.get("category_id") || ""),
+        fallbackName: String(formData.get("category") || FALLBACK_CATEGORY_LABEL),
+        userId: user.id,
+    });
     const status = formData.get("status") as string;
     const itemDate = formData.get("item_date") as string;
     const endDate = formData.get("end_date") as string;
@@ -110,7 +167,8 @@ async function updateItineraryItem(formData: FormData) {
 
     const payload: ItineraryItemUpdatePayload = {
         title,
-        category,
+        category: categorySelection.category,
+        category_id: categorySelection.category_id,
         status,
         item_date: itemDate,
         end_date: endDate || null,
@@ -287,6 +345,39 @@ async function EditItineraryItemContent({
         notFound();
     }
 
+    const { data: categoryRows, error: categoryRowsError } = await supabase
+        .from("user_categories")
+        .select("id,user_id,name,color_key,is_default,created_at,updated_at")
+        .eq("user_id", user.id);
+
+    if (categoryRowsError) {
+        console.warn("Could not load user categories for itinerary edit:", {
+            message: categoryRowsError.message,
+            code: categoryRowsError.code,
+            details: categoryRowsError.details,
+            hint: categoryRowsError.hint,
+        });
+    }
+
+    const categories = sortCategoriesByName((categoryRows || []) as UserCategory[]);
+    let decoratedItem = item;
+
+    if (!isTransportationItem && (item as { category_id?: string | null }).category_id) {
+        const { data: currentCategory } = await supabase
+            .from("user_categories")
+            .select("id,user_id,name,color_key")
+            .eq("id", (item as { category_id?: string }).category_id || "")
+            .maybeSingle();
+
+        if (currentCategory) {
+            decoratedItem = {
+                ...(item as Record<string, unknown>),
+                category_name: (currentCategory as { name?: string | null }).name,
+                category_owner_id: (currentCategory as { user_id?: string | null }).user_id,
+            };
+        }
+    }
+
     async function updateWithItemId(formData: FormData) {
         "use server";
         formData.set("item_id", itemId);
@@ -330,8 +421,9 @@ async function EditItineraryItemContent({
                     <ItineraryItemForm
                         tripId={trip.id}
                         submitAction={updateWithItemId}
-                        initialItem={item}
+                        initialItem={decoratedItem}
                         submitLabel="Save changes"
+                        categories={categories}
                     />
                 )}
             </div>
