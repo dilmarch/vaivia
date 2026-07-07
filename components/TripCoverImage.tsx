@@ -7,6 +7,9 @@ export type TripCoverTrip = {
     id: string;
     title: string;
     destination?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    notes?: string | null;
     cover_image_url?: string | null;
     trip_cover_image_url?: string | null;
 };

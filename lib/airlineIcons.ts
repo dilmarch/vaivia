@@ -1,4 +1,5 @@
 const AIRLINE_DOMAINS: Record<string, string> = {
+    "7C": "jejuair.net",
     AC: "aircanada.com",
     WS: "westjet.com",
     PD: "flyporter.com",
@@ -31,6 +32,8 @@ const AIRLINE_DOMAINS: Record<string, string> = {
     NH: "ana.co.jp",
     KE: "koreanair.com",
     OZ: "flyasiana.com",
+    VN: "vietnamairlines.com",
+    VJ: "vietjetair.com",
     BR: "evaair.com",
     CI: "china-airlines.com",
     QF: "qantas.com",
@@ -38,6 +41,7 @@ const AIRLINE_DOMAINS: Record<string, string> = {
 };
 
 const AIRLINE_NAMES_BY_CODE: Record<string, string> = {
+    "7C": "Jeju Air",
     AC: "Air Canada",
     WS: "WestJet",
     PD: "Porter Airlines",
@@ -70,6 +74,8 @@ const AIRLINE_NAMES_BY_CODE: Record<string, string> = {
     NH: "All Nippon Airways",
     KE: "Korean Air",
     OZ: "Asiana Airlines",
+    VN: "Vietnam Airlines",
+    VJ: "VietJet Air",
     BR: "EVA Air",
     CI: "China Airlines",
     QF: "Qantas",

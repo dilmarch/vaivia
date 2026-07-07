@@ -33,9 +33,10 @@ type ItineraryItemUpdatePayload = {
     ticket_website?: string | null;
     location_website?: string | null;
     cover_image_url?: string | null;
+    is_private?: boolean;
 };
 
-type TransportationItemUpdatePayload = Record<string, string | number | null>;
+type TransportationItemUpdatePayload = Record<string, string | number | boolean | null>;
 
 function isMissingOptionalColumnError(error: { code?: string; message?: string }) {
     const message = error.message?.toLowerCase() || "";
@@ -47,17 +48,24 @@ function isMissingOptionalColumnError(error: { code?: string; message?: string }
             (message.includes("ticket_website") ||
                 message.includes("location_website") ||
                 message.includes("cover_image_url") ||
+                message.includes("is_private") ||
                 message.includes("schema cache")))
     );
 }
 
 function removeOptionalLinkColumns(payload: ItineraryItemUpdatePayload) {
-    const { ticket_website, location_website, cover_image_url, ...fallbackPayload } =
-        payload;
+    const {
+        ticket_website,
+        location_website,
+        cover_image_url,
+        is_private,
+        ...fallbackPayload
+    } = payload;
 
     void ticket_website;
     void location_website;
     void cover_image_url;
+    void is_private;
 
     return fallbackPayload;
 }
@@ -96,6 +104,9 @@ async function updateItineraryItem(formData: FormData) {
     const coverImageUrl = formData.get("cover_image_url") as string;
     const url = ticketWebsite || (formData.get("url") as string);
     const notes = formData.get("notes") as string;
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
 
     const payload: ItineraryItemUpdatePayload = {
         title,
@@ -116,6 +127,7 @@ async function updateItineraryItem(formData: FormData) {
         ticket_website: ticketWebsite || null,
         location_website: locationWebsite || null,
         cover_image_url: coverImageUrl || null,
+        is_private: isPrivate,
         notes,
     };
 
@@ -177,6 +189,9 @@ async function updateTransportationItem(formData: FormData) {
     const arrivalTimezone = formData.get("arrival_timezone") as string;
     const duration = formData.get("duration") as string;
     const notes = formData.get("notes") as string;
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
     const title = flightNumber
         ? `${flightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
         : `Airplane: ${departureLocation || "Departure"} to ${
@@ -206,6 +221,7 @@ async function updateTransportationItem(formData: FormData) {
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
+        is_private: isPrivate,
         notes,
     };
 
@@ -284,23 +300,23 @@ async function EditItineraryItemContent({
     }
 
     return (
-        <main className="min-h-screen bg-slate-50 px-6 py-10">
+        <main className="min-h-screen bg-[#0c0115] px-6 py-10">
             <div className="mx-auto max-w-2xl">
                 <Link
                     href={`/trips/${trip.id}`}
-                    className="text-sm text-slate-600 hover:text-slate-900"
+                    className="text-sm font-semibold text-lime-200 hover:text-lime-100"
                 >
                     ← Back to {trip.title}
                 </Link>
 
                 <header className="mt-6 mb-8">
-                    <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+                    <p className="text-sm font-bold uppercase tracking-[0.35em] text-lime-200/80">
                         VAIVIA
                     </p>
-                    <h1 className="mt-2 text-3xl font-bold text-slate-900">
+                    <h1 className="mt-2 text-3xl font-black text-white">
                         Edit itinerary item
                     </h1>
-                    <p className="mt-2 text-slate-600">{trip.title}</p>
+                    <p className="mt-2 text-slate-300">{trip.title}</p>
                 </header>
 
                 {isTransportationItem ? (
@@ -327,8 +343,8 @@ export default function EditItineraryItemPage({ params }: PageProps) {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-slate-50 px-6 py-10">
-                    <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+                <main className="min-h-screen bg-[#0c0115] px-6 py-10">
+                    <div className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
                         Loading itinerary item...
                     </div>
                 </main>

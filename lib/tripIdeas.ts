@@ -99,7 +99,7 @@ export type IdeaReactionSummary = {
     reaction: IdeaReactionType;
     value: 2 | 1 | -1;
     count: number;
-    profiles: IdeaReactionProfile[];
+    profiles?: IdeaReactionProfile[];
 };
 
 export type TripIdea = {
@@ -133,9 +133,11 @@ export type TripIdea = {
     age_policy?: IdeaAgePolicy | string | null;
     dress_code?: string | null;
     other_notes?: string | null;
+    is_private?: boolean;
     is_archived: boolean;
     reaction_summaries?: IdeaReactionSummary[];
     current_user_reaction?: IdeaReactionType | null;
+    reaction_score?: number;
     created_at?: string | null;
     updated_at?: string | null;
 };
@@ -327,6 +329,7 @@ export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
             typeof record.dress_code === "string" ? record.dress_code : null,
         other_notes:
             typeof record.other_notes === "string" ? record.other_notes : null,
+        is_private: Boolean(record.is_private),
         is_archived: Boolean(record.is_archived),
         created_at: typeof record.created_at === "string" ? record.created_at : null,
         updated_at: typeof record.updated_at === "string" ? record.updated_at : null,

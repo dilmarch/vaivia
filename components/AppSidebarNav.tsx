@@ -48,9 +48,9 @@ function getNavItems(firstTripId?: string | null): NavItem[] {
         },
         {
             label: "Trips",
-            href: "/",
+            href: "/trips",
             icon: Briefcase,
-            match: () => false,
+            match: (pathname) => pathname === "/trips",
         },
         {
             label: "Itinerary",

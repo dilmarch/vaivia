@@ -12,6 +12,7 @@ import {
     Copy,
     ExternalLink,
     List,
+    Lock,
     Pencil,
     Trash2,
     X,
@@ -62,6 +63,7 @@ export type ItineraryCalendarItem = {
     departure_terminal?: string | null;
     arrival_terminal?: string | null;
     source_table?: "itinerary_items" | "transportation_items";
+    is_private?: boolean | null;
 };
 
 type ItineraryCalendarProps = {
@@ -520,6 +522,26 @@ function getTentativeStripeStyle(baseColor = "#ffffff") {
 
 function canDuplicateScheduledItem(item: ItineraryCalendarItem) {
     return item.source_table !== "transportation_items";
+}
+
+function PrivateLockBadge({
+    compact = false,
+    className = "",
+}: {
+    compact?: boolean;
+    className?: string;
+}) {
+    return (
+        <span
+            className={`inline-flex items-center gap-1 rounded-full border border-white/20 bg-slate-950/80 font-bold uppercase tracking-[0.12em] text-white shadow-sm ${
+                compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-xs"
+            } ${className}`}
+            title="Private item"
+        >
+            <Lock className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden="true" />
+            Private
+        </span>
+    );
 }
 
 function getCategoryAccent(category: string) {
@@ -1050,13 +1072,16 @@ function FlightListCard({
                             )}
                         </div>
                     </div>
-                    <span
-                        className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                            item.status
-                        )}`}
-                    >
-                        {item.status}
-                    </span>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                        {item.is_private ? <PrivateLockBadge compact /> : null}
+                        <span
+                            className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
+                                item.status
+                            )}`}
+                        >
+                            {item.status}
+                        </span>
+                    </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 rounded-md border border-white/70 bg-white/85 p-3 text-sm shadow-sm sm:grid-cols-[1fr_auto_1fr] sm:items-center">
@@ -1544,13 +1569,16 @@ function EventCard({
                                 )}
                             </div>
                         </div>
-                        <span
-                            className={`shrink-0 rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                                item.status
-                            )}`}
-                        >
-                            {item.status}
-                        </span>
+                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                            {item.is_private ? <PrivateLockBadge compact /> : null}
+                            <span
+                                className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
+                                    item.status
+                                )}`}
+                            >
+                                {item.status}
+                            </span>
+                        </div>
                     </div>
                 </button>
                 <div className="flex flex-wrap justify-start gap-2 px-3 pb-3">
@@ -1661,13 +1689,16 @@ function EventCard({
                     )}
                     </div>
                 </div>
-                <span
-                    className={`shrink-0 rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                        item.status
-                    )}`}
-                >
-                    {item.status}
-                </span>
+                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    {item.is_private ? <PrivateLockBadge compact /> : null}
+                    <span
+                        className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
+                            item.status
+                        )}`}
+                    >
+                        {item.status}
+                    </span>
+                </div>
             </div>
 
             {!compact && (
@@ -2028,15 +2059,20 @@ function ItineraryItemModal({
                     }`}
                 >
                     <div>
-                        <p
-                            className={`text-xs font-semibold uppercase tracking-wide ${
-                                flightDisplay
-                                    ? "text-[var(--airline-primary-text)]/80"
-                                    : "text-slate-500"
-                            }`}
-                        >
-                            {item.category} / {item.status}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                            <p
+                                className={`text-xs font-semibold uppercase tracking-wide ${
+                                    flightDisplay
+                                        ? "text-[var(--airline-primary-text)]/80"
+                                        : "text-slate-500"
+                                }`}
+                            >
+                                {item.category} / {item.status}
+                            </p>
+                            {item.is_private ? (
+                                <PrivateLockBadge compact className="border-white/30 bg-slate-950/70" />
+                            ) : null}
+                        </div>
                         <h2
                             id="itinerary-item-title"
                             className={`mt-2 text-2xl font-semibold ${
@@ -2923,22 +2959,22 @@ export default function ItineraryCalendar({
                 data-lpignore="true"
                 data-1p-ignore="true"
                 onClick={() => changeActiveTimezone(option.timezone)}
-                className={`min-h-20 rounded-md border px-3 py-2 text-left transition hover:bg-white ${
+                className={`min-h-20 rounded-2xl border px-3 py-2 text-left transition hover:bg-white/10 ${
                     isActive
-                        ? "border-slate-400 bg-white text-slate-950 shadow-sm"
-                        : "border-transparent bg-white/60 text-slate-600 hover:text-slate-950"
+                        ? "border-lime-300/40 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.18)]"
+                        : "border-white/10 bg-white/[0.06] text-slate-300 hover:text-white"
                 }`}
             >
                 <span className="block truncate text-sm font-semibold">
                     {option.cityLabel}
                 </span>
-                <span className="mt-0.5 block truncate text-[11px] text-slate-500">
+                <span className={`mt-0.5 block truncate text-[11px] ${isActive ? "text-slate-700" : "text-slate-400"}`}>
                     {getTimezoneGmtOffsetLabel(option.timezone, selectedTimezoneDate)}
                 </span>
-                <span className="mt-1 block text-[10px] font-bold uppercase leading-tight text-slate-400">
+                <span className={`mt-1 block text-[10px] font-bold uppercase leading-tight ${isActive ? "text-slate-700" : "text-slate-500"}`}>
                     {option.metadataLabel}
                 </span>
-                <span className="mt-2 inline-flex rounded-md bg-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-700">
+                <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${isActive ? "bg-slate-950 text-white" : "bg-white/10 text-slate-300"}`}>
                     {getTimezoneOffsetLabel(
                         option.timezone,
                         activeTimezone,
@@ -2950,7 +2986,7 @@ export default function ItineraryCalendar({
     }
 
     return (
-        <section className="rounded-md border border-slate-200 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/30">
             <Script
                 src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
                 strategy="afterInteractive"
@@ -2958,13 +2994,16 @@ export default function ItineraryCalendar({
                 onReady={() => setIsGoogleReady(true)}
             />
 
-            <div className="border-b border-slate-200 p-4 sm:p-6">
+            <div className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(255,54,190,0.18),transparent_26%),radial-gradient(circle_at_8%_100%,rgba(212,255,47,0.10),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)] p-4 sm:p-6">
                 <div className="flex flex-col gap-4">
                     <div>
-                        <h2 className="text-2xl font-semibold text-slate-900">
+                        <p className="text-xs font-bold uppercase tracking-[0.55em] text-lime-200/80">
+                            Travel plan
+                        </p>
+                        <h2 className="mt-2 text-3xl font-black text-white">
                             {title}
                         </h2>
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-sm font-semibold text-slate-300">
                             {effectiveView === "list"
                                 ? formatDateRange(listStartDate, listEndDate)
                                 : formatViewTitle(effectiveView, anchorDate)}
@@ -2974,7 +3013,7 @@ export default function ItineraryCalendar({
                     {!listOnly && (
                         <div className="flex flex-col gap-3">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="grid grid-cols-3 rounded-md border border-slate-300 bg-slate-50 p-1">
+                                <div className="grid grid-cols-3 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
                                     {[
                                         { key: "list", label: "List", icon: List },
                                         { key: "day", label: "Day", icon: CalendarDays },
@@ -2986,10 +3025,10 @@ export default function ItineraryCalendar({
                                             onClick={() =>
                                                 changeView(key as CalendarView)
                                             }
-                                            className={`flex min-h-9 items-center justify-center gap-2 rounded px-3 text-sm font-medium transition ${
+                                            className={`flex min-h-9 items-center justify-center gap-2 rounded-full px-3 text-sm font-black uppercase tracking-wide transition ${
                                                 view === key
-                                                    ? "bg-white text-slate-950 shadow-sm"
-                                                    : "text-slate-600 hover:text-slate-950"
+                                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(190,242,100,0.20)]"
+                                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
                                             }`}
                                         >
                                             <Icon
@@ -3001,7 +3040,7 @@ export default function ItineraryCalendar({
                                     ))}
                                 </div>
 
-                                <label className="flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700">
+                                <label className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 text-sm font-bold text-slate-200">
                                     <span>Date</span>
                                     <input
                                         id="itineraryViewDate"
@@ -3019,7 +3058,7 @@ export default function ItineraryCalendar({
                                         onChange={(event) =>
                                             selectDate(event.target.value)
                                         }
-                                        className="bg-transparent text-sm text-slate-900 outline-none"
+                                        className="bg-transparent text-sm text-white outline-none [color-scheme:dark]"
                                     />
                                 </label>
 
@@ -3027,7 +3066,7 @@ export default function ItineraryCalendar({
                                     <button
                                         type="button"
                                         onClick={shiftBackward}
-                                        className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                                        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/10"
                                         aria-label="Previous"
                                     >
                                         <ChevronLeft
@@ -3038,14 +3077,14 @@ export default function ItineraryCalendar({
                                     <button
                                         type="button"
                                         onClick={goToToday}
-                                        className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                                        className="h-9 rounded-full bg-lime-300 px-4 text-xs font-black uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.18)] transition hover:bg-lime-200"
                                     >
                                         TODAY
                                     </button>
                                     <button
                                         type="button"
                                         onClick={shiftForward}
-                                        className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                                        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/10"
                                         aria-label="Next"
                                     >
                                         <ChevronRight
@@ -3056,20 +3095,20 @@ export default function ItineraryCalendar({
                                 </div>
                             </div>
 
-                            <div className="rounded-md border border-slate-300 bg-slate-50 p-3">
-                                <p className="mb-3 text-sm font-semibold text-slate-900">
+                            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-3 shadow-inner shadow-black/20">
+                                <p className="mb-3 text-sm font-black uppercase tracking-wide text-white">
                                     Viewing time zone
                                 </p>
                                 <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
                                     <section>
-                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                                             Current location
                                         </p>
                                         {renderTimezoneCard(currentTimezoneOption)}
                                     </section>
 
                                     <section>
-                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
                                             Destination time zones
                                         </p>
                                         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, SlidersHorizontal } from "lucide-react";
+import { Lock, Search, SlidersHorizontal } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
@@ -454,6 +454,24 @@ export function IdeaForm({
                 </div>
             </div>
 
+            <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <input
+                    type="checkbox"
+                    name="is_private"
+                    defaultChecked={Boolean(idea?.is_private)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                />
+                <span>
+                    <span className="flex items-center gap-2 font-semibold text-slate-900">
+                        <Lock className="h-4 w-4" aria-hidden="true" />
+                        Private
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                        Mark this idea as visible only to you when trip sharing is enabled.
+                    </span>
+                </span>
+            </label>
+
             <div>
                 <label
                     htmlFor={idea ? `idea-address-${idea.id}` : "idea-address"}
@@ -768,29 +786,35 @@ function IdeaCard({
 
     return (
         <article
-            className={`rounded-md border p-4 shadow-sm ${
+            className={`rounded-[1.75rem] border p-5 shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
                 idea.is_archived
-                    ? "border-slate-200 bg-slate-50 opacity-75"
-                    : "border-slate-200 bg-white"
+                    ? "border-white/10 bg-white/[0.035] opacity-70"
+                    : "border-white/10 bg-[#03030a]/90"
             }`}
         >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-lime-300">
                             {idea.category}
                         </p>
                         {idea.is_archived && (
-                            <span className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                            <span className="rounded-full border border-white/10 bg-white/[0.08] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">
                                 Archived
                             </span>
                         )}
+                        {idea.is_private && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
+                                <Lock className="h-3 w-3" aria-hidden="true" />
+                                Private
+                            </span>
+                        )}
                     </div>
-                    <h3 className="mt-1 text-lg font-semibold text-slate-950">
+                    <h3 className="mt-2 text-2xl font-black tracking-tight text-white">
                         {idea.title}
                     </h3>
                     {idea.description && (
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                        <p className="mt-2 text-sm leading-6 text-slate-300">
                             {idea.description}
                         </p>
                     )}
@@ -798,7 +822,7 @@ function IdeaCard({
                         idea.location ||
                         idea.address ||
                         idea.formatted_address) && (
-                        <p className="mt-2 text-sm font-medium text-slate-700">
+                        <p className="mt-3 text-sm font-semibold text-slate-200">
                             {idea.location_city ||
                                 idea.location ||
                                 idea.address ||
@@ -810,7 +834,7 @@ function IdeaCard({
                     <button
                         type="button"
                         onClick={() => setIsEditing(true)}
-                        className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
                     >
                         Edit
                     </button>
@@ -819,7 +843,7 @@ function IdeaCard({
                         <input type="hidden" name="idea_id" value={idea.id} />
                         <button
                             type="submit"
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                            className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
                         >
                             Archive
                         </button>
@@ -836,7 +860,7 @@ function IdeaCard({
                         <input type="hidden" name="idea_id" value={idea.id} />
                         <button
                             type="submit"
-                            className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                            className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-rose-200 transition hover:bg-rose-500/20"
                         >
                             Delete
                         </button>
@@ -848,7 +872,7 @@ function IdeaCard({
                 {idea.tags.map((tag) => (
                     <span
                         key={tag}
-                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-700"
+                        className="rounded-full border border-white/10 bg-white/[0.07] px-2.5 py-1 text-xs font-semibold text-slate-200"
                     >
                         {tag}
                     </span>
@@ -856,50 +880,50 @@ function IdeaCard({
             </div>
 
             <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div className="rounded-md bg-slate-50 p-3">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                    <dt className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                         Days
                     </dt>
-                    <dd className="mt-1 text-slate-800">
+                    <dd className="mt-1 text-slate-100">
                         {formatIdeaDayLabel(idea.days_available)}
                     </dd>
                 </div>
-                <div className="rounded-md bg-slate-50 p-3">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                    <dt className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                         Time
                     </dt>
-                    <dd className="mt-1 text-slate-800">
+                    <dd className="mt-1 text-slate-100">
                         {idea.is_24_hours
                             ? "24 hours"
                             : formatIdeaTimeLabel(idea.time_of_day)}
                     </dd>
                 </div>
                 {idea.ticket_policy && (
-                    <div className="rounded-md bg-slate-50 p-3">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                        <dt className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                             Tickets
                         </dt>
-                        <dd className="mt-1 text-slate-800">
+                        <dd className="mt-1 text-slate-100">
                             {formatIdeaTicketPolicy(idea.ticket_policy)}
                         </dd>
                     </div>
                 )}
                 {idea.age_policy && (
-                    <div className="rounded-md bg-slate-50 p-3">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                        <dt className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                             Age
                         </dt>
-                        <dd className="mt-1 text-slate-800">
+                        <dd className="mt-1 text-slate-100">
                             {formatIdeaAgePolicy(idea.age_policy)}
                         </dd>
                     </div>
                 )}
             </dl>
             {(idea.dress_code || idea.other_notes) && (
-                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                <div className="mt-4 space-y-2 text-sm text-slate-300">
                     {idea.dress_code && (
                         <p>
-                            <span className="font-semibold text-slate-800">
+                            <span className="font-semibold text-white">
                                 Dress code:
                             </span>{" "}
                             {idea.dress_code}
@@ -907,7 +931,7 @@ function IdeaCard({
                     )}
                     {idea.other_notes && (
                         <p>
-                            <span className="font-semibold text-slate-800">Other:</span>{" "}
+                            <span className="font-semibold text-white">Other:</span>{" "}
                             {idea.other_notes}
                         </p>
                     )}
@@ -920,7 +944,7 @@ function IdeaCard({
                             href={idea.location_website}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                            className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
                         >
                             Venue
                         </a>
@@ -930,7 +954,7 @@ function IdeaCard({
                             href={idea.ticket_website}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-700"
+                            className="rounded-full bg-lime-300 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.2)] transition hover:bg-lime-200"
                         >
                             Tickets
                         </a>
@@ -1069,20 +1093,22 @@ export default function IdeasTab({
         <section className="space-y-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                    <h2 className="text-2xl font-semibold text-slate-900">Ideas</h2>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <h2 className="text-2xl font-black tracking-tight text-white">
+                        Ideas
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-300">
                         Browse loose possibilities for free time, rainy days, late
                         nights, and plans that are still taking shape.
                     </p>
                 </div>
             </div>
 
-            <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.045] p-4 shadow-2xl shadow-black/20">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center">
                     <label className="relative min-w-0 flex-1">
                         <span className="sr-only">Search ideas</span>
                         <Search
-                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
                             aria-hidden="true"
                         />
                         <input
@@ -1091,14 +1117,14 @@ export default function IdeasTab({
                             onChange={(event) => setSearchQuery(event.target.value)}
                             placeholder="Search activities, tags, categories, or notes"
                             {...travelInputProps()}
-                            className="w-full rounded-md border border-slate-300 py-2 pl-9 pr-3 text-slate-900"
+                            className="w-full rounded-full border border-white/10 bg-white px-4 py-2 pl-9 text-slate-900 shadow-sm"
                         />
                     </label>
                     <button
                         type="button"
                         onClick={() => setShowFilters((isVisible) => !isVisible)}
                         aria-expanded={showFilters}
-                        className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-bold uppercase tracking-[0.14em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
                     >
                         <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
                         Filters
@@ -1107,16 +1133,16 @@ export default function IdeasTab({
             </div>
 
             {showFilters && (
-                <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.045] p-4 shadow-2xl shadow-black/20">
                     <div className="grid gap-3 md:grid-cols-4">
-                        <label className="block text-sm font-medium text-slate-700">
+                        <label className="block text-sm font-semibold text-slate-200">
                             Category
                             <select
                                 value={categoryFilter}
                                 onChange={(event) =>
                                     setCategoryFilter(event.target.value)
                                 }
-                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                                className="mt-2 w-full rounded-md border border-white/10 bg-white px-3 py-2 text-slate-900"
                             >
                                 <option value="">All categories</option>
                                 {IDEA_CATEGORIES.map((category) => (
@@ -1126,14 +1152,14 @@ export default function IdeasTab({
                                 ))}
                             </select>
                         </label>
-                        <label className="block text-sm font-medium text-slate-700">
+                        <label className="block text-sm font-semibold text-slate-200">
                             Day
                             <select
                                 value={dayFilter}
                                 onChange={(event) =>
                                     setDayFilter(event.target.value as DayFilter)
                                 }
-                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                                className="mt-2 w-full rounded-md border border-white/10 bg-white px-3 py-2 text-slate-900"
                             >
                                 <option value="">All days</option>
                                 <option value="Today">Today</option>
@@ -1147,14 +1173,14 @@ export default function IdeasTab({
                                 ))}
                             </select>
                         </label>
-                        <label className="block text-sm font-medium text-slate-700">
+                        <label className="block text-sm font-semibold text-slate-200">
                             Time
                             <select
                                 value={timeFilter}
                                 onChange={(event) =>
                                     setTimeFilter(event.target.value)
                                 }
-                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                                className="mt-2 w-full rounded-md border border-white/10 bg-white px-3 py-2 text-slate-900"
                             >
                                 <option value="">All times</option>
                                 {IDEA_TIME_OF_DAY_OPTIONS.map((time) => (
@@ -1164,7 +1190,7 @@ export default function IdeasTab({
                                 ))}
                             </select>
                         </label>
-                        <label className="block text-sm font-medium text-slate-700">
+                        <label className="block text-sm font-semibold text-slate-200">
                             Tags
                             <input
                                 type="text"
@@ -1174,18 +1200,18 @@ export default function IdeasTab({
                                 }
                                 placeholder="cheap, rainy day"
                                 {...travelInputProps()}
-                                className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                                className="mt-2 w-full rounded-md border border-white/10 bg-white px-3 py-2 text-slate-900"
                             />
                         </label>
                     </div>
-                    <label className="mt-4 flex w-fit items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">
+                    <label className="mt-4 flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-slate-200">
                         <input
                             type="checkbox"
                             checked={showArchived}
                             onChange={(event) =>
                                 setShowArchived(event.target.checked)
                             }
-                            className="h-4 w-4 rounded border-slate-300 text-slate-900"
+                            className="h-4 w-4 rounded border-slate-300 text-lime-300"
                         />
                         Show archived
                     </label>
@@ -1193,26 +1219,26 @@ export default function IdeasTab({
             )}
 
             {!hasAnyActiveIdeas && !showArchived ? (
-                <div className="rounded-md border border-dashed border-slate-300 bg-white p-8 text-center">
-                    <h3 className="text-lg font-medium text-slate-900">
+                <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.045] p-8 text-center">
+                    <h3 className="text-lg font-bold text-white">
                         No ideas yet
                     </h3>
-                    <p className="mt-2 text-sm text-slate-500">
+                    <p className="mt-2 text-sm text-slate-300">
                         Add a restaurant, museum, park walk, bar, or anything you might
                         want to remember.
                     </p>
                 </div>
             ) : filteredIdeas.length === 0 ? (
-                <div className="rounded-md border border-dashed border-slate-300 bg-white p-8 text-center">
-                    <h3 className="text-lg font-medium text-slate-900">
+                <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.045] p-8 text-center">
+                    <h3 className="text-lg font-bold text-white">
                         No ideas match these filters
                     </h3>
-                    <p className="mt-2 text-sm text-slate-500">
+                    <p className="mt-2 text-sm text-slate-300">
                         Try loosening the category, day, time, or tag filters.
                     </p>
                 </div>
             ) : (
-                <div className="grid gap-4">
+                <div className="grid gap-5 md:grid-cols-2">
                     {filteredIdeas.map((idea) => (
                         <IdeaCard
                             key={idea.id}

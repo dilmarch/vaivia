@@ -83,6 +83,7 @@ const AIRLINE_BRAND_THEMES: Record<string, Omit<AirlineBrandTheme, "airlineCode"
     JL: { name: "Japan Airlines", primary: "#D71920", accent: "#111827" },
     KE: { name: "Korean Air", primary: "#00A3E0", accent: "#003A70" },
     OZ: { name: "Asiana Airlines", primary: "#7A1E3A", accent: "#B8975A" },
+    "7C": { name: "Jeju Air", primary: "#F58220", accent: "#111827" },
     CX: { name: "Cathay Pacific", primary: "#006564", accent: "#111827" },
     SQ: { name: "Singapore Airlines", primary: "#00266B", accent: "#F9A01B" },
     TG: { name: "Thai Airways", primary: "#4B2E83", accent: "#C08A2D" },

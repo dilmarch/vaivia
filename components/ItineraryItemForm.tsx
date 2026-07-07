@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Plus, X } from "lucide-react";
+import { AlertTriangle, Lock, Plus, X } from "lucide-react";
 import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -24,6 +24,7 @@ type InitialItem = {
     location_lat?: number | null;
     location_lng?: number | null;
     formatted_address?: string | null;
+    is_private?: boolean | null;
 };
 
 type ItineraryItemFormProps = {
@@ -488,7 +489,7 @@ export default function ItineraryItemForm({
                     className={
                         isEditMode
                             ? ""
-                            : "fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
+                            : "vaivia-modal-backdrop"
                     }
                     onClick={isEditMode ? undefined : requestCloseModal}
                 >
@@ -496,7 +497,7 @@ export default function ItineraryItemForm({
                         className={
                             isEditMode
                                 ? "rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                                : "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
+                                : "vaivia-modal-panel max-w-2xl"
                         }
                         onClick={(event) => event.stopPropagation()}
                     >
@@ -504,18 +505,25 @@ export default function ItineraryItemForm({
                             className={
                                 isEditMode
                                     ? ""
-                                    : "flex items-center justify-between gap-4 border-b border-slate-200 p-5"
+                                    : "vaivia-modal-header flex items-center justify-between gap-4"
                             }
                         >
-                            <h2 className="text-xl font-semibold text-slate-900">
-                                {isEditMode ? "Edit itinerary item" : submitLabel}
-                            </h2>
+                            <div>
+                                {!isEditMode && (
+                                    <p className="vaivia-modal-eyebrow">
+                                        Quick add
+                                    </p>
+                                )}
+                                <h2 className={isEditMode ? "text-xl font-semibold text-slate-900" : "vaivia-modal-title"}>
+                                    {isEditMode ? "Edit itinerary item" : submitLabel}
+                                </h2>
+                            </div>
 
                             {!isEditMode && (
                                 <button
                                     type="button"
                                     onClick={requestCloseModal}
-                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                                    className="vaivia-modal-close"
                                     aria-label="Close add itinerary item"
                                 >
                                     <X className="h-4 w-4" aria-hidden="true" />
@@ -527,7 +535,7 @@ export default function ItineraryItemForm({
                             ref={formRef}
                             action={submitAction}
                             onChange={() => setHasUnsavedChanges(true)}
-                            className={isEditMode ? "mt-5 space-y-4" : "space-y-4 p-5"}
+                            className={isEditMode ? "mt-5 space-y-4" : "vaivia-modal-body space-y-4"}
                         >
                     <input type="hidden" name="trip_id" value={tripId} />
                     <input type="hidden" name="timezone_source" value={timezoneSource} />
@@ -700,6 +708,24 @@ export default function ItineraryItemForm({
                             </select>
                         </div>
                     </div>
+
+                    <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        <input
+                            type="checkbox"
+                            name="is_private"
+                            defaultChecked={Boolean(initialItem?.is_private)}
+                            className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                        />
+                        <span>
+                            <span className="flex items-center gap-2 font-semibold text-slate-900">
+                                <Lock className="h-4 w-4" aria-hidden="true" />
+                                Private
+                            </span>
+                            <span className="mt-1 block text-xs text-slate-500">
+                                Mark this item as visible only to you when trip sharing is enabled.
+                            </span>
+                        </span>
+                    </label>
 
                     <div>
                         <label
@@ -914,14 +940,14 @@ export default function ItineraryItemForm({
 
             {showCloseWarning && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 px-4 py-6"
+                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowCloseWarning(false)}
                 >
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="unsaved-itinerary-title"
-                        className="w-full max-w-md rounded-md bg-white p-5 shadow-xl"
+                        className="vaivia-modal-confirm"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">

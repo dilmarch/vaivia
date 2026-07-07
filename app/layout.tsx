@@ -28,7 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
+      <body className={`${geistSans.className} vaivia-page-bg antialiased`}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -38,7 +38,7 @@ export default function RootLayout({
           <Suspense fallback={<AppNavFallback />}>
             <AppNav />
           </Suspense>
-          <div className="pb-20 md:pb-0 md:pl-24">{children}</div>
+          <div className="min-h-screen pb-20 md:pb-0 md:pl-24">{children}</div>
         </ThemeProvider>
       </body>
     </html>

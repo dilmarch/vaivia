@@ -1,5 +1,6 @@
 "use client";
 
+import { Lock } from "lucide-react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import {
     IDEA_TIME_EXACT_WINDOWS,
@@ -294,20 +295,28 @@ function IdeaSuggestionCard({
     const firstTime = idea.time_of_day[0] || "Afternoon";
 
     return (
-        <article className="rounded-md border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                {idea.category}
-            </p>
-            <h3 className="mt-1 text-sm font-semibold text-slate-950">
+        <article className="rounded-[1.35rem] border border-white/10 bg-[#03030a]/90 p-4 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-lime-300">
+                    {idea.category}
+                </p>
+                {idea.is_private ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white">
+                        <Lock className="h-3 w-3" aria-hidden="true" />
+                        Private
+                    </span>
+                ) : null}
+            </div>
+            <h3 className="mt-1 text-sm font-bold text-white">
                 {idea.title}
             </h3>
             {idea.description && (
-                <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-600">
+                <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-300">
                     {idea.description}
                 </p>
             )}
             {(idea.location_city || idea.address || idea.formatted_address) && (
-                <p className="mt-2 text-xs font-medium text-slate-700">
+                <p className="mt-2 text-xs font-semibold text-slate-200">
                     {idea.location_city || idea.address || idea.formatted_address}
                 </p>
             )}
@@ -316,22 +325,22 @@ function IdeaSuggestionCard({
                 {idea.tags.map((tag) => (
                     <span
                         key={tag}
-                        className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700"
+                        className="rounded-full border border-white/10 bg-white/[0.07] px-2 py-1 text-[11px] font-semibold text-slate-200"
                     >
                         {tag}
                     </span>
                 ))}
             </div>
 
-            <dl className="mt-3 space-y-2 text-xs text-slate-600">
+            <dl className="mt-3 space-y-2 text-xs text-slate-300">
                 <div>
-                    <dt className="font-semibold uppercase tracking-wide text-slate-400">
+                    <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
                         Available
                     </dt>
                     <dd>{formatIdeaDayLabel(idea.days_available)}</dd>
                 </div>
                 <div>
-                    <dt className="font-semibold uppercase tracking-wide text-slate-400">
+                    <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
                         Time
                     </dt>
                     <dd>
@@ -342,7 +351,7 @@ function IdeaSuggestionCard({
                 </div>
                 {idea.ticket_type && (
                     <div>
-                        <dt className="font-semibold uppercase tracking-wide text-slate-400">
+                        <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
                             Tickets
                         </dt>
                         <dd>{idea.ticket_type}</dd>
@@ -350,7 +359,7 @@ function IdeaSuggestionCard({
                 )}
                 {idea.age_policy && (
                     <div>
-                        <dt className="font-semibold uppercase tracking-wide text-slate-400">
+                        <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
                             Age
                         </dt>
                         <dd>{idea.age_policy}</dd>
@@ -369,8 +378,8 @@ function IdeaSuggestionCard({
                 />
             ) : null}
 
-            <details className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-3">
-                <summary className="cursor-pointer text-xs font-semibold text-slate-800">
+            <details className="mt-3 rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.16em] text-lime-200">
                     Add to itinerary
                 </summary>
                 <form action={promoteIdeaAction} className="mt-3 space-y-3">
@@ -379,7 +388,7 @@ function IdeaSuggestionCard({
                     <input type="hidden" name="title" value={idea.title} />
                     <input type="hidden" name="category" value="activity" />
                     <input type="hidden" name="status" value="tentative" />
-                    <label className="block text-xs font-semibold text-slate-600">
+                    <label className="block text-xs font-semibold text-slate-300">
                         Date
                         <input
                             name="item_date"
@@ -387,11 +396,11 @@ function IdeaSuggestionCard({
                             defaultValue={selectedDateKey}
                             required
                             {...travelInputProps()}
-                            className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+                            className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1.5 text-sm text-slate-900"
                         />
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                        <label className="block text-xs font-semibold text-slate-600">
+                        <label className="block text-xs font-semibold text-slate-300">
                             Start
                             <input
                                 name="start_time"
@@ -399,10 +408,10 @@ function IdeaSuggestionCard({
                                 defaultValue={getDefaultStartTime(firstTime)}
                                 required
                                 {...travelInputProps()}
-                                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1.5 text-sm text-slate-900"
                             />
                         </label>
-                        <label className="block text-xs font-semibold text-slate-600">
+                        <label className="block text-xs font-semibold text-slate-300">
                             End
                             <input
                                 name="end_time"
@@ -410,13 +419,13 @@ function IdeaSuggestionCard({
                                 defaultValue={getDefaultEndTime(firstTime)}
                                 required
                                 {...travelInputProps()}
-                                className="mt-1 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-900"
+                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1.5 text-sm text-slate-900"
                             />
                         </label>
                     </div>
                     <button
                         type="submit"
-                        className="w-full rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-700"
+                        className="w-full rounded-full bg-lime-300 px-3 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.2)] transition hover:bg-lime-200"
                     >
                         Add tentative item
                     </button>
@@ -455,19 +464,19 @@ export default function SuggestedIdeasPanel({
     );
 
     return (
-        <aside className="border-t border-slate-200 bg-slate-50 p-4 lg:border-l lg:border-t-0">
+        <aside className="border-t border-white/10 bg-[#03030a] p-4 lg:border-l lg:border-t-0">
             <div className="space-y-4 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pr-1">
                 <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <p className="text-xs font-bold uppercase tracking-[0.22em] text-lime-300">
                         Suggested ideas
                     </p>
-                    <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                    <h2 className="mt-1 text-lg font-bold text-white">
                         Available on {selectedDay}
                     </h2>
                 </div>
 
                 {suggestions.length === 0 ? (
-                    <div className="rounded-md border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                    <div className="rounded-[1.25rem] border border-dashed border-white/15 bg-white/[0.045] p-4 text-sm text-slate-300">
                         No suggested ideas for this day.
                     </div>
                 ) : (
@@ -481,7 +490,7 @@ export default function SuggestedIdeasPanel({
 
                             return (
                                 <section key={time} className="space-y-2">
-                                    <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
                                         {time}
                                     </h3>
                                     {timeIdeas.map((idea) => (

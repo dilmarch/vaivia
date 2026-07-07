@@ -1,12 +1,14 @@
 "use client";
 
-import { X } from "lucide-react";
+import { ImagePlus, Link as LinkIcon, X } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type TripDestinationPickerProps = {
     initialDestination?: string | null;
     initialCoverImageUrl?: string | null;
+    tripId?: string | null;
     inputId: string;
     onChange?: () => void;
 };
@@ -48,14 +50,36 @@ function parseDestinations(destination?: string | null) {
         .map((label) => ({ label, coverImageUrl: "" }));
 }
 
+function getImageExtension(file: File) {
+    const mimeExtension = file.type.split("/")[1];
+    const nameExtension = file.name.split(".").pop();
+    return (mimeExtension || nameExtension || "jpg")
+        .replace("jpeg", "jpg")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toLowerCase();
+}
+
+function isSupportedImageUrl(url: string) {
+    if (!url.trim()) return true;
+    return /\.(jpe?g|png|webp|gif|avif|svg)(\?.*)?$/i.test(url.trim());
+}
+
 export default function TripDestinationPicker({
     initialDestination,
     initialCoverImageUrl,
+    tripId,
     inputId,
     onChange,
 }: TripDestinationPickerProps) {
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
+    const [customCoverImageUrl, setCustomCoverImageUrl] = useState(
+        initialCoverImageUrl || ""
+    );
+    const [coverUrlError, setCoverUrlError] = useState("");
+    const [uploadError, setUploadError] = useState("");
+    const [isUploadingCover, setIsUploadingCover] = useState(false);
     const [destinations, setDestinations] = useState<DestinationOption[]>(() => {
         const parsedDestinations = parseDestinations(initialDestination);
 
@@ -72,11 +96,12 @@ export default function TripDestinationPicker({
         () => destinations.map((destination) => destination.label).join(", "),
         [destinations]
     );
-    const coverImageUrl =
+    const automaticCoverImageUrl =
         destinations.length > 0
             ? destinations.find((destination) => destination.coverImageUrl)?.coverImageUrl ||
               ""
             : "";
+    const coverImageUrl = customCoverImageUrl || automaticCoverImageUrl;
 
     useEffect(() => {
         const parsedDestinations = parseDestinations(initialDestination);
@@ -89,6 +114,7 @@ export default function TripDestinationPicker({
         }
 
         setDestinations(parsedDestinations);
+        setCustomCoverImageUrl(initialCoverImageUrl || "");
     }, [initialCoverImageUrl, initialDestination]);
 
     useEffect(() => {
@@ -174,6 +200,65 @@ export default function TripDestinationPicker({
         onChange?.();
     }
 
+    function updateCoverImageUrl(value: string) {
+        setCustomCoverImageUrl(value);
+        setCoverUrlError(
+            isSupportedImageUrl(value)
+                ? ""
+                : "Use a direct image URL ending in .jpg, .jpeg, .png, .webp, .gif, .avif, or .svg."
+        );
+        onChange?.();
+    }
+
+    async function handleCoverUpload(file: File | null) {
+        setUploadError("");
+        if (!file) return;
+
+        if (!tripId) {
+            setUploadError("Save the trip first, then upload a custom cover photo.");
+            return;
+        }
+
+        if (!file.type.startsWith("image/")) {
+            setUploadError("Please choose an image file.");
+            return;
+        }
+
+        setIsUploadingCover(true);
+
+        try {
+            const supabase = createClient();
+            const extension = getImageExtension(file);
+            const path = `${tripId}/cover.${extension}`;
+            const { error } = await supabase.storage
+                .from("trip-covers")
+                .upload(path, file, {
+                    cacheControl: "3600",
+                    contentType: file.type || undefined,
+                    upsert: true,
+                });
+
+            if (error) {
+                console.error("Error uploading trip cover photo:", {
+                    message: error.message,
+                    bucket: "trip-covers",
+                    path,
+                    fileType: file.type,
+                    fileSize: file.size,
+                });
+                setUploadError(
+                    "Could not upload the photo. Make sure the trip-covers storage bucket exists and allows uploads."
+                );
+                return;
+            }
+
+            const { data } = supabase.storage.from("trip-covers").getPublicUrl(path);
+            updateCoverImageUrl(data.publicUrl || "");
+        } finally {
+            setIsUploadingCover(false);
+        }
+    }
+
     return (
         <div>
             <Script
@@ -228,6 +313,71 @@ export default function TripDestinationPicker({
                     ))}
                 </div>
             )}
+
+            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <ImagePlus className="h-4 w-4" aria-hidden="true" />
+                    Cover photo
+                </div>
+                <label
+                    htmlFor={`${inputId}-cover-url`}
+                    className="mt-3 block text-xs font-bold uppercase tracking-wide text-slate-500"
+                >
+                    Image link
+                </label>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                    <div className="relative min-w-0 flex-1">
+                        <LinkIcon
+                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                            aria-hidden="true"
+                        />
+                        <input
+                            id={`${inputId}-cover-url`}
+                            type="url"
+                            value={customCoverImageUrl}
+                            onChange={(event) =>
+                                updateCoverImageUrl(event.target.value)
+                            }
+                            placeholder="https://example.com/photo.jpg"
+                            autoComplete="off"
+                            data-form-type="other"
+                            data-lpignore="true"
+                            data-1p-ignore="true"
+                            className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-4 text-slate-900"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingCover}
+                        className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    >
+                        {isUploadingCover ? "Uploading..." : "Upload photo"}
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        onChange={(event) =>
+                            void handleCoverUpload(event.target.files?.[0] || null)
+                        }
+                    />
+                </div>
+                {coverUrlError ? (
+                    <p className="mt-2 text-xs font-medium text-red-700">
+                        {coverUrlError}
+                    </p>
+                ) : null}
+                {uploadError ? (
+                    <p className="mt-2 text-xs font-medium text-red-700">
+                        {uploadError}
+                    </p>
+                ) : null}
+                <p className="mt-2 text-xs text-slate-500">
+                    Paste a direct image URL or upload a photo to use as this trip&apos;s cover.
+                </p>
+            </div>
         </div>
     );
 }

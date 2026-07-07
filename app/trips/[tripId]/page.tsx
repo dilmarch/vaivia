@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
@@ -59,9 +58,19 @@ type ItineraryItemPayload = {
     airline_name?: string | null;
     airline_code?: string | null;
     flight_number?: string | null;
+    is_private?: boolean;
 };
 
-type TransportationItemPayload = Record<string, string | number | null>;
+type TransportationItemPayload = Record<string, string | number | boolean | null>;
+
+type TripUpdatePayload = {
+    title: string;
+    destination: string;
+    start_date: string | null;
+    end_date: string | null;
+    cover_image_url?: string | null;
+    notes: string;
+};
 
 type TripIdeaPayload = {
     created_by: string;
@@ -91,6 +100,7 @@ type TripIdeaPayload = {
     age_policy: string | null;
     dress_code: string | null;
     other_notes: string | null;
+    is_private?: boolean;
     is_archived?: boolean;
 };
 
@@ -104,6 +114,13 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
             (message.includes("cover_image_url") ||
                 message.includes("schema cache")))
     );
+}
+
+function removeTripCoverColumn(payload: TripUpdatePayload) {
+    const { cover_image_url, ...fallbackPayload } = payload;
+    void cover_image_url;
+
+    return fallbackPayload;
 }
 
 function isMissingOptionalColumnError(error: { code?: string; message?: string }) {
@@ -120,6 +137,7 @@ function isMissingOptionalColumnError(error: { code?: string; message?: string }
                     message.includes("airline_name") ||
                     message.includes("airline_code") ||
                     message.includes("flight_number") ||
+                    message.includes("is_private") ||
                     message.includes("schema cache")))
     );
 }
@@ -133,6 +151,7 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
         airline_name,
         airline_code,
         flight_number,
+        is_private,
         ...fallbackPayload
     } = payload;
 
@@ -143,6 +162,7 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
     void airline_name;
     void airline_code;
     void flight_number;
+    void is_private;
 
     return fallbackPayload;
 }
@@ -320,6 +340,7 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
         "age_policy",
         "dress_code",
         "other_notes",
+        "is_private",
     ]);
     let attempt: Record<string, unknown> = { ...payload };
     let lastError: {
@@ -349,6 +370,51 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
 
         console.warn(
             `Trip ideas table is missing optional column "${missingColumn}". Retrying without it.`,
+            error
+        );
+
+        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
+        void _removedColumn;
+        attempt = nextAttempt;
+    }
+
+    return lastError;
+}
+
+async function updateTripIdeaPayloadWithFallback(
+    payload: Record<string, unknown>,
+    ideaId: string,
+    tripId: string,
+    userId: string
+) {
+    const supabase = await createClient();
+    let attempt = { ...payload };
+    let lastError: {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+    } | null = null;
+
+    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
+        const { error } = await supabase
+            .from("trip_ideas")
+            .update(attempt)
+            .eq("id", ideaId)
+            .eq("trip_id", tripId)
+            .eq("created_by", userId);
+
+        if (!error) return null;
+
+        lastError = error;
+
+        if (error.code !== "42703" && error.code !== "PGRST204") break;
+
+        const missingColumn = getMissingColumnName(error);
+        if (!missingColumn || !(missingColumn in attempt)) break;
+
+        console.warn(
+            `Trip ideas table is missing optional column "${missingColumn}". Retrying update without it.`,
             error
         );
 
@@ -557,6 +623,9 @@ function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
         age_policy: agePolicy,
         dress_code: dressCode || null,
         other_notes: ((formData.get("other_notes") as string) || "").trim() || null,
+        is_private:
+            formData.get("is_private") === "on" ||
+            formData.get("is_private") === "true",
     };
 }
 
@@ -577,9 +646,15 @@ function formatTripDate(dateString?: string | null) {
     });
 }
 
-function getDepartureCountdown(startDate?: string | null) {
+function getDepartureCountdownDisplay(startDate?: string | null) {
     const departureDate = parseTripDate(startDate);
-    if (!departureDate) return "Departure date not set";
+    if (!departureDate) {
+        return {
+            value: "TBD",
+            label: "Departure date not set",
+            detail: "Add your dates to start the countdown.",
+        };
+    }
 
     const today = new Date();
     const todayStart = new Date(
@@ -591,11 +666,27 @@ function getDepartureCountdown(startDate?: string | null) {
         (departureDate.getTime() - todayStart.getTime()) / 86400000
     );
 
-    if (dayDifference === 0) return "Departing today";
-    if (dayDifference === 1) return "1 day until departure";
-    if (dayDifference > 1) return `${dayDifference} days until departure`;
-    if (dayDifference === -1) return "Departed 1 day ago";
-    return `Departed ${Math.abs(dayDifference)} days ago`;
+    if (dayDifference === 0) {
+        return {
+            value: "0",
+            label: "Departing today",
+            detail: "Today is the day.",
+        };
+    }
+
+    if (dayDifference > 0) {
+        return {
+            value: String(dayDifference),
+            label: dayDifference === 1 ? "day until departure" : "days until departure",
+            detail: "Your next adventure is getting close.",
+        };
+    }
+
+    return {
+        value: String(Math.abs(dayDifference)),
+        label: Math.abs(dayDifference) === 1 ? "day since departure" : "days since departure",
+        detail: "This trip is already underway.",
+    };
 }
 
 async function createItineraryItem(formData: FormData) {
@@ -631,6 +722,9 @@ async function createItineraryItem(formData: FormData) {
     const url = ticketWebsite || (formData.get("url") as string);
     const endDate = formData.get("end_date") as string;
     const notes = formData.get("notes") as string;
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
 
     const payload: ItineraryItemPayload = {
         trip_id: tripId,
@@ -652,6 +746,7 @@ async function createItineraryItem(formData: FormData) {
         ticket_website: ticketWebsite || null,
         location_website: locationWebsite || null,
         cover_image_url: coverImageUrl || null,
+        is_private: isPrivate,
         notes,
     };
 
@@ -701,6 +796,9 @@ async function createTransportationItem(formData: FormData) {
     const arrivalTerminal = formData.get("arrival_terminal") as string;
     const departureTimezone = formData.get("departure_timezone") as string;
     const arrivalTimezone = formData.get("arrival_timezone") as string;
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
     const flightLegCount = Number(formData.get("flight_leg_count") || 1);
     const flightLegNotes = Array.from({ length: flightLegCount }, (_, index) => {
         const legDepartureLocation = formData.get(
@@ -827,6 +925,7 @@ async function createTransportationItem(formData: FormData) {
         flight_leg_count: flightLegCount,
         visa_requirements: visaRequirements || null,
         luggage_requirements: luggageRequirements || null,
+        is_private: isPrivate,
         notes,
     };
 
@@ -891,6 +990,9 @@ async function updateTransportationItem(formData: FormData) {
     const arrivalTimezone = formData.get("arrival_timezone") as string;
     const duration = formData.get("duration") as string;
     const notes = formData.get("notes") as string;
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
     const effectiveAirlineCode = normalizeAirlineCode(airlineCode);
     const effectiveFlightNumber = normalizeFlightNumber({
         flightNumber,
@@ -925,6 +1027,7 @@ async function updateTransportationItem(formData: FormData) {
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
+        is_private: isPrivate,
         notes,
     };
 
@@ -979,7 +1082,7 @@ async function deleteItineraryItem(formData: FormData) {
     redirect(`/trips/${tripId}`);
 }
 
-async function updateTripCoverImage(formData: FormData) {
+async function updateTrip(formData: FormData) {
     "use server";
 
     const supabase = await createClient();
@@ -993,28 +1096,117 @@ async function updateTripCoverImage(formData: FormData) {
     }
 
     const tripId = formData.get("trip_id") as string;
-    const shouldReset = formData.get("reset_to_default") === "true";
+    const title = formData.get("title") as string;
+    const destination = formData.get("destination") as string;
+    const startDate = formData.get("start_date") as string;
+    const endDate = formData.get("end_date") as string;
     const coverImageUrl = String(formData.get("cover_image_url") || "").trim();
+    const notes = formData.get("notes") as string;
 
-    const { error } = await supabase
+    const payload: TripUpdatePayload = {
+        title,
+        destination,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        cover_image_url: coverImageUrl || null,
+        notes,
+    };
+
+    let { error } = await supabase
         .from("trips")
-        .update({
-            cover_image_url: shouldReset ? null : coverImageUrl || null,
-        })
+        .update(payload)
         .eq("id", tripId)
         .eq("user_id", user.id);
 
     if (error && isMissingTripCoverColumnError(error)) {
-        console.warn("Trip cover image column is missing.", error);
-        redirect(`/trips/${tripId}`);
+        console.warn(
+            "Optional trip cover column is missing. Falling back to legacy trip fields.",
+            error
+        );
+        ({ error } = await supabase
+            .from("trips")
+            .update(removeTripCoverColumn(payload))
+            .eq("id", tripId)
+            .eq("user_id", user.id));
     }
 
     if (error) {
-        console.error("Error updating trip cover image:", error);
-        throw new Error("Could not update trip cover image");
+        console.error("Error updating trip:", error);
+        throw new Error("Could not update trip");
     }
 
     redirect(`/trips/${tripId}`);
+}
+
+async function deleteTrip(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/sign-in");
+    }
+
+    const tripId = formData.get("trip_id") as string;
+
+    const { data: trip, error: tripError } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("id", tripId)
+        .eq("user_id", user.id)
+        .single();
+
+    if (tripError || !trip) {
+        console.error("Error finding trip to delete:", tripError);
+        throw new Error("Could not delete trip");
+    }
+
+    const { error: itineraryError } = await supabase
+        .from("itinerary_items")
+        .delete()
+        .eq("trip_id", tripId);
+
+    if (itineraryError) {
+        console.error("Error deleting trip itinerary items:", itineraryError);
+        throw new Error("Could not delete trip itinerary items");
+    }
+
+    const { error: transportationError } = await supabase
+        .from("transportation_items")
+        .delete()
+        .eq("trip_id", tripId);
+
+    if (transportationError) {
+        console.error("Error deleting trip transportation items:", transportationError);
+        throw new Error("Could not delete trip transportation items");
+    }
+
+    const { error: ideasError } = await supabase
+        .from("trip_ideas")
+        .delete()
+        .eq("trip_id", tripId);
+
+    if (ideasError) {
+        console.error("Error deleting trip ideas:", ideasError);
+        throw new Error("Could not delete trip ideas");
+    }
+
+    const { error } = await supabase
+        .from("trips")
+        .delete()
+        .eq("id", tripId)
+        .eq("user_id", user.id);
+
+    if (error) {
+        console.error("Error deleting trip:", error);
+        throw new Error("Could not delete trip");
+    }
+
+    redirect("/");
 }
 
 async function createTripIdea(formData: FormData) {
@@ -1095,15 +1287,15 @@ async function updateTripIdea(formData: FormData) {
         throw new Error("Could not update trip idea");
     }
 
-    const { error } = await supabase
-        .from("trip_ideas")
-        .update({
+    const error = await updateTripIdeaPayloadWithFallback(
+        {
             ...updatePayload,
             updated_at: new Date().toISOString(),
-        })
-        .eq("id", ideaId)
-        .eq("trip_id", payload.trip_id)
-        .eq("created_by", user.id);
+        },
+        ideaId,
+        payload.trip_id,
+        user.id
+    );
 
     if (error) {
         console.error("Error updating trip idea:", error);
@@ -1294,6 +1486,7 @@ async function promoteIdeaToItinerary(formData: FormData) {
         ticket_website: normalizedIdea.ticket_website || null,
         location_website: normalizedIdea.location_website || null,
         cover_image_url: null,
+        is_private: Boolean(normalizedIdea.is_private),
         notes,
     };
 
@@ -1318,6 +1511,7 @@ type TripIdeaReactionRecord = {
     idea_id: string;
     user_id: string;
     reaction: string;
+    score?: number | null;
 };
 
 type UserProfileRecord = {
@@ -1376,6 +1570,17 @@ function attachIdeaReactions({
                 ideaReactions.find((reaction) => reaction.user_id === currentUserId)
                     ?.reaction
             ) || null;
+        const reactionScore = ideaReactions.reduce((total, reaction) => {
+            const normalizedReaction = normalizeIdeaReaction(reaction.reaction);
+            if (!normalizedReaction) return total;
+
+            return (
+                total +
+                (typeof reaction.score === "number"
+                    ? reaction.score
+                    : IDEA_REACTION_VALUES[normalizedReaction])
+            );
+        }, 0);
         const reactionSummaries = (
             ["heart", "thumbs_up", "thumbs_down"] as IdeaReactionType[]
         ).map((reactionType): IdeaReactionSummary => {
@@ -1405,6 +1610,7 @@ function attachIdeaReactions({
             ...idea,
             current_user_reaction: currentUserReaction,
             reaction_summaries: reactionSummaries,
+            reaction_score: reactionScore,
         };
     });
 }
@@ -1607,7 +1813,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     if (ideaIds.length > 0) {
         const { data: reactionRows, error: reactionsError } = await supabase
             .from("trip_idea_reactions")
-            .select("idea_id,user_id,reaction")
+            .select("idea_id,user_id,reaction,score")
             .eq("trip_id", tripId)
             .in("idea_id", ideaIds);
 
@@ -1650,6 +1856,16 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         reactions: tripIdeaReactions,
         profiles: ideaReactionProfiles,
         currentUserId: user.id,
+    }).sort((a, b) => {
+        const scoreSort = (b.reaction_score || 0) - (a.reaction_score || 0);
+        if (scoreSort !== 0) return scoreSort;
+
+        const createdSort = String(b.created_at || "").localeCompare(
+            String(a.created_at || "")
+        );
+        if (createdSort !== 0) return createdSort;
+
+        return a.title.localeCompare(b.title);
     });
 
     const calendarItems = [
@@ -1666,68 +1882,78 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
         return (a.start_time || "99:99").localeCompare(b.start_time || "99:99");
     });
+    const departureCountdown = getDepartureCountdownDisplay(trip.start_date);
 
     return (
-        <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
+        <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripDocumentTitle
                 title={trip.title}
                 destination={trip.destination}
                 startDate={trip.start_date}
             />
 
-            <div className="mx-auto max-w-7xl">
-                <Link href="/" className="text-sm text-slate-600 hover:text-slate-900">
-                    ← Back to dashboard
-                </Link>
+            <header className="mb-8 overflow-hidden border-b border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/40">
+                <TripHeaderCover
+                    trip={trip}
+                    updateTripAction={updateTrip}
+                    deleteTripAction={deleteTrip}
+                >
+                    <h1 className="max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
+                        {trip.title || "Untitled trip"}
+                    </h1>
+                </TripHeaderCover>
 
-                <header className="mt-6 mb-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                    <TripHeaderCover
-                        trip={trip}
-                        updateCoverAction={updateTripCoverImage}
-                    >
-                        <h1 className="max-w-5xl text-5xl font-bold tracking-tight text-white drop-shadow-lg sm:text-6xl lg:text-7xl">
-                            {trip.title || "Untitled trip"}
-                        </h1>
-                    </TripHeaderCover>
-
-                    <div className="p-6">
+                <div className="mx-auto max-w-7xl p-5 sm:p-7">
                         <TripDestinationLine destination={trip.destination} />
 
-                        <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-stretch">
-                            <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch">
+                            <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
+                                <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
                                     Departing:
                                 </p>
-                                <p className="mt-1 text-lg font-semibold text-slate-950">
+                                <p className="mt-2 text-2xl font-black tracking-tight text-white">
                                     {formatTripDate(trip.start_date)}
                                 </p>
                             </div>
-                            <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
+                                <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
                                     Returning:
                                 </p>
-                                <p className="mt-1 text-lg font-semibold text-slate-950">
+                                <p className="mt-2 text-2xl font-black tracking-tight text-white">
                                     {formatTripDate(trip.end_date)}
                                 </p>
                             </div>
-                            <div className="rounded-md bg-slate-950 p-4 text-white sm:min-w-56">
-                                <p className="text-xs font-semibold uppercase tracking-wide text-white/65">
-                                    Countdown
-                                </p>
-                                <p className="mt-1 text-lg font-semibold">
-                                    {getDepartureCountdown(trip.start_date)}
-                                </p>
+                            <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(190,242,100,0.24)]">
+                                <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
+                                <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
+                                <div className="relative">
+                                    <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-950/70">
+                                        Countdown
+                                    </p>
+                                    <div className="mt-1 flex items-end gap-3">
+                                        <span className="text-7xl font-black leading-none tracking-tight sm:text-8xl">
+                                            {departureCountdown.value}
+                                        </span>
+                                        <span className="pb-2 text-base font-black uppercase leading-tight tracking-[0.12em]">
+                                            {departureCountdown.label}
+                                        </span>
+                                    </div>
+                                    <p className="mt-3 text-sm font-bold text-slate-950/70">
+                                        {departureCountdown.detail}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
                         {trip.notes && (
-                            <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+                            <p className="mt-5 rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 text-sm font-medium leading-6 text-slate-300">
                                 {trip.notes}
                             </p>
                         )}
-                    </div>
-                </header>
+                </div>
+            </header>
 
+            <div className="mx-auto max-w-7xl px-4 sm:px-6">
                 <section className="space-y-6">
                     <ItineraryTabs
                         tripId={trip.id}
@@ -1758,8 +1984,8 @@ export default function TripDetailPage({ params, searchParams }: PageProps) {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-slate-50 px-4 py-10 sm:px-6">
-                    <div className="mx-auto max-w-7xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+                <main className="min-h-screen bg-[#0c0115] px-4 py-10 sm:px-6">
+                    <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
                         Loading itinerary...
                     </div>
                 </main>

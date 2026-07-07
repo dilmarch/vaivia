@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, X } from "lucide-react";
+import { AlertTriangle, Lock, X } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -421,15 +421,15 @@ export default function TransportationForm({
                 onReady={() => setIsGoogleReady(true)}
             />
             <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
+                className="vaivia-modal-backdrop"
                 onClick={requestClose}
             >
                 <aside
-                    className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-md border border-slate-200 bg-white shadow-xl"
+                    className="vaivia-modal-panel max-w-4xl"
                     onClick={(event) => event.stopPropagation()}
                 >
-                    <div className="flex min-h-32 items-center gap-4 border-b border-slate-200 bg-slate-50 p-5">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-md border border-slate-200 bg-white text-3xl">
+                    <div className="vaivia-modal-header flex min-h-32 items-center gap-4">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/90 text-3xl text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.12)]">
                             {mode === "airplane" && logoUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -447,17 +447,17 @@ export default function TransportationForm({
                             )}
                         </div>
                         <div className="flex-1">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <p className="vaivia-modal-eyebrow">
                                 Add transportation
                             </p>
-                            <h2 className="mt-1 text-2xl font-semibold text-slate-950">
+                            <h2 className="vaivia-modal-title">
                                 {modeLabel()}
                             </h2>
                         </div>
                         <button
                             type="button"
                             onClick={requestClose}
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                            className="vaivia-modal-close"
                             aria-label="Close transportation form"
                         >
                             <X className="h-4 w-4" aria-hidden="true" />
@@ -466,7 +466,7 @@ export default function TransportationForm({
 
                     <form
                         action={submitAction}
-                        className="space-y-5 p-5"
+                        className="vaivia-modal-body space-y-5"
                         onChange={() => setHasUnsavedChanges(true)}
                     >
                         <input type="hidden" name="trip_id" value={tripId} />
@@ -508,6 +508,23 @@ export default function TransportationForm({
                             name="flight_number"
                             value={firstFlightNumber}
                         />
+
+                        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                            <input
+                                type="checkbox"
+                                name="is_private"
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                            />
+                            <span>
+                                <span className="flex items-center gap-2 font-semibold text-slate-900">
+                                    <Lock className="h-4 w-4" aria-hidden="true" />
+                                    Private
+                                </span>
+                                <span className="mt-1 block text-xs text-slate-500">
+                                    Mark this transportation as visible only to you when trip sharing is enabled.
+                                </span>
+                            </span>
+                        </label>
 
                         <div>
                             <p className="block text-sm font-medium text-slate-700">
@@ -855,11 +872,11 @@ export default function TransportationForm({
 
             {showCloseWarning && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 px-4 py-6"
+                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowCloseWarning(false)}
                 >
                     <div
-                        className="w-full max-w-md rounded-md bg-white p-5 shadow-xl"
+                        className="vaivia-modal-confirm"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">

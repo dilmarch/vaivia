@@ -4,10 +4,10 @@ import Link from "next/link";
 import Script from "next/script";
 import {
     AlertTriangle,
-    ArrowUpRight,
     ChevronLeft,
     ChevronRight,
     Minus,
+    Pencil,
     Plus,
     Trash2,
     X,
@@ -46,26 +46,23 @@ const tripCardVariants = [
     {
         mask: "/trip-shape-a.svg?v=wide-20260707",
         transform: "md:translate-y-0",
-        arrowClass: "left-9 top-7",
+        daysCircleClass: "left-9 top-7",
         contentClass: "left-12 right-14",
         dateClass: "",
-        daysClass: "bottom-10 right-16",
     },
     {
         mask: "/trip-shape-b.svg?v=wide-20260707",
         transform: "md:translate-y-8",
-        arrowClass: "left-10 top-7",
+        daysCircleClass: "left-10 top-7",
         contentClass: "left-14 right-12",
         dateClass: "",
-        daysClass: "bottom-9 left-14",
     },
     {
         mask: "/trip-shape-c.svg?v=wide-20260707",
         transform: "md:translate-y-2",
-        arrowClass: "left-9 top-7",
+        daysCircleClass: "left-9 top-7",
         contentClass: "left-12 right-12",
         dateClass: "",
-        daysClass: "bottom-9 right-16",
     },
 ];
 
@@ -76,6 +73,10 @@ function travelInputProps() {
         "data-lpignore": "true",
         "data-1p-ignore": "true",
     };
+}
+
+function getEditButtonPosition(index: number) {
+    return index % 3 === 1 ? "bottom-9 left-14" : "bottom-10 right-16";
 }
 
 function parseDestinationList(destination?: string | null) {
@@ -246,14 +247,16 @@ function getWeekTripSegments(
         );
 }
 
-function DashboardTripCard({
+export function DashboardTripCard({
     trip,
     index,
     isGoogleReady,
+    disableHoverTransform = false,
 }: {
     trip: DashboardTrip;
     index: number;
     isGoogleReady: boolean;
+    disableHoverTransform?: boolean;
 }) {
     const coverImageUrl = useTripCoverImage(trip, isGoogleReady);
     const [hasImageLoadError, setHasImageLoadError] = useState(false);
@@ -283,7 +286,9 @@ function DashboardTripCard({
     return (
         <Link
             href={`/trips/${trip.id}`}
-            className={`group relative block h-[500px] min-w-[300px] snap-start transition-all duration-500 ease-out hover:-translate-y-3 hover:scale-110 md:h-[535px] md:min-w-[330px] lg:h-[560px] lg:min-w-[355px] ${variant.transform}`}
+            className={`group relative block h-[500px] min-w-[300px] snap-start transition-all duration-500 ease-out md:h-[535px] md:min-w-[330px] lg:h-[560px] lg:min-w-[355px] ${
+                disableHoverTransform ? "" : "hover:-translate-y-3 hover:scale-110"
+            } ${variant.transform}`}
             style={{
                 filter: `drop-shadow(0 28px 70px ${accent}24)`,
             }}
@@ -333,13 +338,15 @@ function DashboardTripCard({
             </div>
 
             <div
-                className={`absolute z-20 flex h-14 w-14 items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 ${variant.arrowClass}`}
+                className={`absolute z-20 flex h-16 w-16 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 ${variant.daysCircleClass}`}
                 style={{ backgroundColor: accent }}
             >
-                <ArrowUpRight
-                    className="h-7 w-7 stroke-[2.4]"
-                    aria-hidden="true"
-                />
+                <span className="text-xl font-black leading-none">
+                    {days || "-"}
+                </span>
+                <span className="mt-0.5 text-[9px] font-black uppercase leading-none tracking-[0.08em]">
+                    Days
+                </span>
             </div>
 
             <div
@@ -379,18 +386,6 @@ function DashboardTripCard({
                 </p>
             </div>
 
-            <div
-                className={`absolute z-20 text-white [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.daysClass}`}
-            >
-                <div>
-                    <p className="text-[1.7rem] font-black leading-none">
-                        {days || "-"}
-                    </p>
-                    <p className="mt-1 text-[12.5px] font-black uppercase tracking-[0.08em] text-white/70">
-                        Days
-                    </p>
-                </div>
-            </div>
         </Link>
     );
 }
@@ -398,9 +393,11 @@ function DashboardTripCard({
 function TripsGrid({
     trips,
     isGoogleReady,
+    onEditTrip,
 }: {
     trips: DashboardTrip[];
     isGoogleReady: boolean;
+    onEditTrip: (trip: DashboardTrip) => void;
 }) {
     if (trips.length === 0) {
         return (
@@ -433,7 +430,7 @@ function TripsGrid({
                     </p>
 
                     <Link
-                        href="/"
+                        href="/trips"
                         className="text-sm font-extrabold text-[#d7ff2f] transition hover:text-white"
                     >
                         See all trips →
@@ -442,12 +439,27 @@ function TripsGrid({
 
                 <div className="your-trips-scroll relative z-10 flex snap-x snap-mandatory items-start gap-12 overflow-x-auto px-2 pb-10 pt-6 [scrollbar-width:none] md:gap-14 md:overflow-visible xl:gap-20">
                     {trips.slice(0, 3).map((trip, index) => (
-                        <DashboardTripCard
+                        <div
                             key={trip.id}
-                            trip={trip}
-                            index={index}
-                            isGoogleReady={isGoogleReady}
-                        />
+                            className="relative transition-all duration-500 ease-out hover:-translate-y-3 hover:scale-110"
+                        >
+                            <DashboardTripCard
+                                trip={trip}
+                                index={index}
+                                isGoogleReady={isGoogleReady}
+                                disableHoverTransform
+                            />
+                            <button
+                                type="button"
+                                onClick={() => onEditTrip(trip)}
+                                className={`absolute z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950 ${getEditButtonPosition(
+                                    index
+                                )}`}
+                                aria-label={`Edit ${trip.title || "trip"}`}
+                            >
+                                <Pencil className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                        </div>
                     ))}
                 </div>
             </div>
@@ -683,8 +695,8 @@ function QuickAddFan({ trips }: { trips: DashboardTrip[] }) {
             {isOpen && (
                 <div className="mb-3 flex flex-col items-end gap-2">
                     {showTripPicker && (
-                        <div className="w-64 rounded-md border border-slate-200 bg-white p-3 shadow-lg">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
+                            <p className="px-3 pb-2 text-xs font-bold uppercase tracking-wide text-lime-200">
                                 {tripPickerLabel}
                             </p>
                             <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
@@ -702,7 +714,7 @@ function QuickAddFan({ trips }: { trips: DashboardTrip[] }) {
                                         </Link>
                                     ))
                                 ) : (
-                                    <p className="px-3 py-2 text-sm text-slate-500">
+                                    <p className="px-3 py-2 text-sm text-slate-400">
                                         Create a trip first.
                                     </p>
                                 )}
@@ -828,6 +840,13 @@ export default function TripDashboardClient({
         closeModal();
     }
 
+    function openEditModal(trip: DashboardTrip) {
+        setSelectedTrip(trip);
+        setHasUnsavedChanges(false);
+        setShowCloseWarning(false);
+        setShowDeleteWarning(false);
+    }
+
     function discardChangesAndClose() {
         closeModal();
     }
@@ -842,7 +861,11 @@ export default function TripDashboardClient({
             />
 
             <div className="space-y-8">
-                <TripsGrid trips={trips} isGoogleReady={isGoogleReady} />
+                <TripsGrid
+                    trips={trips}
+                    isGoogleReady={isGoogleReady}
+                    onEditTrip={openEditModal}
+                />
                 <DashboardMonthCalendar trips={trips} />
             </div>
 
@@ -850,27 +873,32 @@ export default function TripDashboardClient({
 
             {selectedTrip && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
+                    className="vaivia-modal-backdrop"
                     onClick={requestCloseModal}
                 >
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="edit-trip-title"
-                        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md bg-white shadow-xl"
+                        className="vaivia-modal-panel max-w-2xl"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between gap-4 border-b border-slate-200 p-5">
-                            <h2
-                                id="edit-trip-title"
-                                className="text-xl font-semibold text-slate-900"
-                            >
-                                Edit trip
-                            </h2>
+                        <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                            <div>
+                                <p className="vaivia-modal-eyebrow">
+                                    Trip settings
+                                </p>
+                                <h2
+                                    id="edit-trip-title"
+                                    className="vaivia-modal-title"
+                                >
+                                    Edit trip
+                                </h2>
+                            </div>
                             <button
                                 type="button"
                                 onClick={requestCloseModal}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-300 text-slate-700 transition hover:bg-slate-100"
+                                className="vaivia-modal-close"
                                 aria-label="Close edit trip"
                             >
                                 <X className="h-4 w-4" aria-hidden="true" />
@@ -881,7 +909,7 @@ export default function TripDashboardClient({
                             ref={formRef}
                             action={updateTripAction}
                             onChange={() => setHasUnsavedChanges(true)}
-                            className="space-y-5 p-5"
+                            className="vaivia-modal-body space-y-5"
                         >
                             <input type="hidden" name="trip_id" value={selectedTrip.id} />
 
@@ -906,6 +934,7 @@ export default function TripDashboardClient({
 
                             <TripDestinationPicker
                                 inputId="tripEditDestination"
+                                tripId={selectedTrip.id}
                                 initialDestination={selectedTrip.destination}
                                 initialCoverImageUrl={
                                     selectedTrip.cover_image_url ||
@@ -991,14 +1020,14 @@ export default function TripDashboardClient({
 
             {showCloseWarning && selectedTrip && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 px-4 py-6"
+                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowCloseWarning(false)}
                 >
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="unsaved-trip-title"
-                        className="w-full max-w-md rounded-md bg-white p-5 shadow-xl"
+                        className="vaivia-modal-confirm"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">
@@ -1047,14 +1076,14 @@ export default function TripDashboardClient({
 
             {showDeleteWarning && selectedTrip && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 px-4 py-6"
+                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowDeleteWarning(false)}
                 >
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="delete-trip-title"
-                        className="w-full max-w-md rounded-md bg-white p-5 shadow-xl"
+                        className="vaivia-modal-confirm"
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">

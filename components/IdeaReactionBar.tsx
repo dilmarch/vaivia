@@ -1,5 +1,6 @@
 "use client";
 
+import { Heart, ThumbsDown, ThumbsUp } from "lucide-react";
 import type {
     IdeaReactionProfile,
     IdeaReactionSummary,
@@ -18,12 +19,12 @@ type IdeaReactionBarProps = {
 const REACTION_OPTIONS: Array<{
     type: IdeaReactionType;
     label: string;
-    symbol: string;
     valueLabel: string;
+    Icon: typeof Heart;
 }> = [
-    { type: "heart", label: "Heart", symbol: "♥", valueLabel: "+2" },
-    { type: "thumbs_up", label: "Thumbs up", symbol: "👍", valueLabel: "+1" },
-    { type: "thumbs_down", label: "Thumbs down", symbol: "👎", valueLabel: "-1" },
+    { type: "heart", label: "Heart", valueLabel: "+2", Icon: Heart },
+    { type: "thumbs_up", label: "Thumbs up", valueLabel: "+1", Icon: ThumbsUp },
+    { type: "thumbs_down", label: "Thumbs down", valueLabel: "-1", Icon: ThumbsDown },
 ];
 
 function getProfileLabel(profile: IdeaReactionProfile) {
@@ -56,7 +57,7 @@ function ReactionAvatarStack({
             {profiles.slice(0, 3).map((profile, index) => (
                 <span
                     key={`${profile.user_id}-${index}`}
-                    className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-white bg-slate-200 text-[9px] font-bold text-slate-600 shadow-sm"
+                    className="relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-[#0c0115] bg-lime-200 text-[9px] font-black text-slate-950 shadow-sm"
                     style={{ marginLeft: index === 0 ? 0 : -12 }}
                     title={getProfileLabel(profile)}
                 >
@@ -90,7 +91,7 @@ export default function IdeaReactionBar({
 
     return (
         <div
-            className={`flex flex-wrap gap-2 border-t border-slate-200 ${
+            className={`flex flex-wrap gap-2 border-t border-white/10 ${
                 compact ? "mt-3 pt-3" : "mt-4 pt-4"
             }`}
         >
@@ -98,6 +99,7 @@ export default function IdeaReactionBar({
                 const summary = summaryByType.get(option.type);
                 const isSelected = currentUserReaction === option.type;
                 const count = summary?.count || 0;
+                const Icon = option.Icon;
 
                 return (
                     <form key={option.type} action={toggleReactionAction}>
@@ -107,21 +109,21 @@ export default function IdeaReactionBar({
                         <button
                             type="submit"
                             aria-pressed={isSelected}
-                            className={`inline-flex min-h-9 items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
+                            className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] transition duration-300 hover:-translate-y-0.5 ${
                                 isSelected
-                                    ? "border-slate-900 bg-slate-900 text-white"
-                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                    ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(190,242,100,0.22)]"
+                                    : "border-white/10 bg-white/[0.06] text-slate-200 hover:border-lime-300/50 hover:bg-white/[0.1] hover:text-white"
                             }`}
                             title={`${option.label} (${option.valueLabel})`}
                         >
-                            <span aria-hidden="true">{option.symbol}</span>
+                            <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                             <span>{option.valueLabel}</span>
                             <ReactionAvatarStack profiles={summary?.profiles || []} />
                             <span
-                                className={`rounded px-1.5 py-0.5 ${
+                                className={`rounded-full px-1.5 py-0.5 ${
                                     isSelected
-                                        ? "bg-white/15 text-white"
-                                        : "bg-slate-100 text-slate-600"
+                                        ? "bg-slate-950/10 text-slate-950"
+                                        : "bg-white/10 text-slate-300"
                                 }`}
                             >
                                 {count}

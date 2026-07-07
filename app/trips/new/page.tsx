@@ -97,20 +97,20 @@ async function NewTripContent() {
     }
 
     return (
-        <main className="min-h-screen bg-slate-50 px-6 py-10">
+        <main className="min-h-screen bg-[#0c0115] px-6 py-10">
             <div className="mx-auto max-w-2xl">
-                <Link href="/" className="text-sm text-slate-600 hover:text-slate-900">
+                <Link href="/" className="text-sm font-semibold text-lime-200 hover:text-lime-100">
                     ← Back to dashboard
                 </Link>
 
                 <header className="mt-6 mb-8">
-                    <p className="text-sm font-medium uppercase tracking-wide text-slate-500">
+                    <p className="text-sm font-bold uppercase tracking-[0.35em] text-lime-200/80">
                         VAIVIA
                     </p>
-                    <h1 className="mt-2 text-3xl font-bold text-slate-900">
+                    <h1 className="mt-2 text-3xl font-black text-white">
                         New Trip
                     </h1>
-                    <p className="mt-2 text-slate-600">
+                    <p className="mt-2 text-slate-300">
                         Add the basic details for your trip.
                     </p>
                 </header>
@@ -212,8 +212,8 @@ export default function NewTripPage() {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-slate-50 px-6 py-10">
-                    <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-sm">
+                <main className="min-h-screen bg-[#0c0115] px-6 py-10">
+                    <div className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
                         Loading trip form...
                     </div>
                 </main>

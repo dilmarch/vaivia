@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { IdeaForm } from "@/components/IdeasTab";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
@@ -74,41 +74,47 @@ export default function ItineraryQuickAdd({
             />
             {isIdeaOpen && createIdeaAction && (
                 <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
+                    className="vaivia-modal-backdrop"
                     onClick={() => setIsIdeaOpen(false)}
                 >
                     <div
                         role="dialog"
                         aria-modal="true"
                         aria-labelledby="quick-add-idea-title"
-                        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md bg-white p-5 shadow-xl"
+                        className="vaivia-modal-panel max-w-2xl"
                         onClick={(event) => event.stopPropagation()}
                     >
-                        <div className="mb-5 flex items-start justify-between gap-4">
+                        <div className="vaivia-modal-header flex items-start justify-between gap-4">
                             <div>
+                                <p className="vaivia-modal-eyebrow">
+                                    Quick add
+                                </p>
                                 <h2
                                     id="quick-add-idea-title"
-                                    className="text-xl font-semibold text-slate-900"
+                                    className="vaivia-modal-title"
                                 >
                                     Add activity idea
                                 </h2>
-                                <p className="mt-1 text-sm text-slate-500">
+                                <p className="mt-2 text-sm text-slate-300">
                                     Save a loose idea for this trip.
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={() => setIsIdeaOpen(false)}
-                                className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                                className="vaivia-modal-close"
+                                aria-label="Close add activity idea"
                             >
-                                Cancel
+                                <X className="h-4 w-4" aria-hidden="true" />
                             </button>
                         </div>
-                        <IdeaForm
-                            tripId={tripId}
-                            action={createIdeaAction}
-                            onCancel={() => setIsIdeaOpen(false)}
-                        />
+                        <div className="vaivia-modal-body">
+                            <IdeaForm
+                                tripId={tripId}
+                                action={createIdeaAction}
+                                onCancel={() => setIsIdeaOpen(false)}
+                            />
+                        </div>
                     </div>
                 </div>
             )}
@@ -121,7 +127,7 @@ export default function ItineraryQuickAdd({
                     <div className="mb-3 flex flex-col items-end gap-2">
                         <Link
                             href="/trips/new"
-                            className="block rounded-full bg-slate-900 px-4 py-2 text-right text-sm font-medium text-white shadow-md transition hover:bg-slate-700"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                         >
                             Add trip
                         </Link>
@@ -131,21 +137,21 @@ export default function ItineraryQuickAdd({
                                 setIsTransportationOpen(true);
                                 setIsOpen(false);
                             }}
-                            className="block rounded-full border border-slate-300 bg-white px-4 py-2 text-right text-sm font-medium text-slate-800 shadow-md transition hover:bg-slate-50"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                         >
                             Add transportation
                         </button>
                         <button
                             type="button"
                             onClick={() => openItineraryForm("Add accommodation")}
-                            className="block rounded-full border border-slate-300 bg-white px-4 py-2 text-right text-sm font-medium text-slate-800 shadow-md transition hover:bg-slate-50"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                         >
                             Add accommodation
                         </button>
                         <button
                             type="button"
                             onClick={() => openItineraryForm("Add food or restaurant")}
-                            className="block rounded-full border border-slate-300 bg-white px-4 py-2 text-right text-sm font-medium text-slate-800 shadow-md transition hover:bg-slate-50"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                         >
                             Add food or restaurant
                         </button>
@@ -154,7 +160,7 @@ export default function ItineraryQuickAdd({
                             onClick={() =>
                                 openItineraryForm("Add scheduled activity/event")
                             }
-                            className="block rounded-full border border-slate-300 bg-white px-4 py-2 text-right text-sm font-medium text-slate-800 shadow-md transition hover:bg-slate-50"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                         >
                             Add scheduled activity/event
                         </button>
@@ -167,7 +173,7 @@ export default function ItineraryQuickAdd({
                                 setIsOpen(false);
                             }}
                             disabled={!createIdeaAction}
-                            className="block rounded-full border border-slate-300 bg-white px-4 py-2 text-right text-sm font-medium text-slate-800 shadow-md transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             Add activity idea
                         </button>
@@ -177,7 +183,7 @@ export default function ItineraryQuickAdd({
                 <button
                     type="button"
                     onClick={() => setIsOpen((current) => !current)}
-                    className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-900 text-white shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2"
+                    className="flex h-14 w-14 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(190,242,100,0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                     aria-label={
                         isOpen
                             ? "Close itinerary quick add menu"

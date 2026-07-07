@@ -1,0 +1,237 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import TripsIndexClient from "@/components/TripsIndexClient";
+import type { DashboardTrip } from "@/components/TripDashboardClient";
+import { createClient } from "@/lib/supabase/server";
+
+export const metadata: Metadata = {
+    title: "My Trips – VAIVIA",
+};
+
+type TripUpdatePayload = {
+    title: string;
+    destination: string;
+    start_date: string | null;
+    end_date: string | null;
+    notes: string;
+    cover_image_url?: string | null;
+};
+
+function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
+    const message = error.message?.toLowerCase() || "";
+
+    return (
+        error.code === "42703" ||
+        error.code === "PGRST204" ||
+        (message.includes("column") &&
+            (message.includes("cover_image_url") ||
+                message.includes("schema cache")))
+    );
+}
+
+function removeTripCoverColumn(payload: TripUpdatePayload) {
+    const { cover_image_url, ...fallbackPayload } = payload;
+
+    void cover_image_url;
+
+    return fallbackPayload;
+}
+
+async function updateTrip(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = String(formData.get("trip_id") || "");
+    const title = String(formData.get("title") || "");
+    const destination = String(formData.get("destination") || "");
+    const startDate = String(formData.get("start_date") || "");
+    const endDate = String(formData.get("end_date") || "");
+    const tripCoverImageUrl = String(formData.get("cover_image_url") || "").trim();
+    const notes = String(formData.get("notes") || "");
+
+    const payload: TripUpdatePayload = {
+        title,
+        destination,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        cover_image_url: tripCoverImageUrl || null,
+        notes,
+    };
+
+    let { error } = await supabase
+        .from("trips")
+        .update(payload)
+        .eq("id", tripId)
+        .eq("user_id", user.id);
+
+    if (error && isMissingTripCoverColumnError(error)) {
+        console.warn(
+            "Optional trip cover column is missing. Falling back to legacy trip fields.",
+            error
+        );
+        ({ error } = await supabase
+            .from("trips")
+            .update(removeTripCoverColumn(payload))
+            .eq("id", tripId)
+            .eq("user_id", user.id));
+    }
+
+    if (error) {
+        console.error("Error updating trip:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+            tripId,
+        });
+        throw new Error(
+            `Could not update trip: ${error.message ?? "Unknown Supabase error"}`
+        );
+    }
+
+    redirect("/trips");
+}
+
+async function deleteTrip(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = String(formData.get("trip_id") || "");
+
+    const { data: trip, error: tripError } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("id", tripId)
+        .eq("user_id", user.id)
+        .single();
+
+    if (tripError || !trip) {
+        console.error("Error finding trip to delete:", {
+            message: tripError?.message,
+            code: tripError?.code,
+            details: tripError?.details,
+            hint: tripError?.hint,
+            tripId,
+        });
+        throw new Error(
+            `Could not delete trip: ${
+                tripError?.message ?? "Trip was not found"
+            }`
+        );
+    }
+
+    const { error: itineraryError } = await supabase
+        .from("itinerary_items")
+        .delete()
+        .eq("trip_id", tripId);
+
+    if (itineraryError) {
+        console.error("Error deleting trip itinerary items:", {
+            message: itineraryError.message,
+            code: itineraryError.code,
+            details: itineraryError.details,
+            hint: itineraryError.hint,
+            tripId,
+        });
+        throw new Error(
+            `Could not delete trip itinerary items: ${
+                itineraryError.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
+    const { error } = await supabase
+        .from("trips")
+        .delete()
+        .eq("id", tripId)
+        .eq("user_id", user.id);
+
+    if (error) {
+        console.error("Error deleting trip:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+        });
+        throw new Error(
+            `Could not delete trip: ${error.message ?? "Unknown Supabase error"}`
+        );
+    }
+
+    redirect("/trips");
+}
+
+async function TripsIndexPageContent() {
+    await connection();
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const { data: trips, error } = await supabase
+        .from("trips")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("start_date", { ascending: true });
+
+    if (error) {
+        console.error("Error loading trips page:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            userId: user.id,
+        });
+    }
+
+    return (
+        <main className="min-h-screen bg-[#0c0115] px-4 pb-16 pt-24 text-white md:px-8 md:pt-28">
+            <TripsIndexClient
+                trips={(trips || []) as DashboardTrip[]}
+                updateTripAction={updateTrip}
+                deleteTripAction={deleteTrip}
+            />
+        </main>
+    );
+}
+
+export default function TripsIndexPage() {
+    return (
+        <Suspense
+            fallback={
+                <main className="min-h-screen bg-[#0c0115] px-4 py-28 text-white md:px-8">
+                    <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300">
+                        Loading trips...
+                    </div>
+                </main>
+            }
+        >
+            <TripsIndexPageContent />
+        </Suspense>
+    );
+}

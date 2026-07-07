@@ -1,5 +1,6 @@
 "use client";
 
+import { Lock } from "lucide-react";
 import { useState } from "react";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 
@@ -39,6 +40,7 @@ type TransportationEditFormProps = {
         airline_code?: string | null;
         duration?: string | null;
         notes?: string | null;
+        is_private?: boolean | null;
     };
 };
 
@@ -94,6 +96,24 @@ export default function TransportationEditForm({
             <input type="hidden" name="trip_id" value={tripId} />
             <input type="hidden" name="item_id" value={itemId} />
             <input type="hidden" name="duration" value={duration} />
+
+            <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <input
+                    type="checkbox"
+                    name="is_private"
+                    defaultChecked={Boolean(initialItem.is_private)}
+                    className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                />
+                <span>
+                    <span className="flex items-center gap-2 font-semibold text-slate-900">
+                        <Lock className="h-4 w-4" aria-hidden="true" />
+                        Private
+                    </span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                        Mark this transportation as visible only to you when trip sharing is enabled.
+                    </span>
+                </span>
+            </label>
 
             <div className="flex justify-end">
                 <button
