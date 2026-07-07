@@ -8,6 +8,7 @@ import ItineraryTabs from "@/components/ItineraryTabs";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripDestinationLine from "@/components/TripDestinationLine";
 import TripHeaderCover from "@/components/TripHeaderCover";
+import TripCountdown from "@/components/TripCountdown";
 import {
     FALLBACK_CATEGORY_LABEL,
     sortCategoriesByName,
@@ -731,49 +732,6 @@ function formatTripDate(dateString?: string | null) {
         day: "numeric",
         year: "numeric",
     });
-}
-
-function getDepartureCountdownDisplay(startDate?: string | null) {
-    const departureDate = parseTripDate(startDate);
-    if (!departureDate) {
-        return {
-            value: "TBD",
-            label: "Departure date not set",
-            detail: "Add your dates to start the countdown.",
-        };
-    }
-
-    const today = new Date();
-    const todayStart = new Date(
-        today.getFullYear(),
-        today.getMonth(),
-        today.getDate()
-    );
-    const dayDifference = Math.ceil(
-        (departureDate.getTime() - todayStart.getTime()) / 86400000
-    );
-
-    if (dayDifference === 0) {
-        return {
-            value: "0",
-            label: "Departing today",
-            detail: "Today is the day.",
-        };
-    }
-
-    if (dayDifference > 0) {
-        return {
-            value: String(dayDifference),
-            label: dayDifference === 1 ? "day until departure" : "days until departure",
-            detail: "Your next adventure is getting close.",
-        };
-    }
-
-    return {
-        value: String(Math.abs(dayDifference)),
-        label: Math.abs(dayDifference) === 1 ? "day since departure" : "days since departure",
-        detail: "This trip is already underway.",
-    };
 }
 
 async function createItineraryItem(formData: FormData) {
@@ -2113,8 +2071,6 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
         return (a.start_time || "99:99").localeCompare(b.start_time || "99:99");
     });
-    const departureCountdown = getDepartureCountdownDisplay(trip.start_date);
-
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripDocumentTitle
@@ -2157,22 +2113,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
                                 <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
                                 <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
-                                <div className="relative">
-                                    <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-950/70">
-                                        Countdown
-                                    </p>
-                                    <div className="mt-1 flex items-end gap-3">
-                                        <span className="text-7xl font-black leading-none tracking-tight sm:text-8xl">
-                                            {departureCountdown.value}
-                                        </span>
-                                        <span className="pb-2 text-base font-black uppercase leading-tight tracking-[0.12em]">
-                                            {departureCountdown.label}
-                                        </span>
-                                    </div>
-                                    <p className="mt-3 text-sm font-bold text-slate-950/70">
-                                        {departureCountdown.detail}
-                                    </p>
-                                </div>
+                                <TripCountdown startDate={trip.start_date} />
                             </div>
                         </div>
 

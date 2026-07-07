@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import { Suspense } from "react";
 import AppLayoutShell from "@/components/AppLayoutShell";
 import AppNav, { AppNavFallback } from "@/components/AppNav";
+import CountdownPreferenceProvider from "@/components/CountdownPreferenceProvider";
 import PinkModeProvider from "@/components/PinkModeProvider";
 import "./globals.css";
 
@@ -37,6 +38,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <CountdownPreferenceProvider />
           <PinkModeProvider />
           <AppLayoutShell
             nav={

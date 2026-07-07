@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import CountdownUnitToggle from "@/components/CountdownUnitToggle";
 import PinkModeToggle from "@/components/PinkModeToggle";
 import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
 import { createClient } from "@/lib/supabase/server";
@@ -212,6 +213,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                 </p>
                             </div>
                             <PinkModeToggle />
+                            <CountdownUnitToggle />
                         </div>
                     ) : (
                         <div className="space-y-6">

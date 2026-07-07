@@ -37,7 +37,7 @@ type AccountMenuProps = {
     joinedAt?: string | null;
     profile?: Partial<UserProfile> | null;
     preferences?: Partial<UserPreferences> | null;
-    variant?: "top" | "sidebar-profile" | "sidebar-settings";
+    variant?: "top" | "sidebar-profile" | "sidebar-settings" | "mobile-profile";
 };
 
 function getBrowserTimezone() {
@@ -289,7 +289,26 @@ export default function AccountMenu({
 
     return (
         <>
-            {variant === "sidebar-settings" ? (
+            {variant === "mobile-profile" ? (
+                <button
+                    type="button"
+                    onClick={() => setIsOpen(true)}
+                    className="flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                    aria-label="My account"
+                >
+                    {avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={avatarUrl}
+                            alt=""
+                            className="h-5 w-5 rounded-full border border-lime-300/80 object-cover shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.25)]"
+                        />
+                    ) : (
+                        <UserRound className="h-5 w-5" aria-hidden="true" />
+                    )}
+                    <span className="truncate">Account</span>
+                </button>
+            ) : variant === "sidebar-settings" ? (
                 <Link
                     href="/settings"
                     className="group/item flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border border-transparent p-0 text-slate-400 transition-all duration-300 ease-out hover:border-white/10 hover:bg-white/[0.06] hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:px-3 group-hover/sidebar:py-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:px-3 group-focus-within/sidebar:py-2"

@@ -138,7 +138,7 @@ function NavItemButton({
 }) {
     const Icon = item.icon;
     const baseClass = mobile
-        ? `flex min-h-12 flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold transition ${
+        ? `flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold transition ${
               isActive
                   ? "bg-lime-400/10 text-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.18)]"
                   : "text-slate-400 hover:bg-white/5 hover:text-white"
@@ -275,7 +275,7 @@ export default function AppSidebarNav({
             </aside>
 
             <nav
-                className="fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 gap-1 border-t border-white/10 bg-slate-950/95 px-2 py-2 text-white shadow-2xl shadow-black/50 backdrop-blur-xl md:hidden"
+                className="fixed inset-x-0 bottom-0 z-50 flex gap-1 overflow-x-auto border-t border-white/10 bg-slate-950/95 px-2 py-2 text-white shadow-2xl shadow-black/50 backdrop-blur-xl md:hidden"
                 aria-label="Mobile navigation"
             >
                 {navItems.slice(0, 5).map((item) => (
@@ -286,6 +286,39 @@ export default function AppSidebarNav({
                         mobile
                     />
                 ))}
+                <Link
+                    href="/settings"
+                    aria-label="Settings"
+                    aria-current={pathname.startsWith("/settings") ? "page" : undefined}
+                    className={`flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold transition ${
+                        pathname.startsWith("/settings")
+                            ? "bg-lime-400/10 text-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.18)]"
+                            : "text-slate-400 hover:bg-white/5 hover:text-white"
+                    }`}
+                    prefetch
+                >
+                    <Settings className="h-5 w-5" aria-hidden="true" />
+                    <span className="truncate">Settings</span>
+                </Link>
+                {userId ? (
+                    <AccountMenu
+                        userId={userId}
+                        email={email}
+                        joinedAt={joinedAt}
+                        profile={profile}
+                        preferences={preferences}
+                        variant="mobile-profile"
+                    />
+                ) : (
+                    <Link
+                        href="/auth/login"
+                        aria-label="Sign in"
+                        className="flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white"
+                    >
+                        <Settings className="h-5 w-5" aria-hidden="true" />
+                        <span className="truncate">Sign in</span>
+                    </Link>
+                )}
             </nav>
         </>
     );
