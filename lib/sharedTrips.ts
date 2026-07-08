@@ -1,5 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type SharedTripMemberProfile = {
+    id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    username?: string | null;
+    avatar_url?: string | null;
+};
+
 export type SharedTrip = {
     id: string;
     user_id?: string | null;
@@ -16,6 +24,7 @@ export type SharedTrip = {
     updated_at?: string | null;
     membershipRole?: string | null;
     membershipStatus?: string | null;
+    memberProfiles?: SharedTripMemberProfile[];
 };
 
 function normalizeJoinedTrip(row: Record<string, unknown>) {
@@ -88,6 +97,82 @@ export async function loadActiveMemberTrips(
                 String(b.start_date || "9999-12-31")
             )
         );
+
+    const tripIds = trips.map((trip) => trip.id).filter(Boolean);
+
+    if (tripIds.length > 0) {
+        const { data: memberRows, error: membersError } = await supabase
+            .from("trip_members")
+            .select("trip_id,user_id,status")
+            .in("trip_id", tripIds)
+            .eq("status", "active");
+
+        if (!membersError) {
+            const memberUserIdsByTripId = new Map<string, Set<string>>();
+
+            trips.forEach((trip) => {
+                if (!trip.id) return;
+                memberUserIdsByTripId.set(
+                    trip.id,
+                    new Set(
+                        [trip.user_id]
+                            .filter(
+                                (memberUserId): memberUserId is string =>
+                                    Boolean(memberUserId) && memberUserId !== userId
+                            )
+                    )
+                );
+            });
+
+            ((memberRows || []) as Array<{
+                trip_id?: string | null;
+                user_id?: string | null;
+            }>).forEach((member) => {
+                if (!member.trip_id || !member.user_id) return;
+                if (member.user_id === userId) return;
+
+                const userIds =
+                    memberUserIdsByTripId.get(member.trip_id) || new Set<string>();
+                userIds.add(member.user_id);
+                memberUserIdsByTripId.set(member.trip_id, userIds);
+            });
+
+            const profileUserIds = Array.from(
+                new Set(
+                    Array.from(memberUserIdsByTripId.values()).flatMap((userIds) =>
+                        Array.from(userIds)
+                    )
+                )
+            );
+
+            if (profileUserIds.length > 0) {
+                const { data: profileRows, error: profilesError } = await supabase
+                    .from("user_profiles")
+                    .select("id,first_name,last_name,username,avatar_url")
+                    .in("id", profileUserIds);
+
+                if (!profilesError) {
+                    const profilesById = new Map(
+                        ((profileRows || []) as SharedTripMemberProfile[]).map(
+                            (profile) => [profile.id, profile]
+                        )
+                    );
+
+                    trips.forEach((trip) => {
+                        const userIds = trip.id
+                            ? memberUserIdsByTripId.get(trip.id)
+                            : undefined;
+                        trip.memberProfiles = Array.from(userIds || [])
+                            .map((memberUserId) => profilesById.get(memberUserId))
+                            .filter(
+                                (profile): profile is SharedTripMemberProfile =>
+                                    Boolean(profile)
+                            );
+                    });
+                }
+            }
+        }
+    }
 
     return { trips, error: error || ownerTripsError || null };
 }

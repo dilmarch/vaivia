@@ -303,6 +303,33 @@
     @apply w-full max-w-md rounded-[24px] border border-white/10 bg-white p-5 text-slate-950 shadow-2xl;
   }
 
+  .pac-container {
+    z-index: 10000 !important;
+    border: 1px solid rgb(255 255 255 / 0.1) !important;
+    border-radius: 18px !important;
+    background: #080511 !important;
+    color: white !important;
+    overflow: hidden;
+    box-shadow: 0 24px 70px rgb(0 0 0 / 0.45) !important;
+  }
+
+  .pac-item {
+    border-top: 1px solid rgb(255 255 255 / 0.08) !important;
+    color: rgb(203 213 225) !important;
+    padding: 0.65rem 0.9rem !important;
+    cursor: pointer;
+  }
+
+  .pac-item:hover,
+  .pac-item-selected {
+    background: rgb(255 255 255 / 0.08) !important;
+  }
+
+  .pac-item-query {
+    color: white !important;
+    font-weight: 800;
+  }
+
   @keyframes vaivia-add-fan-out {
     0% {
       opacity: 0;

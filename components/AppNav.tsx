@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import type { UserPreferences, UserProfile } from "@/components/AccountMenu";
 import AppSidebarNav from "@/components/AppSidebarNav";
 import AppTopActionBar, { type AppNotification } from "@/components/AppTopActionBar";
+import GlobalQuickAdd from "@/components/GlobalQuickAdd";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
 import {
@@ -154,10 +155,13 @@ export default async function AppNav() {
                 firstTripId={upcomingTrips[0]?.id || null}
             />
             {user ? (
-                <AppTopActionBar
-                    trips={upcomingTrips}
-                    notifications={notifications}
-                />
+                <>
+                    <AppTopActionBar
+                        trips={upcomingTrips}
+                        notifications={notifications}
+                    />
+                    <GlobalQuickAdd trips={upcomingTrips} />
+                </>
             ) : null}
         </>
     );

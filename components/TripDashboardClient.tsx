@@ -6,9 +6,7 @@ import {
     AlertTriangle,
     ChevronLeft,
     ChevronRight,
-    Minus,
     Pencil,
-    Plus,
     Share2,
     Trash2,
     X,
@@ -20,6 +18,7 @@ import { useTripCoverImage } from "@/components/TripCoverImage";
 
 export type DashboardTrip = {
     id: string;
+    user_id?: string | null;
     title: string;
     destination?: string | null;
     cover_image_url?: string | null;
@@ -27,10 +26,18 @@ export type DashboardTrip = {
     start_date?: string | null;
     end_date?: string | null;
     notes?: string | null;
+    memberProfiles?: {
+        id: string;
+        first_name?: string | null;
+        last_name?: string | null;
+        username?: string | null;
+        avatar_url?: string | null;
+    }[];
 };
 
 type TripDashboardClientProps = {
     trips: DashboardTrip[];
+    currentUserId?: string | null;
     updateTripAction: (formData: FormData) => Promise<void>;
     deleteTripAction: (formData: FormData) => Promise<void>;
 };
@@ -81,6 +88,28 @@ function getEditButtonPosition(index: number) {
     return index % 3 === 1 ? "bottom-9 left-14" : "bottom-10 right-16";
 }
 
+function getMemberDisplayName(
+    member: NonNullable<DashboardTrip["memberProfiles"]>[number]
+) {
+    return (
+        [member.first_name, member.last_name].filter(Boolean).join(" ").trim() ||
+        member.username ||
+        "Trip member"
+    );
+}
+
+function getMemberInitials(
+    member: NonNullable<DashboardTrip["memberProfiles"]>[number]
+) {
+    const displayName = getMemberDisplayName(member);
+    return displayName
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+}
+
 function getPrimaryDestinationFontSize(destination: string) {
     const characterCount = destination.trim().length;
 
@@ -109,6 +138,58 @@ function getPrimaryDestinationLetterSpacing(destination: string) {
     if (characterCount <= 7) return "-0.08em";
     if (characterCount <= 12) return "-0.055em";
     return "-0.035em";
+}
+
+function TripMemberAvatarStack({
+    members,
+}: {
+    members: NonNullable<DashboardTrip["memberProfiles"]>;
+}) {
+    const visibleMembers = members.slice(0, 4);
+    const remainingCount = Math.max(members.length - visibleMembers.length, 0);
+
+    if (members.length === 0) return null;
+
+    return (
+        <div
+            className="absolute left-[6.85rem] top-8 z-20 flex items-center"
+            aria-label={`${members.length} other ${
+                members.length === 1 ? "person is" : "people are"
+            } going on this trip`}
+        >
+            {visibleMembers.map((member, memberIndex) => (
+                <span
+                    key={member.id}
+                    className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-[#0c0115] bg-slate-950 text-[10px] font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.28)]"
+                    style={{
+                        marginLeft: memberIndex === 0 ? 0 : -10,
+                        zIndex: visibleMembers.length - memberIndex,
+                    }}
+                    title={getMemberDisplayName(member)}
+                >
+                    {member.avatar_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={member.avatar_url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                        />
+                    ) : (
+                        getMemberInitials(member)
+                    )}
+                </span>
+            ))}
+            {remainingCount > 0 ? (
+                <span
+                    className="relative flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#0c0115] bg-[var(--vaivia-neon-soft-solid)] text-[10px] font-black text-slate-950 shadow-[0_0_24px_rgba(0,0,0,0.28)]"
+                    style={{ marginLeft: -10 }}
+                    title={`${remainingCount} more`}
+                >
+                    +{remainingCount}
+                </span>
+            ) : null}
+        </div>
+    );
 }
 
 function parseDestinationList(destination?: string | null) {
@@ -283,11 +364,13 @@ export function DashboardTripCard({
     trip,
     index,
     isGoogleReady,
+    currentUserId,
     disableHoverTransform = false,
 }: {
     trip: DashboardTrip;
     index: number;
     isGoogleReady: boolean;
+    currentUserId?: string | null;
     disableHoverTransform?: boolean;
 }) {
     const coverImageUrl = useTripCoverImage(trip, isGoogleReady);
@@ -297,6 +380,9 @@ export function DashboardTripCard({
     const secondLineDestinations = destinations.slice(1, 3);
     const thirdLineDestinations = destinations.slice(3, 5);
     const days = getTripDays(trip.start_date, trip.end_date);
+    const otherMemberProfiles = (trip.memberProfiles || []).filter(
+        (member) => member.id !== currentUserId
+    );
     const accent = fallbackAccentColors[index % fallbackAccentColors.length];
     const variant = tripCardVariants[index % tripCardVariants.length];
     const maskStyle = {
@@ -380,6 +466,8 @@ export function DashboardTripCard({
                 </span>
             </div>
 
+            <TripMemberAvatarStack members={otherMemberProfiles} />
+
             <div
                 className={`absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
             >
@@ -425,11 +513,13 @@ export function DashboardTripCard({
 function TripsGrid({
     trips,
     isGoogleReady,
+    currentUserId,
     onEditTrip,
     onShareTrip,
 }: {
     trips: DashboardTrip[];
     isGoogleReady: boolean;
+    currentUserId?: string | null;
     onEditTrip: (trip: DashboardTrip) => void;
     onShareTrip: (trip: DashboardTrip) => void;
 }) {
@@ -481,6 +571,7 @@ function TripsGrid({
                                 trip={trip}
                                 index={index}
                                 isGoogleReady={isGoogleReady}
+                                currentUserId={currentUserId}
                                 disableHoverTransform
                             />
                             <button
@@ -706,155 +797,9 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
     );
 }
 
-function QuickAddFan({ trips }: { trips: DashboardTrip[] }) {
-    const [isOpen, setIsOpen] = useState(false);
-    const [showTripPicker, setShowTripPicker] = useState(false);
-    const [tripPickerLabel, setTripPickerLabel] = useState(
-        "Choose a trip to add this item"
-    );
-    const quickAddRef = useRef<HTMLDivElement | null>(null);
-
-    useEffect(() => {
-        if (!isOpen) return;
-
-        function closeOnOutsideClick(event: MouseEvent) {
-            if (
-                quickAddRef.current &&
-                !quickAddRef.current.contains(event.target as Node)
-            ) {
-                setIsOpen(false);
-                setShowTripPicker(false);
-            }
-        }
-
-        document.addEventListener("mousedown", closeOnOutsideClick);
-        return () => {
-            document.removeEventListener("mousedown", closeOnOutsideClick);
-        };
-    }, [isOpen]);
-
-    function openTripPicker(label: string) {
-        setTripPickerLabel(label);
-        setShowTripPicker(true);
-    }
-
-    const quickAddBubbleClass =
-        "animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200";
-
-    return (
-        <div
-            ref={quickAddRef}
-            className="fixed bottom-6 right-6 z-40 flex flex-col items-end"
-        >
-            {isOpen && (
-                <div className="mb-3 flex flex-col items-end gap-2">
-                    {showTripPicker && (
-                        <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
-                            <p className="px-3 pb-2 text-xs font-bold uppercase tracking-wide text-lime-200">
-                                {tripPickerLabel}
-                            </p>
-                            <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
-                                {trips.length > 0 ? (
-                                    trips.map((trip, index) => (
-                                        <Link
-                                            key={trip.id}
-                                            href={`/trips/${trip.id}`}
-                                            className={quickAddBubbleClass}
-                                            style={{
-                                                animationDelay: `${index * 34}ms`,
-                                            }}
-                                        >
-                                            {trip.title}
-                                        </Link>
-                                    ))
-                                ) : (
-                                    <p className="px-3 py-2 text-sm text-slate-400">
-                                        Create a trip first.
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    <Link
-                        href="/trips/new"
-                        className={quickAddBubbleClass}
-                        style={{ animationDelay: "0ms" }}
-                    >
-                        Add trip
-                    </Link>
-                    <button
-                        type="button"
-                        onClick={() => openTripPicker("Choose a trip for transportation")}
-                        className={quickAddBubbleClass}
-                        style={{ animationDelay: "34ms" }}
-                    >
-                        Add transportation
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => openTripPicker("Choose a trip for accommodation")}
-                        className={quickAddBubbleClass}
-                        style={{ animationDelay: "68ms" }}
-                    >
-                        Add accommodation
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() =>
-                            openTripPicker("Choose a trip for food or restaurant")
-                        }
-                        className={quickAddBubbleClass}
-                        style={{ animationDelay: "102ms" }}
-                    >
-                        Add food or restaurant
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() =>
-                            openTripPicker("Choose a trip for scheduled activity/event")
-                        }
-                        className={quickAddBubbleClass}
-                        style={{ animationDelay: "136ms" }}
-                    >
-                        Add scheduled activity/event
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => openTripPicker("Choose a trip for activity idea")}
-                        className={quickAddBubbleClass}
-                        style={{ animationDelay: "170ms" }}
-                    >
-                        Add activity idea
-                    </button>
-                </div>
-            )}
-
-            <button
-                type="button"
-                onClick={() => setIsOpen((current) => !current)}
-                className="flex h-14 w-14 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
-                aria-label={isOpen ? "Close quick add menu" : "Open quick add menu"}
-                aria-expanded={isOpen}
-            >
-                <span
-                    className={`grid place-items-center transition-transform duration-300 ${
-                        isOpen ? "-rotate-180" : "rotate-0"
-                    }`}
-                >
-                    {isOpen ? (
-                        <Minus className="h-6 w-6" aria-hidden="true" />
-                    ) : (
-                        <Plus className="h-6 w-6" aria-hidden="true" />
-                    )}
-                </span>
-            </button>
-        </div>
-    );
-}
-
 export default function TripDashboardClient({
     trips,
+    currentUserId,
     updateTripAction,
     deleteTripAction,
 }: TripDashboardClientProps) {
@@ -919,13 +864,12 @@ export default function TripDashboardClient({
                 <TripsGrid
                     trips={trips}
                     isGoogleReady={isGoogleReady}
+                    currentUserId={currentUserId}
                     onEditTrip={openEditModal}
                     onShareTrip={setShareTrip}
                 />
                 <DashboardMonthCalendar trips={trips} />
             </div>
-
-            <QuickAddFan trips={trips} />
 
             <ShareTripModal
                 tripId={shareTrip?.id || ""}

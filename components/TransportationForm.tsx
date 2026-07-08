@@ -9,6 +9,8 @@ import {
     inferAirlineCodeFromFlightNumber,
 } from "@/lib/airline";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
+import type { TransportationTravelerOptions } from "@/lib/travelers";
+import TransportationTravelerSelector from "@/components/TransportationTravelerSelector";
 
 type TransportationFormProps = {
     tripId: string;
@@ -16,6 +18,7 @@ type TransportationFormProps = {
     isOpen: boolean;
     onClose: () => void;
     defaultDate?: string;
+    travelerOptions?: TransportationTravelerOptions;
 };
 
 type FlightLeg = {
@@ -169,6 +172,7 @@ export default function TransportationForm({
     isOpen,
     onClose,
     defaultDate = "",
+    travelerOptions = { users: [], familyMembers: [] },
 }: TransportationFormProps) {
     const [mode, setMode] = useState("");
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -526,6 +530,8 @@ export default function TransportationForm({
                             </span>
                         </label>
 
+                        <TransportationTravelerSelector options={travelerOptions} />
+
                         <div>
                             <p className="block text-sm font-medium text-slate-700">
                                 Select mode of transportation
@@ -816,6 +822,13 @@ export default function TransportationForm({
 
                         {shouldShowDetails && (
                             <>
+                                <input
+                                    name="reservation_code"
+                                    placeholder="Reservation code / booking reference"
+                                    className="w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                />
+
                                 <div className="grid gap-4 md:grid-cols-2">
                                     <textarea
                                         name="visa_requirements"

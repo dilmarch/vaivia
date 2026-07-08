@@ -7,6 +7,7 @@ import {
     IDEA_TIME_OF_DAY_OPTIONS,
     type IdeaTimeOfDay,
     type TripIdea,
+    formatIdeaAgePolicy,
     formatIdeaDayLabel,
     formatIdeaTimeLabel,
     getIdeaDayForDate,
@@ -362,7 +363,7 @@ function IdeaSuggestionCard({
                         <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
                             Age
                         </dt>
-                        <dd>{idea.age_policy}</dd>
+                        <dd>{formatIdeaAgePolicy(idea.age_policy)}</dd>
                     </div>
                 )}
             </dl>

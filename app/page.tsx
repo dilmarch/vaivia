@@ -220,6 +220,7 @@ async function TripsDashboard() {
         <div className="mx-4 md:mx-8">
           <TripDashboardClient
             trips={(trips || []) as DashboardTrip[]}
+            currentUserId={user.id}
             updateTripAction={updateTrip}
             deleteTripAction={deleteTrip}
           />

@@ -241,6 +241,7 @@ async function updateTransportationItem(formData: FormData) {
     const airlineName = formData.get("airline_name") as string;
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
+    const reservationCode = String(formData.get("reservation_code") || "").trim();
     const departureTerminal = formData.get("departure_terminal") as string;
     const arrivalTerminal = formData.get("arrival_terminal") as string;
     const departureTimezone = formData.get("departure_timezone") as string;
@@ -276,6 +277,7 @@ async function updateTransportationItem(formData: FormData) {
         airline_name: airlineName || null,
         airline_code: airlineCode || null,
         flight_number: flightNumber || null,
+        reservation_code: reservationCode || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,

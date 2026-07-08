@@ -91,6 +91,7 @@ function getNavItems(pathname: string): NavItem[] {
             icon: CalendarCheck,
             match: (pathname, tab) =>
                 pathname.startsWith("/trips/") &&
+                !pathname.includes("/accommodations") &&
                 tab !== "ideas" &&
                 tab !== "journey" &&
                 tab !== "journey-planning",
@@ -121,8 +122,11 @@ function getNavItems(pathname: string): NavItem[] {
         },
         {
             label: "Accommodations",
+            href: tripHref ? `${tripHref}/accommodations` : undefined,
             icon: BedDouble,
-            disabled: true,
+            match: (pathname) =>
+                pathname.startsWith("/trips/") &&
+                pathname.includes("/accommodations"),
         },
     ];
 }

@@ -1,11 +1,13 @@
 "use client";
 
 import Script from "next/script";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 type TripDestinationLineProps = {
     destination?: string | null;
     className?: string;
+    children?: ReactNode;
 };
 
 type DestinationDisplay = {
@@ -146,6 +148,7 @@ export function DestinationTile({
 export default function TripDestinationLine({
     destination,
     className = "",
+    children,
 }: TripDestinationLineProps) {
     const destinations = useMemo(() => parseDestinationList(destination), [destination]);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -197,7 +200,7 @@ export default function TripDestinationLine({
         };
     }, [destinations, isGoogleReady]);
 
-    if (displayDestinations.length === 0) return null;
+    if (displayDestinations.length === 0 && !children) return null;
 
     return (
         <>
@@ -207,7 +210,7 @@ export default function TripDestinationLine({
                 onLoad={() => setIsGoogleReady(true)}
                 onReady={() => setIsGoogleReady(true)}
             />
-            <div className={`flex flex-wrap gap-3 sm:gap-4 ${className}`}>
+            <div className={`flex flex-wrap items-center gap-3 sm:gap-4 ${className}`}>
                 {displayDestinations.map((destination) => (
                     <DestinationTile
                         key={destination.id}
@@ -216,6 +219,7 @@ export default function TripDestinationLine({
                         secondaryLabel={destination.secondaryLabel}
                     />
                 ))}
+                {children}
             </div>
         </>
     );

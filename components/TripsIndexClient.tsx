@@ -12,6 +12,7 @@ import {
 
 type TripsIndexClientProps = {
     trips: DashboardTrip[];
+    currentUserId?: string | null;
     updateTripAction: (formData: FormData) => Promise<void>;
     deleteTripAction: (formData: FormData) => Promise<void>;
 };
@@ -50,6 +51,7 @@ function getEditButtonPosition(index: number) {
 
 export default function TripsIndexClient({
     trips,
+    currentUserId,
     updateTripAction,
     deleteTripAction,
 }: TripsIndexClientProps) {
@@ -168,6 +170,7 @@ export default function TripsIndexClient({
                                         trip={trip}
                                         index={index}
                                         isGoogleReady={isGoogleReady}
+                                        currentUserId={currentUserId}
                                         disableHoverTransform
                                     />
                                     <button

@@ -2,7 +2,12 @@
 
 import { Lock } from "lucide-react";
 import { useState } from "react";
+import TransportationTravelerSelector from "@/components/TransportationTravelerSelector";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
+import type {
+    TransportationTraveler,
+    TransportationTravelerOptions,
+} from "@/lib/travelers";
 
 const TRANSPORTATION_STATUS_OPTIONS = [
     { value: "planned", label: "Planned" },
@@ -23,6 +28,7 @@ type TransportationEditFormProps = {
     itemId: string;
     submitAction: (formData: FormData) => Promise<void>;
     onCancel?: () => void;
+    travelerOptions?: TransportationTravelerOptions;
     initialItem: {
         status?: string | null;
         item_date?: string | null;
@@ -38,9 +44,11 @@ type TransportationEditFormProps = {
         flight_number?: string | null;
         airline_name?: string | null;
         airline_code?: string | null;
+        reservation_code?: string | null;
         duration?: string | null;
         notes?: string | null;
         is_private?: boolean | null;
+        travelers?: TransportationTraveler[];
     };
 };
 
@@ -49,6 +57,7 @@ export default function TransportationEditForm({
     itemId,
     submitAction,
     onCancel,
+    travelerOptions = { users: [], familyMembers: [] },
     initialItem,
 }: TransportationEditFormProps) {
     const [departureLocation, setDepartureLocation] = useState(
@@ -114,6 +123,11 @@ export default function TransportationEditForm({
                     </span>
                 </span>
             </label>
+
+            <TransportationTravelerSelector
+                options={travelerOptions}
+                initialTravelers={initialItem.travelers || []}
+            />
 
             <div className="flex justify-end">
                 <button
@@ -228,7 +242,7 @@ export default function TransportationEditForm({
                 </label>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
                 <label className="space-y-1 text-sm font-medium text-slate-700">
                     Flight number
                     <input
@@ -250,6 +264,14 @@ export default function TransportationEditForm({
                     <input
                         name="airline_code"
                         defaultValue={initialItem.airline_code || ""}
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                </label>
+                <label className="space-y-1 text-sm font-medium text-slate-700">
+                    Reservation code
+                    <input
+                        name="reservation_code"
+                        defaultValue={initialItem.reservation_code || ""}
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                     />
                 </label>

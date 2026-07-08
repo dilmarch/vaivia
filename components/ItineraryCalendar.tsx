@@ -32,6 +32,11 @@ import {
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripIdea } from "@/lib/tripIdeas";
+import type {
+    TransportationTraveler,
+    TransportationTravelerOptions,
+} from "@/lib/travelers";
+import { getInitials } from "@/lib/travelers";
 import {
     FALLBACK_CATEGORY_COLOR,
     FALLBACK_CATEGORY_LABEL,
@@ -64,6 +69,8 @@ export type ItineraryCalendarItem = {
     airline_name?: string | null;
     airline_code?: string | null;
     flight_number?: string | null;
+    reservation_code?: string | null;
+    travelers?: TransportationTraveler[];
     duration?: string | null;
     departure_location?: string | null;
     arrival_location?: string | null;
@@ -75,9 +82,22 @@ export type ItineraryCalendarItem = {
     is_private?: boolean | null;
 };
 
+export type CalendarAccommodation = {
+    id: string;
+    hotel_name: string;
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+    address?: string | null;
+    check_in_date: string;
+    check_out_date: string;
+    status?: string | null;
+};
+
 type ItineraryCalendarProps = {
     tripId: string;
     items: ItineraryCalendarItem[];
+    accommodations?: CalendarAccommodation[];
     ideas?: TripIdea[];
     tripStartDate?: string | null;
     tripDestination?: string | null;
@@ -89,6 +109,7 @@ type ItineraryCalendarProps = {
     updateTransportationAction: (formData: FormData) => Promise<void>;
     promoteIdeaAction?: (formData: FormData) => Promise<void>;
     toggleIdeaReactionAction?: (formData: FormData) => Promise<void>;
+    travelerOptions?: TransportationTravelerOptions;
     onQuickAddDateChange?: (dateKey: string) => void;
 };
 
@@ -1090,6 +1111,16 @@ function FlightListCard({
                                     {flight.routeLabel}
                                 </p>
                             )}
+                            {item.reservation_code && (
+                                <div className="mt-2">
+                                    <ReservationCodeCopy
+                                        code={item.reservation_code}
+                                        compact
+                                        light
+                                    />
+                                </div>
+                            )}
+                            <TravelerChips travelers={item.travelers} light />
                         </div>
                     </div>
                     <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -1174,6 +1205,7 @@ function FlightListCard({
                 )}
             </button>
             <div className="flex flex-wrap justify-start gap-2 px-4 pb-4">
+                <ReservationCodeCopy code={item.reservation_code} light />
                 {flight.flightNumber && (
                     <TrackFlightButton
                         flightNumber={flight.flightNumber}
@@ -1374,6 +1406,250 @@ function getOvernightTransportationWarning(
     return {
         modeLabel: getTransportationModeLabel(item.transportation_mode).toUpperCase(),
     };
+}
+
+function getDayCalendarWarningMessage(
+    items: ItineraryCalendarItem[],
+    dateKey: string,
+    displayTimezone: string
+) {
+    const timezoneWarning = getTransportationTimezoneWarning(
+        items,
+        dateKey,
+        displayTimezone
+    );
+    const overnightWarning = getOvernightTransportationWarning(
+        items,
+        dateKey,
+        displayTimezone
+    );
+    const messages: string[] = [];
+
+    if (timezoneWarning) {
+        messages.push(
+            `The day begins in ${getTimezoneDisplayName(
+                timezoneWarning.dayTimezone
+            )} Time Zone. ${timezoneWarning.modeLabel} departs at ${formatTime(
+                timezoneWarning.departureTime
+            )} ${getTimezoneDisplayName(
+                timezoneWarning.departureTimezone
+            )} Time Zone.`
+        );
+    }
+
+    if (overnightWarning) {
+        messages.push(
+            `${overnightWarning.modeLabel} TRIP begins the day before and continues overnight.`
+        );
+    }
+
+    return messages.join(" ");
+}
+
+function cleanLocationLabel(value?: string | null) {
+    if (!value) return "";
+
+    return value
+        .split("→")
+        .at(-1)
+        ?.split(",")
+        .at(0)
+        ?.trim()
+        .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "") || "";
+}
+
+function getDayLocationLabel(
+    items: ItineraryCalendarItem[],
+    dateKey: string,
+    fallbackDestination?: string | null,
+    accommodations: CalendarAccommodation[] = []
+) {
+    const stay = accommodations.find(
+        (accommodation) =>
+            accommodation.status !== "cancelled" &&
+            accommodation.check_in_date <= dateKey &&
+            accommodation.check_out_date > dateKey
+    );
+
+    const stayLabel = cleanLocationLabel(
+        stay
+            ? stay.city ||
+                  stay.region ||
+                  stay.country ||
+                  stay.address ||
+                  stay.hotel_name
+            : null
+    );
+
+    if (stayLabel) return stayLabel;
+
+    const dayItems = sortItems(
+        items.filter((item) => itemTouchesDate(item, dateKey))
+    );
+    const arrivingTransportation = dayItems.find(
+        (item) =>
+            item.category === "transportation" &&
+            item.arrival_location &&
+            (item.end_date || item.item_date) <= dateKey
+    );
+    const firstTransportation = dayItems.find(
+        (item) =>
+            item.category === "transportation" &&
+            (item.arrival_location || item.departure_location)
+    );
+    const firstLocatedItem = dayItems.find((item) => item.location);
+
+    return (
+        cleanLocationLabel(arrivingTransportation?.arrival_location) ||
+        cleanLocationLabel(firstTransportation?.arrival_location) ||
+        cleanLocationLabel(firstTransportation?.departure_location) ||
+        cleanLocationLabel(firstLocatedItem?.location) ||
+        cleanLocationLabel(parseDestinationList(fallbackDestination)[0]) ||
+        ""
+    );
+}
+
+function getWeekLocationSegments(
+    weekDates: Date[],
+    items: ItineraryCalendarItem[],
+    displayTimezone: string,
+    fallbackDestination?: string | null,
+    accommodations: CalendarAccommodation[] = []
+) {
+    const segments: Array<{
+        label: string;
+        startIndex: number;
+        endIndex: number;
+        startsAtHalf: boolean;
+        endsAtHalf: boolean;
+        colorClass: string;
+    }> = [];
+    const colors = [
+        "bg-lime-300 text-slate-950",
+        "bg-fuchsia-400 text-white",
+        "bg-cyan-300 text-slate-950",
+        "bg-orange-300 text-slate-950",
+    ];
+
+    const activeAccommodations = accommodations
+        .filter(
+            (accommodation) =>
+                accommodation.status !== "cancelled" &&
+                accommodation.check_in_date &&
+                accommodation.check_out_date
+        )
+        .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
+
+    if (activeAccommodations.length > 0) {
+        const weekKeys = weekDates.map(getLocalDateKey);
+        const weekStartKey = weekKeys[0];
+        const weekEndKey = weekKeys[weekKeys.length - 1];
+
+        activeAccommodations.forEach((accommodation) => {
+            if (
+                accommodation.check_out_date < weekStartKey ||
+                accommodation.check_in_date > weekEndKey
+            ) {
+                return;
+            }
+
+            const label = cleanLocationLabel(
+                accommodation.city ||
+                    accommodation.region ||
+                    accommodation.country ||
+                    accommodation.address ||
+                    accommodation.hotel_name
+            );
+            if (!label) return;
+
+            const rawStartIndex = weekKeys.findIndex(
+                (key) => key >= accommodation.check_in_date
+            );
+            const startIndex = rawStartIndex === -1 ? 0 : rawStartIndex;
+            const checkoutIndex = weekKeys.findIndex(
+                (key) => key === accommodation.check_out_date
+            );
+            const rawEndIndex =
+                checkoutIndex >= 0
+                    ? checkoutIndex
+                    : weekKeys.findIndex((key) => key > accommodation.check_out_date);
+            const endIndex =
+                rawEndIndex === -1
+                    ? weekKeys.length - 1
+                    : Math.max(startIndex, rawEndIndex);
+            const startsAtHalf = weekKeys[startIndex] === accommodation.check_in_date
+                ? activeAccommodations.some(
+                      (other) =>
+                          other.id !== accommodation.id &&
+                          other.check_out_date === accommodation.check_in_date
+                  )
+                : false;
+            const endsAtHalf =
+                checkoutIndex >= 0 ||
+                activeAccommodations.some(
+                    (other) =>
+                        other.id !== accommodation.id &&
+                        other.check_in_date === accommodation.check_out_date
+                );
+
+            segments.push({
+                label,
+                startIndex,
+                endIndex,
+                startsAtHalf,
+                endsAtHalf,
+                colorClass: colors[segments.length % colors.length],
+            });
+        });
+
+        void displayTimezone;
+
+        return segments;
+    }
+
+    const labels = weekDates.map((date) =>
+        getDayLocationLabel(
+            items,
+            getLocalDateKey(date),
+            fallbackDestination,
+            accommodations
+        )
+    );
+
+    let index = 0;
+    while (index < labels.length) {
+        const label = labels[index];
+        if (!label) {
+            index += 1;
+            continue;
+        }
+
+        let endIndex = index;
+        while (endIndex + 1 < labels.length && labels[endIndex + 1] === label) {
+            endIndex += 1;
+        }
+
+        segments.push({
+            label,
+            startIndex: index,
+            endIndex,
+            startsAtHalf: Boolean(
+                index > 0 && labels[index - 1] && labels[index - 1] !== label
+            ),
+            endsAtHalf:
+                Boolean(
+                    endIndex < labels.length - 1 &&
+                        labels[endIndex + 1] &&
+                        labels[endIndex + 1] !== label
+                ),
+            colorClass: colors[segments.length % colors.length],
+        });
+        index = endIndex + 1;
+    }
+
+    void displayTimezone;
+
+    return segments;
 }
 
 function segmentsOverlap(
@@ -1589,6 +1865,16 @@ function EventCard({
                                         Duration: {flightDisplay.duration}
                                     </p>
                                 )}
+                                {item.reservation_code && (
+                                    <div className="mt-2">
+                                        <ReservationCodeCopy
+                                            code={item.reservation_code}
+                                            compact
+                                            light
+                                        />
+                                    </div>
+                                )}
+                                <TravelerChips travelers={item.travelers} light />
                             </div>
                         </div>
                         <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -1718,6 +2004,21 @@ function EventCard({
                             {item.location}
                         </p>
                     )}
+                    {item.category === "transportation" && item.reservation_code && (
+                        <div className="mt-2">
+                            <ReservationCodeCopy
+                                code={item.reservation_code}
+                                compact={compact}
+                                light={Boolean(flightDisplay)}
+                            />
+                        </div>
+                    )}
+                    {item.category === "transportation" ? (
+                        <TravelerChips
+                            travelers={item.travelers}
+                            light={Boolean(flightDisplay)}
+                        />
+                    ) : null}
                     </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
@@ -1791,6 +2092,118 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
     );
 }
 
+function ReservationCodeCopy({
+    code,
+    compact = false,
+    light = false,
+}: {
+    code?: string | null;
+    compact?: boolean;
+    light?: boolean;
+}) {
+    const [isCopied, setIsCopied] = useState(false);
+    if (!code) return null;
+
+    async function copyCode() {
+        try {
+            await navigator.clipboard.writeText(code || "");
+            setIsCopied(true);
+            window.setTimeout(() => setIsCopied(false), 1600);
+        } catch {
+            setIsCopied(false);
+        }
+    }
+
+    return (
+        <span
+            className={`inline-flex max-w-full items-center gap-2 rounded-md border ${
+                compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-xs"
+            } ${
+                light
+                    ? "border-slate-200 bg-white/90 text-slate-900"
+                    : "border-white/10 bg-white/[0.08] text-slate-100"
+            }`}
+        >
+            <span className="min-w-0 truncate">
+                <span className="font-bold uppercase tracking-wide opacity-70">
+                    Reservation
+                </span>{" "}
+                <span className="font-black tracking-wide">{code}</span>
+            </span>
+            <button
+                type="button"
+                onClick={copyCode}
+                className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${
+                    light
+                        ? "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+                        : "text-slate-200 hover:bg-white/[0.14] hover:text-white"
+                }`}
+                aria-label={`Copy reservation code ${code}`}
+                title={isCopied ? "Copied" : "Copy reservation code"}
+            >
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+            {isCopied ? (
+                <span className="shrink-0 text-[10px] font-black uppercase tracking-wide">
+                    Copied
+                </span>
+            ) : null}
+        </span>
+    );
+}
+
+function TravelerChips({
+    travelers,
+    light = false,
+}: {
+    travelers?: TransportationTraveler[] | null;
+    light?: boolean;
+}) {
+    if (!travelers || travelers.length === 0) return null;
+
+    return (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span
+                className={`text-xs font-black uppercase tracking-wide ${
+                    light ? "text-slate-500" : "text-slate-300"
+                }`}
+            >
+                For
+            </span>
+            {travelers.map((traveler) => (
+                <span
+                    key={`${traveler.type}:${traveler.user_id || traveler.family_member_id || traveler.guest_name}`}
+                    className={`inline-flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2 text-xs font-black ${
+                        light
+                            ? "border-slate-200 bg-white/90 text-slate-900"
+                            : "border-white/10 bg-white/[0.08] text-slate-100"
+                    }`}
+                >
+                    <span
+                        className={`flex h-5 w-5 items-center justify-center overflow-hidden rounded-full text-[9px] uppercase ${
+                            light
+                                ? "bg-slate-900 text-lime-200"
+                                : "bg-slate-950 text-lime-200"
+                        }`}
+                    >
+                        {traveler.avatar_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={traveler.avatar_url}
+                                alt=""
+                                className="h-full w-full object-cover"
+                            />
+                        ) : (
+                            getInitials(traveler.name)
+                        )}
+                    </span>
+                    {traveler.name}
+                </span>
+            ))}
+        </div>
+    );
+}
+
 function FlightDetailGridRow({
     label,
     value,
@@ -1837,6 +2250,12 @@ function FlightModalContent({
                     {flight.routeLabel && (
                         <p className="mt-1 text-sm text-slate-600">{flight.routeLabel}</p>
                     )}
+                    {item.reservation_code && (
+                        <div className="mt-3">
+                            <ReservationCodeCopy code={item.reservation_code} light />
+                        </div>
+                    )}
+                    <TravelerChips travelers={item.travelers} light />
                 </div>
             </section>
 
@@ -1899,6 +2318,16 @@ function FlightModalContent({
                 <dl className="mt-3 grid gap-3 sm:grid-cols-2">
                     <FlightDetailGridRow label="Airline" value={flight.airlineName} />
                     <FlightDetailGridRow label="Flight number" value={flight.flightNumber} />
+                    {item.reservation_code && (
+                        <div className="rounded-md border border-white/70 bg-white/90 p-3 shadow-sm">
+                            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Reservation code
+                            </dt>
+                            <dd className="mt-2">
+                                <ReservationCodeCopy code={item.reservation_code} light />
+                            </dd>
+                        </div>
+                    )}
                     <FlightDetailGridRow label="Duration" value={flight.duration} />
                     <FlightDetailGridRow
                         label="Departure time zone"
@@ -1991,6 +2420,7 @@ function ItineraryItemModal({
     tripId,
     deleteAction,
     updateTransportationAction,
+    travelerOptions,
     onDuplicateItem,
     onClose,
 }: {
@@ -1998,6 +2428,7 @@ function ItineraryItemModal({
     tripId: string;
     deleteAction: (formData: FormData) => Promise<void>;
     updateTransportationAction: (formData: FormData) => Promise<void>;
+    travelerOptions: TransportationTravelerOptions;
     onDuplicateItem: (item: ItineraryCalendarItem) => void;
     onClose: () => void;
 }) {
@@ -2170,7 +2601,10 @@ function ItineraryItemModal({
                                     item.arrival_timezone ||
                                     flightDisplay?.arrivalTimeZone ||
                                     null,
+                                reservation_code: item.reservation_code || null,
+                                travelers: item.travelers || [],
                             }}
+                            travelerOptions={travelerOptions}
                             onCancel={() => setIsEditingTransportation(false)}
                         />
                     </div>
@@ -2214,6 +2648,31 @@ function ItineraryItemModal({
                             <DetailRow label="Location" value={item.location} />
                             <DetailRow label="Address" value={item.formatted_address} />
                             <DetailRow label="Time zone" value={item.timezone} />
+                            {item.reservation_code && (
+                                <div>
+                                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Reservation code
+                                    </dt>
+                                    <dd className="mt-2">
+                                        <ReservationCodeCopy
+                                            code={item.reservation_code}
+                                            light
+                                        />
+                                    </dd>
+                                </div>
+                            )}
+                            {item.category === "transportation" &&
+                            item.travelers &&
+                            item.travelers.length > 0 ? (
+                                <div className="sm:col-span-2">
+                                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Travelers
+                                    </dt>
+                                    <dd>
+                                        <TravelerChips travelers={item.travelers} light />
+                                    </dd>
+                                </div>
+                            ) : null}
                         </dl>
 
                         {(locationWebsite || ticketWebsite) && (
@@ -2520,12 +2979,16 @@ function DayColumn({
     items,
     displayTimezone,
     showDateHeader = false,
+    showTimeRail = true,
+    showWarnings = true,
     onOpenItem,
 }: {
     date: Date;
     items: ItineraryCalendarItem[];
     displayTimezone: string;
     showDateHeader?: boolean;
+    showTimeRail?: boolean;
+    showWarnings?: boolean;
     onOpenItem: (item: ItineraryCalendarItem) => void;
 }) {
     const dateKey = getLocalDateKey(date);
@@ -2557,7 +3020,7 @@ function DayColumn({
                 </div>
             )}
 
-            {timezoneWarning && (
+            {showWarnings && timezoneWarning && (
                 <div className="border-b border-red-400/50 bg-red-500/15 px-3 py-3 text-sm text-red-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(239,68,68,0.10)]">
                     <p className="font-semibold">
                         <span className="mr-1" aria-hidden="true">
@@ -2575,7 +3038,7 @@ function DayColumn({
                 </div>
             )}
 
-            {overnightWarning && (
+            {showWarnings && overnightWarning && (
                 <div className="border-b border-amber-300/50 bg-amber-300/15 px-3 py-3 text-sm font-semibold text-amber-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_30px_rgba(251,191,36,0.10)]">
                     <span className="mr-1" aria-hidden="true">
                         ⚠️
@@ -2602,12 +3065,16 @@ function DayColumn({
                 {HOURS.map((hour) => (
                     <div
                         key={hour}
-                        className="grid h-20 grid-cols-[52px_1fr] border-b border-white/10"
+                        className={`grid h-20 border-b border-white/10 ${
+                            showTimeRail ? "grid-cols-[52px_1fr]" : "grid-cols-1"
+                        }`}
                     >
-                        <div className="border-r border-white/10 bg-slate-950/30 px-2 pt-1 text-[11px] font-medium text-slate-400">
-                            {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
-                            {hour >= 12 ? " PM" : " AM"}
-                        </div>
+                        {showTimeRail && (
+                            <div className="border-r border-white/10 bg-slate-950/30 px-2 pt-1 text-[11px] font-medium text-slate-400">
+                                {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
+                                {hour >= 12 ? " PM" : " AM"}
+                            </div>
+                        )}
                         <div className="bg-slate-900/55" />
                     </div>
                 ))}
@@ -2626,7 +3093,9 @@ function DayColumn({
                     return (
                         <div
                             key={`${segment.item.id}-${segment.dateKey}-${segment.startMinutes}`}
-                            className="absolute left-[60px] right-2"
+                            className={`absolute ${
+                                showTimeRail ? "left-[60px]" : "left-2"
+                            } right-2`}
                             style={{ top, height }}
                         >
                             <div
@@ -2652,9 +3121,159 @@ function DayColumn({
     );
 }
 
+function WeekViewGrid({
+    weekDates,
+    items,
+    accommodations,
+    displayTimezone,
+    tripDestination,
+    onOpenItem,
+}: {
+    weekDates: Date[];
+    items: ItineraryCalendarItem[];
+    accommodations: CalendarAccommodation[];
+    displayTimezone: string;
+    tripDestination?: string | null;
+    onOpenItem: (item: ItineraryCalendarItem) => void;
+}) {
+    const locationSegments = getWeekLocationSegments(
+        weekDates,
+        items,
+        displayTimezone,
+        tripDestination,
+        accommodations
+    );
+    const timeRailWidth = 64;
+    const dayColumnWidth = 176;
+    const minGridWidth = timeRailWidth + dayColumnWidth * 7;
+
+    return (
+        <div className="overflow-x-auto rounded-[1.25rem] border border-white/10 bg-slate-950/70 shadow-xl shadow-black/20 [scrollbar-color:rgba(var(--vaivia-neon-rgb),0.65)_rgba(15,23,42,0.7)] [scrollbar-width:thin]">
+            <div
+                className="grid"
+                style={{
+                    minWidth: minGridWidth,
+                    gridTemplateColumns: `${timeRailWidth}px repeat(7, minmax(${dayColumnWidth}px, 1fr))`,
+                }}
+            >
+                <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                {weekDates.map((date) => (
+                    <div
+                        key={getLocalDateKey(date)}
+                        className="border-b border-r border-white/10 bg-slate-950/95 px-3 py-3"
+                    >
+                        <p className="text-sm font-black text-lime-300">
+                            {formatShortDate(date)}
+                        </p>
+                    </div>
+                ))}
+
+                <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                {weekDates.map((date) => {
+                    const dateKey = getLocalDateKey(date);
+                    const warningMessage = getDayCalendarWarningMessage(
+                        items,
+                        dateKey,
+                        displayTimezone
+                    );
+
+                    return (
+                        <div
+                            key={`${dateKey}-warning`}
+                            className="flex min-h-12 items-center justify-center border-b border-r border-white/10 bg-slate-900/90 px-3 py-2"
+                        >
+                            {warningMessage ? (
+                                <div className="group/warning relative inline-flex">
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-2 rounded-full border border-red-400/50 bg-red-500/20 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-red-100 shadow-[0_0_24px_rgba(239,68,68,0.16)] transition hover:border-red-300 hover:bg-red-500/30 focus:outline-none focus:ring-2 focus:ring-red-300/60"
+                                        aria-label={`Attention: ${warningMessage}`}
+                                    >
+                                    <span aria-hidden="true">⚠️</span>
+                                    Attention
+                                    </button>
+                                    <div
+                                        role="tooltip"
+                                        className="pointer-events-none absolute left-1/2 top-[calc(100%+0.5rem)] z-30 w-72 -translate-x-1/2 rounded-2xl border border-red-300/30 bg-slate-950 px-4 py-3 text-left text-xs font-semibold leading-5 text-red-50 opacity-0 shadow-2xl shadow-black/40 transition group-hover/warning:opacity-100 group-focus-within/warning:opacity-100"
+                                    >
+                                        {warningMessage}
+                                    </div>
+                                </div>
+                            ) : null}
+                        </div>
+                    );
+                })}
+
+                <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                <div className="relative col-span-7 min-h-11 border-b border-white/10 bg-slate-900/80">
+                    <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/10" />
+                    {locationSegments.map((segment) => {
+                        const leftPercent =
+                            ((segment.startIndex + (segment.startsAtHalf ? 0.5 : 0)) /
+                                7) *
+                            100;
+                        const rightIndex =
+                            segment.endIndex + (segment.endsAtHalf ? 0.5 : 1);
+                        const widthPercent =
+                            ((rightIndex -
+                                (segment.startIndex +
+                                    (segment.startsAtHalf ? 0.5 : 0))) /
+                                7) *
+                            100;
+
+                        return (
+                            <div
+                                key={`${segment.label}-${segment.startIndex}-${segment.endIndex}`}
+                                className={`absolute top-2 h-7 rounded-full px-3 py-1 text-center text-xs font-black uppercase tracking-[0.12em] shadow-[0_0_20px_rgba(0,0,0,0.22)] ${segment.colorClass}`}
+                                style={{
+                                    left: `calc(${leftPercent}% + 6px)`,
+                                    width: `calc(${widthPercent}% - 12px)`,
+                                }}
+                            >
+                                <span className="block truncate">{segment.label}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <div className="sticky left-0 z-10 border-r border-white/10 bg-slate-950/95">
+                    <div className="relative min-h-[1920px]">
+                        {HOURS.map((hour) => (
+                            <div
+                                key={hour}
+                                className="h-20 border-b border-white/10 px-2 pt-1 text-[11px] font-semibold text-slate-400"
+                            >
+                                {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
+                                {hour >= 12 ? " PM" : " AM"}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {weekDates.map((date) => (
+                    <div
+                        key={`${getLocalDateKey(date)}-column`}
+                        className="border-r border-white/10"
+                    >
+                        <DayColumn
+                            date={date}
+                            items={items}
+                            displayTimezone={displayTimezone}
+                            showTimeRail={false}
+                            showWarnings={false}
+                            onOpenItem={onOpenItem}
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function ItineraryCalendar({
     tripId,
     items,
+    accommodations = [],
     ideas = [],
     tripStartDate,
     tripDestination,
@@ -2666,6 +3285,7 @@ export default function ItineraryCalendar({
     updateTransportationAction,
     promoteIdeaAction,
     toggleIdeaReactionAction,
+    travelerOptions = { users: [], familyMembers: [] },
     onQuickAddDateChange,
 }: ItineraryCalendarProps) {
     const [view, setView] = useState<CalendarView>(defaultView);
@@ -3203,20 +3823,14 @@ export default function ItineraryCalendar({
                 )}
 
                 {!listOnly && effectiveView === "week" && (
-                    <div className="overflow-x-auto">
-                        <div className="grid min-w-[1120px] grid-cols-7 divide-x divide-white/10">
-                            {weekDates.map((date) => (
-                                <DayColumn
-                                    key={getLocalDateKey(date)}
-                                    date={date}
-                                    items={items}
-                                    displayTimezone={displayTimezone}
-                                    showDateHeader
-                                    onOpenItem={setSelectedItem}
-                                />
-                            ))}
-                        </div>
-                    </div>
+                    <WeekViewGrid
+                        weekDates={weekDates}
+                        items={items}
+                        accommodations={accommodations}
+                        displayTimezone={displayTimezone}
+                        tripDestination={tripDestination}
+                        onOpenItem={setSelectedItem}
+                    />
                 )}
             </div>
 
@@ -3226,6 +3840,7 @@ export default function ItineraryCalendar({
                     tripId={tripId}
                     deleteAction={deleteAction}
                     updateTransportationAction={updateTransportationAction}
+                    travelerOptions={travelerOptions}
                     onDuplicateItem={(item) => {
                         setSelectedItem(null);
                         setDuplicatingItem({

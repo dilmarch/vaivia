@@ -227,6 +227,7 @@ async function TripsIndexPageContent() {
         <main className="min-h-screen bg-[#0c0115] px-4 pb-16 pt-24 text-white md:px-8 md:pt-28">
             <TripsIndexClient
                 trips={(trips || []) as DashboardTrip[]}
+                currentUserId={user.id}
                 updateTripAction={updateTrip}
                 deleteTripAction={deleteTrip}
             />

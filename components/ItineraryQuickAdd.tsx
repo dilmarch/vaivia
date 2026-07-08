@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { Minus, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { createAccommodation } from "@/app/actions/accommodations";
+import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
 import { IdeaForm } from "@/components/IdeasTab";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import TransportationForm from "@/components/TransportationForm";
 import type { UserCategory } from "@/lib/itineraryCategories";
+import type { TransportationTravelerOptions } from "@/lib/travelers";
 
 type ItineraryQuickAddProps = {
     tripId: string;
@@ -15,6 +18,7 @@ type ItineraryQuickAddProps = {
     createIdeaAction?: (formData: FormData) => Promise<void>;
     defaultDate?: string;
     categories?: UserCategory[];
+    travelerOptions?: TransportationTravelerOptions;
 };
 
 export default function ItineraryQuickAdd({
@@ -24,6 +28,7 @@ export default function ItineraryQuickAdd({
     createIdeaAction,
     defaultDate = "",
     categories = [],
+    travelerOptions = { users: [], familyMembers: [] },
 }: ItineraryQuickAddProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [itemOpenSignal, setItemOpenSignal] = useState(0);
@@ -31,6 +36,7 @@ export default function ItineraryQuickAdd({
         "Add scheduled activity/event"
     );
     const [isTransportationOpen, setIsTransportationOpen] = useState(false);
+    const [isAccommodationOpen, setIsAccommodationOpen] = useState(false);
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
 
@@ -75,7 +81,15 @@ export default function ItineraryQuickAdd({
                 isOpen={isTransportationOpen}
                 onClose={() => setIsTransportationOpen(false)}
                 defaultDate={defaultDate}
+                travelerOptions={travelerOptions}
             />
+            {isAccommodationOpen && (
+                <AccommodationCreateModal
+                    tripId={tripId}
+                    createAction={createAccommodation}
+                    onClose={() => setIsAccommodationOpen(false)}
+                />
+            )}
             {isIdeaOpen && createIdeaAction && (
                 <div
                     className="vaivia-modal-backdrop"
@@ -147,7 +161,10 @@ export default function ItineraryQuickAdd({
                         </button>
                         <button
                             type="button"
-                            onClick={() => openItineraryForm("Add accommodation")}
+                            onClick={() => {
+                                setIsAccommodationOpen(true);
+                                setIsOpen(false);
+                            }}
                             className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                         >
                             Add accommodation

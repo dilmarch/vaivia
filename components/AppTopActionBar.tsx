@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Plus, Search } from "lucide-react";
+import { Bell, Briefcase, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import TripInviteReviewModal from "@/components/TripInviteReviewModal";
 import { createClient } from "@/lib/supabase/client";
@@ -29,21 +29,6 @@ export type AppNotification = {
     actor_user_id: string | null;
 };
 
-type AddAction = {
-    key: string;
-    label: string;
-    href?: string;
-};
-
-const addActions: AddAction[] = [
-    { key: "trip", label: "Add trip", href: "/trips/new" },
-    { key: "transportation", label: "Add transportation" },
-    { key: "accommodation", label: "Add accommodation" },
-    { key: "food", label: "Add food or restaurant" },
-    { key: "scheduled", label: "Add scheduled activity/event" },
-    { key: "idea", label: "Add activity idea" },
-] as const;
-
 function tripLabel(trip: TopNavTrip) {
     return trip.title?.trim() || "Untitled trip";
 }
@@ -52,10 +37,9 @@ export default function AppTopActionBar({
     trips,
     notifications = [],
 }: AppTopActionBarProps) {
-    const [openMenu, setOpenMenu] = useState<"add" | "notifications" | null>(
+    const [openMenu, setOpenMenu] = useState<"trips" | "notifications" | null>(
         null
     );
-    const [tripPickerAction, setTripPickerAction] = useState<string | null>(null);
     const [visibleNotifications, setVisibleNotifications] =
         useState<AppNotification[]>(notifications);
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
@@ -79,14 +63,12 @@ export default function AppTopActionBar({
                 !wrapperRef.current.contains(event.target as Node)
             ) {
                 setOpenMenu(null);
-                setTripPickerAction(null);
             }
         }
 
         function closeOnEscape(event: KeyboardEvent) {
             if (event.key === "Escape") {
                 setOpenMenu(null);
-                setTripPickerAction(null);
             }
         }
 
@@ -136,7 +118,7 @@ export default function AppTopActionBar({
         setIsLoadingNotifications(false);
     }
 
-    function toggleMenu(menu: "add" | "notifications") {
+    function toggleMenu(menu: "trips" | "notifications") {
         setOpenMenu((current) => {
             const nextMenu = current === menu ? null : menu;
 
@@ -146,7 +128,6 @@ export default function AppTopActionBar({
 
             return nextMenu;
         });
-        setTripPickerAction(null);
     }
 
     async function markNotificationRead(notification: AppNotification) {
@@ -189,87 +170,56 @@ export default function AppTopActionBar({
                 <div
                     className="relative"
                     onMouseLeave={() => {
-                        if (openMenu === "add") {
+                        if (openMenu === "trips") {
                             setOpenMenu(null);
-                            setTripPickerAction(null);
                         }
                     }}
                 >
                     <button
                         type="button"
-                        onClick={() => toggleMenu("add")}
+                        onClick={() => toggleMenu("trips")}
                         className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
-                        aria-label="Open add menu"
+                        aria-label="Open trips menu"
                         aria-haspopup="menu"
-                        aria-expanded={openMenu === "add"}
+                        aria-expanded={openMenu === "trips"}
                     >
-                        <Plus className="h-5 w-5" aria-hidden="true" />
-                        Add
+                        <Briefcase className="h-5 w-5" aria-hidden="true" />
+                        Trips
                     </button>
 
-                    {openMenu === "add" ? (
+                    {openMenu === "trips" ? (
                         <div className="absolute -right-4 top-12 flex w-[22rem] flex-col items-end gap-2 p-4">
-                            {tripPickerAction ? (
-                                <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
-                                    <button
-                                        type="button"
-                                        onClick={() => setTripPickerAction(null)}
-                                        className="mb-2 rounded-full border border-lime-300/20 bg-lime-300/10 px-4 py-2 text-xs font-bold uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/20"
-                                    >
-                                        Back
-                                    </button>
-                                    <p className="px-3 pb-2 text-xs font-bold uppercase tracking-wide text-lime-200">
-                                        Choose a trip
-                                    </p>
-                                    <div className="max-h-64 overflow-y-auto">
-                                        {trips.length > 0 ? (
-                                            trips.map((trip, index) => (
-                                                <Link
-                                                    key={trip.id}
-                                                    href={`/trips/${trip.id}`}
-                                                    className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-                                                    style={{
-                                                        animationDelay: `${index * 34}ms`,
-                                                    }}
-                                                >
-                                                    {tripLabel(trip)}
-                                                </Link>
-                                            ))
-                                        ) : (
-                                            <p className="px-3 py-2 text-sm text-slate-400">
-                                                Create a trip first.
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            ) : (
-                                addActions.map((action, index) =>
-                                    action.href ? (
-                                        <Link
-                                            key={action.key}
-                                            href={action.href}
-                                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-                                            style={{
-                                                animationDelay: `${index * 34}ms`,
-                                            }}
-                                        >
-                                            {action.label}
-                                        </Link>
+                            <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
+                                <p className="px-3 pb-2 text-xs font-bold uppercase tracking-wide text-lime-200">
+                                    Upcoming trips
+                                </p>
+                                <div className="max-h-64 overflow-y-auto">
+                                    {trips.length > 0 ? (
+                                        trips.map((trip, index) => (
+                                            <Link
+                                                key={trip.id}
+                                                href={`/trips/${trip.id}`}
+                                                className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                                                style={{
+                                                    animationDelay: `${index * 34}ms`,
+                                                }}
+                                            >
+                                                {tripLabel(trip)}
+                                            </Link>
+                                        ))
                                     ) : (
-                                        <button
-                                            key={action.key}
-                                            type="button"
-                                            onClick={() => setTripPickerAction(action.key)}
-                                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-                                            style={{
-                                                animationDelay: `${index * 34}ms`,
-                                            }}
-                                        >
-                                            {action.label}
-                                        </button>
-                                    )
-                                )
-                            )}
+                                        <p className="px-3 py-2 text-sm text-slate-400">
+                                            No upcoming trips yet.
+                                        </p>
+                                    )}
+                                </div>
+                                <Link
+                                    href="/trips"
+                                    className="mt-2 block rounded-full border border-lime-300/20 bg-lime-300/10 px-5 py-2.5 text-right text-sm font-bold text-lime-100 transition hover:bg-lime-300/20"
+                                >
+                                    See all trips
+                                </Link>
+                            </div>
                         </div>
                     ) : null}
                 </div>

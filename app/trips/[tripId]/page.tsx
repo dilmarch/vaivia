@@ -3,12 +3,22 @@ import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import type { ItineraryCalendarItem } from "@/components/ItineraryCalendar";
+import type {
+    CalendarAccommodation,
+    ItineraryCalendarItem,
+} from "@/components/ItineraryCalendar";
 import ItineraryTabs from "@/components/ItineraryTabs";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripDestinationLine from "@/components/TripDestinationLine";
 import TripHeaderCover from "@/components/TripHeaderCover";
-import TripCountdown from "@/components/TripCountdown";
+import TripCountdown, {
+    type TripCountdownTargetOption,
+} from "@/components/TripCountdown";
+import TripMembersPanel, {
+    type TripHeaderFamilyMember,
+    type TripHeaderInvitation,
+    type TripHeaderMember,
+} from "@/components/TripMembersPanel";
 import {
     FALLBACK_CATEGORY_LABEL,
     sortCategoriesByName,
@@ -29,6 +39,10 @@ import {
     toIdeaDayValue,
     toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
+import type {
+    TransportationTraveler,
+    TransportationTravelerOptions,
+} from "@/lib/travelers";
 
 type PageProps = {
     params: Promise<{
@@ -77,6 +91,7 @@ type TripUpdatePayload = {
     start_date: string | null;
     end_date: string | null;
     cover_image_url?: string | null;
+    countdown_target_itinerary_item_id?: string | null;
     notes: string;
 };
 
@@ -112,6 +127,42 @@ type TripIdeaPayload = {
     is_archived?: boolean;
 };
 
+function getPendingInvitationLabel(invitation: Record<string, unknown>) {
+    const labelCandidates = [
+        invitation.invitee_identifier,
+        invitation.invitee_email,
+        invitation.invitee_username,
+        invitation.email,
+        invitation.username,
+        invitation.target_email,
+        invitation.target_username,
+    ];
+
+    const directLabel = labelCandidates.find(
+        (candidate): candidate is string =>
+            typeof candidate === "string" && candidate.trim().length > 0
+    );
+
+    if (directLabel) return directLabel.trim();
+
+    const metadata = invitation.metadata;
+    if (metadata && typeof metadata === "object") {
+        const metadataRecord = metadata as Record<string, unknown>;
+        const metadataLabel = [
+            metadataRecord.invitee_identifier,
+            metadataRecord.email,
+            metadataRecord.username,
+        ].find(
+            (candidate): candidate is string =>
+                typeof candidate === "string" && candidate.trim().length > 0
+        );
+
+        if (metadataLabel) return metadataLabel.trim();
+    }
+
+    return "Invited guest";
+}
+
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
     const message = error.message?.toLowerCase() || "";
 
@@ -120,6 +171,22 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
         error.code === "PGRST204" ||
         (message.includes("column") &&
             (message.includes("cover_image_url") ||
+                message.includes("schema cache")))
+    );
+}
+
+function isMissingCountdownTargetColumnError(error: {
+    code?: string;
+    message?: string;
+}) {
+    const message = error.message?.toLowerCase() || "";
+
+    return (
+        error.code === "42703" ||
+        error.code === "PGRST204" ||
+        (message.includes("column") &&
+            (message.includes("countdown_target_type") ||
+                message.includes("countdown_target_id") ||
                 message.includes("schema cache")))
     );
 }
@@ -386,9 +453,13 @@ async function insertTransportationPayloadWithFallback(
     } | null = null;
 
     for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
-        const { error } = await supabase.from("transportation_items").insert(attempt);
+        const { data, error } = await supabase
+            .from("transportation_items")
+            .insert(attempt)
+            .select("id")
+            .single();
 
-        if (!error) return null;
+        if (!error) return { data: data as Record<string, unknown>, error: null };
 
         lastError = error;
 
@@ -407,7 +478,100 @@ async function insertTransportationPayloadWithFallback(
         attempt = nextAttempt;
     }
 
-    return lastError;
+    return { data: null, error: lastError };
+}
+
+function getUniqueFormStrings(formData: FormData, name: string) {
+    return Array.from(
+        new Set(
+            formData
+                .getAll(name)
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+        )
+    );
+}
+
+function buildTransportationTravelerRows({
+    formData,
+    tripId,
+    transportationItemId,
+    userId,
+}: {
+    formData: FormData;
+    tripId: string;
+    transportationItemId: string;
+    userId: string;
+}) {
+    const userIds = getUniqueFormStrings(formData, "traveler_user_ids");
+    const familyMemberIds = getUniqueFormStrings(
+        formData,
+        "traveler_family_member_ids"
+    );
+    const guestNames = getUniqueFormStrings(formData, "traveler_guest_names");
+
+    return [
+        ...userIds.map((travelerUserId) => ({
+            transportation_item_id: transportationItemId,
+            trip_id: tripId,
+            user_id: travelerUserId,
+            family_member_id: null,
+            guest_name: null,
+            created_by: userId,
+        })),
+        ...familyMemberIds.map((familyMemberId) => ({
+            transportation_item_id: transportationItemId,
+            trip_id: tripId,
+            user_id: null,
+            family_member_id: familyMemberId,
+            guest_name: null,
+            created_by: userId,
+        })),
+        ...guestNames.map((guestName) => ({
+            transportation_item_id: transportationItemId,
+            trip_id: tripId,
+            user_id: null,
+            family_member_id: null,
+            guest_name: guestName,
+            created_by: userId,
+        })),
+    ];
+}
+
+async function replaceTransportationTravelers({
+    transportationItemId,
+    tripId,
+    formData,
+    userId,
+}: {
+    transportationItemId: string;
+    tripId: string;
+    formData: FormData;
+    userId: string;
+}) {
+    const supabase = await createClient();
+    const { error: deleteError } = await supabase
+        .from("transportation_item_travelers")
+        .delete()
+        .eq("transportation_item_id", transportationItemId)
+        .eq("trip_id", tripId);
+
+    if (deleteError) return deleteError;
+
+    const rows = buildTransportationTravelerRows({
+        formData,
+        tripId,
+        transportationItemId,
+        userId,
+    });
+
+    if (rows.length === 0) return null;
+
+    const { error } = await supabase
+        .from("transportation_item_travelers")
+        .insert(rows);
+
+    return error;
 }
 
 async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
@@ -588,6 +752,7 @@ function normalizeTransportationItem(
     const flightNumber = getStringValue(item, ["flight_number"]);
     const airlineName = getStringValue(item, ["airline_name"]);
     const airlineCode = getStringValue(item, ["airline_code"]);
+    const reservationCode = getStringValue(item, ["reservation_code"]);
     const title =
         getStringValue(item, ["title"]) ||
         (flightNumber
@@ -621,6 +786,7 @@ function normalizeTransportationItem(
         airline_name: airlineName || null,
         airline_code: airlineCode || null,
         flight_number: flightNumber || null,
+        reservation_code: reservationCode || null,
         duration: getStringValue(item, ["duration"]) || null,
         departure_location: departureLocation || null,
         arrival_location: arrivalLocation || null,
@@ -629,8 +795,44 @@ function normalizeTransportationItem(
         arrival_timezone: getStringValue(item, ["arrival_timezone"]) || null,
         departure_terminal: getStringValue(item, ["departure_terminal"]) || null,
         arrival_terminal: getStringValue(item, ["arrival_terminal"]) || null,
+        itinerary_item_id: getStringValue(item, ["itinerary_item_id"]) || null,
         source_table: "transportation_items",
-    };
+    } as ItineraryCalendarItem & { itinerary_item_id?: string | null };
+}
+
+function buildCountdownTargetOptions(items: ItineraryCalendarItem[]) {
+    return items
+        .filter((item) => item.item_date && item.start_time)
+        .map((item): TripCountdownTargetOption => {
+        const isTransportation =
+            item.source_table === "transportation_items" ||
+            item.category === "transportation" ||
+            Boolean(item.transportation_mode);
+        const saveId = isTransportation
+            ? item.id.replace(/^transportation:/, "")
+            : item.id;
+
+        return {
+            id: item.id,
+            saveId,
+            saveType: isTransportation ? "transportation_item" : "itinerary_item",
+            title: item.title || (isTransportation ? "Transportation" : "Activity"),
+            itemType: isTransportation ? "transportation" : "activity",
+            itemDate: item.item_date,
+            startTime: item.start_time || null,
+            endTime: item.end_time || null,
+            location:
+                item.location ||
+                [item.departure_location, item.arrival_location]
+                    .filter(Boolean)
+                    .join(" → ") ||
+                null,
+            categoryLabel:
+                item.category_name ||
+                item.category ||
+                (isTransportation ? "Transportation" : "Activity"),
+        };
+    });
 }
 
 function parseFormStringArray(formData: FormData, name: string) {
@@ -862,6 +1064,7 @@ async function createTransportationItem(formData: FormData) {
     const airlineName = formData.get("airline_name") as string;
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
+    const reservationCode = String(formData.get("reservation_code") || "").trim();
     const duration = formData.get("duration") as string;
     const visaRequirements = formData.get("visa_requirements") as string;
     const luggageRequirements = formData.get("luggage_requirements") as string;
@@ -993,6 +1196,7 @@ async function createTransportationItem(formData: FormData) {
         airline_name: airlineName || null,
         airline_code: effectiveAirlineCode || null,
         flight_number: effectiveFlightNumber || null,
+        reservation_code: reservationCode || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
@@ -1013,9 +1217,10 @@ async function createTransportationItem(formData: FormData) {
         });
     }
 
-    const error = await insertTransportationPayloadWithFallback(
+    const transportationInsert = await insertTransportationPayloadWithFallback(
         transportationPayload
     );
+    const error = transportationInsert.error;
 
     if (error) {
         if (process.env.NODE_ENV !== "production") {
@@ -1034,6 +1239,39 @@ async function createTransportationItem(formData: FormData) {
                 error.message ?? "Unknown Supabase error"
             }`
         );
+    }
+
+    const transportationItemId =
+        typeof transportationInsert.data?.id === "string"
+            ? transportationInsert.data.id
+            : "";
+
+    if (transportationItemId) {
+        const travelersError = await replaceTransportationTravelers({
+            transportationItemId,
+            tripId,
+            formData,
+            userId: user.id,
+        });
+
+        if (travelersError) {
+            if (process.env.NODE_ENV !== "production") {
+                console.error("Error creating transportation travelers:", {
+                    authenticatedUserId: user.id,
+                    tripId,
+                    transportationItemId,
+                    message: travelersError.message,
+                    code: travelersError.code,
+                    details: travelersError.details,
+                    hint: travelersError.hint,
+                });
+            }
+            throw new Error(
+                `Could not create transportation travelers: ${
+                    travelersError.message ?? "Unknown Supabase error"
+                }`
+            );
+        }
     }
 
     if (!isPrivate) {
@@ -1078,6 +1316,7 @@ async function updateTransportationItem(formData: FormData) {
     const airlineName = formData.get("airline_name") as string;
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
+    const reservationCode = String(formData.get("reservation_code") || "").trim();
     const departureTerminal = formData.get("departure_terminal") as string;
     const arrivalTerminal = formData.get("arrival_terminal") as string;
     const departureTimezone = formData.get("departure_timezone") as string;
@@ -1118,6 +1357,7 @@ async function updateTransportationItem(formData: FormData) {
         airline_name: airlineName || null,
         airline_code: effectiveAirlineCode || null,
         flight_number: effectiveFlightNumber || null,
+        reservation_code: reservationCode || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
@@ -1134,6 +1374,29 @@ async function updateTransportationItem(formData: FormData) {
     if (error) {
         console.error("Error updating transportation item:", error);
         throw new Error("Could not update transportation item");
+    }
+
+    const travelersError = await replaceTransportationTravelers({
+        transportationItemId: itemId,
+        tripId,
+        formData,
+        userId: user.id,
+    });
+
+    if (travelersError) {
+        console.error("Error updating transportation travelers:", {
+            message: travelersError.message,
+            code: travelersError.code,
+            details: travelersError.details,
+            hint: travelersError.hint,
+            tripId,
+            transportationItemId: itemId,
+        });
+        throw new Error(
+            `Could not update transportation travelers: ${
+                travelersError.message ?? "Unknown Supabase error"
+            }`
+        );
     }
 
     redirect(`/trips/${tripId}`);
@@ -1240,6 +1503,101 @@ async function updateTrip(formData: FormData) {
     redirect(`/trips/${tripId}`);
 }
 
+async function updateTripCountdownTarget(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = String(formData.get("trip_id") || "");
+    const rawType = String(formData.get("countdown_target_type") || "").trim();
+    const rawTargetId = String(formData.get("countdown_target_id") || "").trim();
+    const countdownTargetType =
+        rawType === "transportation_item" || rawType === "itinerary_item"
+            ? rawType
+            : "";
+    const countdownTargetId = rawTargetId || null;
+
+    if (countdownTargetType && countdownTargetId) {
+        const tableName =
+            countdownTargetType === "transportation_item"
+                ? "transportation_items"
+                : "itinerary_items";
+        const { data: targetItem, error: targetError } = await supabase
+            .from(tableName)
+            .select("id,trip_id")
+            .eq("id", countdownTargetId)
+            .eq("trip_id", tripId)
+            .maybeSingle();
+
+        if (targetError || !targetItem) {
+            console.error("Invalid countdown target:", {
+                message: targetError?.message,
+                code: targetError?.code,
+                details: targetError?.details,
+                hint: targetError?.hint,
+                tripId,
+                countdownTargetType,
+                countdownTargetId,
+            });
+            throw new Error("Could not update countdown target");
+        }
+    }
+
+    const payload = {
+        countdown_target_type: countdownTargetType || null,
+        countdown_target_id: countdownTargetType ? countdownTargetId : null,
+        countdown_target_itinerary_item_id:
+            countdownTargetType === "itinerary_item" ? countdownTargetId : null,
+    };
+
+    let { error } = await supabase
+        .from("trips")
+        .update(payload)
+        .eq("id", tripId);
+
+    if (
+        error &&
+        countdownTargetType !== "transportation_item" &&
+        isMissingCountdownTargetColumnError(error)
+    ) {
+        ({ error } = await supabase
+            .from("trips")
+            .update({
+                countdown_target_itinerary_item_id:
+                    countdownTargetType === "itinerary_item" ? countdownTargetId : null,
+            })
+            .eq("id", tripId));
+    }
+
+    if (error) {
+        console.error("Error updating countdown target:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            countdownTargetType,
+            countdownTargetId,
+            payload,
+        });
+        throw new Error(
+            `Could not update countdown target: ${
+                error.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+}
+
 async function deleteTrip(formData: FormData) {
     "use server";
 
@@ -1318,6 +1676,160 @@ async function deleteTrip(formData: FormData) {
     }
 
     redirect("/");
+}
+
+async function removeTripMember(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = String(formData.get("trip_id") || "");
+    const memberUserId = String(formData.get("member_user_id") || "");
+
+    if (!tripId || !memberUserId || memberUserId === user.id) {
+        throw new Error("Could not remove trip member");
+    }
+
+    const { data: trip, error: tripError } = await supabase
+        .from("trips")
+        .select("id,user_id")
+        .eq("id", tripId)
+        .single();
+
+    if (tripError || !trip || (trip as { user_id?: string | null }).user_id !== user.id) {
+        console.error("Unauthorized trip member removal attempt:", {
+            tripId,
+            memberUserId,
+            userId: user.id,
+            message: tripError?.message,
+            code: tripError?.code,
+        });
+        throw new Error("Could not remove trip member");
+    }
+
+    if ((trip as { user_id?: string | null }).user_id === memberUserId) {
+        throw new Error("Trip owner cannot be removed from the trip");
+    }
+
+    const { error } = await supabase
+        .from("trip_members")
+        .delete()
+        .eq("trip_id", tripId)
+        .eq("user_id", memberUserId);
+
+    if (error) {
+        console.error("Error removing trip member:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            memberUserId,
+        });
+        throw new Error(
+            `Could not remove trip member: ${
+                error.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+}
+
+async function addTripFamilyMember(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "");
+    const familyMemberIds = Array.from(
+        new Set(
+            formData
+                .getAll("family_member_id")
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+        )
+    );
+
+    if (familyMemberIds.length === 0) {
+        throw new Error("Could not add family member to trip: no family member selected");
+    }
+
+    const payload = familyMemberIds.map((familyMemberId) => ({
+        trip_id: tripId,
+        family_member_id: familyMemberId,
+        added_by: user.id,
+        status: "going",
+        updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase.from("trip_family_members").upsert(
+        payload,
+        { onConflict: "trip_id,family_member_id" }
+    );
+
+    if (error) {
+        console.error("Error adding family member to trip:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            familyMemberIds,
+            userId: user.id,
+        });
+        throw new Error(`Could not add family member to trip: ${error.message}`);
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+}
+
+async function removeTripFamilyMember(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "");
+    const familyMemberId = String(formData.get("family_member_id") || "");
+
+    const { error } = await supabase
+        .from("trip_family_members")
+        .update({ status: "removed", updated_at: new Date().toISOString() })
+        .eq("trip_id", tripId)
+        .eq("family_member_id", familyMemberId);
+
+    if (error) {
+        console.error("Error removing family member from trip:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            familyMemberId,
+            userId: user.id,
+        });
+        throw new Error(`Could not remove family member from trip: ${error.message}`);
+    }
+
+    revalidatePath(`/trips/${tripId}`);
 }
 
 async function createTripIdea(formData: FormData) {
@@ -1882,6 +2394,237 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         notFound();
     }
 
+    const tripRecord = trip as {
+        id: string;
+        user_id?: string | null;
+        created_at?: string | null;
+    };
+
+    const { data: tripMemberRows, error: tripMembersError } = await supabase
+        .from("trip_members")
+        .select("user_id,role,status,created_at")
+        .eq("trip_id", tripId)
+        .eq("status", "active");
+
+    if (tripMembersError) {
+        console.warn("Could not load trip members:", {
+            message: tripMembersError.message,
+            code: tripMembersError.code,
+            details: tripMembersError.details,
+            hint: tripMembersError.hint,
+            tripId,
+        });
+    }
+
+    const memberRows = (tripMemberRows || []) as Array<{
+        user_id?: string | null;
+        role?: string | null;
+        created_at?: string | null;
+    }>;
+    const memberRowsByUserId = new Map(
+        memberRows
+            .filter((member) => Boolean(member.user_id))
+            .map((member) => [member.user_id as string, member])
+    );
+    const tripMemberUserIds = Array.from(
+        new Set([tripRecord.user_id, ...memberRows.map((member) => member.user_id)].filter(Boolean) as string[])
+    );
+    let tripMembers: TripHeaderMember[] = [];
+
+    if (tripMemberUserIds.length > 0) {
+        const { data: profileRows, error: profileRowsError } = await supabase
+            .from("user_profiles")
+            .select("id,first_name,last_name,username,avatar_url")
+            .in("id", tripMemberUserIds);
+
+        if (profileRowsError) {
+            console.warn("Could not load trip member profiles:", {
+                message: profileRowsError.message,
+                code: profileRowsError.code,
+                details: profileRowsError.details,
+                hint: profileRowsError.hint,
+                tripId,
+            });
+        } else {
+            const profilesById = new Map(
+                ((profileRows || []) as Array<{
+                    id: string;
+                    first_name?: string | null;
+                    last_name?: string | null;
+                    username?: string | null;
+                    avatar_url?: string | null;
+                }>).map((profile) => [profile.id, profile])
+            );
+
+            tripMembers = tripMemberUserIds.map((memberUserId) => {
+                const profile = profilesById.get(memberUserId);
+                const membership = memberRowsByUserId.get(memberUserId);
+
+                return {
+                    user_id: memberUserId,
+                    first_name: profile?.first_name || null,
+                    last_name: profile?.last_name || null,
+                    username: profile?.username || null,
+                    avatar_url: profile?.avatar_url || null,
+                    joined_at:
+                        membership?.created_at ||
+                        (memberUserId === tripRecord.user_id
+                            ? tripRecord.created_at || null
+                            : null),
+                    role:
+                        memberUserId === tripRecord.user_id
+                            ? "owner"
+                            : membership?.role || null,
+                };
+            });
+        }
+    }
+
+    const { data: userFamilyRows, error: userFamilyError } = await supabase
+        .from("user_family_members")
+        .select("id,user_id,name,relationship,avatar_url,notes,created_at,updated_at")
+        .eq("user_id", user.id)
+        .order("name", { ascending: true });
+
+    if (userFamilyError) {
+        console.warn("Could not load saved family members:", {
+            message: userFamilyError.message,
+            code: userFamilyError.code,
+            details: userFamilyError.details,
+            hint: userFamilyError.hint,
+            tripId,
+        });
+    }
+
+    const { data: tripFamilyRows, error: tripFamilyError } = await supabase
+        .from("trip_family_members")
+        .select("id,trip_id,family_member_id,added_by,status,created_at,updated_at")
+        .eq("trip_id", tripId)
+        .eq("status", "going");
+
+    if (tripFamilyError) {
+        console.warn("Could not load trip family members:", {
+            message: tripFamilyError.message,
+            code: tripFamilyError.code,
+            details: tripFamilyError.details,
+            hint: tripFamilyError.hint,
+            tripId,
+        });
+    }
+
+    const savedFamilyMembers = ((userFamilyRows || []) as Array<{
+        id: string;
+        name: string;
+        relationship?: string | null;
+        avatar_url?: string | null;
+        notes?: string | null;
+    }>).map(
+        (member): TripHeaderFamilyMember => ({
+            id: member.id,
+            family_member_id: member.id,
+            name: member.name,
+            relationship: member.relationship || null,
+            avatar_url: member.avatar_url || null,
+            notes: member.notes || null,
+            status: null,
+        })
+    );
+    const savedFamilyById = new Map(
+        savedFamilyMembers.map((member) => [member.family_member_id, member])
+    );
+    const tripFamilyMembers = ((tripFamilyRows || []) as Array<{
+        id: string;
+        family_member_id: string;
+        created_at?: string | null;
+        status?: string | null;
+    }>)
+        .map((row) => {
+            const member = savedFamilyById.get(row.family_member_id);
+            if (!member) return null;
+            return {
+                ...member,
+                id: row.id,
+                joined_at: row.created_at || null,
+                status: row.status || "going",
+            };
+        })
+        .filter(Boolean) as TripHeaderFamilyMember[];
+
+    const tripMemberTravelerOptions = tripMembers.map(
+        (member): TransportationTraveler => {
+            const name =
+                [member.first_name, member.last_name]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() ||
+                member.username ||
+                "Trip member";
+
+            return {
+                type: "user",
+                user_id: member.user_id,
+                name,
+                secondaryLabel: member.username ? `@${member.username}` : null,
+                avatar_url: member.avatar_url || null,
+            };
+        }
+    );
+    const tripFamilyTravelerOptions = tripFamilyMembers.map(
+        (member): TransportationTraveler => ({
+            type: "family",
+            family_member_id: member.family_member_id,
+            name: member.name,
+            secondaryLabel: member.relationship || "Family member",
+            avatar_url: member.avatar_url || null,
+        })
+    );
+    const transportationTravelerOptions: TransportationTravelerOptions = {
+        users: tripMemberTravelerOptions,
+        familyMembers: tripFamilyTravelerOptions,
+    };
+    const tripTravelersByUserId = new Map(
+        tripMemberTravelerOptions
+            .filter((traveler) => traveler.user_id)
+            .map((traveler) => [traveler.user_id as string, traveler])
+    );
+    const tripTravelersByFamilyMemberId = new Map(
+        tripFamilyTravelerOptions
+            .filter((traveler) => traveler.family_member_id)
+            .map((traveler) => [traveler.family_member_id as string, traveler])
+    );
+
+    const { data: pendingInvitationRows, error: pendingInvitationsError } =
+        await supabase
+            .from("trip_invitations")
+            .select("*")
+            .eq("trip_id", tripId)
+            .eq("status", "pending")
+            .order("created_at", { ascending: true });
+
+    if (pendingInvitationsError) {
+        console.warn("Could not load pending trip invitations:", {
+            message: pendingInvitationsError.message,
+            code: pendingInvitationsError.code,
+            details: pendingInvitationsError.details,
+            hint: pendingInvitationsError.hint,
+            tripId,
+        });
+    }
+
+    const pendingInvitations: TripHeaderInvitation[] = (
+        (pendingInvitationRows || []) as Array<Record<string, unknown>>
+    ).map((invitation, index) => ({
+        id:
+            typeof invitation.id === "string"
+                ? invitation.id
+                : `${tripId}-pending-${index}`,
+        label: getPendingInvitationLabel(invitation),
+        created_at:
+            typeof invitation.created_at === "string"
+                ? invitation.created_at
+                : null,
+    }));
+
     const { data: itineraryItems, error: itineraryError } = await supabase
         .from("itinerary_items")
         .select("*")
@@ -1900,6 +2643,99 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
     if (transportationError) {
         console.error("Error loading transportation items:", transportationError);
+    }
+
+    const transportationItemIds = ((transportationItems || []) as Array<{
+        id?: string | null;
+    }>)
+        .map((item) => item.id)
+        .filter(Boolean) as string[];
+    let transportationTravelerRows: Array<Record<string, unknown>> = [];
+
+    if (transportationItemIds.length > 0) {
+        const { data: travelerRows, error: travelerRowsError } = await supabase
+            .from("transportation_item_travelers")
+            .select(
+                "id,transportation_item_id,user_id,family_member_id,guest_name,traveler_note,created_at"
+            )
+            .eq("trip_id", tripId)
+            .in("transportation_item_id", transportationItemIds)
+            .order("created_at", { ascending: true });
+
+        if (travelerRowsError) {
+            console.warn("Could not load transportation travelers:", {
+                message: travelerRowsError.message,
+                code: travelerRowsError.code,
+                details: travelerRowsError.details,
+                hint: travelerRowsError.hint,
+                tripId,
+            });
+        } else {
+            transportationTravelerRows = (travelerRows || []) as Array<
+                Record<string, unknown>
+            >;
+        }
+    }
+
+    const transportationTravelersByItemId = new Map<
+        string,
+        TransportationTraveler[]
+    >();
+
+    transportationTravelerRows.forEach((row) => {
+        const transportationItemId =
+            typeof row.transportation_item_id === "string"
+                ? row.transportation_item_id
+                : "";
+        if (!transportationItemId) return;
+
+        const userTraveler =
+            typeof row.user_id === "string"
+                ? tripTravelersByUserId.get(row.user_id)
+                : null;
+        const familyTraveler =
+            typeof row.family_member_id === "string"
+                ? tripTravelersByFamilyMemberId.get(row.family_member_id)
+                : null;
+        const guestName =
+            typeof row.guest_name === "string" ? row.guest_name.trim() : "";
+
+        const traveler: TransportationTraveler | null = userTraveler
+            ? { ...userTraveler, id: String(row.id || "") }
+            : familyTraveler
+              ? { ...familyTraveler, id: String(row.id || "") }
+              : guestName
+                ? {
+                      id: String(row.id || ""),
+                      type: "guest",
+                      guest_name: guestName,
+                      name: guestName,
+                  }
+                : null;
+
+        if (!traveler) return;
+
+        const current = transportationTravelersByItemId.get(transportationItemId) || [];
+        current.push(traveler);
+        transportationTravelersByItemId.set(transportationItemId, current);
+    });
+
+    const { data: accommodationRows, error: accommodationsError } = await supabase
+        .from("trip_accommodations")
+        .select(
+            "id,hotel_name,city,region,country,address,check_in_date,check_out_date,status"
+        )
+        .eq("trip_id", tripId)
+        .order("check_in_date", { ascending: true });
+
+    if (accommodationsError) {
+        console.warn("Could not load accommodations for week location band:", {
+            message: accommodationsError.message,
+            code: accommodationsError.code,
+            details: accommodationsError.details,
+            hint: accommodationsError.hint,
+            tripId,
+        });
     }
 
     const userCategories = await getUserCategories(user.id);
@@ -2062,15 +2898,44 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 categoriesById.get(String(item.category_id || ""))?.user_id || null,
             source_table: "itinerary_items" as const,
         }))),
-        ...((transportationItems || []) as Record<string, unknown>[]).map(
-            normalizeTransportationItem
-        ),
+        ...((transportationItems || []) as Record<string, unknown>[]).map((item) => {
+            const normalizedItem = normalizeTransportationItem(item);
+            const rawId = getStringValue(item, ["id"]);
+
+            return {
+                ...normalizedItem,
+                travelers: transportationTravelersByItemId.get(rawId) || [],
+            };
+        }),
     ].sort((a, b) => {
         const dateSort = a.item_date.localeCompare(b.item_date);
         if (dateSort !== 0) return dateSort;
 
         return (a.start_time || "99:99").localeCompare(b.start_time || "99:99");
     });
+    const countdownTargetOptions = buildCountdownTargetOptions(calendarItems);
+    const tripCountdownRecord = trip as {
+        countdown_target_type?: unknown;
+        countdown_target_id?: unknown;
+        countdown_target_itinerary_item_id?: unknown;
+    };
+    const selectedCountdownTargetType =
+        tripCountdownRecord.countdown_target_type === "transportation_item" ||
+        tripCountdownRecord.countdown_target_type === "itinerary_item"
+            ? tripCountdownRecord.countdown_target_type
+            : typeof tripCountdownRecord.countdown_target_itinerary_item_id ===
+                "string"
+              ? "itinerary_item"
+              : null;
+    const selectedCountdownTargetId =
+        selectedCountdownTargetType &&
+        typeof tripCountdownRecord.countdown_target_id === "string"
+            ? tripCountdownRecord.countdown_target_id
+            : selectedCountdownTargetType === "itinerary_item" &&
+                typeof tripCountdownRecord.countdown_target_itinerary_item_id ===
+                "string"
+              ? tripCountdownRecord.countdown_target_itinerary_item_id
+              : null;
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripDocumentTitle
@@ -2091,7 +2956,21 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 </TripHeaderCover>
 
                 <div className="mx-auto max-w-7xl p-5 sm:p-7">
-                        <TripDestinationLine destination={trip.destination} />
+                        <TripDestinationLine destination={trip.destination}>
+                            <TripMembersPanel
+                                tripId={trip.id}
+                                tripTitle={trip.title}
+                                members={tripMembers}
+                                familyMembers={tripFamilyMembers}
+                                availableFamilyMembers={savedFamilyMembers}
+                                invitations={pendingInvitations}
+                                currentUserId={user.id}
+                                tripOwnerId={tripRecord.user_id}
+                                removeMemberAction={removeTripMember}
+                                addFamilyMemberAction={addTripFamilyMember}
+                                removeFamilyMemberAction={removeTripFamilyMember}
+                            />
+                        </TripDestinationLine>
 
                         <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch">
                             <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
@@ -2113,7 +2992,16 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
                                 <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
                                 <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
-                                <TripCountdown startDate={trip.start_date} />
+                                <TripCountdown
+                                    tripId={trip.id}
+                                    startDate={trip.start_date}
+                                    selectedTargetId={selectedCountdownTargetId}
+                                    selectedTargetType={selectedCountdownTargetType}
+                                    targets={countdownTargetOptions}
+                                    updateCountdownTargetAction={
+                                        updateTripCountdownTarget
+                                    }
+                                />
                             </div>
                         </div>
 
@@ -2130,6 +3018,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     <ItineraryTabs
                         tripId={trip.id}
                         items={calendarItems}
+                        accommodations={
+                            ((accommodationRows || []) as CalendarAccommodation[])
+                        }
                         ideas={ideas}
                         tripStartDate={trip.start_date}
                         tripDestination={trip.destination}
@@ -2146,6 +3037,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         initialTab={initialTab}
                         defaultItineraryView={defaultItineraryView}
                         categories={userCategories}
+                        travelerOptions={transportationTravelerOptions}
                     />
                 </section>
             </div>
