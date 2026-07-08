@@ -317,16 +317,16 @@ export default function AppSidebarNav({
 
             <nav
                 ref={mobileDockRef}
-                className="fixed inset-x-0 bottom-0 z-50 h-[5.5rem] border-t border-white/10 bg-slate-950/95 text-white shadow-2xl shadow-black/50 backdrop-blur-xl md:hidden"
+                className="fixed inset-x-0 bottom-0 z-50 h-[5.5rem] text-white md:hidden"
                 aria-label="Mobile navigation"
             >
                 {mobileMenu === "view" ? (
-                    <div className="absolute bottom-[4.75rem] left-4 flex flex-col items-start gap-2">
+                    <div className="absolute bottom-[4.9rem] left-3 right-3 flex items-center gap-2 overflow-x-auto rounded-[1.75rem] border border-white/10 bg-[#0c0115]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl">
                         {mobileViewItems.length > 0 ? (
                             mobileViewItems.map((item, index) => (
                                 <div
                                     key={item.label}
-                                    className="animate-vaivia-add-fan-out"
+                                    className="animate-vaivia-add-fan-out shrink-0"
                                     style={{ animationDelay: `${index * 32}ms` }}
                                 >
                                     <NavItemButton
@@ -339,7 +339,7 @@ export default function AppSidebarNav({
                         ) : (
                             <Link
                                 href="/trips"
-                                className="animate-vaivia-add-fan-out rounded-full border border-lime-300/20 bg-[#0c0115]/90 px-5 py-2.5 text-sm font-black text-lime-100 shadow-2xl shadow-black/40 backdrop-blur-xl"
+                                className="animate-vaivia-add-fan-out shrink-0 rounded-full border border-lime-300/20 bg-white/[0.06] px-5 py-2.5 text-sm font-black text-lime-100"
                                 onClick={() => setMobileMenu(null)}
                                 prefetch
                             >
@@ -350,17 +350,17 @@ export default function AppSidebarNav({
                 ) : null}
 
                 {mobileMenu === "more" ? (
-                    <div className="absolute bottom-[4.75rem] right-4 flex flex-col items-end gap-2">
+                    <div className="absolute bottom-[4.9rem] left-3 right-3 flex items-center justify-end gap-2 overflow-x-auto rounded-[1.75rem] border border-white/10 bg-[#0c0115]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl">
                         <Link
                             href="/settings"
                             onClick={() => setMobileMenu(null)}
-                            className="animate-vaivia-add-fan-out rounded-full border border-lime-300/20 bg-[#0c0115]/90 px-5 py-2.5 text-sm font-black text-lime-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:bg-lime-300/10"
+                            className="animate-vaivia-add-fan-out shrink-0 rounded-full border border-lime-300/20 bg-white/[0.06] px-5 py-2.5 text-sm font-black text-lime-100 transition hover:bg-lime-300/10"
                             prefetch
                         >
                             Settings
                         </Link>
                         {userId ? (
-                            <div className="animate-vaivia-add-fan-out">
+                            <div className="animate-vaivia-add-fan-out shrink-0">
                                 <AccountMenu
                                     userId={userId}
                                     email={email}
@@ -374,7 +374,7 @@ export default function AppSidebarNav({
                             <Link
                                 href="/auth/login"
                                 onClick={() => setMobileMenu(null)}
-                                className="animate-vaivia-add-fan-out rounded-full border border-lime-300/20 bg-[#0c0115]/90 px-5 py-2.5 text-sm font-black text-lime-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:bg-lime-300/10"
+                                className="animate-vaivia-add-fan-out shrink-0 rounded-full border border-lime-300/20 bg-white/[0.06] px-5 py-2.5 text-sm font-black text-lime-100 transition hover:bg-lime-300/10"
                             >
                                 Sign in
                             </Link>
@@ -382,7 +382,7 @@ export default function AppSidebarNav({
                     </div>
                 ) : null}
 
-                <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-24">
+                <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-24 pointer-events-none">
                     <button
                         type="button"
                         onClick={() =>
@@ -390,7 +390,7 @@ export default function AppSidebarNav({
                                 current === "view" ? null : "view"
                             )
                         }
-                        className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                        className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
                         aria-label="Open trip views"
                         aria-expanded={mobileMenu === "view"}
                     >
@@ -403,7 +403,7 @@ export default function AppSidebarNav({
                                 current === "more" ? null : "more"
                             )
                         }
-                        className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                        className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
                         aria-label="Open more options"
                         aria-expanded={mobileMenu === "more"}
                     >

@@ -8,7 +8,6 @@ import {
     ACCOMMODATION_TYPE_OPTIONS,
     getAccommodationStatusLabel,
     getAccommodationTypeLabel,
-    isGoogleValidatedAccommodationType,
     type TripAccommodation,
 } from "@/lib/accommodations";
 
@@ -160,15 +159,13 @@ function AccommodationForm({
     const [address, setAddress] = useState(accommodation?.address || "");
     const [website, setWebsite] = useState(accommodation?.website || "");
     const [type, setType] = useState(
-        accommodation?.accommodation_type || "hotel"
+        accommodation?.accommodation_type || "other"
     );
     const [placeFields, setPlaceFields] = useState<PlaceFields>(() =>
         getInitialPlaceFields(accommodation)
     );
     const [errors, setErrors] = useState<string[]>([]);
     const [isSaving, startSavingTransition] = useTransition();
-
-    const requiresGooglePlace = isGoogleValidatedAccommodationType(type);
 
     function handlePlaceSelect(place: google.maps.places.PlaceResult) {
         if (!place.place_id) {
@@ -221,12 +218,6 @@ function AccommodationForm({
         }
         if (checkInStart && checkInEnd && checkInEnd <= checkInStart) {
             nextErrors.push("Check-in end time must be after check-in start time.");
-        }
-        if (
-            isGoogleValidatedAccommodationType(String(formData.get("accommodation_type"))) &&
-            !String(formData.get("google_place_id") || "")
-        ) {
-            nextErrors.push("Select a Google Maps result to validate this accommodation.");
         }
         if (
             websiteValue &&
@@ -294,16 +285,15 @@ function AccommodationForm({
                         value={hotelName}
                         onInputChange={setHotelName}
                         onPlaceSelect={handlePlaceSelect}
-                        placeholder="Search Google Maps"
+                        placeholder="Search Google Maps or enter a city/address"
                         required
                         className={inputClass}
                     />
                     <input type="hidden" name="hotel_name" value={hotelName} />
-                    {requiresGooglePlace && !placeFields.google_place_id ? (
-                        <span className="block text-xs font-bold text-amber-200">
-                            Select a Google Maps result to validate this accommodation.
-                        </span>
-                    ) : null}
+                    <span className="block text-xs font-bold text-slate-400">
+                        Google Maps is optional. You can enter a hotel, residence,
+                        address, or city for planning.
+                    </span>
                 </label>
 
                 <label className="space-y-2 md:col-span-2">
@@ -360,9 +350,9 @@ function AccommodationForm({
                 </label>
 
                 <label className="space-y-2">
-                    <span className={labelClass}>Accommodation type</span>
-                    <select
-                        name="accommodation_type"
+                        <span className={labelClass}>Accommodation type</span>
+                        <select
+                            name="accommodation_type"
                         value={type}
                         onChange={(event) =>
                             setType(event.target.value as typeof type)

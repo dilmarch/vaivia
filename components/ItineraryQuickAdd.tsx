@@ -145,7 +145,7 @@ export default function ItineraryQuickAdd({
                     <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
                         <Link
                             href="/trips/new"
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add trip
                         </Link>
@@ -155,7 +155,7 @@ export default function ItineraryQuickAdd({
                                 setIsTransportationOpen(true);
                                 setIsOpen(false);
                             }}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add transportation
                         </button>
@@ -165,14 +165,14 @@ export default function ItineraryQuickAdd({
                                 setIsAccommodationOpen(true);
                                 setIsOpen(false);
                             }}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add accommodation
                         </button>
                         <button
                             type="button"
                             onClick={() => openItineraryForm("Add food or restaurant")}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add food or restaurant
                         </button>
@@ -181,7 +181,7 @@ export default function ItineraryQuickAdd({
                             onClick={() =>
                                 openItineraryForm("Add scheduled activity/event")
                             }
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add scheduled activity/event
                         </button>
@@ -194,7 +194,7 @@ export default function ItineraryQuickAdd({
                                 setIsOpen(false);
                             }}
                             disabled={!createIdeaAction}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50 md:text-right"
                         >
                             Add activity idea
                         </button>

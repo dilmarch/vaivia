@@ -293,7 +293,7 @@ export default function AccountMenu({
                 <button
                     type="button"
                     onClick={() => setIsOpen(true)}
-                    className="flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-lime-300/20 bg-white/[0.06] px-5 py-2.5 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
                     aria-label="My account"
                 >
                     {avatarUrl ? (
@@ -306,7 +306,7 @@ export default function AccountMenu({
                     ) : (
                         <UserRound className="h-5 w-5" aria-hidden="true" />
                     )}
-                    <span className="truncate">Account</span>
+                    <span>Account</span>
                 </button>
             ) : variant === "sidebar-settings" ? (
                 <Link

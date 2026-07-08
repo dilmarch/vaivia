@@ -66,10 +66,6 @@ export function normalizeWebsiteUrl(value: FormDataEntryValue | null) {
     return `https://${text}`;
 }
 
-export function isGoogleValidatedAccommodationType(type: string) {
-    return ["hotel", "motel", "home_rental", "hostel"].includes(type);
-}
-
 export function getAccommodationTypeLabel(value?: string | null) {
     return (
         ACCOMMODATION_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
@@ -127,7 +123,7 @@ export function buildAccommodationPayload(
     tripId: string
 ): TripAccommodationFormPayload {
     const accommodationType = String(
-        formData.get("accommodation_type") || "hotel"
+        formData.get("accommodation_type") || "other"
     ) as AccommodationType;
     const status = String(formData.get("status") || "tentative") as AccommodationStatus;
     const latitudeText = nullableString(formData.get("latitude"));
@@ -182,12 +178,6 @@ export function validateAccommodationPayload(
         payload.check_in_time_end <= payload.check_in_time_start
     ) {
         errors.push("Check-in end time must be after check-in start time.");
-    }
-    if (
-        isGoogleValidatedAccommodationType(payload.accommodation_type) &&
-        !payload.google_place_id
-    ) {
-        errors.push("Select a Google Maps result to validate this accommodation.");
     }
     if (payload.website && !/^https?:\/\/\S+\.\S+/i.test(payload.website)) {
         errors.push("Website must be a valid URL.");
