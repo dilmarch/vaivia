@@ -184,7 +184,7 @@ export default function TripMembersPanel({
                     </div>
                 </div>
 
-                <div className="min-w-0 border-l border-white/10 pl-4">
+                <div className="min-w-0 sm:border-l sm:border-white/10 sm:pl-4">
                     <p className="text-[11px] font-black uppercase tracking-[0.24em] text-lime-300">
                         Going
                     </p>

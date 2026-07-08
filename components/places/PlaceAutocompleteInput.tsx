@@ -42,7 +42,12 @@ export default function PlaceAutocompleteInput({
     className = "",
 }: PlaceAutocompleteInputProps) {
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const onPlaceSelectRef = useRef(onPlaceSelect);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
+
+    useEffect(() => {
+        onPlaceSelectRef.current = onPlaceSelect;
+    }, [onPlaceSelect]);
 
     useEffect(() => {
         if (window.google?.maps?.places?.Autocomplete) {
@@ -72,11 +77,11 @@ export default function PlaceAutocompleteInput({
 
         const listener = autocomplete.addListener("place_changed", () => {
             const place = autocomplete.getPlace();
-            onPlaceSelect(place);
+            onPlaceSelectRef.current(place);
         });
 
         return () => listener.remove();
-    }, [isGoogleReady, onPlaceSelect]);
+    }, [isGoogleReady]);
 
     return (
         <>

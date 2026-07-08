@@ -139,10 +139,10 @@ export default function ItineraryQuickAdd({
 
             <div
                 ref={quickAddRef}
-                className="fixed bottom-6 right-6 z-40 flex flex-col items-end"
+                className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
             >
                 {isOpen && (
-                    <div className="mb-3 flex flex-col items-end gap-2">
+                    <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
                         <Link
                             href="/trips/new"
                             className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
@@ -204,7 +204,7 @@ export default function ItineraryQuickAdd({
                 <button
                     type="button"
                     onClick={() => setIsOpen((current) => !current)}
-                    className="flex h-14 w-14 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                    className="flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
                     aria-label={
                         isOpen
                             ? "Close itinerary quick add menu"

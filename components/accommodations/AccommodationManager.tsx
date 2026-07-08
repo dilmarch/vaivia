@@ -40,6 +40,19 @@ type ModalMode =
     | { type: "add"; accommodation?: null }
     | { type: "edit"; accommodation: TripAccommodation };
 
+const PLACE_FIELD_NAMES = [
+    "google_place_id",
+    "google_maps_url",
+    "address_line_1",
+    "address_line_2",
+    "city",
+    "region",
+    "country",
+    "postal_code",
+    "latitude",
+    "longitude",
+] as const satisfies ReadonlyArray<Exclude<keyof PlaceFields, "address" | "website">>;
+
 const inputClass =
     "w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50 focus:bg-white/[0.12] focus:ring-2 focus:ring-lime-300/20 [color-scheme:dark]";
 const labelClass =
@@ -127,6 +140,10 @@ function formatDisplayTime(value?: string | null) {
     }).format(date);
 }
 
+function formValue(value: string | number | null | undefined) {
+    return value == null ? "" : String(value);
+}
+
 function AccommodationForm({
     tripId,
     mode,
@@ -149,6 +166,7 @@ function AccommodationForm({
         getInitialPlaceFields(accommodation)
     );
     const [errors, setErrors] = useState<string[]>([]);
+    const [isSaving, startSavingTransition] = useTransition();
 
     const requiresGooglePlace = isGoogleValidatedAccommodationType(type);
 
@@ -160,6 +178,18 @@ function AccommodationForm({
         setHotelName(placeName);
         setAddress(fields.address || "");
         setWebsite(fields.website || "");
+    }
+
+    function hydrateFormData(formData: FormData) {
+        formData.set("trip_id", tripId);
+        if (accommodation) formData.set("accommodation_id", accommodation.id);
+        formData.set("hotel_name", hotelName);
+        formData.set("address", address);
+        formData.set("website", website);
+
+        PLACE_FIELD_NAMES.forEach((fieldName) => {
+            formData.set(fieldName, formValue(placeFields[fieldName]));
+        });
     }
 
     function validate(formData: FormData) {
@@ -204,10 +234,23 @@ function AccommodationForm({
 
     return (
         <form
-            action={action}
             onSubmit={(event) => {
+                event.preventDefault();
                 const formData = new FormData(event.currentTarget);
-                if (!validate(formData)) event.preventDefault();
+                hydrateFormData(formData);
+                if (!validate(formData)) return;
+
+                startSavingTransition(() => {
+                    void action(formData)
+                        .then(onClose)
+                        .catch((error: unknown) => {
+                            const message =
+                                error instanceof Error
+                                    ? error.message
+                                    : "Could not save accommodation.";
+                            setErrors([message]);
+                        });
+                });
             }}
             className={modalBodyClass}
         >
@@ -215,11 +258,14 @@ function AccommodationForm({
             {accommodation ? (
                 <input type="hidden" name="accommodation_id" value={accommodation.id} />
             ) : null}
-            {Object.entries(placeFields)
-                .filter(([key]) => key !== "address" && key !== "website")
-                .map(([key, value]) => (
-                    <input key={key} type="hidden" name={key} value={value ?? ""} />
-                ))}
+            {PLACE_FIELD_NAMES.map((fieldName) => (
+                <input
+                    key={fieldName}
+                    type="hidden"
+                    name={fieldName}
+                    value={formValue(placeFields[fieldName])}
+                />
+            ))}
 
             {errors.length > 0 ? (
                 <div className="rounded-2xl border border-red-300/40 bg-red-950/80 p-4 text-sm font-semibold text-red-50">
@@ -393,9 +439,10 @@ function AccommodationForm({
                 </button>
                 <button
                     type="submit"
+                    disabled={isSaving}
                     className="rounded-full bg-lime-300 px-5 py-2 text-sm font-black text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                 >
-                    Save accommodation
+                    {isSaving ? "Saving..." : "Save accommodation"}
                 </button>
             </div>
         </form>

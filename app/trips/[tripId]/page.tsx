@@ -2354,6 +2354,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             : resolvedSearchParams.tab === "journey"
               ? "journey"
               : "itinerary";
+    const hideHeaderDetailsOnMobile = initialTab !== "itinerary";
 
     const supabase = await createClient();
 
@@ -2956,6 +2957,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 </TripHeaderCover>
 
                 <div className="mx-auto max-w-7xl p-5 sm:p-7">
+                    <div className={hideHeaderDetailsOnMobile ? "hidden sm:block" : ""}>
                         <TripDestinationLine destination={trip.destination}>
                             <TripMembersPanel
                                 tripId={trip.id}
@@ -2971,8 +2973,11 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 removeFamilyMemberAction={removeTripFamilyMember}
                             />
                         </TripDestinationLine>
+                    </div>
 
-                        <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch">
+                        <div className={`mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch ${
+                            hideHeaderDetailsOnMobile ? "hidden sm:grid" : ""
+                        }`}>
                             <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
                                 <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
                                     Departing:

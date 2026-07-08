@@ -209,6 +209,11 @@ export default function AppSidebarNav({
     const searchParams = useSearchParams();
     const tab = searchParams.get("tab") || "";
     const navItems = getNavItems(pathname);
+    const mobileNavItems = navItems.filter(
+        (item) => !item.disabled && item.label !== "Travel Assistant"
+    );
+    const mobileLeftItems = mobileNavItems.slice(0, 3);
+    const mobileRightItems = mobileNavItems.slice(3);
 
     return (
         <>
@@ -282,7 +287,19 @@ export default function AppSidebarNav({
                 className="fixed inset-x-0 bottom-0 z-50 flex gap-1 overflow-x-auto border-t border-white/10 bg-slate-950/95 px-2 py-2 text-white shadow-2xl shadow-black/50 backdrop-blur-xl md:hidden"
                 aria-label="Mobile navigation"
             >
-                {navItems.slice(0, 5).map((item) => (
+                {mobileLeftItems.map((item) => (
+                    <NavItemButton
+                        key={item.label}
+                        item={item}
+                        isActive={item.match?.(pathname, tab) || false}
+                        mobile
+                    />
+                ))}
+                <span
+                    className="min-w-20 shrink-0"
+                    aria-hidden="true"
+                />
+                {mobileRightItems.map((item) => (
                     <NavItemButton
                         key={item.label}
                         item={item}
