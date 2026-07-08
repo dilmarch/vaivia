@@ -171,6 +171,17 @@ function AccommodationForm({
     const requiresGooglePlace = isGoogleValidatedAccommodationType(type);
 
     function handlePlaceSelect(place: google.maps.places.PlaceResult) {
+        if (!place.place_id) {
+            if (process.env.NODE_ENV === "development") {
+                console.warn("Google place selection did not include a place_id:", {
+                    name: place.name,
+                    formattedAddress: place.formatted_address,
+                    types: place.types,
+                });
+            }
+            return;
+        }
+
         const fields = buildPlaceFields(place);
         const placeName = place.name || place.formatted_address || "";
 

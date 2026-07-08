@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
     BedDouble,
     Bot,
     Briefcase,
     CalendarCheck,
+    ChevronsUp,
     Home,
     Map,
+    MoreHorizontal,
     PiggyBank,
     Settings,
     Sparkles,
@@ -209,11 +212,31 @@ export default function AppSidebarNav({
     const searchParams = useSearchParams();
     const tab = searchParams.get("tab") || "";
     const navItems = getNavItems(pathname);
-    const mobileNavItems = navItems.filter(
-        (item) => !item.disabled && item.label !== "Travel Assistant"
+    const [mobileMenu, setMobileMenu] = useState<"view" | "more" | null>(null);
+    const mobileDockRef = useRef<HTMLDivElement | null>(null);
+    const mobileViewItems = navItems.filter((item) =>
+        ["Itinerary", "Budget", "Ideas", "Journey", "Accommodations"].includes(
+            item.label
+        )
     );
-    const mobileLeftItems = mobileNavItems.slice(0, 3);
-    const mobileRightItems = mobileNavItems.slice(3);
+
+    useEffect(() => {
+        if (!mobileMenu) return;
+
+        function closeOnOutsideClick(event: MouseEvent) {
+            if (
+                mobileDockRef.current &&
+                !mobileDockRef.current.contains(event.target as Node)
+            ) {
+                setMobileMenu(null);
+            }
+        }
+
+        document.addEventListener("mousedown", closeOnOutsideClick);
+        return () => {
+            document.removeEventListener("mousedown", closeOnOutsideClick);
+        };
+    }, [mobileMenu]);
 
     return (
         <>
@@ -283,63 +306,110 @@ export default function AppSidebarNav({
                 </div>
             </aside>
 
+            <Link
+                href="/"
+                className="fixed left-4 top-4 z-50 flex h-12 w-12 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/70 text-2xl font-black text-lime-300 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] backdrop-blur-xl transition hover:border-lime-300/50 hover:bg-white/[0.08] md:hidden"
+                aria-label="VAIVIA home"
+                prefetch
+            >
+                V
+            </Link>
+
             <nav
-                className="fixed inset-x-0 bottom-0 z-50 flex gap-1 overflow-x-auto border-t border-white/10 bg-slate-950/95 px-2 py-2 text-white shadow-2xl shadow-black/50 backdrop-blur-xl md:hidden"
+                ref={mobileDockRef}
+                className="fixed inset-x-0 bottom-0 z-50 h-[5.5rem] border-t border-white/10 bg-slate-950/95 text-white shadow-2xl shadow-black/50 backdrop-blur-xl md:hidden"
                 aria-label="Mobile navigation"
             >
-                {mobileLeftItems.map((item) => (
-                    <NavItemButton
-                        key={item.label}
-                        item={item}
-                        isActive={item.match?.(pathname, tab) || false}
-                        mobile
-                    />
-                ))}
-                <span
-                    className="min-w-20 shrink-0"
-                    aria-hidden="true"
-                />
-                {mobileRightItems.map((item) => (
-                    <NavItemButton
-                        key={item.label}
-                        item={item}
-                        isActive={item.match?.(pathname, tab) || false}
-                        mobile
-                    />
-                ))}
-                <Link
-                    href="/settings"
-                    aria-label="Settings"
-                    aria-current={pathname.startsWith("/settings") ? "page" : undefined}
-                    className={`flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold transition ${
-                        pathname.startsWith("/settings")
-                            ? "bg-lime-400/10 text-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.18)]"
-                            : "text-slate-400 hover:bg-white/5 hover:text-white"
-                    }`}
-                    prefetch
-                >
-                    <Settings className="h-5 w-5" aria-hidden="true" />
-                    <span className="truncate">Settings</span>
-                </Link>
-                {userId ? (
-                    <AccountMenu
-                        userId={userId}
-                        email={email}
-                        joinedAt={joinedAt}
-                        profile={profile}
-                        preferences={preferences}
-                        variant="mobile-profile"
-                    />
-                ) : (
-                    <Link
-                        href="/auth/login"
-                        aria-label="Sign in"
-                        className="flex min-h-12 min-w-[4.5rem] flex-col items-center justify-center gap-1 rounded-2xl px-3 text-[11px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-white"
+                {mobileMenu === "view" ? (
+                    <div className="absolute bottom-[4.75rem] left-4 flex flex-col items-start gap-2">
+                        {mobileViewItems.length > 0 ? (
+                            mobileViewItems.map((item, index) => (
+                                <div
+                                    key={item.label}
+                                    className="animate-vaivia-add-fan-out"
+                                    style={{ animationDelay: `${index * 32}ms` }}
+                                >
+                                    <NavItemButton
+                                        item={item}
+                                        isActive={item.match?.(pathname, tab) || false}
+                                        mobile
+                                    />
+                                </div>
+                            ))
+                        ) : (
+                            <Link
+                                href="/trips"
+                                className="animate-vaivia-add-fan-out rounded-full border border-lime-300/20 bg-[#0c0115]/90 px-5 py-2.5 text-sm font-black text-lime-100 shadow-2xl shadow-black/40 backdrop-blur-xl"
+                                onClick={() => setMobileMenu(null)}
+                                prefetch
+                            >
+                                Trips
+                            </Link>
+                        )}
+                    </div>
+                ) : null}
+
+                {mobileMenu === "more" ? (
+                    <div className="absolute bottom-[4.75rem] right-4 flex flex-col items-end gap-2">
+                        <Link
+                            href="/settings"
+                            onClick={() => setMobileMenu(null)}
+                            className="animate-vaivia-add-fan-out rounded-full border border-lime-300/20 bg-[#0c0115]/90 px-5 py-2.5 text-sm font-black text-lime-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:bg-lime-300/10"
+                            prefetch
+                        >
+                            Settings
+                        </Link>
+                        {userId ? (
+                            <div className="animate-vaivia-add-fan-out">
+                                <AccountMenu
+                                    userId={userId}
+                                    email={email}
+                                    joinedAt={joinedAt}
+                                    profile={profile}
+                                    preferences={preferences}
+                                    variant="mobile-profile"
+                                />
+                            </div>
+                        ) : (
+                            <Link
+                                href="/auth/login"
+                                onClick={() => setMobileMenu(null)}
+                                className="animate-vaivia-add-fan-out rounded-full border border-lime-300/20 bg-[#0c0115]/90 px-5 py-2.5 text-sm font-black text-lime-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:bg-lime-300/10"
+                            >
+                                Sign in
+                            </Link>
+                        )}
+                    </div>
+                ) : null}
+
+                <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-24">
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setMobileMenu((current) =>
+                                current === "view" ? null : "view"
+                            )
+                        }
+                        className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                        aria-label="Open trip views"
+                        aria-expanded={mobileMenu === "view"}
                     >
-                        <Settings className="h-5 w-5" aria-hidden="true" />
-                        <span className="truncate">Sign in</span>
-                    </Link>
-                )}
+                        <ChevronsUp className="h-6 w-6" aria-hidden="true" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setMobileMenu((current) =>
+                                current === "more" ? null : "more"
+                            )
+                        }
+                        className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                        aria-label="Open more options"
+                        aria-expanded={mobileMenu === "more"}
+                    >
+                        <MoreHorizontal className="h-6 w-6" aria-hidden="true" />
+                    </button>
+                </div>
             </nav>
         </>
     );

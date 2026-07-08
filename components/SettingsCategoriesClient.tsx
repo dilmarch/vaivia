@@ -20,6 +20,53 @@ function getColorHex(colors: CategoryColorOption[], key?: string | null) {
     return colors.find((color) => color.key === key)?.hex || "#64748B";
 }
 
+function ColorSwatchPicker({
+    colors,
+    value,
+    onChange,
+    name = "color_key",
+}: {
+    colors: CategoryColorOption[];
+    value: string;
+    onChange: (value: string) => void;
+    name?: string;
+}) {
+    return (
+        <div>
+            <input type="hidden" name={name} value={value} />
+            <div
+                className="grid grid-cols-5 gap-2 rounded-xl border border-white/10 bg-white/[0.06] p-2"
+                role="radiogroup"
+                aria-label="Category colour"
+            >
+                {colors.map((color) => {
+                    const isSelected = color.key === value;
+
+                    return (
+                        <button
+                            key={color.key}
+                            type="button"
+                            role="radio"
+                            aria-checked={isSelected}
+                            aria-label={`${color.label} category colour`}
+                            title={color.label}
+                            onClick={() => onChange(color.key)}
+                            className={`h-8 w-8 rounded-full border transition focus:outline-none focus:ring-2 focus:ring-lime-300/60 ${
+                                isSelected
+                                    ? "border-white shadow-[0_0_0_3px_rgba(255,255,255,0.18),0_0_18px_rgba(var(--vaivia-neon-rgb),0.18)]"
+                                    : "border-white/20 hover:scale-110 hover:border-white/70"
+                            }`}
+                            style={{ backgroundColor: color.hex }}
+                        >
+                            <span className="sr-only">{color.label}</span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export default function SettingsCategoriesClient({
     categories,
     colors,
@@ -31,6 +78,16 @@ export default function SettingsCategoriesClient({
     const [editingId, setEditingId] = useState<string | null>(null);
     const [deleteCategory, setDeleteCategory] = useState<UserCategory | null>(null);
     const defaultColorKey = colors[0]?.key || "";
+    const [addColorKey, setAddColorKey] = useState(defaultColorKey);
+    const [editColorKeys, setEditColorKeys] = useState<Record<string, string>>({});
+
+    function openEditor(category: UserCategory) {
+        setEditingId(category.id);
+        setEditColorKeys((current) => ({
+            ...current,
+            [category.id]: category.color_key || defaultColorKey,
+        }));
+    }
 
     return (
         <div className="space-y-6">
@@ -50,7 +107,7 @@ export default function SettingsCategoriesClient({
                         Add category
                     </h2>
                 </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_auto]">
+                <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-start">
                     <input
                         name="name"
                         required
@@ -58,17 +115,11 @@ export default function SettingsCategoriesClient({
                         className="rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2 text-white outline-none placeholder:text-slate-500 focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/20"
                         autoComplete="off"
                     />
-                    <select
-                        name="color_key"
-                        defaultValue={defaultColorKey}
-                        className="rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2 text-white outline-none [color-scheme:dark] focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/20"
-                    >
-                        {colors.map((color) => (
-                            <option key={color.key} value={color.key}>
-                                {color.label}
-                            </option>
-                        ))}
-                    </select>
+                    <ColorSwatchPicker
+                        colors={colors}
+                        value={addColorKey}
+                        onChange={setAddColorKey}
+                    />
                     <button className="rounded-xl bg-lime-300 px-5 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200">
                         Add
                     </button>
@@ -88,7 +139,7 @@ export default function SettingsCategoriesClient({
                             {isEditing ? (
                                 <form
                                     action={updateAction}
-                                    className="grid gap-3 md:grid-cols-[auto_1fr_220px_auto]"
+                                    className="grid gap-3 md:grid-cols-[auto_1fr_auto_auto] md:items-start"
                                 >
                                     <input
                                         type="hidden"
@@ -105,17 +156,20 @@ export default function SettingsCategoriesClient({
                                         defaultValue={category.name}
                                         className="rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2 text-white outline-none focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/20"
                                     />
-                                    <select
-                                        name="color_key"
-                                        defaultValue={category.color_key || defaultColorKey}
-                                        className="rounded-xl border border-white/10 bg-white/[0.08] px-4 py-2 text-white outline-none [color-scheme:dark] focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/20"
-                                    >
-                                        {colors.map((color) => (
-                                            <option key={color.key} value={color.key}>
-                                                {color.label}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    <ColorSwatchPicker
+                                        colors={colors}
+                                        value={
+                                            editColorKeys[category.id] ||
+                                            category.color_key ||
+                                            defaultColorKey
+                                        }
+                                        onChange={(nextColorKey) =>
+                                            setEditColorKeys((current) => ({
+                                                ...current,
+                                                [category.id]: nextColorKey,
+                                            }))
+                                        }
+                                    />
                                     <div className="flex gap-2">
                                         <button className="rounded-xl bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200">
                                             Save
@@ -141,7 +195,7 @@ export default function SettingsCategoriesClient({
                                     </p>
                                     <button
                                         type="button"
-                                        onClick={() => setEditingId(category.id)}
+                                        onClick={() => openEditor(category)}
                                         className="rounded-xl border border-white/10 bg-white/[0.08] p-2 text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14]"
                                         aria-label={`Change ${category.name} colour`}
                                         title="Edit colour"
@@ -150,7 +204,7 @@ export default function SettingsCategoriesClient({
                                     </button>
                                     <button
                                         type="button"
-                                        onClick={() => setEditingId(category.id)}
+                                        onClick={() => openEditor(category)}
                                         className="rounded-xl border border-white/10 bg-white/[0.08] p-2 text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14]"
                                         aria-label={`Edit ${category.name}`}
                                     >
