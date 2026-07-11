@@ -3,10 +3,12 @@
 import { AlertTriangle, Lock, Plus, X } from "lucide-react";
 import Script from "next/script";
 import { useCallback, useEffect, useRef, useState } from "react";
+import TripAudienceSelector from "@/components/TripAudienceSelector";
 import {
     FALLBACK_CATEGORY_LABEL,
     type UserCategory,
 } from "@/lib/itineraryCategories";
+import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
 
 type InitialItem = {
     title?: string;
@@ -33,6 +35,7 @@ type InitialItem = {
     location_lng?: number | null;
     formatted_address?: string | null;
     is_private?: boolean | null;
+    audience_mode?: TripAudienceMode | null;
 };
 
 type ItineraryItemFormProps = {
@@ -46,6 +49,8 @@ type ItineraryItemFormProps = {
     duplicateMode?: boolean;
     onClose?: () => void;
     categories?: UserCategory[];
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
 };
 
 type TimezoneOption = {
@@ -222,6 +227,8 @@ export default function ItineraryItemForm({
     duplicateMode = false,
     onClose,
     categories = [],
+    audienceOptions = [],
+    currentUserTripMemberId = null,
 }: ItineraryItemFormProps) {
     const isEditMode = Boolean(initialItem) && !duplicateMode;
     const formRef = useRef<HTMLFormElement | null>(null);
@@ -269,6 +276,7 @@ export default function ItineraryItemForm({
     );
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(isEditMode || duplicateMode);
+    const [isModalClosing, setIsModalClosing] = useState(false);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const initialCategoryId = initialItem?.category_id || "";
@@ -289,6 +297,9 @@ export default function ItineraryItemForm({
 
     const locationInputRef = useRef<HTMLInputElement | null>(null);
     const previousOpenSignalRef = useRef(openSignal);
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+        null
+    );
 
     const endTimeIsBeforeStartTime =
         startTime && endTime && endTime < startTime && !endsNextDay;
@@ -314,21 +325,30 @@ export default function ItineraryItemForm({
         setHasUnsavedChanges(false);
     }
 
-    function requestCloseModal() {
+    const closeModalWithAnimation = useCallback(() => {
+        if (isModalClosing) return;
+        setIsModalClosing(true);
+        closeTimerRef.current = setTimeout(() => {
+            closeTimerRef.current = null;
+            setIsModalOpen(false);
+            setIsModalClosing(false);
+            onClose?.();
+        }, 160);
+    }, [isModalClosing, onClose]);
+
+    const requestCloseModal = useCallback(() => {
         if (hasUnsavedChanges) {
             setShowCloseWarning(true);
             return;
         }
 
-        setIsModalOpen(false);
-        onClose?.();
-    }
+        closeModalWithAnimation();
+    }, [closeModalWithAnimation, hasUnsavedChanges]);
 
     function discardChangesAndClose() {
         resetFormState();
         setShowCloseWarning(false);
-        setIsModalOpen(false);
-        onClose?.();
+        closeModalWithAnimation();
     }
 
     function clearValidatedLocation() {
@@ -497,8 +517,28 @@ export default function ItineraryItemForm({
         previousOpenSignalRef.current = openSignal;
         setStartDate(defaultDate);
         setEndDate("");
+        setIsModalClosing(false);
         setIsModalOpen(true);
     }, [defaultDate, isEditMode, openSignal]);
+
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) {
+                clearTimeout(closeTimerRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isModalOpen || isEditMode) return;
+
+        function closeOnEscape(event: KeyboardEvent) {
+            if (event.key === "Escape") requestCloseModal();
+        }
+
+        document.addEventListener("keydown", closeOnEscape);
+        return () => document.removeEventListener("keydown", closeOnEscape);
+    }, [isEditMode, isModalOpen, requestCloseModal]);
 
     return (
         <>
@@ -527,6 +567,7 @@ export default function ItineraryItemForm({
                             ? ""
                             : "vaivia-modal-backdrop"
                     }
+                    data-vaivia-modal-state={isModalClosing ? "closing" : "open"}
                     onClick={isEditMode ? undefined : requestCloseModal}
                 >
                     <aside
@@ -535,6 +576,7 @@ export default function ItineraryItemForm({
                                 ? "vaivia-modal-panel max-w-2xl"
                                 : "vaivia-modal-panel max-w-2xl"
                         }
+                        data-vaivia-modal-state={isModalClosing ? "closing" : "open"}
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div
@@ -763,7 +805,17 @@ export default function ItineraryItemForm({
                         </div>
                     </div>
 
-                    <label className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-4 text-sm text-slate-300 shadow-inner shadow-black/10">
+                    <TripAudienceSelector
+                        options={audienceOptions}
+                        currentUserTripMemberId={currentUserTripMemberId}
+                        initialAudienceMode={initialItem?.audience_mode || "everyone"}
+                        privateSectionId="itinerary-private-section"
+                    />
+
+                    <label
+                        id="itinerary-private-section"
+                        className="flex scroll-mt-24 items-start gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-4 text-sm text-slate-300 shadow-inner shadow-black/10"
+                    >
                         <input
                             type="checkbox"
                             name="is_private"

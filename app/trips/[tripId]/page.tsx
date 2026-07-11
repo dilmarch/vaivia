@@ -19,16 +19,13 @@ import TripMembersPanel, {
     type TripHeaderInvitation,
     type TripHeaderMember,
 } from "@/components/TripMembersPanel";
+import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import {
     FALLBACK_CATEGORY_LABEL,
     sortCategoriesByName,
     type UserCategory,
 } from "@/lib/itineraryCategories";
 import {
-    formatIdeaAgePolicy,
-    formatIdeaDayLabel,
-    formatIdeaTicketPolicy,
-    formatIdeaTimeLabel,
     normalizeIdeaAgePolicy,
     normalizeIdeaTicketPolicy,
     normalizeTripIdea,
@@ -43,6 +40,16 @@ import type {
     TransportationTraveler,
     TransportationTravelerOptions,
 } from "@/lib/travelers";
+import {
+    parseTripAudienceFormData,
+    type TripAudienceOption,
+    type TripItemParticipantDisplay,
+} from "@/lib/tripAudience";
+import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
+import { moveTripItem } from "@/app/actions/moveTripItem";
+import { loadActiveMemberTrips } from "@/lib/sharedTrips";
+import { getMoveTargetTrips } from "@/lib/tripMove";
+import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 
 type PageProps = {
     params: Promise<{
@@ -81,9 +88,32 @@ type ItineraryItemPayload = {
     airline_code?: string | null;
     flight_number?: string | null;
     is_private?: boolean;
+    audience_mode?: string | null;
+    trip_leg_id?: string | null;
 };
 
 type TransportationItemPayload = Record<string, string | number | boolean | null>;
+
+type ParticipantDisplayQueryBuilder = {
+    select: (columns: string) => ParticipantDisplayQueryBuilder;
+    eq: (column: string, value: string) => ParticipantDisplayQueryBuilder;
+    in: (
+        column: string,
+        values: string[]
+    ) => Promise<{
+        data: TripItemParticipantDisplay[] | null;
+        error: {
+            message?: string;
+            code?: string;
+            details?: string;
+            hint?: string;
+        } | null;
+    }>;
+};
+
+type ParticipantDisplaySupabaseClient = {
+    from: (table: "trip_item_participants_display") => ParticipantDisplayQueryBuilder;
+};
 
 type TripUpdatePayload = {
     title: string;
@@ -125,6 +155,7 @@ type TripIdeaPayload = {
     other_notes: string | null;
     is_private?: boolean;
     is_archived?: boolean;
+    attended?: boolean;
 };
 
 function getPendingInvitationLabel(invitation: Record<string, unknown>) {
@@ -231,6 +262,8 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
         created_by,
         is_private,
         category_id,
+        audience_mode,
+        trip_leg_id,
         ...fallbackPayload
     } = payload;
 
@@ -244,6 +277,8 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
     void created_by;
     void is_private;
     void category_id;
+    void audience_mode;
+    void trip_leg_id;
 
     return fallbackPayload;
 }
@@ -413,9 +448,18 @@ async function insertItineraryPayloadWithFallback(
     let lastError: { code?: string; message?: string } | null = null;
 
     for (const [index, attempt] of attempts.entries()) {
-        const { error } = await supabase.from("itinerary_items").insert(attempt);
+        const { data, error } = await supabase
+            .from("itinerary_items")
+            .insert(attempt)
+            .select("id")
+            .single();
 
-        if (!error) return null;
+        if (!error) {
+            return {
+                data: data as { id?: string | null } | null,
+                error: null,
+            };
+        }
 
         lastError = error;
 
@@ -428,7 +472,7 @@ async function insertItineraryPayloadWithFallback(
         console.warn(`${context} insert fallback ${index + 1} triggered.`, error);
     }
 
-    return lastError;
+    return { data: null, error: lastError };
 }
 
 function getMissingColumnName(error: { message?: string; details?: string }) {
@@ -481,97 +525,23 @@ async function insertTransportationPayloadWithFallback(
     return { data: null, error: lastError };
 }
 
-function getUniqueFormStrings(formData: FormData, name: string) {
-    return Array.from(
-        new Set(
-            formData
-                .getAll(name)
-                .map((value) => String(value || "").trim())
-                .filter(Boolean)
-        )
-    );
-}
-
-function buildTransportationTravelerRows({
-    formData,
+async function replaceTripItemParticipants({
     tripId,
-    transportationItemId,
-    userId,
-}: {
-    formData: FormData;
-    tripId: string;
-    transportationItemId: string;
-    userId: string;
-}) {
-    const userIds = getUniqueFormStrings(formData, "traveler_user_ids");
-    const familyMemberIds = getUniqueFormStrings(
-        formData,
-        "traveler_family_member_ids"
-    );
-    const guestNames = getUniqueFormStrings(formData, "traveler_guest_names");
-
-    return [
-        ...userIds.map((travelerUserId) => ({
-            transportation_item_id: transportationItemId,
-            trip_id: tripId,
-            user_id: travelerUserId,
-            family_member_id: null,
-            guest_name: null,
-            created_by: userId,
-        })),
-        ...familyMemberIds.map((familyMemberId) => ({
-            transportation_item_id: transportationItemId,
-            trip_id: tripId,
-            user_id: null,
-            family_member_id: familyMemberId,
-            guest_name: null,
-            created_by: userId,
-        })),
-        ...guestNames.map((guestName) => ({
-            transportation_item_id: transportationItemId,
-            trip_id: tripId,
-            user_id: null,
-            family_member_id: null,
-            guest_name: guestName,
-            created_by: userId,
-        })),
-    ];
-}
-
-async function replaceTransportationTravelers({
-    transportationItemId,
-    tripId,
+    itemType,
+    itemId,
     formData,
-    userId,
 }: {
-    transportationItemId: string;
     tripId: string;
+    itemType: "itinerary" | "transportation" | "accommodation";
+    itemId: string;
     formData: FormData;
-    userId: string;
 }) {
-    const supabase = await createClient();
-    const { error: deleteError } = await supabase
-        .from("transportation_item_travelers")
-        .delete()
-        .eq("transportation_item_id", transportationItemId)
-        .eq("trip_id", tripId);
-
-    if (deleteError) return deleteError;
-
-    const rows = buildTransportationTravelerRows({
-        formData,
+    return replaceTripItemParticipantsFromForm({
         tripId,
-        transportationItemId,
-        userId,
+        itemType,
+        itemId,
+        formData,
     });
-
-    if (rows.length === 0) return null;
-
-    const { error } = await supabase
-        .from("transportation_item_travelers")
-        .insert(rows);
-
-    return error;
 }
 
 async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
@@ -595,6 +565,7 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
         "dress_code",
         "other_notes",
         "is_private",
+        "attended",
     ]);
     let attempt: Record<string, unknown> = { ...payload };
     let lastError: {
@@ -787,6 +758,13 @@ function normalizeTransportationItem(
         airline_code: airlineCode || null,
         flight_number: flightNumber || null,
         reservation_code: reservationCode || null,
+        cost:
+            typeof item.cost === "number"
+                ? item.cost
+                : Number.isFinite(Number(item.cost))
+                  ? Number(item.cost)
+                  : null,
+        currency: getStringValue(item, ["currency"]) || null,
         duration: getStringValue(item, ["duration"]) || null,
         departure_location: departureLocation || null,
         arrival_location: arrivalLocation || null,
@@ -795,6 +773,12 @@ function normalizeTransportationItem(
         arrival_timezone: getStringValue(item, ["arrival_timezone"]) || null,
         departure_terminal: getStringValue(item, ["departure_terminal"]) || null,
         arrival_terminal: getStringValue(item, ["arrival_terminal"]) || null,
+        is_private: Boolean(item.is_private),
+        audience_mode:
+            getStringValue(item, ["audience_mode"]) === "custom" ||
+            getStringValue(item, ["audience_mode"]) === "just_me"
+                ? (getStringValue(item, ["audience_mode"]) as "custom" | "just_me")
+                : "everyone",
         itinerary_item_id: getStringValue(item, ["itinerary_item_id"]) || null,
         source_table: "transportation_items",
     } as ItineraryCalendarItem & { itinerary_item_id?: string | null };
@@ -976,6 +960,8 @@ async function createItineraryItem(formData: FormData) {
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
+    const audience = parseTripAudienceFormData(formData);
+    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
 
     const payload: ItineraryItemPayload = {
         trip_id: tripId,
@@ -1000,13 +986,16 @@ async function createItineraryItem(formData: FormData) {
         location_website: locationWebsite || null,
         cover_image_url: coverImageUrl || null,
         is_private: isPrivate,
+        audience_mode: audience.audienceMode,
+        trip_leg_id: tripLegId || null,
         notes,
     };
 
-    const error = await insertItineraryPayloadWithFallback(
+    const insertResult = await insertItineraryPayloadWithFallback(
         payload,
         "Itinerary item"
     );
+    const error = insertResult.error;
 
     if (error) {
         console.error("Error creating itinerary item:", {
@@ -1021,6 +1010,34 @@ async function createItineraryItem(formData: FormData) {
                 error.message ?? "Unknown Supabase error"
             }`
         );
+    }
+
+    const itineraryItemId =
+        typeof insertResult.data?.id === "string" ? insertResult.data.id : "";
+
+    if (itineraryItemId) {
+        const participantsError = await replaceTripItemParticipants({
+            tripId,
+            itemType: "itinerary",
+            itemId: itineraryItemId,
+            formData,
+        });
+
+        if (participantsError) {
+            console.error("Error creating itinerary participants:", {
+                message: participantsError.message,
+                code: participantsError.code,
+                details: participantsError.details,
+                hint: participantsError.hint,
+                tripId,
+                itineraryItemId,
+            });
+            throw new Error(
+                `Could not create itinerary participants: ${
+                    participantsError.message ?? "Unknown Supabase error"
+                }`
+            );
+        }
     }
 
     if (!isPrivate) {
@@ -1065,6 +1082,8 @@ async function createTransportationItem(formData: FormData) {
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
     const reservationCode = String(formData.get("reservation_code") || "").trim();
+    const transportationCost = formData.get("cost");
+    const transportationCurrency = formData.get("currency");
     const duration = formData.get("duration") as string;
     const visaRequirements = formData.get("visa_requirements") as string;
     const luggageRequirements = formData.get("luggage_requirements") as string;
@@ -1075,6 +1094,8 @@ async function createTransportationItem(formData: FormData) {
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
+    const audience = parseTripAudienceFormData(formData);
+    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
     const flightLegCount = Number(formData.get("flight_leg_count") || 1);
     const flightLegNotes = Array.from({ length: flightLegCount }, (_, index) => {
         const legDepartureLocation = formData.get(
@@ -1197,6 +1218,10 @@ async function createTransportationItem(formData: FormData) {
         airline_code: effectiveAirlineCode || null,
         flight_number: effectiveFlightNumber || null,
         reservation_code: reservationCode || null,
+        cost: transportationCost
+            ? Number(String(transportationCost).replace(/,/g, ""))
+            : null,
+        currency: String(transportationCurrency || "").trim().toUpperCase() || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
@@ -1204,6 +1229,8 @@ async function createTransportationItem(formData: FormData) {
         visa_requirements: visaRequirements || null,
         luggage_requirements: luggageRequirements || null,
         is_private: isPrivate,
+        audience_mode: audience.audienceMode,
+        trip_leg_id: tripLegId || null,
         notes,
     };
 
@@ -1247,28 +1274,41 @@ async function createTransportationItem(formData: FormData) {
             : "";
 
     if (transportationItemId) {
-        const travelersError = await replaceTransportationTravelers({
-            transportationItemId,
-            tripId,
-            formData,
+        await syncAutoBudgetExpense({
+            supabase,
             userId: user.id,
+            tripId,
+            sourceType: "transportation",
+            sourceId: transportationItemId,
+            amount: transportationCost,
+            currency: transportationCurrency,
+            expenseDate: itemDate,
+            description: title,
+            formData,
         });
 
-        if (travelersError) {
+        const participantsError = await replaceTripItemParticipants({
+            tripId,
+            itemType: "transportation",
+            itemId: transportationItemId,
+            formData,
+        });
+
+        if (participantsError) {
             if (process.env.NODE_ENV !== "production") {
-                console.error("Error creating transportation travelers:", {
+                console.error("Error creating transportation participants:", {
                     authenticatedUserId: user.id,
                     tripId,
                     transportationItemId,
-                    message: travelersError.message,
-                    code: travelersError.code,
-                    details: travelersError.details,
-                    hint: travelersError.hint,
+                    message: participantsError.message,
+                    code: participantsError.code,
+                    details: participantsError.details,
+                    hint: participantsError.hint,
                 });
             }
             throw new Error(
-                `Could not create transportation travelers: ${
-                    travelersError.message ?? "Unknown Supabase error"
+                `Could not create transportation participants: ${
+                    participantsError.message ?? "Unknown Supabase error"
                 }`
             );
         }
@@ -1317,6 +1357,8 @@ async function updateTransportationItem(formData: FormData) {
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
     const reservationCode = String(formData.get("reservation_code") || "").trim();
+    const transportationCost = formData.get("cost");
+    const transportationCurrency = formData.get("currency");
     const departureTerminal = formData.get("departure_terminal") as string;
     const arrivalTerminal = formData.get("arrival_terminal") as string;
     const departureTimezone = formData.get("departure_timezone") as string;
@@ -1326,6 +1368,8 @@ async function updateTransportationItem(formData: FormData) {
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
+    const audience = parseTripAudienceFormData(formData);
+    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
     const effectiveAirlineCode = normalizeAirlineCode(airlineCode);
     const effectiveFlightNumber = normalizeFlightNumber({
         flightNumber,
@@ -1358,10 +1402,16 @@ async function updateTransportationItem(formData: FormData) {
         airline_code: effectiveAirlineCode || null,
         flight_number: effectiveFlightNumber || null,
         reservation_code: reservationCode || null,
+        cost: transportationCost
+            ? Number(String(transportationCost).replace(/,/g, ""))
+            : null,
+        currency: String(transportationCurrency || "").trim().toUpperCase() || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
         is_private: isPrivate,
+        audience_mode: audience.audienceMode,
+        trip_leg_id: tripLegId || null,
         notes,
     };
 
@@ -1376,25 +1426,38 @@ async function updateTransportationItem(formData: FormData) {
         throw new Error("Could not update transportation item");
     }
 
-    const travelersError = await replaceTransportationTravelers({
-        transportationItemId: itemId,
-        tripId,
-        formData,
+    await syncAutoBudgetExpense({
+        supabase,
         userId: user.id,
+        tripId,
+        sourceType: "transportation",
+        sourceId: itemId,
+        amount: transportationCost,
+        currency: transportationCurrency,
+        expenseDate: itemDate,
+        description: title,
+        formData,
     });
 
-    if (travelersError) {
-        console.error("Error updating transportation travelers:", {
-            message: travelersError.message,
-            code: travelersError.code,
-            details: travelersError.details,
-            hint: travelersError.hint,
+    const participantsError = await replaceTripItemParticipants({
+        tripId,
+        itemType: "transportation",
+        itemId,
+        formData,
+    });
+
+    if (participantsError) {
+        console.error("Error updating transportation participants:", {
+            message: participantsError.message,
+            code: participantsError.code,
+            details: participantsError.details,
+            hint: participantsError.hint,
             tripId,
             transportationItemId: itemId,
         });
         throw new Error(
-            `Could not update transportation travelers: ${
-                travelersError.message ?? "Unknown Supabase error"
+            `Could not update transportation participants: ${
+                participantsError.message ?? "Unknown Supabase error"
             }`
         );
     }
@@ -1937,7 +2000,7 @@ async function updateTripIdea(formData: FormData) {
     redirect(`/trips/${payload.trip_id}?tab=ideas`);
 }
 
-async function archiveTripIdea(formData: FormData) {
+async function toggleTripIdeaAttended(formData: FormData) {
     "use server";
 
     const supabase = await createClient();
@@ -1950,183 +2013,40 @@ async function archiveTripIdea(formData: FormData) {
         redirect("/auth/login");
     }
 
-    const tripId = formData.get("trip_id") as string;
-    const ideaId = formData.get("idea_id") as string;
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", tripId)
-        .single();
-
-    if (tripError || !trip) {
-        console.error("Error confirming trip for idea archive:", tripError);
-        throw new Error("Could not archive trip idea");
-    }
-
-    const { error } = await supabase
-        .from("trip_ideas")
-        .update({
-            is_archived: true,
-            updated_at: new Date().toISOString(),
-        })
-        .eq("id", ideaId)
-        .eq("trip_id", tripId);
-
-    if (error) {
-        console.error("Error archiving trip idea:", error);
-        throw new Error("Could not archive trip idea");
-    }
-
-    redirect(`/trips/${tripId}?tab=ideas`);
-}
-
-async function deleteTripIdea(formData: FormData) {
-    "use server";
-
-    const supabase = await createClient();
-
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
-    const tripId = formData.get("trip_id") as string;
-    const ideaId = formData.get("idea_id") as string;
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", tripId)
-        .single();
-
-    if (tripError || !trip) {
-        console.error("Error confirming trip for idea delete:", tripError);
-        throw new Error("Could not delete trip idea");
-    }
-
-    const { error } = await supabase
-        .from("trip_ideas")
-        .delete()
-        .eq("id", ideaId)
-        .eq("trip_id", tripId);
-
-    if (error) {
-        console.error("Error deleting trip idea:", error);
-        throw new Error("Could not delete trip idea");
-    }
-
-    redirect(`/trips/${tripId}?tab=ideas`);
-}
-
-async function promoteIdeaToItinerary(formData: FormData) {
-    "use server";
-
-    const supabase = await createClient();
-
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
-    const tripId = formData.get("trip_id") as string;
-    const ideaId = formData.get("idea_id") as string;
-    const itemDate = formData.get("item_date") as string;
-    const startTime = formData.get("start_time") as string;
-    const endTime = formData.get("end_time") as string;
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", tripId)
-        .single();
-
-    if (tripError || !trip) {
-        console.error("Error confirming trip for idea promotion:", tripError);
-        throw new Error("Could not add idea to itinerary");
-    }
-
-    const { data: idea, error: ideaError } = await supabase
-        .from("trip_ideas")
-        .select("*")
-        .eq("id", ideaId)
-        .eq("trip_id", tripId)
-        .single();
-
-    if (ideaError || !idea) {
-        console.error("Error finding trip idea to promote:", ideaError);
-        throw new Error("Could not add idea to itinerary");
-    }
-
-    const normalizedIdea = normalizeTripIdea(idea as Record<string, unknown>);
-    const notes = [
-        normalizedIdea.description || "",
-        normalizedIdea.ticket_policy
-            ? `Tickets: ${formatIdeaTicketPolicy(normalizedIdea.ticket_policy)}`
-            : "",
-        normalizedIdea.age_policy
-            ? `Age: ${formatIdeaAgePolicy(normalizedIdea.age_policy)}`
-            : "",
-        normalizedIdea.dress_code
-            ? `Dress code:\n${normalizedIdea.dress_code}`
-            : "",
-        normalizedIdea.other_notes ? `Other:\n${normalizedIdea.other_notes}` : "",
-        normalizedIdea.tags.length
-            ? `Tags: ${normalizedIdea.tags.join(", ")}`
-            : "",
-        `Idea availability: ${formatIdeaDayLabel(
-            normalizedIdea.days_available
-        )}; ${formatIdeaTimeLabel(normalizedIdea.time_of_day)}`,
-    ]
-        .filter(Boolean)
-        .join("\n\n");
-
-    const payload: ItineraryItemPayload = {
-        trip_id: tripId,
-        title: normalizedIdea.title,
-        category: "activity",
-        status: "tentative",
-        item_date: itemDate,
-        end_date: null,
-        start_time: startTime || null,
-        end_time: endTime || null,
-        location:
-            normalizedIdea.location ||
-            normalizedIdea.address ||
-            normalizedIdea.location_city ||
-            normalizedIdea.formatted_address ||
-            "",
-        formatted_address: normalizedIdea.formatted_address || null,
-        google_place_id: normalizedIdea.google_place_id || null,
-        location_lat: normalizedIdea.location_lat || null,
-        location_lng: normalizedIdea.location_lng || null,
-        timezone: null,
-        timezone_source: "manual",
-        url: null,
-        ticket_website: normalizedIdea.ticket_website || null,
-        location_website: normalizedIdea.location_website || null,
-        cover_image_url: null,
-        is_private: Boolean(normalizedIdea.is_private),
-        notes,
+    const tripId = String(formData.get("trip_id") || "");
+    const ideaId = String(formData.get("idea_id") || "");
+    const attended = String(formData.get("attended") || "") === "true";
+    const payload = {
+        attended,
+        updated_at: new Date().toISOString(),
     };
 
-    const error = await insertItineraryPayloadWithFallback(
-        payload,
-        "Promoted trip idea"
-    );
-
-    if (error) {
-        console.error("Error promoting trip idea:", error);
-        throw new Error("Could not add idea to itinerary");
+    if (!tripId || !ideaId) {
+        throw new Error("Could not update trip idea attended status");
     }
 
-    redirect(`/trips/${tripId}`);
+    const { error } = await supabase
+        .from("trip_ideas")
+        .update(payload)
+        .eq("id", ideaId)
+        .eq("trip_id", tripId);
+
+    if (error) {
+        console.error("Error updating trip idea attended status:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+        });
+        throw new Error(
+            `Could not update trip idea attended status: ${
+                error.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
+    revalidatePath(`/trips/${tripId}`);
 }
 
 function getDefaultItineraryView(value: unknown): "list" | "day" | "week" {
@@ -2384,6 +2304,11 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         (userPreferences as { itinerary_default_view?: unknown } | null)
             ?.itinerary_default_view
     );
+    const { trips: movableTrips } = await loadActiveMemberTrips(supabase, user.id);
+    const moveTargetTrips = getMoveTargetTrips({
+        trips: movableTrips,
+        currentTripId: tripId,
+    });
 
     const { data: trip, error: tripError } = await supabase
         .from("trips")
@@ -2403,7 +2328,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
     const { data: tripMemberRows, error: tripMembersError } = await supabase
         .from("trip_members")
-        .select("user_id,role,status,created_at")
+        .select("id,user_id,role,status,created_at")
         .eq("trip_id", tripId)
         .eq("status", "active");
 
@@ -2418,6 +2343,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     }
 
     const memberRows = (tripMemberRows || []) as Array<{
+        id?: string | null;
         user_id?: string | null;
         role?: string | null;
         created_at?: string | null;
@@ -2553,6 +2479,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
     const tripMemberTravelerOptions = tripMembers.map(
         (member): TransportationTraveler => {
+            const membership = memberRowsByUserId.get(member.user_id);
             const name =
                 [member.first_name, member.last_name]
                     .filter(Boolean)
@@ -2563,6 +2490,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
             return {
                 type: "user",
+                trip_member_id: membership?.id || null,
                 user_id: member.user_id,
                 name,
                 secondaryLabel: member.username ? `@${member.username}` : null,
@@ -2593,6 +2521,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             .filter((traveler) => traveler.family_member_id)
             .map((traveler) => [traveler.family_member_id as string, traveler])
     );
+    const currentUserTraveler =
+        tripMemberTravelerOptions.find((traveler) => traveler.user_id === user.id) ||
+        null;
 
     const { data: pendingInvitationRows, error: pendingInvitationsError } =
         await supabase
@@ -2625,6 +2556,47 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 ? invitation.created_at
                 : null,
     }));
+    const audienceOptions: TripAudienceOption[] = [
+        ...tripMemberTravelerOptions
+            .filter((traveler) => traveler.trip_member_id)
+            .map(
+                (traveler): TripAudienceOption => ({
+                    kind: "member",
+                    id: traveler.trip_member_id as string,
+                    displayName: traveler.name,
+                    avatarUrl: traveler.avatar_url || null,
+                    status: "accepted",
+                    secondaryLabel: traveler.secondaryLabel || null,
+                    isCurrentUser: traveler.user_id === user.id,
+                })
+            ),
+        ...pendingInvitations.map(
+            (invitation): TripAudienceOption => ({
+                kind: "invitation",
+                id: invitation.id,
+                displayName: invitation.label,
+                status: "invited",
+                secondaryLabel: "Pending invitation",
+            })
+        ),
+        ...tripFamilyMembers.map(
+            (member): TripAudienceOption => ({
+                kind: "family_member",
+                id: member.family_member_id,
+                displayName: member.name,
+                avatarUrl: member.avatar_url || null,
+                status: "family_member",
+                secondaryLabel: member.relationship || "Family member",
+            })
+        ),
+    ];
+    const currentUserTripMemberId =
+        audienceOptions.find(
+            (option) => option.kind === "member" && option.isCurrentUser
+        )?.id || null;
+    const audienceOptionsByKey = new Map(
+        audienceOptions.map((option) => [`${option.kind}:${option.id}`, option])
+    );
 
     const { data: itineraryItems, error: itineraryError } = await supabase
         .from("itinerary_items")
@@ -2646,11 +2618,150 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         console.error("Error loading transportation items:", transportationError);
     }
 
+    const itineraryItemIds = ((itineraryItems || []) as Array<{
+        id?: string | null;
+    }>)
+        .map((item) => item.id)
+        .filter(Boolean) as string[];
     const transportationItemIds = ((transportationItems || []) as Array<{
         id?: string | null;
     }>)
         .map((item) => item.id)
         .filter(Boolean) as string[];
+    const participantsByItemKey = new Map<string, TransportationTraveler[]>();
+    const selectedAudienceOptionsByItemKey = new Map<string, TripAudienceOption[]>();
+    const participantQueries: Array<{
+        itemType: "itinerary" | "transportation";
+        ids: string[];
+    }> = [
+        { itemType: "itinerary", ids: itineraryItemIds },
+        { itemType: "transportation", ids: transportationItemIds },
+    ];
+
+    for (const participantQuery of participantQueries) {
+        if (participantQuery.ids.length === 0) continue;
+
+        const { data: participantSourceRows, error: participantSourceRowsError } =
+            await supabase
+                .from("trip_item_participants")
+                .select(
+                    "item_type,item_id,participant_kind,trip_member_id,invitation_id,family_member_id,guest_name"
+                )
+                .eq("trip_id", tripId)
+                .eq("item_type", participantQuery.itemType)
+                .in("item_id", participantQuery.ids);
+
+        if (participantSourceRowsError) {
+            console.warn("Could not load trip item participant source rows:", {
+                message: participantSourceRowsError.message,
+                code: participantSourceRowsError.code,
+                details: participantSourceRowsError.details,
+                hint: participantSourceRowsError.hint,
+                tripId,
+                itemType: participantQuery.itemType,
+            });
+        } else {
+            ((participantSourceRows || []) as Array<Record<string, unknown>>).forEach(
+                (row) => {
+                    const itemId =
+                        typeof row.item_id === "string" ? row.item_id : "";
+                    const itemType =
+                        typeof row.item_type === "string" ? row.item_type : "";
+                    const participantKind =
+                        typeof row.participant_kind === "string"
+                            ? row.participant_kind
+                            : "";
+                    if (!itemId || !itemType) return;
+
+                    const key = `${itemType}:${itemId}`;
+                    let option: TripAudienceOption | undefined;
+
+                    if (participantKind === "member") {
+                        const tripMemberId =
+                            typeof row.trip_member_id === "string"
+                                ? row.trip_member_id
+                                : "";
+                        option = audienceOptionsByKey.get(`member:${tripMemberId}`);
+                    } else if (participantKind === "invitation") {
+                        const invitationId =
+                            typeof row.invitation_id === "string"
+                                ? row.invitation_id
+                                : "";
+                        option = audienceOptionsByKey.get(`invitation:${invitationId}`);
+                    } else if (participantKind === "family_member") {
+                        const familyMemberId =
+                            typeof row.family_member_id === "string"
+                                ? row.family_member_id
+                                : "";
+                        option = audienceOptionsByKey.get(
+                            `family_member:${familyMemberId}`
+                        );
+                    } else if (participantKind === "guest") {
+                        const guestName =
+                            typeof row.guest_name === "string"
+                                ? row.guest_name.trim()
+                                : "";
+                        if (guestName) {
+                            option = {
+                                kind: "guest",
+                                id: guestName,
+                                displayName: guestName,
+                                status: "guest",
+                            };
+                        }
+                    }
+
+                    if (!option) return;
+                    const current = selectedAudienceOptionsByItemKey.get(key) || [];
+                    current.push(option);
+                    selectedAudienceOptionsByItemKey.set(key, current);
+                }
+            );
+        }
+
+        const participantDisplayClient =
+            supabase as unknown as ParticipantDisplaySupabaseClient;
+        const { data: participantRows, error: participantRowsError } =
+            await participantDisplayClient
+                .from("trip_item_participants_display")
+                .select("*")
+                .eq("trip_id", tripId)
+                .eq("item_type", participantQuery.itemType)
+                .in("item_id", participantQuery.ids);
+
+        if (participantRowsError) {
+            console.warn("Could not load trip item participant display rows:", {
+                message: participantRowsError.message,
+                code: participantRowsError.code,
+                details: participantRowsError.details,
+                hint: participantRowsError.hint,
+                tripId,
+                itemType: participantQuery.itemType,
+            });
+            continue;
+        }
+
+        (participantRows || []).forEach((row) => {
+            if (!row.item_id) return;
+            const key = `${row.item_type}:${row.item_id}`;
+            const current = participantsByItemKey.get(key) || [];
+            current.push({
+                type:
+                    row.participant_kind === "family_member"
+                        ? "family"
+                        : row.participant_kind === "guest"
+                          ? "guest"
+                          : "user",
+                name: row.display_name || "Traveller",
+                avatar_url: row.avatar_url || null,
+                guest_name:
+                    row.participant_kind === "guest"
+                        ? row.display_name || "Guest"
+                        : null,
+            });
+            participantsByItemKey.set(key, current);
+        });
+    }
     let transportationTravelerRows: Array<Record<string, unknown>> = [];
 
     if (transportationItemIds.length > 0) {
@@ -2870,6 +2981,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         profiles: ideaReactionProfiles,
         currentUserId: user.id,
     }).sort((a, b) => {
+        if (a.attended !== b.attended) return a.attended ? 1 : -1;
+
         const scoreSort = (b.reaction_score || 0) - (a.reaction_score || 0);
         if (scoreSort !== 0) return scoreSort;
 
@@ -2884,6 +2997,10 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const calendarItems = [
         ...(((itineraryItems || []) as ItineraryCalendarItem[]).map((item) => ({
             ...item,
+            participants:
+                participantsByItemKey.get(`itinerary:${item.id}`) || [],
+            audience_selected_options:
+                selectedAudienceOptionsByItemKey.get(`itinerary:${item.id}`) || [],
             category_name:
                 categoriesById.get(String(item.category_id || ""))?.name ||
                 item.category ||
@@ -2902,10 +3019,23 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         ...((transportationItems || []) as Record<string, unknown>[]).map((item) => {
             const normalizedItem = normalizeTransportationItem(item);
             const rawId = getStringValue(item, ["id"]);
+            const itemParticipants =
+                participantsByItemKey.get(`transportation:${rawId}`) || [];
+            const participants =
+                (normalizedItem.audience_mode === "just_me" ||
+                    normalizedItem.is_private) &&
+                currentUserTraveler
+                    ? [currentUserTraveler]
+                    : itemParticipants;
 
             return {
                 ...normalizedItem,
                 travelers: transportationTravelersByItemId.get(rawId) || [],
+                participants,
+                audience_selected_options:
+                    selectedAudienceOptionsByItemKey.get(
+                        `transportation:${rawId}`
+                    ) || [],
             };
         }),
     ].sort((a, b) => {
@@ -3035,14 +3165,16 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         createTransportationAction={createTransportationItem}
                         createIdeaAction={createTripIdea}
                         updateIdeaAction={updateTripIdea}
-                        archiveIdeaAction={archiveTripIdea}
-                        deleteIdeaAction={deleteTripIdea}
+                        moveItemAction={moveTripItem}
+                        moveTargetTrips={moveTargetTrips}
                         toggleIdeaReactionAction={toggleTripIdeaReaction}
-                        promoteIdeaAction={promoteIdeaToItinerary}
+                        toggleIdeaAttendedAction={toggleTripIdeaAttended}
                         initialTab={initialTab}
                         defaultItineraryView={defaultItineraryView}
                         categories={userCategories}
                         travelerOptions={transportationTravelerOptions}
+                        audienceOptions={audienceOptions}
+                        currentUserTripMemberId={currentUserTripMemberId}
                     />
                 </section>
             </div>
@@ -3054,11 +3186,10 @@ export default function TripDetailPage({ params, searchParams }: PageProps) {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-[#0c0115] px-4 py-10 sm:px-6">
-                    <div className="mx-auto max-w-7xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
-                        Loading itinerary...
-                    </div>
-                </main>
+                <DelayedVaiviaLoadingScreen
+                    title="Curating your itinerary"
+                    subtitle="Handpicking the best experiences just for you."
+                />
             }
         >
             <TripDetailContent params={params} searchParams={searchParams} />

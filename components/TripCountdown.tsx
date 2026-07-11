@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { MoreHorizontal, Search, X } from "lucide-react";
+import AnimatedModal from "@/components/AnimatedModal";
 import Portal from "@/components/Portal";
 import {
     COUNTDOWN_UNITS,
@@ -412,17 +413,13 @@ export default function TripCountdown({
 
             {isModalOpen ? (
                 <Portal>
-                    <div
-                        className="vaivia-modal-backdrop"
-                        onClick={() => setIsModalOpen(false)}
+                    <AnimatedModal
+                        onClose={() => setIsModalOpen(false)}
+                        panelClassName="max-w-2xl"
+                        labelledBy="countdown-settings-title"
                     >
-                        <div
-                            role="dialog"
-                            aria-modal="true"
-                            aria-labelledby="countdown-settings-title"
-                            className="vaivia-modal-panel max-w-2xl"
-                            onClick={(event) => event.stopPropagation()}
-                        >
+                        {({ requestClose }) => (
+                            <>
                             <div className="vaivia-modal-header flex items-start justify-between gap-4">
                                 <div>
                                     <p className="vaivia-modal-eyebrow">
@@ -437,7 +434,7 @@ export default function TripCountdown({
                                 </div>
                                 <button
                                     type="button"
-                                    onClick={() => setIsModalOpen(false)}
+                                    onClick={requestClose}
                                     className="vaivia-modal-close"
                                     aria-label="Close countdown options"
                                 >
@@ -552,7 +549,7 @@ export default function TripCountdown({
                                 <div className="sticky bottom-0 z-10 -mx-5 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-5 py-4 shadow-[0_-18px_35px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:px-6">
                                     <button
                                         type="button"
-                                        onClick={() => setIsModalOpen(false)}
+                                        onClick={requestClose}
                                         className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                                     >
                                         Cancel
@@ -566,8 +563,9 @@ export default function TripCountdown({
                                     </button>
                                 </div>
                             </form>
-                        </div>
-                    </div>
+                            </>
+                        )}
+                    </AnimatedModal>
                 </Portal>
             ) : null}
         </div>

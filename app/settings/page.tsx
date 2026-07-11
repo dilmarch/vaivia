@@ -5,6 +5,8 @@ import CountdownUnitToggle from "@/components/CountdownUnitToggle";
 import PinkModeToggle from "@/components/PinkModeToggle";
 import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
 import SettingsFamilyMembersClient from "@/components/SettingsFamilyMembersClient";
+import SettingsFinancialClient from "@/components/SettingsFinancialClient";
+import { ALL_CURRENCY_OPTIONS, normalizeCurrencyCode } from "@/lib/currency";
 import { createClient } from "@/lib/supabase/server";
 import {
     sortCategoriesByName,
@@ -261,6 +263,44 @@ async function deleteCategory(formData: FormData) {
     redirect("/settings?section=categories");
 }
 
+async function updateFinanceSettings(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const homeCurrency = normalizeCurrencyCode(formData.get("home_currency"), "CAD");
+    const payload = {
+        user_id: user.id,
+        home_currency: homeCurrency,
+        updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+        .from("user_finance_settings")
+        .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+        console.error("Error updating financial settings:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+        });
+        throw new Error(`Could not update financial settings: ${error.message}`);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/trips/[tripId]/budget", "page");
+    revalidatePath("/trips/[tripId]/budget/expenses", "page");
+    redirect("/settings?section=financial");
+}
+
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
     const params = searchParams ? await searchParams : {};
     const activeSection =
@@ -268,6 +308,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             ? "categories"
             : params.section === "family"
               ? "family"
+              : params.section === "financial"
+                ? "financial"
               : "general";
     const supabase = await createClient();
     const {
@@ -276,7 +318,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
     if (!user) redirect("/auth/login");
 
-    const [{ data: categoryRows }, { data: colorRows }, { data: familyRows }] =
+    const [
+        { data: categoryRows },
+        { data: colorRows },
+        { data: familyRows },
+        { data: financeSettings },
+    ] =
         await Promise.all([
         supabase
             .from("user_categories")
@@ -291,6 +338,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             .select("id,user_id,name,relationship,avatar_url,notes,created_at,updated_at")
             .eq("user_id", user.id)
             .order("name", { ascending: true }),
+        supabase
+            .from("user_finance_settings")
+            .select("home_currency")
+            .eq("user_id", user.id)
+            .maybeSingle(),
     ]);
 
     const categories = sortCategoriesByName((categoryRows || []) as UserCategory[]);
@@ -300,6 +352,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     const familyMembers = ((familyRows || []) as FamilyMember[]).sort((a, b) =>
         a.name.localeCompare(b.name)
     );
+    const currentCurrency =
+        typeof financeSettings?.home_currency === "string"
+            ? financeSettings.home_currency
+            : null;
+    const currencyOptions = ALL_CURRENCY_OPTIONS.map((currency) => ({
+        code: currency.code,
+        name: currency.name,
+        symbol: currency.symbol,
+    }));
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-4 py-8 text-white md:pl-28">
@@ -338,6 +399,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             }`}
                         >
                             Family Members
+                        </Link>
+                        <Link
+                            href="/settings?section=financial"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "financial"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Financial
                         </Link>
                     </nav>
                 </aside>
@@ -382,7 +453,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                 message={friendlyCategoryMessage(params.message)}
                             />
                         </div>
-                    ) : (
+                    ) : activeSection === "family" ? (
                         <div className="space-y-6">
                             <div>
                                 <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
@@ -403,6 +474,26 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                 updateAction={updateFamilyMember}
                                 deleteAction={deleteFamilyMember}
                                 message={friendlyFamilyMessage(params.message)}
+                            />
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Financial
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Financial settings
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Set your default reporting currency for budgets,
+                                    expenses, and travel cost planning.
+                                </p>
+                            </div>
+                            <SettingsFinancialClient
+                                currentCurrency={currentCurrency}
+                                currencyOptions={currencyOptions}
+                                updateAction={updateFinanceSettings}
                             />
                         </div>
                     )}

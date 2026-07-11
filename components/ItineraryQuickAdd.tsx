@@ -5,10 +5,12 @@ import { Minus, Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createAccommodation } from "@/app/actions/accommodations";
 import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
+import AnimatedModal from "@/components/AnimatedModal";
 import { IdeaForm } from "@/components/IdeasTab";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import TransportationForm from "@/components/TransportationForm";
 import type { UserCategory } from "@/lib/itineraryCategories";
+import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
 
 type ItineraryQuickAddProps = {
@@ -19,6 +21,8 @@ type ItineraryQuickAddProps = {
     defaultDate?: string;
     categories?: UserCategory[];
     travelerOptions?: TransportationTravelerOptions;
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
 };
 
 export default function ItineraryQuickAdd({
@@ -29,6 +33,8 @@ export default function ItineraryQuickAdd({
     defaultDate = "",
     categories = [],
     travelerOptions = { users: [], familyMembers: [] },
+    audienceOptions = [],
+    currentUserTripMemberId = null,
 }: ItineraryQuickAddProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [itemOpenSignal, setItemOpenSignal] = useState(0);
@@ -74,6 +80,8 @@ export default function ItineraryQuickAdd({
                 openSignal={itemOpenSignal}
                 defaultDate={defaultDate}
                 categories={categories}
+                audienceOptions={audienceOptions}
+                currentUserTripMemberId={currentUserTripMemberId}
             />
             <TransportationForm
                 tripId={tripId}
@@ -82,26 +90,26 @@ export default function ItineraryQuickAdd({
                 onClose={() => setIsTransportationOpen(false)}
                 defaultDate={defaultDate}
                 travelerOptions={travelerOptions}
+                audienceOptions={audienceOptions}
+                currentUserTripMemberId={currentUserTripMemberId}
             />
             {isAccommodationOpen && (
                 <AccommodationCreateModal
                     tripId={tripId}
                     createAction={createAccommodation}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                     onClose={() => setIsAccommodationOpen(false)}
                 />
             )}
             {isIdeaOpen && createIdeaAction && (
-                <div
-                    className="vaivia-modal-backdrop"
-                    onClick={() => setIsIdeaOpen(false)}
+                <AnimatedModal
+                    onClose={() => setIsIdeaOpen(false)}
+                    panelClassName="max-w-2xl"
+                    labelledBy="quick-add-idea-title"
                 >
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="quick-add-idea-title"
-                        className="vaivia-modal-panel max-w-2xl"
-                        onClick={(event) => event.stopPropagation()}
-                    >
+                    {({ requestClose }) => (
+                        <>
                         <div className="vaivia-modal-header flex items-start justify-between gap-4">
                             <div>
                                 <p className="vaivia-modal-eyebrow">
@@ -119,7 +127,7 @@ export default function ItineraryQuickAdd({
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsIdeaOpen(false)}
+                                onClick={requestClose}
                                 className="vaivia-modal-close"
                                 aria-label="Close add activity idea"
                             >
@@ -130,11 +138,12 @@ export default function ItineraryQuickAdd({
                             <IdeaForm
                                 tripId={tripId}
                                 action={createIdeaAction}
-                                onCancel={() => setIsIdeaOpen(false)}
+                                onCancel={requestClose}
                             />
                         </div>
-                    </div>
-                </div>
+                        </>
+                    )}
+                </AnimatedModal>
             )}
 
             <div
@@ -145,7 +154,7 @@ export default function ItineraryQuickAdd({
                     <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
                         <Link
                             href="/trips/new"
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add trip
                         </Link>
@@ -155,7 +164,7 @@ export default function ItineraryQuickAdd({
                                 setIsTransportationOpen(true);
                                 setIsOpen(false);
                             }}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add transportation
                         </button>
@@ -165,23 +174,30 @@ export default function ItineraryQuickAdd({
                                 setIsAccommodationOpen(true);
                                 setIsOpen(false);
                             }}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add accommodation
                         </button>
-                        <button
-                            type="button"
-                            onClick={() => openItineraryForm("Add food or restaurant")}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                        <Link
+                            href={`/trips/${tripId}/budget/expenses?addExpense=1`}
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                            onClick={() => setIsOpen(false)}
+                        >
+                            Add expense
+                        </Link>
+                        <Link
+                            href={`/trips/${tripId}/food?addFood=1`}
+                            onClick={() => setIsOpen(false)}
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add food or restaurant
-                        </button>
+                        </Link>
                         <button
                             type="button"
                             onClick={() =>
                                 openItineraryForm("Add scheduled activity/event")
                             }
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
                             Add scheduled activity/event
                         </button>
@@ -194,7 +210,7 @@ export default function ItineraryQuickAdd({
                                 setIsOpen(false);
                             }}
                             disabled={!createIdeaAction}
-                            className="animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50 md:text-right"
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50 md:text-right"
                         >
                             Add activity idea
                         </button>

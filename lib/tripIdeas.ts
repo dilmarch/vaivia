@@ -135,6 +135,7 @@ export type TripIdea = {
     other_notes?: string | null;
     is_private?: boolean;
     is_archived: boolean;
+    attended: boolean;
     reaction_summaries?: IdeaReactionSummary[];
     current_user_reaction?: IdeaReactionType | null;
     reaction_score?: number;
@@ -331,6 +332,7 @@ export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
             typeof record.other_notes === "string" ? record.other_notes : null,
         is_private: Boolean(record.is_private),
         is_archived: Boolean(record.is_archived),
+        attended: Boolean(record.attended),
         created_at: typeof record.created_at === "string" ? record.created_at : null,
         updated_at: typeof record.updated_at === "string" ? record.updated_at : null,
     };

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import TripsIndexClient from "@/components/TripsIndexClient";
+import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import type { DashboardTrip } from "@/components/TripDashboardClient";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
@@ -239,11 +240,10 @@ export default function TripsIndexPage() {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-[#0c0115] px-4 py-28 text-white md:px-8">
-                    <div className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300">
-                        Loading trips...
-                    </div>
-                </main>
+                <DelayedVaiviaLoadingScreen
+                    title="Preparing your trips"
+                    subtitle="Getting your upcoming adventures polished and ready."
+                />
             }
         >
             <TripsIndexPageContent />

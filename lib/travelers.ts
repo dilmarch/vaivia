@@ -25,6 +25,7 @@ export type TransportationTraveler = {
     id?: string;
     type: TransportationTravelerType;
     user_id?: string | null;
+    trip_member_id?: string | null;
     family_member_id?: string | null;
     guest_name?: string | null;
     traveler_note?: string | null;

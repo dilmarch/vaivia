@@ -1,10 +1,9 @@
 "use client";
 
-import { Lock } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import {
     IDEA_TIME_EXACT_WINDOWS,
-    IDEA_TIME_OF_DAY_OPTIONS,
     type IdeaTimeOfDay,
     type TripIdea,
     formatIdeaAgePolicy,
@@ -33,6 +32,7 @@ type SuggestedIdeasPanelProps = {
     }>;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction?: (formData: FormData) => Promise<void>;
+    toggleAttendedAction?: (formData: FormData) => Promise<void>;
 };
 
 type DayItem = NonNullable<SuggestedIdeasPanelProps["dayItems"]>[number];
@@ -286,84 +286,131 @@ function IdeaSuggestionCard({
     selectedDateKey,
     promoteIdeaAction,
     toggleReactionAction,
+    toggleAttendedAction,
 }: {
     idea: TripIdea;
     tripId: string;
     selectedDateKey: string;
     promoteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction?: (formData: FormData) => Promise<void>;
+    toggleAttendedAction?: (formData: FormData) => Promise<void>;
 }) {
     const firstTime = idea.time_of_day[0] || "Afternoon";
 
     return (
-        <article className="rounded-[1.35rem] border border-white/10 bg-[#03030a]/90 p-4 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-0.5">
-            <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-lime-300">
-                    {idea.category}
-                </p>
-                {idea.is_private ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.16em] text-white">
-                        <Lock className="h-3 w-3" aria-hidden="true" />
-                        Private
-                    </span>
+        <article
+            className={`rounded-[1.15rem] border border-white/10 p-3 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-0.5 ${
+                idea.attended ? "bg-[#03030a]/70 opacity-80" : "bg-[#03030a]/90"
+            }`}
+        >
+            <div className="flex items-start gap-2.5">
+                {toggleAttendedAction ? (
+                    <form action={toggleAttendedAction} className="pt-0.5">
+                        <input type="hidden" name="trip_id" value={tripId} />
+                        <input type="hidden" name="idea_id" value={idea.id} />
+                        <input
+                            type="hidden"
+                            name="attended"
+                            value={idea.attended ? "false" : "true"}
+                        />
+                        <button
+                            type="submit"
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition ${
+                                idea.attended
+                                    ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                                    : "border-white/20 bg-white/[0.04] text-transparent hover:border-lime-300/60 hover:bg-white/[0.08]"
+                            }`}
+                            aria-pressed={idea.attended}
+                            aria-label={
+                                idea.attended
+                                    ? `Mark ${idea.title} as not attended`
+                                    : `Mark ${idea.title} as attended`
+                            }
+                        title={idea.attended ? "Attended" : "Mark attended"}
+                    >
+                        {idea.attended ? (
+                            <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                        ) : null}
+                    </button>
+                </form>
                 ) : null}
+                <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-lime-300">
+                            {idea.category}
+                        </p>
+                        {idea.attended ? (
+                            <span className="rounded-full border border-lime-300/30 bg-lime-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-lime-100">
+                                Attended
+                            </span>
+                        ) : null}
+                        {idea.is_private ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white">
+                                <Lock className="h-3 w-3" aria-hidden="true" />
+                                Private
+                            </span>
+                        ) : null}
+                    </div>
+                    <h3 className="mt-1 text-sm font-black leading-tight text-white">
+                        {idea.title}
+                    </h3>
+                </div>
             </div>
-            <h3 className="mt-1 text-sm font-bold text-white">
-                {idea.title}
-            </h3>
             {idea.description && (
-                <p className="mt-2 line-clamp-3 text-xs leading-5 text-slate-300">
+                <p className="mt-2 line-clamp-2 text-xs leading-4 text-slate-300">
                     {idea.description}
                 </p>
             )}
             {(idea.location_city || idea.address || idea.formatted_address) && (
-                <p className="mt-2 text-xs font-semibold text-slate-200">
+                <p className="mt-1.5 truncate text-xs font-semibold text-slate-200">
                     {idea.location_city || idea.address || idea.formatted_address}
                 </p>
             )}
 
-            <div className="mt-3 flex flex-wrap gap-1.5">
+            <div className="mt-2 flex flex-wrap gap-1">
                 {idea.tags.map((tag) => (
                     <span
                         key={tag}
-                        className="rounded-full border border-white/10 bg-white/[0.07] px-2 py-1 text-[11px] font-semibold text-slate-200"
+                        className="rounded-full border border-white/10 bg-white/[0.07] px-1.5 py-0.5 text-[10px] font-semibold text-slate-200"
                     >
                         {tag}
                     </span>
                 ))}
             </div>
 
-            <dl className="mt-3 space-y-2 text-xs text-slate-300">
-                <div>
-                    <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
+            <dl className="mt-2 grid gap-1.5 text-[11px] leading-4 text-slate-300">
+                <div className="flex gap-2">
+                    <dt className="shrink-0 font-bold uppercase tracking-[0.14em] text-slate-500">
                         Available
                     </dt>
-                    <dd>{formatIdeaDayLabel(idea.days_available)}</dd>
+                    <dd className="min-w-0 truncate">{formatIdeaDayLabel(idea.days_available)}</dd>
                 </div>
-                <div>
-                    <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
+                <div className="flex gap-2">
+                    <dt className="shrink-0 font-bold uppercase tracking-[0.14em] text-slate-500">
                         Time
                     </dt>
-                    <dd>
+                    <dd className="min-w-0 truncate">
                         {idea.is_24_hours
                             ? "24 hours"
                             : formatIdeaTimeLabel(idea.time_of_day)}
                     </dd>
                 </div>
                 {idea.ticket_type && (
-                    <div>
-                        <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
+                    <div className="flex gap-2">
+                        <dt className="shrink-0 font-bold uppercase tracking-[0.14em] text-slate-500">
                             Tickets
                         </dt>
-                        <dd>{idea.ticket_type}</dd>
+                        <dd className="min-w-0 truncate">{idea.ticket_type}</dd>
                     </div>
                 )}
                 {idea.age_policy && (
-                    <div>
-                        <dt className="font-bold uppercase tracking-[0.16em] text-slate-500">
+                    <div className="flex gap-2">
+                        <dt className="shrink-0 font-bold uppercase tracking-[0.14em] text-slate-500">
                             Age
                         </dt>
-                        <dd>{formatIdeaAgePolicy(idea.age_policy)}</dd>
+                        <dd className="min-w-0 truncate">
+                            {formatIdeaAgePolicy(idea.age_policy)}
+                        </dd>
                     </div>
                 )}
             </dl>
@@ -379,17 +426,63 @@ function IdeaSuggestionCard({
                 />
             ) : null}
 
-            <details className="mt-3 rounded-2xl border border-white/10 bg-white/[0.055] p-3">
-                <summary className="cursor-pointer text-xs font-bold uppercase tracking-[0.16em] text-lime-200">
-                    Add to itinerary
+            <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.055] p-2.5">
+                <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.14em] text-lime-200">
+                    Add to calendar
                 </summary>
-                <form action={promoteIdeaAction} className="mt-3 space-y-3">
+                <form action={promoteIdeaAction} className="mt-2 space-y-2">
                     <input type="hidden" name="trip_id" value={tripId} />
                     <input type="hidden" name="idea_id" value={idea.id} />
                     <input type="hidden" name="title" value={idea.title} />
                     <input type="hidden" name="category" value="activity" />
                     <input type="hidden" name="status" value="tentative" />
-                    <label className="block text-xs font-semibold text-slate-300">
+                    <input
+                        type="hidden"
+                        name="location"
+                        value={
+                            idea.location ||
+                            idea.address ||
+                            idea.formatted_address ||
+                            idea.location_city ||
+                            ""
+                        }
+                    />
+                    <input
+                        type="hidden"
+                        name="formatted_address"
+                        value={idea.formatted_address || ""}
+                    />
+                    <input
+                        type="hidden"
+                        name="google_place_id"
+                        value={idea.google_place_id || ""}
+                    />
+                    <input
+                        type="hidden"
+                        name="location_lat"
+                        value={idea.location_lat ?? ""}
+                    />
+                    <input
+                        type="hidden"
+                        name="location_lng"
+                        value={idea.location_lng ?? ""}
+                    />
+                    <input
+                        type="hidden"
+                        name="location_website"
+                        value={idea.location_website || ""}
+                    />
+                    <input
+                        type="hidden"
+                        name="ticket_website"
+                        value={idea.ticket_website || ""}
+                    />
+                    <input
+                        type="hidden"
+                        name="notes"
+                        value={idea.description || idea.other_notes || ""}
+                    />
+                    <label className="block text-[11px] font-semibold text-slate-300">
                         Date
                         <input
                             name="item_date"
@@ -397,11 +490,11 @@ function IdeaSuggestionCard({
                             defaultValue={selectedDateKey}
                             required
                             {...travelInputProps()}
-                            className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1.5 text-sm text-slate-900"
+                            className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1 text-xs text-slate-900"
                         />
                     </label>
                     <div className="grid grid-cols-2 gap-2">
-                        <label className="block text-xs font-semibold text-slate-300">
+                        <label className="block text-[11px] font-semibold text-slate-300">
                             Start
                             <input
                                 name="start_time"
@@ -409,10 +502,10 @@ function IdeaSuggestionCard({
                                 defaultValue={getDefaultStartTime(firstTime)}
                                 required
                                 {...travelInputProps()}
-                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1.5 text-sm text-slate-900"
+                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1 text-xs text-slate-900"
                             />
                         </label>
-                        <label className="block text-xs font-semibold text-slate-300">
+                        <label className="block text-[11px] font-semibold text-slate-300">
                             End
                             <input
                                 name="end_time"
@@ -420,15 +513,15 @@ function IdeaSuggestionCard({
                                 defaultValue={getDefaultEndTime(firstTime)}
                                 required
                                 {...travelInputProps()}
-                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1.5 text-sm text-slate-900"
+                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1 text-xs text-slate-900"
                             />
                         </label>
                     </div>
                     <button
                         type="submit"
-                        className="w-full rounded-full bg-lime-300 px-3 py-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
+                        className="w-full rounded-full bg-lime-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
                     >
-                        Add tentative item
+                        Add to calendar
                     </button>
                 </form>
             </details>
@@ -443,6 +536,7 @@ export default function SuggestedIdeasPanel({
     dayItems = [],
     promoteIdeaAction,
     toggleReactionAction,
+    toggleAttendedAction,
 }: SuggestedIdeasPanelProps) {
     const selectedDay = getIdeaDayForDate(selectedDate);
     const selectedDateKey = getLocalDateKey(selectedDate);
@@ -452,17 +546,31 @@ export default function SuggestedIdeasPanel({
         dayItems,
         selectedDateKey
     );
-    const suggestions = ideas.filter(
-        (idea) =>
-            !idea.is_archived &&
-            idea.days_available.includes(selectedDay) &&
-            ideaMatchesTimedDayLocation(
-                idea,
-                dayLocationText,
-                dayLocationWindows,
-                shouldUseTimedLocationWindows
-            )
-    );
+    const suggestions = ideas
+        .filter(
+            (idea) =>
+                !idea.is_archived &&
+                idea.days_available.includes(selectedDay) &&
+                ideaMatchesTimedDayLocation(
+                    idea,
+                    dayLocationText,
+                    dayLocationWindows,
+                    shouldUseTimedLocationWindows
+                )
+        )
+        .sort((a, b) => {
+            if (a.attended !== b.attended) return a.attended ? 1 : -1;
+
+            const scoreSort = (b.reaction_score || 0) - (a.reaction_score || 0);
+            if (scoreSort !== 0) return scoreSort;
+
+            const createdSort =
+                new Date(b.created_at || 0).getTime() -
+                new Date(a.created_at || 0).getTime();
+            if (createdSort !== 0) return createdSort;
+
+            return a.title.localeCompare(b.title);
+        });
 
     return (
         <aside className="border-t border-white/10 bg-[#03030a] p-4 lg:border-l lg:border-t-0">
@@ -481,52 +589,18 @@ export default function SuggestedIdeasPanel({
                         No suggested ideas for this day.
                     </div>
                 ) : (
-                    <div className="space-y-5">
-                        {IDEA_TIME_OF_DAY_OPTIONS.map((time) => {
-                            const timeIdeas = suggestions.filter((idea) =>
-                                idea.time_of_day.includes(time)
-                            );
-
-                            if (timeIdeas.length === 0) return null;
-
-                            return (
-                                <section key={time} className="space-y-2">
-                                    <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                                        {time}
-                                    </h3>
-                                    {timeIdeas.map((idea) => (
-                                        <IdeaSuggestionCard
-                                            key={idea.id}
-                                            idea={idea}
-                                            tripId={tripId}
-                                            selectedDateKey={selectedDateKey}
-                                            promoteIdeaAction={promoteIdeaAction}
-                                            toggleReactionAction={toggleReactionAction}
-                                        />
-                                    ))}
-                                </section>
-                            );
-                        })}
-
-                        {suggestions.some((idea) => idea.time_of_day.length === 0) && (
-                            <section className="space-y-2">
-                                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                    Any time
-                                </h3>
-                                {suggestions
-                                    .filter((idea) => idea.time_of_day.length === 0)
-                                    .map((idea) => (
-                                        <IdeaSuggestionCard
-                                            key={idea.id}
-                                            idea={idea}
-                                            tripId={tripId}
-                                            selectedDateKey={selectedDateKey}
-                                            promoteIdeaAction={promoteIdeaAction}
-                                            toggleReactionAction={toggleReactionAction}
-                                        />
-                                    ))}
-                            </section>
-                        )}
+                    <div className="space-y-3">
+                        {suggestions.map((idea) => (
+                            <IdeaSuggestionCard
+                                key={idea.id}
+                                idea={idea}
+                                tripId={tripId}
+                                selectedDateKey={selectedDateKey}
+                                promoteIdeaAction={promoteIdeaAction}
+                                toggleReactionAction={toggleReactionAction}
+                                toggleAttendedAction={toggleAttendedAction}
+                            />
+                        ))}
                     </div>
                 )}
             </div>

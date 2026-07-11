@@ -10,6 +10,8 @@ import ItineraryCalendar, {
 import ItineraryQuickAdd from "@/components/ItineraryQuickAdd";
 import JourneyPlanningTab from "@/components/JourneyPlanningTab";
 import type { UserCategory } from "@/lib/itineraryCategories";
+import type { MoveTargetTrip } from "@/lib/tripMove";
+import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
 
@@ -26,14 +28,16 @@ type ItineraryTabsProps = {
     createTransportationAction: (formData: FormData) => Promise<void>;
     createIdeaAction: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
-    archiveIdeaAction: (formData: FormData) => Promise<void>;
-    deleteIdeaAction: (formData: FormData) => Promise<void>;
+    moveItemAction: (formData: FormData) => Promise<void>;
+    moveTargetTrips: MoveTargetTrip[];
     toggleIdeaReactionAction: (formData: FormData) => Promise<void>;
-    promoteIdeaAction: (formData: FormData) => Promise<void>;
+    toggleIdeaAttendedAction: (formData: FormData) => Promise<void>;
     initialTab?: ActiveTab;
     defaultItineraryView?: CalendarView;
     categories?: UserCategory[];
     travelerOptions?: TransportationTravelerOptions;
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
@@ -66,14 +70,16 @@ export default function ItineraryTabs({
     createTransportationAction,
     createIdeaAction,
     updateIdeaAction,
-    archiveIdeaAction,
-    deleteIdeaAction,
+    moveItemAction,
+    moveTargetTrips,
     toggleIdeaReactionAction,
-    promoteIdeaAction,
+    toggleIdeaAttendedAction,
     initialTab = "itinerary",
     defaultItineraryView = "list",
     categories = [],
     travelerOptions = { users: [], familyMembers: [] },
+    audienceOptions = [],
+    currentUserTripMemberId = null,
 }: ItineraryTabsProps) {
     const activeTab = initialTab;
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -99,14 +105,20 @@ export default function ItineraryTabs({
                     tripStartDate={tripStartDate}
                     tripDestination={tripDestination}
                     defaultView={defaultItineraryView}
-                    ideas={ideas}
-                    promoteIdeaAction={promoteIdeaAction}
-                    toggleIdeaReactionAction={toggleIdeaReactionAction}
                     deleteAction={deleteItineraryAction}
                     createAction={createItineraryAction}
+                    createTransportationAction={createTransportationAction}
                     updateTransportationAction={updateTransportationAction}
+                    moveItemAction={moveItemAction}
+                    moveTargetTrips={moveTargetTrips}
                     travelerOptions={travelerOptions}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                     onQuickAddDateChange={setQuickAddDate}
+                    ideas={ideas}
+                    promoteIdeaAction={createItineraryAction}
+                    toggleIdeaReactionAction={toggleIdeaReactionAction}
+                    toggleIdeaAttendedAction={toggleIdeaAttendedAction}
                 />
             ) : activeTab === "journey" || activeTab === "journey-planning" ? (
                 <div className="space-y-5">
@@ -152,8 +164,13 @@ export default function ItineraryTabs({
                             listOnly
                             deleteAction={deleteItineraryAction}
                             createAction={createItineraryAction}
+                            createTransportationAction={createTransportationAction}
                             updateTransportationAction={updateTransportationAction}
+                            moveItemAction={moveItemAction}
+                            moveTargetTrips={moveTargetTrips}
                             travelerOptions={travelerOptions}
+                            audienceOptions={audienceOptions}
+                            currentUserTripMemberId={currentUserTripMemberId}
                             onQuickAddDateChange={setQuickAddDate}
                         />
                     ) : (
@@ -169,9 +186,10 @@ export default function ItineraryTabs({
                     tripId={tripId}
                     ideas={ideas}
                     updateIdeaAction={updateIdeaAction}
-                    archiveIdeaAction={archiveIdeaAction}
-                    deleteIdeaAction={deleteIdeaAction}
+                    moveItemAction={moveItemAction}
+                    moveTargetTrips={moveTargetTrips}
                     toggleReactionAction={toggleIdeaReactionAction}
+                    toggleAttendedAction={toggleIdeaAttendedAction}
                 />
             )}
 
@@ -183,6 +201,8 @@ export default function ItineraryTabs({
                 defaultDate={quickAddDate}
                 categories={categories}
                 travelerOptions={travelerOptions}
+                audienceOptions={audienceOptions}
+                currentUserTripMemberId={currentUserTripMemberId}
             />
         </section>
     );

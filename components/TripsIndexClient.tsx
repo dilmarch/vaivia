@@ -2,7 +2,8 @@
 
 import Script from "next/script";
 import { AlertTriangle, Pencil, Share2, Trash2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import {
@@ -74,19 +75,6 @@ export default function TripsIndexClient({
         [filter, todayKey, trips]
     );
 
-    useEffect(() => {
-        if (!selectedTrip) return;
-
-        function closeOnEscape(event: KeyboardEvent) {
-            if (event.key === "Escape") {
-                requestCloseModal();
-            }
-        }
-
-        document.addEventListener("keydown", closeOnEscape);
-        return () => document.removeEventListener("keydown", closeOnEscape);
-    });
-
     function openEditModal(trip: DashboardTrip) {
         setSelectedTrip(trip);
         setHasUnsavedChanges(false);
@@ -99,15 +87,6 @@ export default function TripsIndexClient({
         setHasUnsavedChanges(false);
         setShowCloseWarning(false);
         setShowDeleteWarning(false);
-    }
-
-    function requestCloseModal() {
-        if (hasUnsavedChanges) {
-            setShowCloseWarning(true);
-            return;
-        }
-
-        closeModal();
     }
 
     return (
@@ -237,17 +216,21 @@ export default function TripsIndexClient({
             />
 
             {selectedTrip ? (
-                <div
-                    className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0c0115]/75 px-4 py-6 backdrop-blur-sm"
-                    onClick={requestCloseModal}
+                <AnimatedModal
+                    onClose={closeModal}
+                    onRequestClose={(close) => {
+                        if (hasUnsavedChanges) {
+                            setShowCloseWarning(true);
+                            return;
+                        }
+                        close();
+                    }}
+                    className="z-[100]"
+                    panelClassName="max-w-2xl"
+                    labelledBy="trip-index-edit-title"
                 >
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="trip-index-edit-title"
-                        className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-white/10 bg-[#080511] text-white shadow-2xl shadow-black/60"
-                        onClick={(event) => event.stopPropagation()}
-                    >
+                    {({ requestClose }) => (
+                        <>
                         <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(var(--vaivia-neon-rgb),0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6">
                             <div>
                                 <p className="text-xs font-bold uppercase tracking-[0.4em] text-lime-200/80">
@@ -262,7 +245,13 @@ export default function TripsIndexClient({
                             </div>
                             <button
                                 type="button"
-                                onClick={requestCloseModal}
+                                onClick={() => {
+                                    if (hasUnsavedChanges) {
+                                        setShowCloseWarning(true);
+                                        return;
+                                    }
+                                    requestClose();
+                                }}
                                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/15 text-slate-200 transition hover:bg-white/10 hover:text-white"
                                 aria-label="Close edit trip"
                             >
@@ -383,8 +372,9 @@ export default function TripsIndexClient({
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
+                        </>
+                    )}
+                </AnimatedModal>
             ) : null}
 
             {showCloseWarning && selectedTrip ? (

@@ -19,6 +19,7 @@ type GlobalQuickAddProps = {
 type TripAction =
     | "transportation"
     | "accommodation"
+    | "expense"
     | "food"
     | "scheduled"
     | "idea";
@@ -26,6 +27,7 @@ type TripAction =
 const tripActionLabels: Record<TripAction, string> = {
     transportation: "Add transportation",
     accommodation: "Add accommodation",
+    expense: "Add expense",
     food: "Add food or restaurant",
     scheduled: "Add scheduled activity/event",
     idea: "Add activity idea",
@@ -88,18 +90,25 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
             return;
         }
 
+        if (action === "food" && currentTripId) {
+            window.location.href = `/trips/${currentTripId}/food?addFood=1`;
+            return;
+        }
+
         setTripPickerAction(action);
     }
 
     function getTripActionHref(tripId: string, action: TripAction) {
         if (action === "accommodation") return null;
+        if (action === "expense") return `/trips/${tripId}/budget/expenses?addExpense=1`;
+        if (action === "food") return `/trips/${tripId}/food?addFood=1`;
         if (action === "idea") return `/trips/${tripId}?tab=ideas`;
         if (action === "transportation") return `/trips/${tripId}?tab=journey`;
         return `/trips/${tripId}`;
     }
 
     const quickAddBubbleClass =
-        "animate-vaivia-add-fan-out block rounded-full bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right";
+        "animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right";
 
     if (isMainTripDetailRoute) return null;
 

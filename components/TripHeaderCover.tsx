@@ -4,6 +4,7 @@ import Script from "next/script";
 import { AlertTriangle, Pencil, Share2, Trash2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import {
@@ -39,15 +40,6 @@ export default function TripHeaderCover({
         setHasUnsavedChanges(false);
         setShowCloseWarning(false);
         setShowDeleteWarning(false);
-    }
-
-    function requestCloseModal() {
-        if (hasUnsavedChanges) {
-            setShowCloseWarning(true);
-            return;
-        }
-
-        closeModal();
     }
 
     function saveAndClose() {
@@ -146,17 +138,20 @@ export default function TripHeaderCover({
             />
 
             {isModalOpen && (
-                <div
-                    className="vaivia-modal-backdrop"
-                    onClick={requestCloseModal}
+                <AnimatedModal
+                    onClose={closeModal}
+                    onRequestClose={(close) => {
+                        if (hasUnsavedChanges) {
+                            setShowCloseWarning(true);
+                            return;
+                        }
+                        close();
+                    }}
+                    panelClassName="max-w-2xl"
+                    labelledBy="trip-edit-title"
                 >
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="trip-edit-title"
-                        className="vaivia-modal-panel max-w-2xl"
-                        onClick={(event) => event.stopPropagation()}
-                    >
+                    {({ requestClose }) => (
+                        <>
                         <div className="vaivia-modal-header flex items-start justify-between gap-4">
                             <div>
                                 <p className="vaivia-modal-eyebrow">Trip settings</p>
@@ -166,7 +161,13 @@ export default function TripHeaderCover({
                             </div>
                             <button
                                 type="button"
-                                onClick={requestCloseModal}
+                                onClick={() => {
+                                    if (hasUnsavedChanges) {
+                                        setShowCloseWarning(true);
+                                        return;
+                                    }
+                                    requestClose();
+                                }}
                                 className="vaivia-modal-close"
                                 aria-label="Close edit trip"
                             >
@@ -290,8 +291,9 @@ export default function TripHeaderCover({
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
+                        </>
+                    )}
+                </AnimatedModal>
             )}
 
             {showCloseWarning && (

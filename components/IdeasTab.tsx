@@ -1,9 +1,10 @@
 "use client";
 
-import { Lock, Search, SlidersHorizontal } from "lucide-react";
+import { Check, Lock, Pencil, Search, SlidersHorizontal } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
+import MoveTripItemButton from "@/components/MoveTripItemButton";
 import {
     IDEA_CATEGORIES,
     IDEA_AGE_POLICIES,
@@ -22,14 +23,16 @@ import {
     toIdeaDayValue,
     toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
+import type { MoveTargetTrip } from "@/lib/tripMove";
 
 type IdeasTabProps = {
     tripId: string;
     ideas: TripIdea[];
     updateIdeaAction: (formData: FormData) => Promise<void>;
-    archiveIdeaAction: (formData: FormData) => Promise<void>;
-    deleteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction: (formData: FormData) => Promise<void>;
+    toggleAttendedAction: (formData: FormData) => Promise<void>;
+    moveItemAction: (formData: FormData) => Promise<void>;
+    moveTargetTrips: MoveTargetTrip[];
 };
 
 type DayFilter =
@@ -276,11 +279,15 @@ export function IdeaForm({
     action,
     idea,
     onCancel,
+    moveItemAction,
+    moveTargetTrips = [],
 }: {
     tripId: string;
     action: (formData: FormData) => Promise<void>;
     idea?: TripIdea | null;
     onCancel?: () => void;
+    moveItemAction?: (formData: FormData) => Promise<void>;
+    moveTargetTrips?: MoveTargetTrip[];
 }) {
     const addressInputRef = useRef<HTMLInputElement | null>(null);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -736,6 +743,17 @@ export function IdeaForm({
             </div>
 
             <div className="flex flex-wrap justify-end gap-2">
+                {idea && moveItemAction ? (
+                    <MoveTripItemButton
+                        itemType="idea"
+                        itemId={idea.id}
+                        currentTripId={tripId}
+                        targetTrips={moveTargetTrips}
+                        moveAction={moveItemAction}
+                        itemLabel={idea.title}
+                        className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                    />
+                ) : null}
                 {onCancel && (
                     <button
                         type="button"
@@ -760,16 +778,18 @@ function IdeaCard({
     idea,
     tripId,
     updateIdeaAction,
-    archiveIdeaAction,
-    deleteIdeaAction,
     toggleReactionAction,
+    toggleAttendedAction,
+    moveItemAction,
+    moveTargetTrips,
 }: {
     idea: TripIdea;
     tripId: string;
     updateIdeaAction: (formData: FormData) => Promise<void>;
-    archiveIdeaAction: (formData: FormData) => Promise<void>;
-    deleteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction: (formData: FormData) => Promise<void>;
+    toggleAttendedAction: (formData: FormData) => Promise<void>;
+    moveItemAction: (formData: FormData) => Promise<void>;
+    moveTargetTrips: MoveTargetTrip[];
 }) {
     const [isEditing, setIsEditing] = useState(false);
 
@@ -780,24 +800,71 @@ function IdeaCard({
                 idea={idea}
                 action={updateIdeaAction}
                 onCancel={() => setIsEditing(false)}
+                moveItemAction={moveItemAction}
+                moveTargetTrips={moveTargetTrips}
             />
         );
     }
 
     return (
         <article
-            className={`rounded-[1.75rem] border p-5 shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
+            className={`relative rounded-[1.75rem] border p-5 pr-16 shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
                 idea.is_archived
                     ? "border-white/10 bg-white/[0.035] opacity-70"
-                    : "border-white/10 bg-[#03030a]/90"
+                    : idea.attended
+                      ? "border-white/10 bg-[#03030a]/70 opacity-80"
+                      : "border-white/10 bg-[#03030a]/90"
             }`}
         >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
+            <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.07] text-slate-200 shadow-xl shadow-black/20 transition hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                aria-label={`Edit ${idea.title}`}
+                title="Edit idea"
+            >
+                <Pencil className="h-4 w-4" aria-hidden="true" />
+            </button>
+
+            <div className="flex gap-4">
+                <form action={toggleAttendedAction} className="pt-1">
+                    <input type="hidden" name="trip_id" value={tripId} />
+                    <input type="hidden" name="idea_id" value={idea.id} />
+                    <input
+                        type="hidden"
+                        name="attended"
+                        value={idea.attended ? "false" : "true"}
+                    />
+                    <button
+                        type="submit"
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
+                            idea.attended
+                                ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.24)]"
+                                : "border-white/20 bg-white/[0.04] text-transparent hover:border-lime-300/60 hover:bg-white/[0.08]"
+                        }`}
+                        aria-pressed={idea.attended}
+                        aria-label={
+                            idea.attended
+                                ? `Mark ${idea.title} as not attended`
+                                : `Mark ${idea.title} as attended`
+                        }
+                        title={idea.attended ? "Attended" : "Mark attended"}
+                    >
+                        {idea.attended ? (
+                            <Check className="h-4 w-4" aria-hidden="true" />
+                        ) : null}
+                    </button>
+                </form>
+                <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <p className="text-xs font-bold uppercase tracking-[0.22em] text-lime-300">
                             {idea.category}
                         </p>
+                        {idea.attended && (
+                            <span className="rounded-full border border-lime-300/30 bg-lime-300/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-lime-100">
+                                Attended
+                            </span>
+                        )}
                         {idea.is_archived && (
                             <span className="rounded-full border border-white/10 bg-white/[0.08] px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-300">
                                 Archived
@@ -829,42 +896,6 @@ function IdeaCard({
                                 idea.formatted_address}
                         </p>
                     )}
-                </div>
-                <div className="flex gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setIsEditing(true)}
-                        className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                    >
-                        Edit
-                    </button>
-                    <form action={archiveIdeaAction}>
-                        <input type="hidden" name="trip_id" value={tripId} />
-                        <input type="hidden" name="idea_id" value={idea.id} />
-                        <button
-                            type="submit"
-                            className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                        >
-                            Archive
-                        </button>
-                    </form>
-                    <form
-                        action={deleteIdeaAction}
-                        onSubmit={(event) => {
-                            if (!window.confirm("Delete this idea?")) {
-                                event.preventDefault();
-                            }
-                        }}
-                    >
-                        <input type="hidden" name="trip_id" value={tripId} />
-                        <input type="hidden" name="idea_id" value={idea.id} />
-                        <button
-                            type="submit"
-                            className="rounded-full border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-rose-200 transition hover:bg-rose-500/20"
-                        >
-                            Delete
-                        </button>
-                    </form>
                 </div>
             </div>
 
@@ -976,9 +1007,10 @@ export default function IdeasTab({
     tripId,
     ideas,
     updateIdeaAction,
-    archiveIdeaAction,
-    deleteIdeaAction,
     toggleReactionAction,
+    toggleAttendedAction,
+    moveItemAction,
+    moveTargetTrips,
 }: IdeasTabProps) {
     const [categoryFilter, setCategoryFilter] = useState("");
     const [timeFilter, setTimeFilter] = useState("");
@@ -1245,9 +1277,10 @@ export default function IdeasTab({
                             idea={idea}
                             tripId={tripId}
                             updateIdeaAction={updateIdeaAction}
-                            archiveIdeaAction={archiveIdeaAction}
-                            deleteIdeaAction={deleteIdeaAction}
                             toggleReactionAction={toggleReactionAction}
+                            toggleAttendedAction={toggleAttendedAction}
+                            moveItemAction={moveItemAction}
+                            moveTargetTrips={moveTargetTrips}
                         />
                     ))}
                 </div>

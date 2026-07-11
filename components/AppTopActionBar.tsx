@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Briefcase, Search } from "lucide-react";
+import { Bell, Briefcase, Home, Search } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import TripInviteReviewModal from "@/components/TripInviteReviewModal";
 import { createClient } from "@/lib/supabase/client";
@@ -33,10 +34,52 @@ function tripLabel(trip: TopNavTrip) {
     return trip.title?.trim() || "Untitled trip";
 }
 
+function getTripSwitchHref({
+    targetTripId,
+    pathname,
+    searchParams,
+}: {
+    targetTripId: string;
+    pathname: string;
+    searchParams: URLSearchParams;
+}) {
+    const baseHref = `/trips/${targetTripId}`;
+    const match = pathname.match(/^\/trips\/([^/]+)(.*)$/);
+
+    if (!match || match[1] === "new") return baseHref;
+
+    const suffix = match[2] || "";
+
+    if (suffix.startsWith("/accommodations")) {
+        return `${baseHref}/accommodations`;
+    }
+
+    if (suffix.startsWith("/food")) {
+        return `${baseHref}/food`;
+    }
+
+    if (suffix.startsWith("/budget/expenses")) {
+        return `${baseHref}/budget/expenses`;
+    }
+
+    if (suffix.startsWith("/budget")) {
+        return `${baseHref}/budget`;
+    }
+
+    const tab = searchParams.get("tab");
+    if (tab === "ideas" || tab === "journey" || tab === "journey-planning") {
+        return `${baseHref}?tab=${tab}`;
+    }
+
+    return baseHref;
+}
+
 export default function AppTopActionBar({
     trips,
     notifications = [],
 }: AppTopActionBarProps) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [openMenu, setOpenMenu] = useState<"trips" | "notifications" | null>(
         null
     );
@@ -167,6 +210,14 @@ export default function AppTopActionBar({
                     ref={wrapperRef}
                     className="pointer-events-auto ml-auto flex w-fit items-start gap-3"
                 >
+                <Link
+                    href="/"
+                    className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-950/50 text-slate-100 shadow-xl shadow-black/20 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-lime-300/30 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                    aria-label="Home"
+                    title="Home"
+                >
+                    <Home className="h-5 w-5" aria-hidden="true" />
+                </Link>
                 <div
                     className="relative"
                     onMouseLeave={() => {
@@ -178,7 +229,7 @@ export default function AppTopActionBar({
                     <button
                         type="button"
                         onClick={() => toggleMenu("trips")}
-                        className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
+                        className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_16px_34px_rgba(0,0,0,0.36),0_0_28px_rgba(var(--vaivia-neon-rgb),0.26)] transition hover:-translate-y-0.5 hover:bg-lime-200 hover:shadow-[0_18px_40px_rgba(0,0,0,0.42),0_0_34px_rgba(var(--vaivia-neon-rgb),0.34)] focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                         aria-label="Open trips menu"
                         aria-haspopup="menu"
                         aria-expanded={openMenu === "trips"}
@@ -198,7 +249,11 @@ export default function AppTopActionBar({
                                         trips.map((trip, index) => (
                                             <Link
                                                 key={trip.id}
-                                                href={`/trips/${trip.id}`}
+                                                href={getTripSwitchHref({
+                                                    targetTripId: trip.id,
+                                                    pathname,
+                                                    searchParams,
+                                                })}
                                                 className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                                                 style={{
                                                     animationDelay: `${index * 34}ms`,

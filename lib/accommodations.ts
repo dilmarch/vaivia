@@ -42,8 +42,12 @@ export type TripAccommodation = {
     accommodation_type: AccommodationType;
     status: AccommodationStatus;
     website?: string | null;
+    cost?: number | null;
+    currency?: string | null;
     is_private: boolean;
     notes?: string | null;
+    trip_leg_id?: string | null;
+    audience_mode?: "everyone" | "custom" | "just_me" | null;
     created_at?: string | null;
     updated_at?: string | null;
 };
@@ -128,6 +132,7 @@ export function buildAccommodationPayload(
     const status = String(formData.get("status") || "tentative") as AccommodationStatus;
     const latitudeText = nullableString(formData.get("latitude"));
     const longitudeText = nullableString(formData.get("longitude"));
+    const costText = nullableString(formData.get("cost"));
 
     return {
         trip_id: tripId,
@@ -150,9 +155,17 @@ export function buildAccommodationPayload(
         accommodation_type: accommodationType,
         status,
         website: normalizeWebsiteUrl(formData.get("website")),
+        cost: costText ? Number(costText.replace(/,/g, "")) : null,
+        currency: nullableString(formData.get("currency"))?.toUpperCase() || null,
         is_private:
             formData.get("is_private") === "on" ||
             formData.get("is_private") === "true",
+        trip_leg_id: nullableString(formData.get("trip_leg_id")),
+        audience_mode:
+            String(formData.get("audience_mode") || "") === "custom" ||
+            String(formData.get("audience_mode") || "") === "just_me"
+                ? (String(formData.get("audience_mode")) as "custom" | "just_me")
+                : "everyone",
         notes: nullableString(formData.get("notes")),
     };
 }
@@ -181,6 +194,14 @@ export function validateAccommodationPayload(
     }
     if (payload.website && !/^https?:\/\/\S+\.\S+/i.test(payload.website)) {
         errors.push("Website must be a valid URL.");
+    }
+    if (payload.cost !== null && payload.cost !== undefined) {
+        if (!Number.isFinite(payload.cost) || payload.cost <= 0) {
+            errors.push("Cost must be greater than 0.");
+        }
+        if (!payload.currency || !/^[A-Z]{3}$/.test(payload.currency)) {
+            errors.push("Choose a valid currency.");
+        }
     }
 
     return errors;

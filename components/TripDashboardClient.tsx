@@ -4,14 +4,18 @@ import Link from "next/link";
 import Script from "next/script";
 import {
     AlertTriangle,
+    CheckCircle2,
     ChevronLeft,
     ChevronRight,
+    Hotel,
     Pencil,
+    Plane,
     Share2,
     Trash2,
     X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import { useTripCoverImage } from "@/components/TripCoverImage";
@@ -33,6 +37,25 @@ export type DashboardTrip = {
         username?: string | null;
         avatar_url?: string | null;
     }[];
+    planning?: {
+        accommodations?: {
+            id: string;
+            check_in_date: string | null;
+            check_out_date: string | null;
+            status?: string | null;
+            city?: string | null;
+            region?: string | null;
+            country?: string | null;
+        }[];
+        transportation?: {
+            id: string;
+            departure_location?: string | null;
+            arrival_location?: string | null;
+            status?: string | null;
+            title?: string | null;
+            transport_type?: string | null;
+        }[];
+    };
 };
 
 type TripDashboardClientProps = {
@@ -651,7 +674,7 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
     }
 
     return (
-        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl lg:w-1/2">
+        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
@@ -797,6 +820,243 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
     );
 }
 
+type DashboardTask = {
+    id: string;
+    tripId: string;
+    tripTitle: string;
+    title: string;
+    detail: string;
+    href: string;
+    type: "accommodation" | "transportation";
+};
+
+function normalizeDashboardText(value?: string | null) {
+    return (value || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function getDateRangeGap(
+    tripStartDate?: string | null,
+    tripEndDate?: string | null,
+    accommodations: NonNullable<DashboardTrip["planning"]>["accommodations"] = []
+) {
+    const start = parseTripPlainDate(tripStartDate);
+    const end = parseTripPlainDate(tripEndDate || tripStartDate);
+
+    if (!start || !end) return null;
+
+    const activeStays = accommodations
+        .filter((stay) => stay.status !== "cancelled")
+        .map((stay) => ({
+            start: parseTripPlainDate(stay.check_in_date),
+            end: parseTripPlainDate(stay.check_out_date),
+        }))
+        .filter(
+            (
+                stay
+            ): stay is {
+                start: Date;
+                end: Date;
+            } => Boolean(stay.start && stay.end)
+        )
+        .sort((a, b) => a.start.getTime() - b.start.getTime());
+
+    if (activeStays.length === 0) {
+        return { start, end };
+    }
+
+    const cursor = new Date(start);
+
+    for (const stay of activeStays) {
+        const stayStart = new Date(Math.max(stay.start.getTime(), start.getTime()));
+        const stayEnd = new Date(Math.min(stay.end.getTime(), end.getTime()));
+
+        if (stayEnd <= start || stayStart > end) continue;
+
+        if (stayStart > cursor) {
+            return { start: cursor, end: addDays(stayStart, -1) };
+        }
+
+        if (stayEnd > cursor) {
+            cursor.setTime(stayEnd.getTime());
+        }
+
+        if (cursor > end) return null;
+    }
+
+    if (cursor <= end) {
+        return { start: cursor, end };
+    }
+
+    return null;
+}
+
+function formatTaskDateRange(start: Date, end: Date) {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+    });
+
+    if (getLocalDateKey(start) === getLocalDateKey(end)) {
+        return formatter.format(start);
+    }
+
+    return `${formatter.format(start)}-${formatter.format(end)}`;
+}
+
+function getMissingTransportationDestinations(trip: DashboardTrip) {
+    const destinations = getTripDestinationNames(trip);
+    const transportationText = (trip.planning?.transportation || [])
+        .filter((item) => item.status !== "cancelled")
+        .map((item) =>
+            [
+                item.title,
+                item.departure_location,
+                item.arrival_location,
+                item.transport_type,
+            ].join(" ")
+        )
+        .join(" ")
+        .toLowerCase();
+    const normalizedTransportationText = normalizeDashboardText(transportationText);
+
+    return destinations.filter((destination) => {
+        const normalizedDestination = normalizeDashboardText(destination);
+        if (!normalizedDestination) return false;
+
+        return !normalizedTransportationText.includes(normalizedDestination);
+    });
+}
+
+function getDashboardTasks(trips: DashboardTrip[]) {
+    const upcomingTrips = getUpcomingTrips(trips);
+    const tasks: DashboardTask[] = [];
+
+    upcomingTrips.forEach((trip) => {
+        const tripTitle = trip.title || getPrimaryDestination(trip);
+        const accommodations = trip.planning?.accommodations || [];
+        const accommodationGap = getDateRangeGap(
+            trip.start_date,
+            trip.end_date,
+            accommodations
+        );
+
+        if (accommodationGap) {
+            tasks.push({
+                id: `${trip.id}-accommodation-gap`,
+                tripId: trip.id,
+                tripTitle,
+                type: "accommodation",
+                title:
+                    accommodations.length === 0
+                        ? "Add accommodations"
+                        : "Finish accommodation coverage",
+                detail:
+                    accommodations.length === 0
+                        ? `${tripTitle} has no accommodations added yet.`
+                        : `You still need somewhere to stay for ${formatTaskDateRange(
+                              accommodationGap.start,
+                              accommodationGap.end
+                          )}.`,
+                href: `/trips/${trip.id}/accommodations`,
+            });
+        }
+
+        getMissingTransportationDestinations(trip)
+            .slice(0, 3)
+            .forEach((destination) => {
+                tasks.push({
+                    id: `${trip.id}-transportation-${destination}`,
+                    tripId: trip.id,
+                    tripTitle,
+                    type: "transportation",
+                    title: `No transportation booked to ${destination}`,
+                    detail: `Add flight, train, car, or transfer details for ${tripTitle}.`,
+                    href: `/trips/${trip.id}?tab=journey`,
+                });
+            });
+    });
+
+    return tasks.slice(0, 8);
+}
+
+function DashboardTaskList({ trips }: { trips: DashboardTrip[] }) {
+    const tasks = useMemo(() => getDashboardTasks(trips), [trips]);
+
+    return (
+        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+            <div className="mb-5 flex items-start justify-between gap-4">
+                <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
+                        Tasks
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black text-white">
+                        Planning checklist
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-400">
+                        Gaps disappear here once they are handled.
+                    </p>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-full border border-lime-300/20 bg-lime-300/10 text-lime-200 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.12)]">
+                    {tasks.length}
+                </div>
+            </div>
+
+            {tasks.length === 0 ? (
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.045] p-6">
+                    <div className="flex items-center gap-3">
+                        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]">
+                            <CheckCircle2 className="h-5 w-5" aria-hidden="true" />
+                        </span>
+                        <div>
+                            <h3 className="text-base font-black text-white">
+                                No planning gaps found
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-400">
+                                Your upcoming trips have the basics covered.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {tasks.map((task) => {
+                        const Icon =
+                            task.type === "accommodation" ? Hotel : Plane;
+
+                        return (
+                            <Link
+                                key={task.id}
+                                href={task.href}
+                                className="group flex gap-3 rounded-[1.35rem] border border-white/10 bg-[#03030a]/70 p-4 text-left shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:border-lime-300/30 hover:bg-white/[0.08]"
+                            >
+                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.07] text-lime-200 transition group-hover:border-lime-300/40 group-hover:bg-lime-300 group-hover:text-slate-950">
+                                    <Icon className="h-5 w-5" aria-hidden="true" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-sm font-black text-white">
+                                        {task.title}
+                                    </span>
+                                    <span className="mt-1 block text-sm leading-5 text-slate-400">
+                                        {task.detail}
+                                    </span>
+                                    <span className="mt-2 block truncate text-xs font-bold uppercase tracking-[0.16em] text-lime-200/80">
+                                        {task.tripTitle}
+                                    </span>
+                                </span>
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
+        </section>
+    );
+}
+
 export default function TripDashboardClient({
     trips,
     currentUserId,
@@ -811,33 +1071,11 @@ export default function TripDashboardClient({
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
 
-    useEffect(() => {
-        if (!selectedTrip) return;
-
-        function closeOnEscape(event: KeyboardEvent) {
-            if (event.key === "Escape") {
-                requestCloseModal();
-            }
-        }
-
-        document.addEventListener("keydown", closeOnEscape);
-        return () => document.removeEventListener("keydown", closeOnEscape);
-    });
-
     function closeModal() {
         setSelectedTrip(null);
         setHasUnsavedChanges(false);
         setShowCloseWarning(false);
         setShowDeleteWarning(false);
-    }
-
-    function requestCloseModal() {
-        if (hasUnsavedChanges) {
-            setShowCloseWarning(true);
-            return;
-        }
-
-        closeModal();
     }
 
     function openEditModal(trip: DashboardTrip) {
@@ -868,7 +1106,10 @@ export default function TripDashboardClient({
                     onEditTrip={openEditModal}
                     onShareTrip={setShareTrip}
                 />
-                <DashboardMonthCalendar trips={trips} />
+                <div className="grid gap-6 lg:grid-cols-2">
+                    <DashboardMonthCalendar trips={trips} />
+                    <DashboardTaskList trips={trips} />
+                </div>
             </div>
 
             <ShareTripModal
@@ -881,17 +1122,20 @@ export default function TripDashboardClient({
             />
 
             {selectedTrip && (
-                <div
-                    className="vaivia-modal-backdrop"
-                    onClick={requestCloseModal}
+                <AnimatedModal
+                    onClose={closeModal}
+                    onRequestClose={(close) => {
+                        if (hasUnsavedChanges) {
+                            setShowCloseWarning(true);
+                            return;
+                        }
+                        close();
+                    }}
+                    panelClassName="max-w-2xl"
+                    labelledBy="edit-trip-title"
                 >
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="edit-trip-title"
-                        className="vaivia-modal-panel max-w-2xl"
-                        onClick={(event) => event.stopPropagation()}
-                    >
+                    {({ requestClose }) => (
+                        <>
                         <div className="vaivia-modal-header flex items-start justify-between gap-4">
                             <div>
                                 <p className="vaivia-modal-eyebrow">
@@ -906,7 +1150,13 @@ export default function TripDashboardClient({
                             </div>
                             <button
                                 type="button"
-                                onClick={requestCloseModal}
+                                onClick={() => {
+                                    if (hasUnsavedChanges) {
+                                        setShowCloseWarning(true);
+                                        return;
+                                    }
+                                    requestClose();
+                                }}
                                 className="vaivia-modal-close"
                                 aria-label="Close edit trip"
                             >
@@ -1023,8 +1273,9 @@ export default function TripDashboardClient({
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
+                        </>
+                    )}
+                </AnimatedModal>
             )}
 
             {showCloseWarning && selectedTrip && (

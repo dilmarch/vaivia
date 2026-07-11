@@ -275,8 +275,28 @@
     @apply fixed inset-0 z-50 flex items-center justify-center bg-[#0c0115]/75 px-4 py-6 backdrop-blur-sm;
   }
 
+  .vaivia-modal-backdrop[data-vaivia-modal-state="open"] {
+    animation: vaivia-modal-backdrop-in 220ms cubic-bezier(0.16, 1, 0.3, 1)
+      both;
+  }
+
+  .vaivia-modal-backdrop[data-vaivia-modal-state="closing"] {
+    animation: vaivia-modal-backdrop-out 160ms ease-in both;
+  }
+
   .vaivia-modal-panel {
     @apply max-h-[90vh] w-full overflow-y-auto rounded-[28px] border border-white/10 bg-[#080511] text-white shadow-2xl shadow-black/60;
+  }
+
+  .vaivia-modal-panel[data-vaivia-modal-state="open"],
+  .vaivia-modal-confirm[data-vaivia-modal-state="open"] {
+    animation: vaivia-modal-panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1)
+      both;
+  }
+
+  .vaivia-modal-panel[data-vaivia-modal-state="closing"],
+  .vaivia-modal-confirm[data-vaivia-modal-state="closing"] {
+    animation: vaivia-modal-panel-out 160ms ease-in both;
   }
 
   .vaivia-modal-header {
@@ -301,6 +321,104 @@
 
   .vaivia-modal-confirm {
     @apply w-full max-w-md rounded-[24px] border border-white/10 bg-white p-5 text-slate-950 shadow-2xl;
+  }
+
+  @keyframes vaivia-modal-backdrop-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes vaivia-modal-backdrop-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes vaivia-modal-panel-in {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes vaivia-modal-panel-out {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0) scale(0.97);
+    }
+  }
+
+  @media (max-width: 640px) {
+    @keyframes vaivia-modal-panel-in {
+      from {
+        opacity: 0;
+        transform: translate3d(0, 16px, 0) scale(0.99);
+      }
+      to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+    }
+
+    @keyframes vaivia-modal-panel-out {
+      from {
+        opacity: 1;
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: translate3d(0, 16px, 0) scale(0.99);
+      }
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vaivia-modal-backdrop[data-vaivia-modal-state="open"],
+    .vaivia-modal-panel[data-vaivia-modal-state="open"],
+    .vaivia-modal-confirm[data-vaivia-modal-state="open"] {
+      animation-duration: 80ms;
+      animation-timing-function: linear;
+    }
+
+    .vaivia-modal-backdrop[data-vaivia-modal-state="closing"],
+    .vaivia-modal-panel[data-vaivia-modal-state="closing"],
+    .vaivia-modal-confirm[data-vaivia-modal-state="closing"] {
+      animation-duration: 60ms;
+      animation-timing-function: linear;
+    }
+
+    @keyframes vaivia-modal-panel-in {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    @keyframes vaivia-modal-panel-out {
+      from {
+        opacity: 1;
+      }
+      to {
+        opacity: 0;
+      }
+    }
   }
 
   .pac-container {
@@ -353,6 +471,67 @@
       both;
     transform-origin: top right;
     will-change: transform, opacity;
+  }
+
+  .vaivia-quick-add-menu-panel {
+    position: relative;
+    isolation: isolate;
+    border-radius: 2rem;
+    border: 1px solid rgb(255 255 255 / 0.12);
+    background:
+      radial-gradient(
+        circle at 88% 16%,
+        rgb(var(--vaivia-neon-rgb) / 0.16),
+        transparent 36%
+      ),
+      linear-gradient(145deg, rgb(12 1 21 / 0.92), rgb(3 3 10 / 0.78));
+    box-shadow:
+      0 28px 70px rgb(0 0 0 / 0.62),
+      0 12px 34px rgb(0 0 0 / 0.44),
+      inset 0 1px 0 rgb(255 255 255 / 0.12);
+    backdrop-filter: blur(18px) saturate(1.15);
+  }
+
+  .vaivia-quick-add-menu-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0.55rem;
+    z-index: -1;
+    border-radius: 1.6rem;
+    background: rgb(3 3 10 / 0.45);
+    filter: blur(18px);
+  }
+
+  .vaivia-quick-add-bubble {
+    box-shadow:
+      0 26px 44px rgb(0 0 0 / 0.52),
+      0 10px 18px rgb(0 0 0 / 0.34),
+      0 0 34px rgb(var(--vaivia-neon-rgb) / 0.30),
+      inset 0 1px 0 rgb(255 255 255 / 0.34);
+  }
+
+  .vaivia-quick-add-bubble:hover {
+    box-shadow:
+      0 30px 54px rgb(0 0 0 / 0.58),
+      0 12px 22px rgb(0 0 0 / 0.38),
+      0 0 40px rgb(var(--vaivia-neon-rgb) / 0.38),
+      inset 0 1px 0 rgb(255 255 255 / 0.42);
+  }
+
+  @keyframes vaivia-loading-bar {
+    0% {
+      width: 18%;
+    }
+    50% {
+      width: 72%;
+    }
+    100% {
+      width: 88%;
+    }
+  }
+
+  .animate-vaivia-loading-bar {
+    animation: vaivia-loading-bar 2.4s ease-in-out infinite alternate;
   }
 
   .your-trips-scroll::-webkit-scrollbar {

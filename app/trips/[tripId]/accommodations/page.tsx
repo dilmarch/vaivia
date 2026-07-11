@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { createAccommodation } from "@/app/actions/accommodations";
+import { moveTripItem } from "@/app/actions/moveTripItem";
 import AccommodationManager from "@/components/accommodations/AccommodationManager";
 import TripCountdown from "@/components/TripCountdown";
 import TripDestinationLine from "@/components/TripDestinationLine";
@@ -17,7 +18,12 @@ import {
     validateAccommodationPayload,
     type TripAccommodation,
 } from "@/lib/accommodations";
+import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { createClient } from "@/lib/supabase/server";
+import { loadActiveMemberTrips } from "@/lib/sharedTrips";
+import { getMoveTargetTrips } from "@/lib/tripMove";
+import type { TripAudienceOption } from "@/lib/tripAudience";
+import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 
 type PageProps = {
     params: Promise<{
@@ -299,6 +305,42 @@ async function updateAccommodation(formData: FormData) {
         );
     }
 
+    await syncAutoBudgetExpense({
+        supabase,
+        userId: user.id,
+        tripId,
+        sourceType: "accommodation",
+        sourceId: accommodationId,
+        amount: payload.cost,
+        currency: payload.currency,
+        expenseDate: payload.check_in_date,
+        description: payload.hotel_name,
+        formData,
+    });
+
+    const participantsError = await replaceTripItemParticipantsFromForm({
+        tripId,
+        itemType: "accommodation",
+        itemId: accommodationId,
+        formData,
+    });
+
+    if (participantsError) {
+        console.error("Error updating accommodation participants:", {
+            message: participantsError.message,
+            code: participantsError.code,
+            details: participantsError.details,
+            hint: participantsError.hint,
+            tripId,
+            accommodationId,
+        });
+        throw new Error(
+            `Could not update accommodation participants: ${
+                participantsError.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
     revalidatePath(`/trips/${tripId}/accommodations`);
 }
 
@@ -359,6 +401,12 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         notFound();
     }
 
+    const { trips: movableTrips } = await loadActiveMemberTrips(supabase, user.id);
+    const moveTargetTrips = getMoveTargetTrips({
+        trips: movableTrips,
+        currentTripId: tripId,
+    });
+
     const tripRecord = trip as {
         id: string;
         title: string;
@@ -372,11 +420,12 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
 
     const { data: tripMemberRows } = await supabase
         .from("trip_members")
-        .select("user_id,role,status,created_at")
+        .select("id,user_id,role,status,created_at")
         .eq("trip_id", tripId)
         .eq("status", "active");
 
     const memberRows = (tripMemberRows || []) as Array<{
+        id?: string | null;
         user_id?: string | null;
         role?: string | null;
         created_at?: string | null;
@@ -504,6 +553,54 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                 ? invitation.created_at
                 : null,
     }));
+    const audienceOptions: TripAudienceOption[] = [
+        ...(tripMembers
+            .map((member): TripAudienceOption | null => {
+                const membership = memberRowsByUserId.get(member.user_id);
+                if (!membership?.id) return null;
+                const displayName =
+                    [member.first_name, member.last_name]
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim() ||
+                    member.username ||
+                    "Trip member";
+
+                return {
+                    kind: "member",
+                    id: membership.id,
+                    displayName,
+                    avatarUrl: member.avatar_url || null,
+                    status: "accepted",
+                    secondaryLabel: member.username ? `@${member.username}` : null,
+                    isCurrentUser: member.user_id === user.id,
+                };
+            })
+            .filter(Boolean) as TripAudienceOption[]),
+        ...pendingInvitations.map(
+            (invitation): TripAudienceOption => ({
+                kind: "invitation",
+                id: invitation.id,
+                displayName: invitation.label,
+                status: "invited",
+                secondaryLabel: "Pending invitation",
+            })
+        ),
+        ...tripFamilyMembers.map(
+            (member): TripAudienceOption => ({
+                kind: "family_member",
+                id: member.family_member_id,
+                displayName: member.name,
+                avatarUrl: member.avatar_url || null,
+                status: "family_member",
+                secondaryLabel: member.relationship || "Family member",
+            })
+        ),
+    ];
+    const currentUserTripMemberId =
+        audienceOptions.find(
+            (option) => option.kind === "member" && option.isCurrentUser
+        )?.id || null;
 
     const { data: accommodations, error } = await supabase
         .from("trip_accommodations")
@@ -606,6 +703,10 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                     createAction={createAccommodation}
                     updateAction={updateAccommodation}
                     deleteAction={deleteAccommodation}
+                    moveItemAction={moveTripItem}
+                    moveTargetTrips={moveTargetTrips}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                 />
             </div>
         </main>

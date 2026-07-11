@@ -21,7 +21,13 @@ const PLACE_FIELDS = [
     "geometry",
     "website",
     "url",
+    "types",
+    "business_status",
+    "opening_hours",
+    "formatted_phone_number",
+    "international_phone_number",
     "address_components",
+    "utc_offset_minutes",
 ];
 
 const PASSWORD_MANAGER_IGNORE_PROPS = {
@@ -42,6 +48,7 @@ export default function PlaceAutocompleteInput({
     className = "",
 }: PlaceAutocompleteInputProps) {
     const inputRef = useRef<HTMLInputElement | null>(null);
+    const serviceHostRef = useRef<HTMLDivElement | null>(null);
     const onPlaceSelectRef = useRef(onPlaceSelect);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
 
@@ -77,7 +84,40 @@ export default function PlaceAutocompleteInput({
 
         const listener = autocomplete.addListener("place_changed", () => {
             const place = autocomplete.getPlace();
-            onPlaceSelectRef.current(place);
+            const placeId = place.place_id;
+
+            if (!placeId || !serviceHostRef.current || !window.google?.maps?.places) {
+                onPlaceSelectRef.current(place);
+                return;
+            }
+
+            const placesService = new window.google.maps.places.PlacesService(
+                serviceHostRef.current
+            );
+
+            placesService.getDetails(
+                {
+                    placeId,
+                    fields: PLACE_FIELDS,
+                },
+                (details, status) => {
+                    if (
+                        status === window.google.maps.places.PlacesServiceStatus.OK &&
+                        details
+                    ) {
+                        onPlaceSelectRef.current({ ...place, ...details });
+                        return;
+                    }
+
+                    if (process.env.NODE_ENV === "development") {
+                        console.warn("Google place details lookup failed:", {
+                            placeId,
+                            status,
+                        });
+                    }
+                    onPlaceSelectRef.current(place);
+                }
+            );
         });
 
         return () => listener.remove();
@@ -103,6 +143,7 @@ export default function PlaceAutocompleteInput({
                 className={className}
                 {...PASSWORD_MANAGER_IGNORE_PROPS}
             />
+            <div ref={serviceHostRef} className="hidden" aria-hidden="true" />
         </>
     );
 }

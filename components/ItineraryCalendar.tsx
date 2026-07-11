@@ -18,20 +18,27 @@ import {
     X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import { AirlineIcon } from "@/components/AirlineIcon";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import JourneyMap from "@/components/JourneyMap";
+import MoveTripItemButton from "@/components/MoveTripItemButton";
 import SuggestedIdeasPanel from "@/components/SuggestedIdeasPanel";
 import { TrackFlightButton } from "@/components/TrackFlightButton";
 import TransportationEditForm from "@/components/TransportationEditForm";
+import TransportationForm, {
+    type FlightLeg,
+    type TransportationFormInitialValues,
+} from "@/components/TransportationForm";
 import {
     ensureReadableColor,
     getAirlineBrandTheme,
     getReadableTextColor,
 } from "@/lib/airlineBrandTheme";
+import { getIataAirportCode } from "@/lib/airportCodes";
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
-import type { TripIdea } from "@/lib/tripIdeas";
+import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
 import type {
     TransportationTraveler,
     TransportationTravelerOptions,
@@ -41,6 +48,8 @@ import {
     FALLBACK_CATEGORY_COLOR,
     FALLBACK_CATEGORY_LABEL,
 } from "@/lib/itineraryCategories";
+import type { TripIdea } from "@/lib/tripIdeas";
+import type { MoveTargetTrip } from "@/lib/tripMove";
 
 export type ItineraryCalendarItem = {
     id: string;
@@ -70,7 +79,11 @@ export type ItineraryCalendarItem = {
     airline_code?: string | null;
     flight_number?: string | null;
     reservation_code?: string | null;
+    cost?: number | null;
+    currency?: string | null;
     travelers?: TransportationTraveler[];
+    participants?: TransportationTraveler[];
+    audience_selected_options?: TripAudienceOption[];
     duration?: string | null;
     departure_location?: string | null;
     arrival_location?: string | null;
@@ -80,6 +93,7 @@ export type ItineraryCalendarItem = {
     arrival_terminal?: string | null;
     source_table?: "itinerary_items" | "transportation_items";
     is_private?: boolean | null;
+    audience_mode?: TripAudienceMode | null;
 };
 
 export type CalendarAccommodation = {
@@ -98,7 +112,6 @@ type ItineraryCalendarProps = {
     tripId: string;
     items: ItineraryCalendarItem[];
     accommodations?: CalendarAccommodation[];
-    ideas?: TripIdea[];
     tripStartDate?: string | null;
     tripDestination?: string | null;
     title?: string;
@@ -106,11 +119,18 @@ type ItineraryCalendarProps = {
     defaultView?: CalendarView;
     deleteAction: (formData: FormData) => Promise<void>;
     createAction: (formData: FormData) => Promise<void>;
+    createTransportationAction?: (formData: FormData) => Promise<void>;
     updateTransportationAction: (formData: FormData) => Promise<void>;
+    moveItemAction: (formData: FormData) => Promise<void>;
+    moveTargetTrips: MoveTargetTrip[];
+    travelerOptions?: TransportationTravelerOptions;
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
+    onQuickAddDateChange?: (dateKey: string) => void;
+    ideas?: TripIdea[];
     promoteIdeaAction?: (formData: FormData) => Promise<void>;
     toggleIdeaReactionAction?: (formData: FormData) => Promise<void>;
-    travelerOptions?: TransportationTravelerOptions;
-    onQuickAddDateChange?: (dateKey: string) => void;
+    toggleIdeaAttendedAction?: (formData: FormData) => Promise<void>;
 };
 
 type CalendarView = "list" | "day" | "week";
@@ -495,17 +515,26 @@ function getDisplayEventRange(
         };
     }
 
-    const sourceTimezone = item.timezone || displayTimezone;
+    const isTransportationItem =
+        item.source_table === "transportation_items" ||
+        item.category === "transportation";
+    const startTimezone =
+        (isTransportationItem ? item.departure_timezone : null) ||
+        item.timezone ||
+        displayTimezone;
+    const endTimezone =
+        (isTransportationItem ? item.arrival_timezone : null) ||
+        startTimezone;
     const startInstant = zonedDateTimeToUtc(
         item.item_date,
         item.start_time,
-        sourceTimezone
+        startTimezone
     );
     let endInstant = item.end_time
         ? zonedDateTimeToUtc(
               item.end_date || item.item_date,
               item.end_time,
-              sourceTimezone
+              endTimezone
           )
         : addMinutes(startInstant, 60);
 
@@ -563,6 +592,59 @@ function getTentativeStripeStyle(
 
 function canDuplicateScheduledItem(item: ItineraryCalendarItem) {
     return item.source_table !== "transportation_items";
+}
+
+function getTransportationDuplicateInitialValues(
+    item: ItineraryCalendarItem
+): TransportationFormInitialValues {
+    const flightDisplay = getFlightDisplayData(item);
+    const fallbackLeg: FlightLeg = {
+        departureLocation:
+            item.departure_location || flightDisplay?.originName || item.location || "",
+        departureDate: item.item_date || flightDisplay?.departureDate || "",
+        departureTime: item.start_time || flightDisplay?.departureTime || "",
+        departureTimezone:
+            item.departure_timezone || flightDisplay?.departureTimeZone || item.timezone || "",
+        arrivalLocation: item.arrival_location || flightDisplay?.destinationName || "",
+        arrivalDate: item.end_date || flightDisplay?.arrivalDate || item.item_date || "",
+        arrivalTime: item.end_time || flightDisplay?.arrivalTime || "",
+        arrivalTimezone: item.arrival_timezone || flightDisplay?.arrivalTimeZone || "",
+        departureTerminal:
+            item.departure_terminal || flightDisplay?.departureTerminal || "",
+        arrivalTerminal: item.arrival_terminal || flightDisplay?.arrivalTerminal || "",
+        flightNumber: item.flight_number || flightDisplay?.flightNumber || "",
+        airlineName: item.airline_name || flightDisplay?.airlineName || "",
+    };
+    const flightLegs =
+        flightDisplay?.legs.length && flightDisplay.legs.length > 1
+            ? flightDisplay.legs.map((leg) => ({
+                  departureLocation: leg.originName || "",
+                  departureDate: leg.departureDate || item.item_date || "",
+                  departureTime: leg.departureTime || "",
+                  departureTimezone:
+                      leg.departureTimeZone || item.departure_timezone || "",
+                  arrivalLocation: leg.destinationName || "",
+                  arrivalDate: leg.arrivalDate || leg.departureDate || item.end_date || "",
+                  arrivalTime: leg.arrivalTime || "",
+                  arrivalTimezone: leg.arrivalTimeZone || item.arrival_timezone || "",
+                  departureTerminal: leg.departureTerminal || "",
+                  arrivalTerminal: leg.arrivalTerminal || "",
+                  flightNumber: leg.flightNumber || "",
+                  airlineName: leg.airlineName || "",
+              }))
+            : [fallbackLeg];
+
+    return {
+        mode: item.transportation_mode || flightDisplay?.mode || "airplane",
+        status: item.status || "planned",
+        reservationCode: item.reservation_code || null,
+        cost: item.cost ?? null,
+        currency: item.currency || null,
+        isPrivate: item.is_private || false,
+        audienceMode: item.audience_mode || "everyone",
+        audienceSelectedOptions: item.audience_selected_options || [],
+        flightLegs,
+    };
 }
 
 function PrivateLockBadge({
@@ -638,6 +720,7 @@ type FlightDisplayData = {
     status: string;
     mode?: string | null;
     routeLabel: string;
+    routeCodeLabel: string;
     titleLabel: string;
     legs: FlightLegDisplay[];
     customNotes?: string;
@@ -838,6 +921,12 @@ function getFlightDisplayData(item: ItineraryCalendarItem): FlightDisplayData | 
         getNoteValue(item.notes, "Arrival terminal") ||
         getNoteValue(item.notes, "Arrival terminal/platform");
     const routeLabel = [originName, destinationName].filter(Boolean).join(" → ");
+    const routeCodeLabel = [
+        getIataAirportCode(originName) || originName,
+        getIataAirportCode(destinationName) || destinationName,
+    ]
+        .filter(Boolean)
+        .join(" → ");
     const titleLabel =
         [airlineName, flightNumber].filter(Boolean).join(" ") ||
         [airlineCode, flightNumber].filter(Boolean).join(" ") ||
@@ -861,10 +950,31 @@ function getFlightDisplayData(item: ItineraryCalendarItem): FlightDisplayData | 
         status: item.status,
         mode: item.transportation_mode,
         routeLabel,
+        routeCodeLabel,
         titleLabel,
         legs,
         customNotes: getDisplayNotes(item),
     };
+}
+
+function formatAirportWithCode(airportName?: string | null) {
+    if (!airportName) return "";
+
+    const airportCode = getIataAirportCode(airportName);
+    if (!airportCode) return airportName;
+
+    if (airportName.trim().toUpperCase() === airportCode) return airportCode;
+
+    return `${airportCode} - ${airportName}`;
+}
+
+function formatAirportRouteWithCodes(
+    originName?: string | null,
+    destinationName?: string | null
+) {
+    return [formatAirportWithCode(originName), formatAirportWithCode(destinationName)]
+        .filter(Boolean)
+        .join(" → ");
 }
 
 function getUniqueFlightAirlines(flight: FlightDisplayData) {
@@ -1083,12 +1193,22 @@ function FlightListCard({
     return (
         <div
             style={cardThemeStyle}
-            className="rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            className="relative rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
         >
+            <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
+                {item.is_private ? <PrivateLockBadge compact /> : null}
+                <span
+                    className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
+                        item.status
+                    )}`}
+                >
+                    {formatStatusLabel(item.status)}
+                </span>
+            </div>
             <button
                 type="button"
                 onClick={() => onOpen(item)}
-                className="w-full rounded-md p-4 text-left focus:outline-none focus:ring-2 focus:ring-[var(--airline-card-primary)] focus:ring-offset-2"
+                className="w-full rounded-md p-4 pr-28 text-left focus:outline-none focus:ring-2 focus:ring-[var(--airline-card-primary)] focus:ring-offset-2"
             >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 gap-3">
@@ -1120,18 +1240,7 @@ function FlightListCard({
                                     />
                                 </div>
                             )}
-                            <TravelerChips travelers={item.travelers} light />
                         </div>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                        {item.is_private ? <PrivateLockBadge compact /> : null}
-                        <span
-                            className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                                item.status
-                            )}`}
-                        >
-                            {formatStatusLabel(item.status)}
-                        </span>
                     </div>
                 </div>
 
@@ -1204,8 +1313,8 @@ function FlightListCard({
                     )
                 )}
             </button>
-            <div className="flex flex-wrap justify-start gap-2 px-4 pb-4">
-                <ReservationCodeCopy code={item.reservation_code} light />
+            <TransportationAudienceAvatars item={item} />
+            <div className="flex flex-wrap justify-start gap-2 px-4 pb-4 pr-20">
                 {flight.flightNumber && (
                     <TrackFlightButton
                         flightNumber={flight.flightNumber}
@@ -1214,7 +1323,7 @@ function FlightListCard({
                         departureTimezone={flight.departureTimeZone}
                         originAirportCode={flight.originName}
                         destinationAirportCode={flight.destinationName}
-                        className="min-h-8 !border-slate-900 !bg-slate-900 px-3 py-1.5 text-xs !text-white shadow-none hover:!bg-slate-700"
+                        className="min-h-8 !border-white/10 !bg-white/[0.08] px-3 py-1.5 text-xs !text-slate-100 shadow-none hover:!border-lime-300/30 hover:!bg-white/[0.14] hover:!text-white"
                     />
                 )}
                 <EventCardActions item={item} onOpen={onOpen} />
@@ -1822,14 +1931,24 @@ function EventCard({
         return (
             <div
                 style={flightCardThemeStyle}
-                className={`w-full rounded-md border border-slate-200 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`relative w-full rounded-md border border-slate-200 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                     fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
                 }`}
             >
+                <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
+                    {item.is_private ? <PrivateLockBadge compact /> : null}
+                    <span
+                        className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
+                            item.status
+                        )}`}
+                    >
+                        {formatStatusLabel(item.status)}
+                    </span>
+                </div>
                 <button
                     type="button"
                     onClick={() => onOpen(item)}
-                    className={`w-full p-3 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
+                    className={`w-full p-3 pr-28 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
                         fillHeight
                             ? "flex min-h-0 flex-1 flex-col justify-start overflow-hidden"
                             : ""
@@ -1839,25 +1958,17 @@ function EventCard({
                         <div className="flex min-w-0 gap-3">
                             <FlightIconStack flight={flightDisplay} />
                             <div className="min-w-0">
-                                <p className="text-xs font-medium text-[var(--airline-card-muted)]">
-                                    {timeLabel ||
-                                        `${formatTime(item.start_time)}${
-                                            item.end_time
-                                                ? ` - ${formatTime(item.end_time)}`
-                                                : ""
-                                        }`}
-                                </p>
                                 {transportationDepartureLabel && (
-                                    <p className="mt-1 text-sm font-semibold text-[var(--airline-card-text)]">
+                                    <p className="text-sm font-semibold text-[var(--airline-card-text)]">
                                         Departs {transportationDepartureLabel}
                                     </p>
                                 )}
                                 <h3 className="mt-1 text-sm font-semibold text-[var(--airline-card-text)]">
-                                    {item.title}
+                                    {flightDisplay.flightNumber || item.title}
                                 </h3>
-                                {item.location && (
+                                {(flightDisplay.routeCodeLabel || item.location) && (
                                     <p className="mt-1 truncate text-xs text-[var(--airline-card-muted)]">
-                                        {item.location}
+                                        {flightDisplay.routeCodeLabel || item.location}
                                     </p>
                                 )}
                                 {flightDisplay.duration && (
@@ -1874,22 +1985,12 @@ function EventCard({
                                         />
                                     </div>
                                 )}
-                                <TravelerChips travelers={item.travelers} light />
                             </div>
-                        </div>
-                        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                            {item.is_private ? <PrivateLockBadge compact /> : null}
-                            <span
-                                className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                                    item.status
-                                )}`}
-                            >
-                                {formatStatusLabel(item.status)}
-                            </span>
                         </div>
                     </div>
                 </button>
-                <div className="flex flex-wrap justify-start gap-2 px-3 pb-3">
+                <TransportationAudienceAvatars item={item} />
+                <div className="flex flex-wrap justify-start gap-2 px-3 pb-3 pr-16">
                     {flightDisplay.flightNumber && (
                         <TrackFlightButton
                             flightNumber={flightDisplay.flightNumber}
@@ -1898,7 +1999,7 @@ function EventCard({
                             departureTimezone={flightDisplay.departureTimeZone}
                             originAirportCode={flightDisplay.originName}
                             destinationAirportCode={flightDisplay.destinationName}
-                            className="min-h-7 !border-slate-900 !bg-slate-900 px-2 py-1 text-xs !text-white shadow-none hover:!bg-slate-700"
+                            className="min-h-7 !border-white/10 !bg-white/[0.08] px-2 py-1 text-xs !text-slate-100 shadow-none hover:!border-lime-300/30 hover:!bg-white/[0.14] hover:!text-white"
                         />
                     )}
                     <EventCardActions item={item} compact onOpen={onOpen} />
@@ -1921,12 +2022,22 @@ function EventCard({
                     : "bg-[#080b16]/95 text-white"
             } ${
                 fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
-            } rounded-[1.25rem] border border-white/10 shadow-[0_18px_45px_rgba(0,0,0,0.28)] transition duration-200 hover:-translate-y-0.5 hover:border-lime-300/20 hover:shadow-[0_24px_60px_rgba(0,0,0,0.38)]`}
+            } relative rounded-[1.25rem] border border-white/10 shadow-[0_18px_45px_rgba(0,0,0,0.28)] transition duration-200 hover:-translate-y-0.5 hover:border-lime-300/20 hover:shadow-[0_24px_60px_rgba(0,0,0,0.38)]`}
         >
+            <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
+                {item.is_private ? <PrivateLockBadge compact /> : null}
+                <span
+                    className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
+                        item.status
+                    )}`}
+                >
+                    {formatStatusLabel(item.status)}
+                </span>
+            </div>
             <button
                 type="button"
                 onClick={() => onOpen(item)}
-                className={`w-full p-3 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
+                className={`w-full p-3 pr-28 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
                     fillHeight
                         ? "flex min-h-0 flex-1 flex-col justify-start overflow-hidden"
                         : ""
@@ -2013,23 +2124,7 @@ function EventCard({
                             />
                         </div>
                     )}
-                    {item.category === "transportation" ? (
-                        <TravelerChips
-                            travelers={item.travelers}
-                            light={Boolean(flightDisplay)}
-                        />
-                    ) : null}
                     </div>
-                </div>
-                <div className="flex shrink-0 flex-wrap justify-end gap-2">
-                    {item.is_private ? <PrivateLockBadge compact /> : null}
-                    <span
-                        className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                            item.status
-                    )}`}
-                >
-                    {formatStatusLabel(item.status)}
-                </span>
                 </div>
             </div>
 
@@ -2072,7 +2167,10 @@ function EventCard({
                 </>
             )}
             </button>
-            <div className={compact ? "px-2 pb-2" : "px-3 pb-3"}>
+            {item.category === "transportation" ? (
+                <TransportationAudienceAvatars item={item} />
+            ) : null}
+            <div className={compact ? "px-2 pb-2 pr-16" : "px-3 pb-3 pr-16"}>
                 <EventCardActions item={item} compact={compact} onOpen={onOpen} />
             </div>
         </div>
@@ -2116,33 +2214,33 @@ function ReservationCodeCopy({
 
     return (
         <span
-            className={`inline-flex max-w-full items-center gap-2 rounded-md border ${
+            onClick={(event) => {
+                event.stopPropagation();
+                void copyCode();
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            className={`inline-flex max-w-full cursor-pointer items-center gap-2 rounded-md border transition ${
                 compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-xs"
             } ${
                 light
-                    ? "border-slate-200 bg-white/90 text-slate-900"
-                    : "border-white/10 bg-white/[0.08] text-slate-100"
+                    ? "border-slate-200 bg-white/90 text-slate-900 hover:bg-slate-50"
+                    : "border-white/10 bg-white/[0.08] text-slate-100 hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white"
             }`}
+            title={isCopied ? "Copied" : "Copy reservation code"}
         >
             <span className="min-w-0 truncate">
-                <span className="font-bold uppercase tracking-wide opacity-70">
-                    Reservation
-                </span>{" "}
                 <span className="font-black tracking-wide">{code}</span>
             </span>
-            <button
-                type="button"
-                onClick={copyCode}
+            <span
                 className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition ${
                     light
                         ? "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
                         : "text-slate-200 hover:bg-white/[0.14] hover:text-white"
                 }`}
-                aria-label={`Copy reservation code ${code}`}
-                title={isCopied ? "Copied" : "Copy reservation code"}
+                aria-hidden="true"
             >
                 <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
+            </span>
             {isCopied ? (
                 <span className="shrink-0 text-[10px] font-black uppercase tracking-wide">
                     Copied
@@ -2152,54 +2250,78 @@ function ReservationCodeCopy({
     );
 }
 
-function TravelerChips({
-    travelers,
-    light = false,
-}: {
-    travelers?: TransportationTraveler[] | null;
-    light?: boolean;
-}) {
-    if (!travelers || travelers.length === 0) return null;
+function getItemPeople(item: ItineraryCalendarItem) {
+    return item.participants && item.participants.length > 0
+        ? item.participants
+        : item.travelers || [];
+}
+
+function getTransportationAudienceText(item: ItineraryCalendarItem) {
+    if (item.audience_mode === "just_me" || item.is_private) return "Just You";
+    if (item.audience_mode !== "custom") return "";
+
+    return getItemPeople(item)
+        .map((person) => person.name || person.guest_name || "")
+        .filter(Boolean)
+        .join(", ");
+}
+
+function TransportationAudienceText({ item }: { item: ItineraryCalendarItem }) {
+    const label = getTransportationAudienceText(item);
+    if (!label) return null;
 
     return (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span
-                className={`text-xs font-black uppercase tracking-wide ${
-                    light ? "text-slate-500" : "text-slate-300"
-                }`}
-            >
-                For
-            </span>
-            {travelers.map((traveler) => (
-                <span
-                    key={`${traveler.type}:${traveler.user_id || traveler.family_member_id || traveler.guest_name}`}
-                    className={`inline-flex items-center gap-1.5 rounded-full border py-1 pl-1 pr-2 text-xs font-black ${
-                        light
-                            ? "border-slate-200 bg-white/90 text-slate-900"
-                            : "border-white/10 bg-white/[0.08] text-slate-100"
-                    }`}
-                >
+        <p className="mt-1 truncate text-xs font-semibold text-[color:var(--airline-card-muted,#64748b)]">
+            {label}
+        </p>
+    );
+}
+
+function getTransportationAudiencePeople(item: ItineraryCalendarItem) {
+    if (item.audience_mode === "everyone" && !item.is_private) return [];
+    return getItemPeople(item);
+}
+
+function TransportationAudienceAvatars({ item }: { item: ItineraryCalendarItem }) {
+    const people = getTransportationAudiencePeople(item);
+    if (people.length === 0) return null;
+
+    const visiblePeople = people.slice(0, 4);
+    const overflowCount = people.length - visiblePeople.length;
+    const label = people.map((person) => person.name || person.guest_name).join(", ");
+
+    return (
+        <div
+            className="pointer-events-none absolute bottom-3 right-3 z-20 flex items-center justify-end -space-x-2"
+            aria-label={label || "Selected travellers"}
+        >
+            {visiblePeople.map((person, index) => {
+                const name = person.name || person.guest_name || "Traveller";
+
+                return (
                     <span
-                        className={`flex h-5 w-5 items-center justify-center overflow-hidden rounded-full text-[9px] uppercase ${
-                            light
-                                ? "bg-slate-900 text-lime-200"
-                                : "bg-slate-950 text-lime-200"
-                        }`}
+                        key={`${person.type}:${person.user_id || person.family_member_id || person.guest_name || index}`}
+                        className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-white/40 bg-slate-950 text-[10px] font-black uppercase text-lime-200 shadow-[0_0_18px_rgba(0,0,0,0.28)]"
+                        title={name}
                     >
-                        {traveler.avatar_url ? (
+                        {person.avatar_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                                src={traveler.avatar_url}
+                                src={person.avatar_url}
                                 alt=""
                                 className="h-full w-full object-cover"
                             />
                         ) : (
-                            getInitials(traveler.name)
+                            getInitials(name)
                         )}
                     </span>
-                    {traveler.name}
+                );
+            })}
+            {overflowCount > 0 ? (
+                <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white/40 bg-slate-950 text-[10px] font-black text-lime-200 shadow-[0_0_18px_rgba(0,0,0,0.28)]">
+                    +{overflowCount}
                 </span>
-            ))}
+            ) : null}
         </div>
     );
 }
@@ -2230,6 +2352,13 @@ function FlightModalContent({
     item: ItineraryCalendarItem;
     flight: FlightDisplayData;
 }) {
+    const originLabel = formatAirportWithCode(flight.originName);
+    const destinationLabel = formatAirportWithCode(flight.destinationName);
+    const routeLabelWithCodes = formatAirportRouteWithCodes(
+        flight.originName,
+        flight.destinationName
+    );
+
     return (
         <div className="space-y-5 p-5">
             <section className="flex items-center gap-3 rounded-md border border-white/60 border-l-4 border-l-[var(--airline-primary)] bg-white/90 p-4 shadow-sm ring-1 ring-black/5">
@@ -2247,15 +2376,17 @@ function FlightModalContent({
                             {flight.flightNumber}
                         </p>
                     )}
-                    {flight.routeLabel && (
-                        <p className="mt-1 text-sm text-slate-600">{flight.routeLabel}</p>
+                    {routeLabelWithCodes && (
+                        <p className="mt-1 text-sm text-slate-600">
+                            {routeLabelWithCodes}
+                        </p>
                     )}
                     {item.reservation_code && (
                         <div className="mt-3">
                             <ReservationCodeCopy code={item.reservation_code} light />
+                            <TransportationAudienceText item={item} />
                         </div>
                     )}
-                    <TravelerChips travelers={item.travelers} light />
                 </div>
             </section>
 
@@ -2270,9 +2401,9 @@ function FlightModalContent({
                     <p className="mt-1 text-sm text-slate-600">
                         {formatOptionalDate(flight.departureDate)}
                     </p>
-                    {flight.originName && (
+                    {originLabel && (
                         <p className="mt-3 font-medium text-slate-900">
-                            {flight.originName}
+                            {originLabel}
                         </p>
                     )}
                     {flight.departureTimeZone && (
@@ -2298,9 +2429,9 @@ function FlightModalContent({
                     <p className="mt-1 text-sm text-slate-600">
                         {formatOptionalDate(flight.arrivalDate)}
                     </p>
-                    {flight.destinationName && (
+                    {destinationLabel && (
                         <p className="mt-3 font-medium text-slate-900">
-                            {flight.destinationName}
+                            {destinationLabel}
                         </p>
                     )}
                     {flight.arrivalTimeZone && (
@@ -2325,6 +2456,7 @@ function FlightModalContent({
                             </dt>
                             <dd className="mt-2">
                                 <ReservationCodeCopy code={item.reservation_code} light />
+                                <TransportationAudienceText item={item} />
                             </dd>
                         </div>
                     )}
@@ -2370,11 +2502,17 @@ function FlightModalContent({
                                                 .filter(Boolean)
                                                 .join(" ") || `Leg ${index + 1}`}
                                         </p>
-                                        <p className="mt-1 text-sm text-slate-600">
-                                            {[leg.originName, leg.destinationName]
-                                                .filter(Boolean)
-                                                .join(" → ")}
-                                        </p>
+                                        {formatAirportRouteWithCodes(
+                                            leg.originName,
+                                            leg.destinationName
+                                        ) ? (
+                                            <p className="mt-1 text-sm text-slate-600">
+                                                {formatAirportRouteWithCodes(
+                                                    leg.originName,
+                                                    leg.destinationName
+                                                )}
+                                            </p>
+                                        ) : null}
                                     </div>
                                     {leg.duration && (
                                         <span className="rounded-full bg-[var(--airline-primary)] px-3 py-1 text-xs font-semibold text-[var(--airline-primary-text)]">
@@ -2420,16 +2558,26 @@ function ItineraryItemModal({
     tripId,
     deleteAction,
     updateTransportationAction,
+    moveItemAction,
+    moveTargetTrips,
     travelerOptions,
+    audienceOptions,
+    currentUserTripMemberId,
     onDuplicateItem,
+    onDuplicateTransportationItem,
     onClose,
 }: {
     item: ItineraryCalendarItem;
     tripId: string;
     deleteAction: (formData: FormData) => Promise<void>;
     updateTransportationAction: (formData: FormData) => Promise<void>;
+    moveItemAction: (formData: FormData) => Promise<void>;
+    moveTargetTrips: MoveTargetTrip[];
     travelerOptions: TransportationTravelerOptions;
+    audienceOptions: TripAudienceOption[];
+    currentUserTripMemberId: string | null;
     onDuplicateItem: (item: ItineraryCalendarItem) => void;
+    onDuplicateTransportationItem: (item: ItineraryCalendarItem) => void;
     onClose: () => void;
 }) {
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -2454,15 +2602,6 @@ function ItineraryItemModal({
               }),
           } as CSSProperties)
         : undefined;
-
-    useEffect(() => {
-        function closeOnEscape(event: KeyboardEvent) {
-            if (event.key === "Escape") onClose();
-        }
-
-        document.addEventListener("keydown", closeOnEscape);
-        return () => document.removeEventListener("keydown", closeOnEscape);
-    }, [onClose]);
 
     useEffect(() => {
         let isMounted = true;
@@ -2491,22 +2630,18 @@ function ItineraryItemModal({
     }, [locationWebsite, savedCoverImage, ticketWebsite]);
 
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6"
-            onClick={onClose}
+        <AnimatedModal
+            onClose={onClose}
+            className="bg-slate-950/40"
+            panelClassName={`max-w-2xl rounded-md border-0 shadow-xl ${
+                flightDisplay
+                    ? "bg-[var(--airline-accent)] text-[var(--airline-accent-text)]"
+                    : "bg-white text-slate-950"
+            }`}
+            labelledBy="itinerary-item-title"
         >
-            <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="itinerary-item-title"
-                style={modalThemeStyle}
-                className={`max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-md shadow-xl ${
-                    flightDisplay
-                        ? "bg-[var(--airline-accent)] text-[var(--airline-accent-text)]"
-                        : "bg-white"
-                }`}
-                onClick={(event) => event.stopPropagation()}
-            >
+            {({ requestClose }) => (
+                <div style={modalThemeStyle}>
                 {coverImageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -2551,7 +2686,7 @@ function ItineraryItemModal({
                     </div>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={requestClose}
                         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-md border transition ${
                             flightDisplay
                                 ? "border-white/30 text-[var(--airline-primary-text)] hover:bg-white/10"
@@ -2602,9 +2737,18 @@ function ItineraryItemModal({
                                     flightDisplay?.arrivalTimeZone ||
                                     null,
                                 reservation_code: item.reservation_code || null,
+                                cost: item.cost ?? null,
+                                currency: item.currency || null,
                                 travelers: item.travelers || [],
+                                audience_mode: item.audience_mode || "everyone",
+                                audience_selected_options:
+                                    item.audience_selected_options || [],
                             }}
                             travelerOptions={travelerOptions}
+                            audienceOptions={audienceOptions}
+                            currentUserTripMemberId={currentUserTripMemberId}
+                            moveItemAction={moveItemAction}
+                            moveTargetTrips={moveTargetTrips}
                             onCancel={() => setIsEditingTransportation(false)}
                         />
                     </div>
@@ -2658,21 +2802,10 @@ function ItineraryItemModal({
                                             code={item.reservation_code}
                                             light
                                         />
+                                        <TransportationAudienceText item={item} />
                                     </dd>
                                 </div>
                             )}
-                            {item.category === "transportation" &&
-                            item.travelers &&
-                            item.travelers.length > 0 ? (
-                                <div className="sm:col-span-2">
-                                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                        Travelers
-                                    </dt>
-                                    <dd>
-                                        <TravelerChips travelers={item.travelers} light />
-                                    </dd>
-                                </div>
-                            ) : null}
                         </dl>
 
                         {(locationWebsite || ticketWebsite) && (
@@ -2745,7 +2878,16 @@ function ItineraryItemModal({
                             flightDisplay ? "border-white/50 bg-white/60" : "border-slate-200"
                         }`}
                     >
-                    {canDuplicateScheduledItem(item) ? (
+                    {item.source_table === "transportation_items" ? (
+                        <button
+                            type="button"
+                            onClick={() => onDuplicateTransportationItem(item)}
+                            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100 sm:w-auto"
+                        >
+                            <Copy className="h-4 w-4" aria-hidden="true" />
+                            DUPLICATE
+                        </button>
+                    ) : canDuplicateScheduledItem(item) ? (
                         <button
                             type="button"
                             onClick={() => onDuplicateItem(item)}
@@ -2755,6 +2897,22 @@ function ItineraryItemModal({
                             DUPLICATE
                         </button>
                     ) : null}
+                    <MoveTripItemButton
+                        itemType={
+                            item.source_table === "transportation_items"
+                                ? "transportation"
+                                : "itinerary"
+                        }
+                        itemId={
+                            item.source_table === "transportation_items"
+                                ? item.id.replace("transportation:", "")
+                                : item.id
+                        }
+                        currentTripId={tripId}
+                        targetTrips={moveTargetTrips}
+                        moveAction={moveItemAction}
+                        itemLabel={item.title}
+                    />
                     {item.source_table === "transportation_items" ? (
                         <button
                             type="button"
@@ -2818,8 +2976,9 @@ function ItineraryItemModal({
                     )}
                     </div>
                 )}
-            </div>
-        </div>
+                </div>
+            )}
+        </AnimatedModal>
     );
 }
 
@@ -3093,13 +3252,13 @@ function DayColumn({
                     return (
                         <div
                             key={`${segment.item.id}-${segment.dateKey}-${segment.startMinutes}`}
-                            className={`absolute ${
+                            className={`pointer-events-none absolute ${
                                 showTimeRail ? "left-[60px]" : "left-2"
                             } right-2`}
                             style={{ top, height }}
                         >
                             <div
-                                className="absolute h-full"
+                                className="pointer-events-auto absolute h-full"
                                 style={{
                                     left: `${columnLeft}%`,
                                     width: `calc(${columnWidth}% - ${horizontalGap})`,
@@ -3148,7 +3307,7 @@ function WeekViewGrid({
     const minGridWidth = timeRailWidth + dayColumnWidth * 7;
 
     return (
-        <div className="overflow-x-auto rounded-[1.25rem] border border-white/10 bg-slate-950/70 shadow-xl shadow-black/20 [scrollbar-color:rgba(var(--vaivia-neon-rgb),0.65)_rgba(15,23,42,0.7)] [scrollbar-width:thin]">
+        <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/70 shadow-xl shadow-black/20">
             <div
                 className="grid"
                 style={{
@@ -3274,7 +3433,6 @@ export default function ItineraryCalendar({
     tripId,
     items,
     accommodations = [],
-    ideas = [],
     tripStartDate,
     tripDestination,
     title = "Itinerary",
@@ -3282,11 +3440,18 @@ export default function ItineraryCalendar({
     defaultView = "list",
     deleteAction,
     createAction,
+    createTransportationAction,
     updateTransportationAction,
+    moveItemAction,
+    moveTargetTrips,
+    travelerOptions = { users: [], familyMembers: [] },
+    audienceOptions = [],
+    currentUserTripMemberId = null,
+    onQuickAddDateChange,
+    ideas = [],
     promoteIdeaAction,
     toggleIdeaReactionAction,
-    travelerOptions = { users: [], familyMembers: [] },
-    onQuickAddDateChange,
+    toggleIdeaAttendedAction,
 }: ItineraryCalendarProps) {
     const [view, setView] = useState<CalendarView>(defaultView);
     const effectiveView: CalendarView = listOnly ? "list" : view;
@@ -3309,7 +3474,10 @@ export default function ItineraryCalendar({
     );
     const [duplicatingItem, setDuplicatingItem] =
         useState<ItineraryCalendarItem | null>(null);
+    const [duplicatingTransportationItem, setDuplicatingTransportationItem] =
+        useState<ItineraryCalendarItem | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
+    const weekScrollRef = useRef<HTMLDivElement | null>(null);
     const primaryDestination = useMemo(
         () => parseDestinationList(tripDestination)[0] || "",
         [tripDestination]
@@ -3323,14 +3491,26 @@ export default function ItineraryCalendar({
         () => items.filter(isScheduledItineraryItem),
         [items]
     );
-    const selectedDayItems = useMemo(() => {
-        const dateKey = getLocalDateKey(anchorDate);
-        return items.filter((item) => itemTouchesDate(item, dateKey));
-    }, [anchorDate, items]);
+    const selectedDaySuggestionItems = useMemo(() => {
+        const selectedDateKey = getLocalDateKey(anchorDate);
 
+        return scheduledItems.filter((item) => {
+            const startDateKey = item.item_date;
+            const endDateKey = item.end_date || startDateKey;
+
+            return startDateKey <= selectedDateKey && endDateKey >= selectedDateKey;
+        });
+    }, [anchorDate, scheduledItems]);
     const weekStart = startOfWeek(anchorDate);
-    const weekDates = Array.from({ length: 7 }, (_, index) =>
-        addDays(weekStart, index)
+    const weekStartKey = getLocalDateKey(weekStart);
+    const scrollableWeekStarts = useMemo(
+        () => {
+            const selectedWeekStart = parseDateKey(weekStartKey);
+            return [-2, -1, 0, 1, 2].map((weekOffset) =>
+                addDays(selectedWeekStart, weekOffset * 7)
+            );
+        },
+        [weekStartKey]
     );
     const listEndDate = addDays(listStartDate, listDayCount - 1);
     const visibleDateRange = useMemo(
@@ -3536,6 +3716,28 @@ export default function ItineraryCalendar({
             observer.disconnect();
         };
     }, [hasFutureItems, view]);
+
+    useEffect(() => {
+        if (effectiveView !== "week") return;
+        const scrollContainer = weekScrollRef.current;
+        if (!scrollContainer) return;
+
+        const currentWeek = scrollContainer.querySelector<HTMLElement>(
+            "[data-current-week='true']"
+        );
+        if (!currentWeek) return;
+
+        const left =
+            currentWeek.offsetLeft -
+            Math.max((scrollContainer.clientWidth - currentWeek.clientWidth) / 2, 0);
+
+        window.requestAnimationFrame(() => {
+            scrollContainer.scrollTo({
+                left,
+                behavior: "smooth",
+            });
+        });
+    }, [effectiveView, motionKey, weekStartKey]);
 
     function updateAnchorDate(nextDate: Date) {
         setAnchorDate(nextDate);
@@ -3797,7 +3999,7 @@ export default function ItineraryCalendar({
                 )}
 
                 {!listOnly && effectiveView === "day" && (
-                    <div className="grid lg:grid-cols-[minmax(0,1fr)_340px]">
+                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
                         <div className="overflow-x-auto">
                             <div className="min-w-[680px]">
                                 <DayColumn
@@ -3814,23 +4016,53 @@ export default function ItineraryCalendar({
                                 tripId={tripId}
                                 ideas={ideas}
                                 selectedDate={anchorDate}
-                                dayItems={selectedDayItems}
+                                dayItems={selectedDaySuggestionItems}
                                 promoteIdeaAction={promoteIdeaAction}
                                 toggleReactionAction={toggleIdeaReactionAction}
+                                toggleAttendedAction={toggleIdeaAttendedAction}
                             />
                         ) : null}
                     </div>
                 )}
 
                 {!listOnly && effectiveView === "week" && (
-                    <WeekViewGrid
-                        weekDates={weekDates}
-                        items={items}
-                        accommodations={accommodations}
-                        displayTimezone={displayTimezone}
-                        tripDestination={tripDestination}
-                        onOpenItem={setSelectedItem}
-                    />
+                    <div
+                        ref={weekScrollRef}
+                        className="overflow-x-auto rounded-[1.35rem] [scrollbar-color:rgba(var(--vaivia-neon-rgb),0.65)_rgba(15,23,42,0.7)] [scrollbar-width:thin]"
+                        aria-label="Scrollable week calendar"
+                    >
+                        <div className="flex w-max gap-5 pb-2">
+                            {scrollableWeekStarts.map((scrollWeekStart) => {
+                                const scrollWeekStartKey =
+                                    getLocalDateKey(scrollWeekStart);
+                                const scrollWeekDates = Array.from(
+                                    { length: 7 },
+                                    (_, index) => addDays(scrollWeekStart, index)
+                                );
+
+                                return (
+                                    <div
+                                        key={scrollWeekStartKey}
+                                        data-current-week={
+                                            scrollWeekStartKey === weekStartKey
+                                                ? "true"
+                                                : undefined
+                                        }
+                                        className="w-max shrink-0 scroll-mx-4"
+                                    >
+                                        <WeekViewGrid
+                                            weekDates={scrollWeekDates}
+                                            items={items}
+                                            accommodations={accommodations}
+                                            displayTimezone={displayTimezone}
+                                            tripDestination={tripDestination}
+                                            onOpenItem={setSelectedItem}
+                                        />
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -3840,7 +4072,11 @@ export default function ItineraryCalendar({
                     tripId={tripId}
                     deleteAction={deleteAction}
                     updateTransportationAction={updateTransportationAction}
+                    moveItemAction={moveItemAction}
+                    moveTargetTrips={moveTargetTrips}
                     travelerOptions={travelerOptions}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                     onDuplicateItem={(item) => {
                         setSelectedItem(null);
                         setDuplicatingItem({
@@ -3848,9 +4084,29 @@ export default function ItineraryCalendar({
                             title: `${item.title || "Untitled event"} (copy)`,
                         });
                     }}
+                    onDuplicateTransportationItem={(item) => {
+                        setSelectedItem(null);
+                        setDuplicatingTransportationItem(item);
+                    }}
                     onClose={() => setSelectedItem(null)}
                 />
             )}
+            {duplicatingTransportationItem && createTransportationAction ? (
+                <TransportationForm
+                    key={`transportation-${duplicatingTransportationItem.id}`}
+                    tripId={tripId}
+                    submitAction={createTransportationAction}
+                    isOpen
+                    onClose={() => setDuplicatingTransportationItem(null)}
+                    defaultDate={duplicatingTransportationItem.item_date}
+                    initialItem={getTransportationDuplicateInitialValues(
+                        duplicatingTransportationItem
+                    )}
+                    submitLabel="Duplicate transportation"
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
+                />
+            ) : null}
             {duplicatingItem && (
                 <ItineraryItemForm
                     key={`${duplicatingItem.id}-${duplicatingItem.title}`}

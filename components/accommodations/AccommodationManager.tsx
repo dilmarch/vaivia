@@ -1,15 +1,37 @@
 "use client";
 
-import { ExternalLink, Lock, MapPin, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+    Bed,
+    Building2,
+    CircleHelp,
+    ExternalLink,
+    Hotel,
+    House,
+    Lock,
+    MapPin,
+    Pencil,
+    Plus,
+    Trash2,
+    Users,
+    X,
+} from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
+import CostAllocationFields from "@/components/budget/CostAllocationFields";
+import MoveTripItemButton from "@/components/MoveTripItemButton";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
+import TripAudienceSelector from "@/components/TripAudienceSelector";
 import {
     ACCOMMODATION_STATUS_OPTIONS,
     ACCOMMODATION_TYPE_OPTIONS,
     getAccommodationStatusLabel,
     getAccommodationTypeLabel,
+    type AccommodationType,
     type TripAccommodation,
 } from "@/lib/accommodations";
+import { COMMON_CURRENCIES, formatCurrency } from "@/lib/budget";
+import type { MoveTargetTrip } from "@/lib/tripMove";
+import type { TripAudienceOption } from "@/lib/tripAudience";
 
 type AccommodationManagerProps = {
     tripId: string;
@@ -17,6 +39,10 @@ type AccommodationManagerProps = {
     createAction: (formData: FormData) => Promise<void>;
     updateAction: (formData: FormData) => Promise<void>;
     deleteAction: (formData: FormData) => Promise<void>;
+    moveItemAction?: (formData: FormData) => Promise<void>;
+    moveTargetTrips?: MoveTargetTrip[];
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
 };
 
 type PlaceFields = Pick<
@@ -60,6 +86,18 @@ const modalBodyClass =
     "space-y-5 bg-[#080511] p-6 text-white";
 const secondaryButtonClass =
     "inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-black text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white";
+
+const ACCOMMODATION_TYPE_ICONS: Record<
+    AccommodationType,
+    typeof Hotel
+> = {
+    hotel: Hotel,
+    motel: Building2,
+    home_rental: House,
+    hostel: Bed,
+    friend_family: Users,
+    other: CircleHelp,
+};
 
 function getAddressComponent(
     place: google.maps.places.PlaceResult,
@@ -147,23 +185,32 @@ function AccommodationForm({
     tripId,
     mode,
     action,
+    moveItemAction,
+    moveTargetTrips,
+    audienceOptions = [],
+    currentUserTripMemberId = null,
     onClose,
 }: {
     tripId: string;
     mode: ModalMode;
     action: (formData: FormData) => Promise<void>;
+    moveItemAction?: (formData: FormData) => Promise<void>;
+    moveTargetTrips?: MoveTargetTrip[];
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
     onClose: () => void;
 }) {
     const accommodation = mode.type === "edit" ? mode.accommodation : null;
     const [hotelName, setHotelName] = useState(accommodation?.hotel_name || "");
     const [address, setAddress] = useState(accommodation?.address || "");
     const [website, setWebsite] = useState(accommodation?.website || "");
-    const [type, setType] = useState(
+    const [type, setType] = useState<AccommodationType>(
         accommodation?.accommodation_type || "other"
     );
     const [placeFields, setPlaceFields] = useState<PlaceFields>(() =>
         getInitialPlaceFields(accommodation)
     );
+    const [costAmount, setCostAmount] = useState(formValue(accommodation?.cost));
     const [errors, setErrors] = useState<string[]>([]);
     const [isSaving, startSavingTransition] = useTransition();
 
@@ -228,6 +275,13 @@ function AccommodationForm({
             )
         ) {
             nextErrors.push("Website must be a valid URL.");
+        }
+        const costValue = String(formData.get("cost") || "").trim();
+        if (costValue) {
+            const cost = Number(costValue.replace(/,/g, ""));
+            if (!Number.isFinite(cost) || cost <= 0) {
+                nextErrors.push("Cost must be greater than 0.");
+            }
         }
 
         setErrors(nextErrors);
@@ -349,27 +403,43 @@ function AccommodationForm({
                     />
                 </label>
 
-                <label className="space-y-2">
-                        <span className={labelClass}>Accommodation type</span>
-                        <select
-                            name="accommodation_type"
-                        value={type}
-                        onChange={(event) =>
-                            setType(event.target.value as typeof type)
-                        }
-                        className={inputClass}
-                    >
-                        {ACCOMMODATION_TYPE_OPTIONS.map((option) => (
-                            <option
-                                key={option.value}
-                                value={option.value}
-                                className="bg-slate-950 text-white"
-                            >
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
-                </label>
+                <fieldset className="space-y-2 md:col-span-2">
+                    <legend className={labelClass}>Accommodation type</legend>
+                    <input type="hidden" name="accommodation_type" value={type} />
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {ACCOMMODATION_TYPE_OPTIONS.map((option) => {
+                            const Icon = ACCOMMODATION_TYPE_ICONS[option.value];
+                            const isSelected = type === option.value;
+
+                            return (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={isSelected}
+                                    onClick={() => setType(option.value)}
+                                    className={`group flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center transition ${
+                                        isSelected
+                                            ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                                            : "border-white/10 bg-white/[0.08] text-slate-200 hover:border-lime-300/35 hover:bg-white/[0.13] hover:text-white"
+                                    }`}
+                                >
+                                    <span
+                                        className={`flex h-10 w-10 items-center justify-center rounded-2xl border transition ${
+                                            isSelected
+                                                ? "border-slate-950/10 bg-slate-950 text-lime-200"
+                                                : "border-white/10 bg-slate-950/70 text-lime-200 group-hover:border-lime-300/25"
+                                        }`}
+                                    >
+                                        <Icon className="h-5 w-5" aria-hidden="true" />
+                                    </span>
+                                    <span className="text-xs font-black uppercase tracking-[0.14em]">
+                                        {option.label}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </fieldset>
 
                 <label className="space-y-2">
                     <span className={labelClass}>Status</span>
@@ -390,6 +460,49 @@ function AccommodationForm({
                     </select>
                 </label>
 
+                <div className="grid gap-3 md:col-span-2 md:grid-cols-[1fr_180px]">
+                    <label className="space-y-2">
+                        <span className={labelClass}>Cost</span>
+                        <input
+                            type="number"
+                            name="cost"
+                            min="0"
+                            step="0.01"
+                            value={costAmount}
+                            onChange={(event) => setCostAmount(event.target.value)}
+                            placeholder="0.00"
+                            className={inputClass}
+                        />
+                    </label>
+                    <label className="space-y-2">
+                        <span className={labelClass}>Currency</span>
+                        <select
+                            name="currency"
+                            defaultValue={accommodation?.currency || "CAD"}
+                            className={inputClass}
+                        >
+                            {COMMON_CURRENCIES.map((currency) => (
+                                <option
+                                    key={currency}
+                                    value={currency}
+                                    className="bg-slate-950 text-white"
+                                >
+                                    {currency}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+
+                <div className="md:col-span-2">
+                    <CostAllocationFields
+                        amount={costAmount}
+                        participants={audienceOptions}
+                        currentUserTripMemberId={currentUserTripMemberId}
+                        tone="dark"
+                    />
+                </div>
+
                 <label className="space-y-2 md:col-span-2">
                     <span className={labelClass}>Website</span>
                     <input
@@ -402,7 +515,21 @@ function AccommodationForm({
                     />
                 </label>
 
-                <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-4 md:col-span-2">
+                <div className="md:col-span-2">
+                    <TripAudienceSelector
+                        options={audienceOptions}
+                        currentUserTripMemberId={currentUserTripMemberId}
+                        initialAudienceMode={
+                            accommodation?.audience_mode || "everyone"
+                        }
+                        privateSectionId="accommodation-private-section"
+                    />
+                </div>
+
+                <label
+                    id="accommodation-private-section"
+                    className="flex scroll-mt-24 items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-4 md:col-span-2"
+                >
                     <input
                         type="checkbox"
                         name="is_private"
@@ -431,6 +558,17 @@ function AccommodationForm({
             </div>
 
             <div className="flex flex-wrap justify-end gap-3 border-t border-white/10 pt-5">
+                {accommodation && moveItemAction ? (
+                    <MoveTripItemButton
+                        itemType="accommodation"
+                        itemId={accommodation.id}
+                        currentTripId={tripId}
+                        targetTrips={moveTargetTrips || []}
+                        moveAction={moveItemAction}
+                        itemLabel={accommodation.hotel_name}
+                        className={secondaryButtonClass}
+                    />
+                ) : null}
                 <button
                     type="button"
                     onClick={onClose}
@@ -455,29 +593,33 @@ function AccommodationModal({
     mode,
     createAction,
     updateAction,
+    moveItemAction,
+    moveTargetTrips,
+    audienceOptions,
+    currentUserTripMemberId,
     onClose,
 }: {
     tripId: string;
     mode: ModalMode;
     createAction: (formData: FormData) => Promise<void>;
     updateAction: (formData: FormData) => Promise<void>;
+    moveItemAction?: (formData: FormData) => Promise<void>;
+    moveTargetTrips?: MoveTargetTrip[];
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
     onClose: () => void;
 }) {
     const isEdit = mode.type === "edit";
 
     return (
-                <div
-                    className="vaivia-modal-backdrop"
-                    role="presentation"
-                    onClick={onClose}
-                >
-            <div
-                className="vaivia-modal-panel max-w-3xl"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="accommodation-modal-title"
-                onClick={(event) => event.stopPropagation()}
-            >
+        <AnimatedModal
+            onClose={onClose}
+            panelClassName="max-w-3xl"
+            labelledBy="accommodation-modal-title"
+            presentation
+        >
+            {({ requestClose }) => (
+                <>
                 <div className="vaivia-modal-header flex items-start justify-between gap-4">
                     <div>
                         <p className="vaivia-modal-eyebrow">Accommodations</p>
@@ -487,7 +629,7 @@ function AccommodationModal({
                     </div>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={requestClose}
                         className="vaivia-modal-close"
                         aria-label="Close accommodation modal"
                     >
@@ -498,20 +640,33 @@ function AccommodationModal({
                     tripId={tripId}
                     mode={mode}
                     action={isEdit ? updateAction : createAction}
-                    onClose={onClose}
+                    moveItemAction={moveItemAction}
+                    moveTargetTrips={moveTargetTrips}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
+                    onClose={requestClose}
                 />
-            </div>
-        </div>
+                </>
+            )}
+        </AnimatedModal>
     );
 }
 
 export function AccommodationCreateModal({
     tripId,
     createAction,
+    moveItemAction,
+    moveTargetTrips,
+    audienceOptions,
+    currentUserTripMemberId,
     onClose,
 }: {
     tripId: string;
     createAction: (formData: FormData) => Promise<void>;
+    moveItemAction?: (formData: FormData) => Promise<void>;
+    moveTargetTrips?: MoveTargetTrip[];
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
     onClose: () => void;
 }) {
     return (
@@ -520,6 +675,10 @@ export function AccommodationCreateModal({
             mode={{ type: "add" }}
             createAction={createAction}
             updateAction={createAction}
+            moveItemAction={moveItemAction}
+            moveTargetTrips={moveTargetTrips}
+            audienceOptions={audienceOptions}
+            currentUserTripMemberId={currentUserTripMemberId}
             onClose={onClose}
         />
     );
@@ -629,6 +788,15 @@ function AccommodationCard({
                 </p>
             ) : null}
 
+            {accommodation.cost ? (
+                <p className="mt-4 inline-flex rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-black text-lime-100">
+                    {formatCurrency(
+                        Number(accommodation.cost),
+                        accommodation.currency || "CAD"
+                    )}
+                </p>
+            ) : null}
+
             <div className="mt-5 flex flex-wrap gap-2">
                 {accommodation.website ? (
                     <a
@@ -663,6 +831,10 @@ export default function AccommodationManager({
     createAction,
     updateAction,
     deleteAction,
+    moveItemAction,
+    moveTargetTrips,
+    audienceOptions = [],
+    currentUserTripMemberId = null,
 }: AccommodationManagerProps) {
     const [modalMode, setModalMode] = useState<ModalMode | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<TripAccommodation | null>(null);
@@ -743,6 +915,10 @@ export default function AccommodationManager({
                     mode={modalMode}
                     createAction={createAction}
                     updateAction={updateAction}
+                    moveItemAction={moveItemAction}
+                    moveTargetTrips={moveTargetTrips}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                     onClose={() => setModalMode(null)}
                 />
             ) : null}

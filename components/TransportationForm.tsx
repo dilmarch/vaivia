@@ -2,15 +2,18 @@
 
 import { AlertTriangle, Lock, X } from "lucide-react";
 import Script from "next/script";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     getAirlineLogoUrl,
     getAirlineNameFromCode,
     inferAirlineCodeFromFlightNumber,
 } from "@/lib/airline";
+import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
-import TransportationTravelerSelector from "@/components/TransportationTravelerSelector";
+import type { TripAudienceOption } from "@/lib/tripAudience";
+import TripAudienceSelector from "@/components/TripAudienceSelector";
+import { COMMON_CURRENCIES } from "@/lib/budget";
 
 type TransportationFormProps = {
     tripId: string;
@@ -18,10 +21,14 @@ type TransportationFormProps = {
     isOpen: boolean;
     onClose: () => void;
     defaultDate?: string;
+    initialItem?: TransportationFormInitialValues | null;
+    submitLabel?: string;
     travelerOptions?: TransportationTravelerOptions;
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
 };
 
-type FlightLeg = {
+export type FlightLeg = {
     departureLocation: string;
     departureDate: string;
     departureTime: string;
@@ -34,6 +41,20 @@ type FlightLeg = {
     arrivalTerminal: string;
     flightNumber: string;
     airlineName: string;
+};
+
+export type TransportationFormInitialValues = {
+    mode?: string | null;
+    status?: string | null;
+    reservationCode?: string | null;
+    cost?: number | null;
+    currency?: string | null;
+    visaRequirements?: string | null;
+    luggageRequirements?: string | null;
+    isPrivate?: boolean | null;
+    audienceMode?: "everyone" | "custom" | "just_me" | null;
+    audienceSelectedOptions?: TripAudienceOption[];
+    flightLegs?: FlightLeg[];
 };
 
 const MODES = [
@@ -75,6 +96,34 @@ function createEmptyLeg(defaultDate = ""): FlightLeg {
         flightNumber: "",
         airlineName: "",
     };
+}
+
+function normalizeInitialLegs(
+    initialItem: TransportationFormInitialValues | null | undefined,
+    defaultDate: string
+) {
+    const legs = initialItem?.flightLegs?.length
+        ? initialItem.flightLegs
+        : [createEmptyLeg(defaultDate)];
+
+    return legs.map((leg) => ({
+        ...createEmptyLeg(defaultDate),
+        ...leg,
+        departureDate: leg.departureDate || defaultDate,
+        arrivalDate: leg.arrivalDate || leg.departureDate || defaultDate,
+    }));
+}
+
+function getInitialMode(initialItem?: TransportationFormInitialValues | null) {
+    return initialItem?.mode || "";
+}
+
+function getInitialConnectionCount(
+    initialItem: TransportationFormInitialValues | null | undefined,
+    mode: string
+) {
+    if (mode !== "airplane" || !initialItem?.flightLegs?.length) return null;
+    return Math.max(initialItem.flightLegs.length - 1, 0);
 }
 
 function getDurationLabel(
@@ -172,20 +221,36 @@ export default function TransportationForm({
     isOpen,
     onClose,
     defaultDate = "",
-    travelerOptions = { users: [], familyMembers: [] },
+    initialItem = null,
+    submitLabel = "Save",
+    audienceOptions = [],
+    currentUserTripMemberId = null,
 }: TransportationFormProps) {
-    const [mode, setMode] = useState("");
+    const initialMode = getInitialMode(initialItem);
+    const [mode, setMode] = useState(initialMode);
+    const [audienceMode, setAudienceMode] = useState(
+        initialItem?.audienceMode || "everyone"
+    );
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    const [costAmount, setCostAmount] = useState(
+        initialItem?.cost == null ? "" : String(initialItem.cost)
+    );
+    const [isClosing, setIsClosing] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
-    const [connectionCount, setConnectionCount] = useState<number | null>(null);
-    const [flightLegs, setFlightLegs] = useState<FlightLeg[]>([
-        createEmptyLeg(defaultDate),
-    ]);
+    const [connectionCount, setConnectionCount] = useState<number | null>(() =>
+        getInitialConnectionCount(initialItem, initialMode)
+    );
+    const [flightLegs, setFlightLegs] = useState<FlightLeg[]>(() =>
+        normalizeInitialLegs(initialItem, defaultDate)
+    );
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const departureRefs = useRef<Array<HTMLInputElement | null>>([]);
     const arrivalRefs = useRef<Array<HTMLInputElement | null>>([]);
     const flightLegsRef = useRef(flightLegs);
     const previousIsOpenRef = useRef(isOpen);
+    const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+        null
+    );
     const airportCoordinateRefs = useRef<
         Array<{
             departure?: { lat: number; lng: number };
@@ -225,14 +290,17 @@ export default function TransportationForm({
             return;
         }
 
-        setMode("");
-        setConnectionCount(null);
-        setFlightLegs([createEmptyLeg(defaultDate)]);
+        const nextMode = getInitialMode(initialItem);
+        setMode(nextMode);
+        setAudienceMode(initialItem?.audienceMode || "everyone");
+        setConnectionCount(getInitialConnectionCount(initialItem, nextMode));
+        setFlightLegs(normalizeInitialLegs(initialItem, defaultDate));
         airportCoordinateRefs.current = [];
         setHasUnsavedChanges(false);
+        setIsClosing(false);
         setShowCloseWarning(false);
         previousIsOpenRef.current = isOpen;
-    }, [defaultDate, isOpen]);
+    }, [defaultDate, initialItem, isOpen]);
 
     useEffect(() => {
         if (connectionCount === null) return;
@@ -319,8 +387,6 @@ export default function TransportationForm({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [flightLegs.length, isGoogleReady, isOpen, mode, shouldShowDetails]);
 
-    if (!isOpen) return null;
-
     function updateLeg(index: number, field: keyof FlightLeg, value: string) {
         setFlightLegs((currentLegs) =>
             currentLegs.map((leg, legIndex) => {
@@ -395,14 +461,45 @@ export default function TransportationForm({
         }
     }
 
-    function requestClose() {
+    const closeWithAnimation = useCallback(() => {
+        if (isClosing) return;
+        setIsClosing(true);
+        closeTimerRef.current = setTimeout(() => {
+            closeTimerRef.current = null;
+            setIsClosing(false);
+            onClose();
+        }, 160);
+    }, [isClosing, onClose]);
+
+    const requestClose = useCallback(() => {
         if (hasUnsavedChanges) {
             setShowCloseWarning(true);
             return;
         }
 
-        onClose();
-    }
+        closeWithAnimation();
+    }, [closeWithAnimation, hasUnsavedChanges]);
+
+    useEffect(() => {
+        return () => {
+            if (closeTimerRef.current) {
+                clearTimeout(closeTimerRef.current);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) return;
+
+        function closeOnEscape(event: KeyboardEvent) {
+            if (event.key === "Escape") requestClose();
+        }
+
+        document.addEventListener("keydown", closeOnEscape);
+        return () => document.removeEventListener("keydown", closeOnEscape);
+    }, [isOpen, requestClose]);
+
+    if (!isOpen) return null;
 
     function modeLabel() {
         return MODES.find((option) => option.value === mode)?.label || "Transportation";
@@ -426,10 +523,12 @@ export default function TransportationForm({
             />
             <div
                 className="vaivia-modal-backdrop"
+                data-vaivia-modal-state={isClosing ? "closing" : "open"}
                 onClick={requestClose}
             >
                 <aside
                     className="vaivia-modal-panel max-w-4xl"
+                    data-vaivia-modal-state={isClosing ? "closing" : "open"}
                     onClick={(event) => event.stopPropagation()}
                 >
                     <div className="vaivia-modal-header flex min-h-32 items-center gap-4">
@@ -452,7 +551,7 @@ export default function TransportationForm({
                         </div>
                         <div className="flex-1">
                             <p className="vaivia-modal-eyebrow">
-                                Add transportation
+                                {initialItem ? "Duplicate transportation" : "Add transportation"}
                             </p>
                             <h2 className="vaivia-modal-title">
                                 {modeLabel()}
@@ -513,24 +612,58 @@ export default function TransportationForm({
                             value={firstFlightNumber}
                         />
 
-                        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                        <TripAudienceSelector
+                            options={audienceOptions}
+                            currentUserTripMemberId={currentUserTripMemberId}
+                            initialAudienceMode={initialItem?.audienceMode || "everyone"}
+                            initialSelectedOptions={
+                                initialItem?.audienceSelectedOptions || []
+                            }
+                            description="Choose who this itinerary item is for."
+                            privateSectionId="transportation-private-section"
+                            onAudienceModeChange={setAudienceMode}
+                        />
+
+                        <label
+                            id="transportation-private-section"
+                            className={`flex scroll-mt-24 items-start gap-3 rounded-xl border p-4 text-sm transition ${
+                                audienceMode === "just_me"
+                                    ? "border-slate-700 bg-slate-950 text-slate-200 shadow-xl shadow-black/20"
+                                    : "border-slate-200 bg-slate-50 text-slate-700"
+                            }`}
+                        >
                             <input
                                 type="checkbox"
                                 name="is_private"
-                                className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                                defaultChecked={Boolean(initialItem?.isPrivate)}
+                                className={`mt-1 h-4 w-4 rounded ${
+                                    audienceMode === "just_me"
+                                        ? "border-slate-500 text-lime-300"
+                                        : "border-slate-300 text-slate-900"
+                                }`}
                             />
                             <span>
-                                <span className="flex items-center gap-2 font-semibold text-slate-900">
+                                <span
+                                    className={`flex items-center gap-2 font-semibold ${
+                                        audienceMode === "just_me"
+                                            ? "text-white"
+                                            : "text-slate-900"
+                                    }`}
+                                >
                                     <Lock className="h-4 w-4" aria-hidden="true" />
                                     Private
                                 </span>
-                                <span className="mt-1 block text-xs text-slate-500">
+                                <span
+                                    className={`mt-1 block text-xs ${
+                                        audienceMode === "just_me"
+                                            ? "text-slate-300"
+                                            : "text-slate-500"
+                                    }`}
+                                >
                                     Mark this transportation as visible only to you when trip sharing is enabled.
                                 </span>
                             </span>
                         </label>
-
-                        <TransportationTravelerSelector options={travelerOptions} />
 
                         <div>
                             <p className="block text-sm font-medium text-slate-700">
@@ -825,8 +958,43 @@ export default function TransportationForm({
                                 <input
                                     name="reservation_code"
                                     placeholder="Reservation code / booking reference"
+                                    defaultValue={initialItem?.reservationCode || ""}
                                     className="w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                     {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                />
+
+                                <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+                                    <input
+                                        type="number"
+                                        name="cost"
+                                        min="0"
+                                        step="0.01"
+                                        placeholder="Cost"
+                                        value={costAmount}
+                                        onChange={(event) =>
+                                            setCostAmount(event.target.value)
+                                        }
+                                        className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                        {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                    />
+                                    <select
+                                        name="currency"
+                                        defaultValue={initialItem?.currency || "CAD"}
+                                        className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                    >
+                                        {COMMON_CURRENCIES.map((currency) => (
+                                            <option key={currency} value={currency}>
+                                                {currency}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <CostAllocationFields
+                                    amount={costAmount}
+                                    participants={audienceOptions}
+                                    currentUserTripMemberId={currentUserTripMemberId}
+                                    tone="light"
                                 />
 
                                 <div className="grid gap-4 md:grid-cols-2">
@@ -834,12 +1002,14 @@ export default function TransportationForm({
                                         name="visa_requirements"
                                         rows={4}
                                         placeholder="VISA requirements"
+                                        defaultValue={initialItem?.visaRequirements || ""}
                                         className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                     />
                                     <textarea
                                         name="luggage_requirements"
                                         rows={4}
                                         placeholder="Luggage requirements"
+                                        defaultValue={initialItem?.luggageRequirements || ""}
                                         className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                     />
                                 </div>
@@ -852,7 +1022,7 @@ export default function TransportationForm({
 
                                 <select
                                     name="status"
-                                    defaultValue="planned"
+                                    defaultValue={initialItem?.status || "planned"}
                                     className="w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                 >
                                     {TRANSPORTATION_STATUS_OPTIONS.map((option) => (
@@ -874,7 +1044,7 @@ export default function TransportationForm({
                                         type="submit"
                                         className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
                                     >
-                                        Save
+                                        {submitLabel}
                                     </button>
                                 </div>
                             </>
@@ -915,7 +1085,10 @@ export default function TransportationForm({
                             </button>
                             <button
                                 type="button"
-                                onClick={onClose}
+                                onClick={() => {
+                                    setShowCloseWarning(false);
+                                    closeWithAnimation();
+                                }}
                                 className="rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-700"
                             >
                                 Discard

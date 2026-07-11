@@ -2,8 +2,13 @@
 
 import { Lock } from "lucide-react";
 import { useState } from "react";
-import TransportationTravelerSelector from "@/components/TransportationTravelerSelector";
+import CostAllocationFields from "@/components/budget/CostAllocationFields";
+import MoveTripItemButton from "@/components/MoveTripItemButton";
+import TripAudienceSelector from "@/components/TripAudienceSelector";
+import { COMMON_CURRENCIES } from "@/lib/budget";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
+import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
+import type { MoveTargetTrip } from "@/lib/tripMove";
 import type {
     TransportationTraveler,
     TransportationTravelerOptions,
@@ -29,6 +34,10 @@ type TransportationEditFormProps = {
     submitAction: (formData: FormData) => Promise<void>;
     onCancel?: () => void;
     travelerOptions?: TransportationTravelerOptions;
+    audienceOptions?: TripAudienceOption[];
+    currentUserTripMemberId?: string | null;
+    moveItemAction?: (formData: FormData) => Promise<void>;
+    moveTargetTrips?: MoveTargetTrip[];
     initialItem: {
         status?: string | null;
         item_date?: string | null;
@@ -45,9 +54,13 @@ type TransportationEditFormProps = {
         airline_name?: string | null;
         airline_code?: string | null;
         reservation_code?: string | null;
+        cost?: number | null;
+        currency?: string | null;
         duration?: string | null;
         notes?: string | null;
         is_private?: boolean | null;
+        audience_mode?: TripAudienceMode | null;
+        audience_selected_options?: TripAudienceOption[];
         travelers?: TransportationTraveler[];
     };
 };
@@ -57,7 +70,10 @@ export default function TransportationEditForm({
     itemId,
     submitAction,
     onCancel,
-    travelerOptions = { users: [], familyMembers: [] },
+    audienceOptions = [],
+    currentUserTripMemberId = null,
+    moveItemAction,
+    moveTargetTrips = [],
     initialItem,
 }: TransportationEditFormProps) {
     const [departureLocation, setDepartureLocation] = useState(
@@ -82,6 +98,12 @@ export default function TransportationEditForm({
     const [departureTime, setDepartureTime] = useState(initialItem.start_time || "");
     const [arrivalDate, setArrivalDate] = useState(initialItem.end_date || "");
     const [arrivalTime, setArrivalTime] = useState(initialItem.end_time || "");
+    const [audienceMode, setAudienceMode] = useState<TripAudienceMode>(
+        initialItem.audience_mode || "everyone"
+    );
+    const [costAmount, setCostAmount] = useState(
+        initialItem.cost == null ? "" : String(initialItem.cost)
+    );
     const duration = getZonedDurationLabel({
         startDate: departureDate,
         startTime: departureTime,
@@ -106,28 +128,56 @@ export default function TransportationEditForm({
             <input type="hidden" name="item_id" value={itemId} />
             <input type="hidden" name="duration" value={duration} />
 
-            <label className="flex items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+            <TripAudienceSelector
+                options={audienceOptions}
+                currentUserTripMemberId={currentUserTripMemberId}
+                initialAudienceMode={initialItem.audience_mode || "everyone"}
+                initialSelectedOptions={initialItem.audience_selected_options || []}
+                description="Choose who this itinerary item is for."
+                privateSectionId="transportation-edit-private-section"
+                onAudienceModeChange={setAudienceMode}
+            />
+
+            <label
+                id="transportation-edit-private-section"
+                className={`flex scroll-mt-24 items-start gap-3 rounded-md border p-4 text-sm transition ${
+                    audienceMode === "just_me"
+                        ? "border-slate-700 bg-slate-950 text-slate-200 shadow-xl shadow-black/20"
+                        : "border-slate-200 bg-slate-50 text-slate-700"
+                }`}
+            >
                 <input
                     type="checkbox"
                     name="is_private"
                     defaultChecked={Boolean(initialItem.is_private)}
-                    className="mt-1 h-4 w-4 rounded border-slate-300 text-slate-900"
+                    className={`mt-1 h-4 w-4 rounded ${
+                        audienceMode === "just_me"
+                            ? "border-slate-500 text-lime-300"
+                            : "border-slate-300 text-slate-900"
+                    }`}
                 />
                 <span>
-                    <span className="flex items-center gap-2 font-semibold text-slate-900">
+                    <span
+                        className={`flex items-center gap-2 font-semibold ${
+                            audienceMode === "just_me"
+                                ? "text-white"
+                                : "text-slate-900"
+                        }`}
+                    >
                         <Lock className="h-4 w-4" aria-hidden="true" />
                         Private
                     </span>
-                    <span className="mt-1 block text-xs text-slate-500">
+                    <span
+                        className={`mt-1 block text-xs ${
+                            audienceMode === "just_me"
+                                ? "text-slate-300"
+                                : "text-slate-500"
+                        }`}
+                    >
                         Mark this transportation as visible only to you when trip sharing is enabled.
                     </span>
                 </span>
             </label>
-
-            <TransportationTravelerSelector
-                options={travelerOptions}
-                initialTravelers={initialItem.travelers || []}
-            />
 
             <div className="flex justify-end">
                 <button
@@ -277,6 +327,42 @@ export default function TransportationEditForm({
                 </label>
             </div>
 
+            <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+                <label className="space-y-1 text-sm font-medium text-slate-700">
+                    Cost
+                    <input
+                        type="number"
+                        name="cost"
+                        min="0"
+                        step="0.01"
+                        value={costAmount}
+                        onChange={(event) => setCostAmount(event.target.value)}
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                    />
+                </label>
+                <label className="space-y-1 text-sm font-medium text-slate-700">
+                    Currency
+                    <select
+                        name="currency"
+                        defaultValue={initialItem.currency || "CAD"}
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                    >
+                        {COMMON_CURRENCIES.map((currency) => (
+                            <option key={currency} value={currency}>
+                                {currency}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+            </div>
+
+            <CostAllocationFields
+                amount={costAmount}
+                participants={audienceOptions}
+                currentUserTripMemberId={currentUserTripMemberId}
+                tone="light"
+            />
+
             <label className="block space-y-1 text-sm font-medium text-slate-700">
                 Notes
                 <textarea
@@ -299,7 +385,22 @@ export default function TransportationEditForm({
                 ))}
             </select>
 
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
+                {moveItemAction ? (
+                    <MoveTripItemButton
+                        itemType="transportation"
+                        itemId={itemId.replace("transportation:", "")}
+                        currentTripId={tripId}
+                        targetTrips={moveTargetTrips}
+                        moveAction={moveItemAction}
+                        itemLabel={
+                            initialItem.flight_number ||
+                            initialItem.airline_name ||
+                            "transportation"
+                        }
+                        className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+                    />
+                ) : null}
                 {onCancel && (
                     <button
                         type="button"

@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
+import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 
 type TripPayload = {
     user_id: string;
@@ -212,11 +213,11 @@ export default function NewTripPage() {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-[#0c0115] px-6 py-10">
-                    <div className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
-                        Loading trip form...
-                    </div>
-                </main>
+                <DelayedVaiviaLoadingScreen
+                    title="Preparing your trip form"
+                    subtitle="Getting the details ready for your next adventure."
+                    compact
+                />
             }
         >
             <NewTripContent />

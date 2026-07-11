@@ -5,11 +5,13 @@ import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import TransportationEditForm from "@/components/TransportationEditForm";
+import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import {
     FALLBACK_CATEGORY_LABEL,
     sortCategoriesByName,
     type UserCategory,
 } from "@/lib/itineraryCategories";
+import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 
 type PageProps = {
     params: Promise<{
@@ -242,6 +244,8 @@ async function updateTransportationItem(formData: FormData) {
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
     const reservationCode = String(formData.get("reservation_code") || "").trim();
+    const transportationCost = formData.get("cost");
+    const transportationCurrency = formData.get("currency");
     const departureTerminal = formData.get("departure_terminal") as string;
     const arrivalTerminal = formData.get("arrival_terminal") as string;
     const departureTimezone = formData.get("departure_timezone") as string;
@@ -278,6 +282,10 @@ async function updateTransportationItem(formData: FormData) {
         airline_code: airlineCode || null,
         flight_number: flightNumber || null,
         reservation_code: reservationCode || null,
+        cost: transportationCost
+            ? Number(String(transportationCost).replace(/,/g, ""))
+            : null,
+        currency: String(transportationCurrency || "").trim().toUpperCase() || null,
         duration: duration || null,
         departure_terminal: departureTerminal || null,
         arrival_terminal: arrivalTerminal || null,
@@ -295,6 +303,18 @@ async function updateTransportationItem(formData: FormData) {
         console.error("Error updating transportation item:", error);
         throw new Error("Could not update transportation item");
     }
+
+    await syncAutoBudgetExpense({
+        supabase,
+        userId: user.id,
+        tripId,
+        sourceType: "transportation",
+        sourceId: itemId,
+        amount: transportationCost,
+        currency: transportationCurrency,
+        expenseDate: itemDate,
+        description: title,
+    });
 
     redirect(`/trips/${tripId}`);
 }
@@ -437,11 +457,11 @@ export default function EditItineraryItemPage({ params }: PageProps) {
     return (
         <Suspense
             fallback={
-                <main className="min-h-screen bg-[#0c0115] px-6 py-10">
-                    <div className="mx-auto max-w-2xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
-                        Loading itinerary item...
-                    </div>
-                </main>
+                <DelayedVaiviaLoadingScreen
+                    title="Loading itinerary item"
+                    subtitle="Bringing the saved details back into view."
+                    compact
+                />
             }
         >
             <EditItineraryItemContent params={params} />

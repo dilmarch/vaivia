@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import {
     BedDouble,
     Bot,
-    Briefcase,
     CalendarCheck,
     ChevronsUp,
     Home,
@@ -62,12 +61,6 @@ function getNavItems(pathname: string): NavItem[] {
                 match: (currentPathname) => currentPathname === "/",
             },
             {
-                label: "Trips",
-                href: "/trips",
-                icon: Briefcase,
-                match: (currentPathname) => currentPathname === "/trips",
-            },
-            {
                 label: "Travel Assistant",
                 icon: Bot,
                 disabled: true,
@@ -83,18 +76,14 @@ function getNavItems(pathname: string): NavItem[] {
             match: (pathname) => pathname === "/",
         },
         {
-            label: "Trips",
-            href: "/trips",
-            icon: Briefcase,
-            match: (pathname) => pathname === "/trips",
-        },
-        {
             label: "Itinerary",
             href: tripHref,
             icon: CalendarCheck,
             match: (pathname, tab) =>
                 pathname.startsWith("/trips/") &&
                 !pathname.includes("/accommodations") &&
+                !pathname.includes("/budget") &&
+                !pathname.includes("/food") &&
                 tab !== "ideas" &&
                 tab !== "journey" &&
                 tab !== "journey-planning",
@@ -107,8 +96,10 @@ function getNavItems(pathname: string): NavItem[] {
         },
         {
             label: "Budget",
+            href: tripHref ? `${tripHref}/budget` : undefined,
             icon: PiggyBank,
-            disabled: true,
+            match: (pathname) =>
+                pathname.startsWith("/trips/") && pathname.includes("/budget"),
         },
         {
             label: "Journey",
@@ -120,8 +111,10 @@ function getNavItems(pathname: string): NavItem[] {
         },
         {
             label: "Food",
+            href: tripHref ? `${tripHref}/food` : undefined,
             icon: Utensils,
-            disabled: true,
+            match: (pathname) =>
+                pathname.startsWith("/trips/") && pathname.includes("/food"),
         },
         {
             label: "Accommodations",
@@ -215,7 +208,7 @@ export default function AppSidebarNav({
     const [mobileMenu, setMobileMenu] = useState<"view" | "more" | null>(null);
     const mobileDockRef = useRef<HTMLDivElement | null>(null);
     const mobileViewItems = navItems.filter((item) =>
-        ["Itinerary", "Budget", "Ideas", "Journey", "Accommodations"].includes(
+        ["Itinerary", "Budget", "Ideas", "Journey", "Food", "Accommodations"].includes(
             item.label
         )
     );

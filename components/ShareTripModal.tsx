@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Send, X } from "lucide-react";
+import AnimatedModal from "@/components/AnimatedModal";
 import Portal from "@/components/Portal";
 import { createClient } from "@/lib/supabase/client";
 import type { TripHeaderFamilyMember } from "@/components/TripMembersPanel";
@@ -129,17 +130,13 @@ export default function ShareTripModal({
 
     return (
         <Portal>
-            <div
-                className="vaivia-modal-backdrop"
-                onClick={() => onOpenChange(false)}
+            <AnimatedModal
+                onClose={() => onOpenChange(false)}
+                panelClassName="max-w-lg"
+                labelledBy="share-trip-title"
             >
-                <div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="share-trip-title"
-                    className="vaivia-modal-panel max-w-lg"
-                    onClick={(event) => event.stopPropagation()}
-                >
+                {({ requestClose }) => (
+                    <>
                     <div className="vaivia-modal-header flex items-start justify-between gap-4">
                         <div>
                             <p className="vaivia-modal-eyebrow">Collaboration</p>
@@ -154,7 +151,7 @@ export default function ShareTripModal({
                         </div>
                         <button
                             type="button"
-                            onClick={() => onOpenChange(false)}
+                            onClick={requestClose}
                             className="vaivia-modal-close"
                             aria-label="Close share trip"
                         >
@@ -247,7 +244,7 @@ export default function ShareTripModal({
                                 <div className="flex justify-end gap-2 border-t border-slate-200 pt-5">
                                     <button
                                         type="button"
-                                        onClick={() => onOpenChange(false)}
+                                        onClick={requestClose}
                                         className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                                     >
                                         Cancel
@@ -332,7 +329,7 @@ export default function ShareTripModal({
                                 <div className="flex justify-end gap-2 border-t border-slate-200 pt-5">
                                     <button
                                         type="button"
-                                        onClick={() => onOpenChange(false)}
+                                        onClick={requestClose}
                                         className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                                     >
                                         Cancel
@@ -348,8 +345,9 @@ export default function ShareTripModal({
                             </form>
                         )}
                     </div>
-                </div>
-            </div>
+                    </>
+                )}
+            </AnimatedModal>
         </Portal>
     );
 }

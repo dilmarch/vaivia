@@ -7,6 +7,7 @@ import { Camera, LogOut, Settings, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import AnimatedModal from "@/components/AnimatedModal";
 import Portal from "@/components/Portal";
 import { createClient } from "@/lib/supabase/client";
 
@@ -371,18 +372,14 @@ export default function AccountMenu({
 
             {isOpen ? (
                 <Portal>
-                <div
-                    className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-slate-950/40 px-4 py-8"
-                    onMouseDown={(event) => {
-                        if (event.target === event.currentTarget) setIsOpen(false);
-                    }}
+                <AnimatedModal
+                    onClose={() => setIsOpen(false)}
+                    className="z-[100] items-start overflow-y-auto bg-slate-950/40 py-8"
+                    panelClassName="max-w-3xl overflow-hidden rounded-md border-slate-200 bg-white text-slate-950 shadow-xl"
+                    labelledBy="accountPreferencesTitle"
                 >
-                    <div
-                        className="w-full max-w-3xl overflow-hidden rounded-md border border-slate-200 bg-white shadow-xl"
-                        role="dialog"
-                        aria-modal="true"
-                        aria-labelledby="accountPreferencesTitle"
-                    >
+                    {({ requestClose }) => (
+                        <>
                         <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
                             <div>
                                 <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
@@ -400,7 +397,7 @@ export default function AccountMenu({
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsOpen(false)}
+                                onClick={requestClose}
                                 className="rounded-md border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
                                 aria-label="Close account preferences"
                             >
@@ -669,7 +666,7 @@ export default function AccountMenu({
                                     <Button
                                         type="button"
                                         variant="outline"
-                                        onClick={() => setIsOpen(false)}
+                                        onClick={requestClose}
                                     >
                                         Cancel
                                     </Button>
@@ -679,8 +676,9 @@ export default function AccountMenu({
                                 </div>
                             </div>
                         </form>
-                    </div>
-                </div>
+                        </>
+                    )}
+                </AnimatedModal>
                 </Portal>
             ) : null}
         </>

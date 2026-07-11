@@ -6,6 +6,7 @@ import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
   type DashboardTrip,
 } from "@/components/TripDashboardClient";
+import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
@@ -22,6 +23,97 @@ type TripUpdatePayload = {
   notes: string;
   cover_image_url?: string | null;
 };
+
+type DashboardPlanning = NonNullable<DashboardTrip["planning"]>;
+type DashboardAccommodationSummary = NonNullable<
+  DashboardPlanning["accommodations"]
+>[number];
+type DashboardTransportationSummary = NonNullable<
+  DashboardPlanning["transportation"]
+>[number];
+
+async function addDashboardPlanningData(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  trips: DashboardTrip[]
+) {
+  const tripIds = trips.map((trip) => trip.id).filter(Boolean);
+
+  if (tripIds.length === 0) return trips;
+
+  const [accommodationsResult, transportationResult] = await Promise.all([
+    supabase
+      .from("trip_accommodations")
+      .select("id,trip_id,check_in_date,check_out_date,status,city,region,country")
+      .in("trip_id", tripIds),
+    supabase
+      .from("transportation_items")
+      .select(
+        "id,trip_id,departure_location,arrival_location,status,title,transport_type"
+      )
+      .in("trip_id", tripIds),
+  ]);
+
+  if (accommodationsResult.error) {
+    console.warn("Could not load dashboard accommodation tasks:", {
+      message: accommodationsResult.error.message,
+      code: accommodationsResult.error.code,
+      details: accommodationsResult.error.details,
+      hint: accommodationsResult.error.hint,
+    });
+  }
+
+  if (transportationResult.error) {
+    console.warn("Could not load dashboard transportation tasks:", {
+      message: transportationResult.error.message,
+      code: transportationResult.error.code,
+      details: transportationResult.error.details,
+      hint: transportationResult.error.hint,
+    });
+  }
+
+  const accommodationsByTripId = new Map<
+    string,
+    DashboardAccommodationSummary[]
+  >();
+  const transportationByTripId = new Map<
+    string,
+    DashboardTransportationSummary[]
+  >();
+
+  (
+    (accommodationsResult.data || []) as Array<
+      DashboardAccommodationSummary & {
+        trip_id?: string | null;
+      }
+    >
+  ).forEach((stay) => {
+    if (!stay.trip_id) return;
+    const stays = accommodationsByTripId.get(stay.trip_id) || [];
+    stays.push(stay);
+    accommodationsByTripId.set(stay.trip_id, stays);
+  });
+
+  (
+    (transportationResult.data || []) as Array<
+      DashboardTransportationSummary & {
+        trip_id?: string | null;
+      }
+    >
+  ).forEach((item) => {
+    if (!item.trip_id) return;
+    const items = transportationByTripId.get(item.trip_id) || [];
+    items.push(item);
+    transportationByTripId.set(item.trip_id, items);
+  });
+
+  return trips.map((trip) => ({
+    ...trip,
+    planning: {
+      accommodations: accommodationsByTripId.get(trip.id) || [],
+      transportation: transportationByTripId.get(trip.id) || [],
+    },
+  }));
+}
 
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
   const message = error.message?.toLowerCase() || "";
@@ -212,6 +304,11 @@ async function TripsDashboard() {
     authProfileDefaults.email?.split("@")[0] ||
     "traveller";
 
+  const dashboardTrips = await addDashboardPlanningData(
+    supabase,
+    (trips || []) as DashboardTrip[]
+  );
+
   return (
     <main className="min-h-screen bg-[#0c0115] text-white">
       <div className="space-y-1.5">
@@ -219,7 +316,7 @@ async function TripsDashboard() {
 
         <div className="mx-4 md:mx-8">
           <TripDashboardClient
-            trips={(trips || []) as DashboardTrip[]}
+            trips={dashboardTrips}
             currentUserId={user.id}
             updateTripAction={updateTrip}
             deleteTripAction={deleteTrip}
@@ -234,11 +331,10 @@ export default function Home() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-slate-950 px-6 py-10">
-          <div className="mx-auto max-w-5xl rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-sm text-slate-300 shadow-sm">
-            Loading trips...
-          </div>
-        </main>
+        <DelayedVaiviaLoadingScreen
+          title="Preparing your trips"
+          subtitle="Getting everything ready for your next adventure."
+        />
       }
     >
       <TripsDashboard />

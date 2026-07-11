@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
+import AnimatedModal from "@/components/AnimatedModal";
 import Portal from "@/components/Portal";
 import { createClient } from "@/lib/supabase/client";
 import type { AppNotification } from "@/components/AppTopActionBar";
@@ -18,6 +19,9 @@ type InvitationDetails = {
     status: string | null;
     created_at: string | null;
     trip_id: string | null;
+    invitation_scope?: "whole_trip" | "custom_dates" | "selected_legs" | null;
+    invited_start_date?: string | null;
+    invited_end_date?: string | null;
     trips:
         | {
               id: string;
@@ -78,6 +82,9 @@ export default function TripInviteReviewModal({
                     status,
                     created_at,
                     trip_id,
+                    invitation_scope,
+                    invited_start_date,
+                    invited_end_date,
                     trips (
                         id,
                         title,
@@ -113,12 +120,21 @@ export default function TripInviteReviewModal({
         setIsSubmitting(true);
         setErrorMessage("");
 
-        const { error } = await supabase.rpc(
+        const { error } =
             action === "accept"
-                ? "accept_trip_invitation"
-                : "decline_trip_invitation",
-            { invitation_id: invitation.id }
-        );
+                ? await supabase.rpc("accept_trip_invitation_with_scope", {
+                      target_invitation_id: invitation.id,
+                      target_confirmed_start_date:
+                          invitation.invited_start_date || null,
+                      target_confirmed_end_date: invitation.invited_end_date || null,
+                      target_personal_start_date:
+                          invitation.invited_start_date || null,
+                      target_personal_end_date: invitation.invited_end_date || null,
+                      target_joining_leg_ids: null,
+                  })
+                : await supabase.rpc("decline_trip_invitation", {
+                      invitation_id: invitation.id,
+                  });
 
         if (error) {
             setErrorMessage(
@@ -140,17 +156,13 @@ export default function TripInviteReviewModal({
 
     return (
         <Portal>
-            <div
-                className="vaivia-modal-backdrop"
-                onClick={() => onOpenChange(false)}
+            <AnimatedModal
+                onClose={() => onOpenChange(false)}
+                panelClassName="max-w-lg"
+                labelledBy="trip-invite-review-title"
             >
-                <div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="trip-invite-review-title"
-                    className="vaivia-modal-panel max-w-lg"
-                    onClick={(event) => event.stopPropagation()}
-                >
+                {({ requestClose }) => (
+                    <>
                     <div className="vaivia-modal-header flex items-start justify-between gap-4">
                         <div>
                             <p className="vaivia-modal-eyebrow">Invitation</p>
@@ -163,7 +175,7 @@ export default function TripInviteReviewModal({
                         </div>
                         <button
                             type="button"
-                            onClick={() => onOpenChange(false)}
+                            onClick={requestClose}
                             className="vaivia-modal-close"
                             aria-label="Close invitation"
                         >
@@ -251,8 +263,9 @@ export default function TripInviteReviewModal({
                             ) : null}
                         </div>
                     </div>
-                </div>
-            </div>
+                    </>
+                )}
+            </AnimatedModal>
         </Portal>
     );
 }
