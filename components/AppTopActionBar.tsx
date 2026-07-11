@@ -28,7 +28,12 @@ export type AppNotification = {
     invitation_id: string | null;
     metadata?: Record<string, unknown> | null;
     actor_user_id: string | null;
+    archived_at?: string | null;
 };
+
+function isActionRequiredNotification(notification: AppNotification) {
+    return notification.type === "trip_invite_received";
+}
 
 function tripLabel(trip: TopNavTrip) {
     return trip.title?.trim() || "Untitled trip";
@@ -90,7 +95,9 @@ export default function AppTopActionBar({
         useState<AppNotification | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const unreadCount = visibleNotifications.filter(
-        (notification) => !notification.read_at
+        (notification) =>
+            !notification.archived_at &&
+            (!notification.read_at || isActionRequiredNotification(notification))
     ).length;
 
     useEffect(() => {
@@ -141,9 +148,11 @@ export default function AppTopActionBar({
         const { data, error } = await supabase
             .from("notifications")
             .select(
-                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id"
+                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id,archived_at"
             )
             .eq("user_id", user.id)
+            .is("archived_at", null)
+            .or("read_at.is.null,type.eq.trip_invite_received")
             .order("created_at", { ascending: false })
             .limit(10);
 
@@ -155,7 +164,9 @@ export default function AppTopActionBar({
                 hint: error.hint,
             });
         } else {
-            setVisibleNotifications((data || []) as AppNotification[]);
+            const nextNotifications = (data || []) as AppNotification[];
+            setVisibleNotifications(nextNotifications);
+            void markViewedPassiveNotifications(nextNotifications);
         }
 
         setIsLoadingNotifications(false);
@@ -171,6 +182,45 @@ export default function AppTopActionBar({
 
             return nextMenu;
         });
+    }
+
+    async function markViewedPassiveNotifications(
+        nextNotifications: AppNotification[]
+    ) {
+        const passiveUnreadIds = nextNotifications
+            .filter(
+                (notification) =>
+                    !notification.read_at &&
+                    !isActionRequiredNotification(notification)
+            )
+            .map((notification) => notification.id);
+
+        if (passiveUnreadIds.length === 0) return;
+
+        const readAt = new Date().toISOString();
+        const supabase = createClient();
+        const { error } = await supabase
+            .from("notifications")
+            .update({ read_at: readAt })
+            .in("id", passiveUnreadIds);
+
+        if (error) {
+            console.warn("Could not mark viewed notifications read:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+            });
+            return;
+        }
+
+        setVisibleNotifications((current) =>
+            current.map((notification) =>
+                passiveUnreadIds.includes(notification.id)
+                    ? { ...notification, read_at: notification.read_at || readAt }
+                    : notification
+            )
+        );
     }
 
     async function markNotificationRead(notification: AppNotification) {
@@ -205,14 +255,14 @@ export default function AppTopActionBar({
 
     return (
         <>
-            <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-4 pt-4 md:left-24 md:px-8 md:pt-6">
+            <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-[calc(1rem+var(--safe-area-right))] pt-[calc(1rem+var(--safe-area-top))] md:left-24 md:px-8 md:pt-6">
                 <div
                     ref={wrapperRef}
                     className="pointer-events-auto ml-auto flex w-fit items-start gap-3"
                 >
                 <Link
                     href="/"
-                    className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-950/50 text-slate-100 shadow-xl shadow-black/20 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-lime-300/30 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                    className="hidden h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-950/50 text-slate-100 shadow-xl shadow-black/20 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-lime-300/30 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-lime-300/50 md:flex"
                     aria-label="Home"
                     title="Home"
                 >
@@ -332,8 +382,7 @@ export default function AppTopActionBar({
                                         <span className="mt-0.5 block text-xs text-slate-400">
                                             {notification.body}
                                         </span>
-                                        {notification.type ===
-                                        "trip_invite_received" ? (
+                                        {isActionRequiredNotification(notification) ? (
                                             <span className="mt-2 inline-flex rounded-full bg-lime-300 px-3 py-1 text-xs font-black text-slate-950">
                                                 Review
                                             </span>
@@ -345,6 +394,15 @@ export default function AppTopActionBar({
                                     No notifications yet.
                                 </p>
                             )}
+                            <div className="border-t border-white/10 px-3 py-2">
+                                <Link
+                                    href="/notifications"
+                                    className="block rounded-full border border-lime-300/20 bg-lime-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-lime-100 transition hover:bg-lime-300/20"
+                                    onClick={() => setOpenMenu(null)}
+                                >
+                                    See previous notifications
+                                </Link>
+                            </div>
                         </div>
                     ) : null}
                 </div>

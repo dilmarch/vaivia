@@ -18,6 +18,9 @@ export type SharedTrip = {
     notes?: string | null;
     cover_image_url?: string | null;
     trip_cover_image_url?: string | null;
+    countdown_target_type?: string | null;
+    countdown_target_id?: string | null;
+    countdown_target_itinerary_item_id?: string | null;
     archived_at?: string | null;
     archived_reason?: string | null;
     created_at?: string | null;
@@ -59,6 +62,9 @@ export async function loadActiveMemberTrips(
                 end_date,
                 notes,
                 cover_image_url,
+                countdown_target_type,
+                countdown_target_id,
+                countdown_target_itinerary_item_id,
                 archived_at,
                 archived_reason,
                 created_at,

@@ -9,8 +9,11 @@ import type {
 } from "@/components/ItineraryCalendar";
 import ItineraryTabs from "@/components/ItineraryTabs";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
-import TripDestinationLine from "@/components/TripDestinationLine";
 import TripHeaderCover from "@/components/TripHeaderCover";
+import TripLegLocationLine, {
+    type TripLegLocation,
+    type TripLegMemberOption,
+} from "@/components/TripLegLocationLine";
 import TripCountdown, {
     type TripCountdownTargetOption,
 } from "@/components/TripCountdown";
@@ -47,9 +50,14 @@ import {
 } from "@/lib/tripAudience";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { moveTripItem } from "@/app/actions/moveTripItem";
+import { deleteTripLeg, upsertTripLeg } from "@/app/actions/tripLegs";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { getMoveTargetTrips } from "@/lib/tripMove";
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
+import {
+    resolveTripLegIdForDate,
+    resolveTripLegIdForLocation,
+} from "@/lib/tripLegs";
 
 type PageProps = {
     params: Promise<{
@@ -153,10 +161,96 @@ type TripIdeaPayload = {
     age_policy: string | null;
     dress_code: string | null;
     other_notes: string | null;
+    trip_leg_id?: string | null;
     is_private?: boolean;
     is_archived?: boolean;
     attended?: boolean;
 };
+
+function getFlagEmoji(countryCode?: string | null) {
+    const normalized = countryCode?.trim().toUpperCase();
+    if (!normalized || !/^[A-Z]{2}$/.test(normalized)) return "";
+
+    return normalized
+        .split("")
+        .map((letter) => String.fromCodePoint(letter.charCodeAt(0) + 127397))
+        .join("");
+}
+
+function getCountryName(countryCode?: string | null) {
+    const normalized = countryCode?.trim().toUpperCase();
+    if (!normalized || !/^[A-Z]{2}$/.test(normalized)) return null;
+
+    try {
+        return new Intl.DisplayNames(["en"], { type: "region" }).of(normalized) || null;
+    } catch {
+        return null;
+    }
+}
+
+function getCountryCodeFromFlag(flag: string) {
+    const codePoints = Array.from(flag);
+    if (codePoints.length !== 2) return null;
+
+    const countryCode = codePoints
+        .map((character) => character.codePointAt(0))
+        .filter((codePoint): codePoint is number => Boolean(codePoint))
+        .map((codePoint) => String.fromCharCode(codePoint - 127397))
+        .join("");
+
+    return /^[A-Z]{2}$/.test(countryCode) ? countryCode : null;
+}
+
+function parseDestinationList(destination?: string | null) {
+    if (!destination) return [];
+    return destination
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+}
+
+function getLeadingFlag(destination: string) {
+    return destination.match(/^[\u{1F1E6}-\u{1F1FF}]{2}/u)?.[0] || "";
+}
+
+function stripLeadingFlag(destination: string) {
+    return destination.replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "").trim();
+}
+
+function normalizeLocationText(value?: string | null) {
+    return String(value || "")
+        .trim()
+        .toLowerCase();
+}
+
+function locationsMatch(
+    base: TripLegLocation,
+    candidate?: TripLegLocation | null
+) {
+    if (!candidate) return false;
+    const baseCountryCode = String(base.countryCode || "").toUpperCase();
+    const candidateCountryCode = String(candidate.countryCode || "").toUpperCase();
+
+    if (baseCountryCode && candidateCountryCode && baseCountryCode === candidateCountryCode) {
+        return true;
+    }
+
+    const baseNames = [base.name, base.cityName, base.countryName]
+        .map(normalizeLocationText)
+        .filter(Boolean);
+    const candidateNames = [candidate.name, candidate.cityName, candidate.countryName]
+        .map(normalizeLocationText)
+        .filter(Boolean);
+
+    return baseNames.some((baseName) =>
+        candidateNames.some(
+            (candidateName) =>
+                candidateName === baseName ||
+                candidateName.includes(baseName) ||
+                baseName.includes(candidateName)
+        )
+    );
+}
 
 function getPendingInvitationLabel(invitation: Record<string, unknown>) {
     const labelCandidates = [
@@ -961,7 +1055,12 @@ async function createItineraryItem(formData: FormData) {
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
     const audience = parseTripAudienceFormData(formData);
-    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
+    const tripLegId = await resolveTripLegIdForDate({
+        supabase,
+        tripId,
+        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
+        itemDate,
+    });
 
     const payload: ItineraryItemPayload = {
         trip_id: tripId,
@@ -987,7 +1086,7 @@ async function createItineraryItem(formData: FormData) {
         cover_image_url: coverImageUrl || null,
         is_private: isPrivate,
         audience_mode: audience.audienceMode,
-        trip_leg_id: tripLegId || null,
+        trip_leg_id: tripLegId,
         notes,
     };
 
@@ -1095,7 +1194,12 @@ async function createTransportationItem(formData: FormData) {
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
     const audience = parseTripAudienceFormData(formData);
-    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
+    const tripLegId = await resolveTripLegIdForDate({
+        supabase,
+        tripId,
+        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
+        itemDate,
+    });
     const flightLegCount = Number(formData.get("flight_leg_count") || 1);
     const flightLegNotes = Array.from({ length: flightLegCount }, (_, index) => {
         const legDepartureLocation = formData.get(
@@ -1230,7 +1334,7 @@ async function createTransportationItem(formData: FormData) {
         luggage_requirements: luggageRequirements || null,
         is_private: isPrivate,
         audience_mode: audience.audienceMode,
-        trip_leg_id: tripLegId || null,
+        trip_leg_id: tripLegId,
         notes,
     };
 
@@ -1369,7 +1473,12 @@ async function updateTransportationItem(formData: FormData) {
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
     const audience = parseTripAudienceFormData(formData);
-    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
+    const tripLegId = await resolveTripLegIdForDate({
+        supabase,
+        tripId,
+        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
+        itemDate,
+    });
     const effectiveAirlineCode = normalizeAirlineCode(airlineCode);
     const effectiveFlightNumber = normalizeFlightNumber({
         flightNumber,
@@ -1411,7 +1520,7 @@ async function updateTransportationItem(formData: FormData) {
         arrival_terminal: arrivalTerminal || null,
         is_private: isPrivate,
         audience_mode: audience.audienceMode,
-        trip_leg_id: tripLegId || null,
+        trip_leg_id: tripLegId,
         notes,
     };
 
@@ -1909,6 +2018,15 @@ async function createTripIdea(formData: FormData) {
     }
 
     const payload = getIdeaPayload(formData, user.id);
+    payload.trip_leg_id = await resolveTripLegIdForLocation({
+        supabase,
+        tripId: payload.trip_id,
+        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
+        city: payload.location_city,
+        region: payload.location_region,
+        country: payload.location_country,
+        countryCode: payload.location_country_code,
+    });
 
     const { data: trip, error: tripError } = await supabase
         .from("trips")
@@ -1968,6 +2086,15 @@ async function updateTripIdea(formData: FormData) {
 
     const ideaId = formData.get("idea_id") as string;
     const payload = getIdeaPayload(formData, user.id);
+    payload.trip_leg_id = await resolveTripLegIdForLocation({
+        supabase,
+        tripId: payload.trip_id,
+        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
+        city: payload.location_city,
+        region: payload.location_region,
+        country: payload.location_country,
+        countryCode: payload.location_country_code,
+    });
     const { created_by: _createdBy, trip_id: _tripId, ...updatePayload } = payload;
     void _createdBy;
     void _tripId;
@@ -2850,6 +2977,187 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         });
     }
 
+    const { data: tripLegRows, error: tripLegsError } = await supabase
+        .from("trip_legs")
+        .select(
+            "id,name,city_name,country_code,icon_emoji,start_date,end_date,leg_type,sort_order"
+        )
+        .eq("trip_id", tripId)
+        .order("start_date", { ascending: true, nullsFirst: false })
+        .order("sort_order", { ascending: true });
+
+    if (tripLegsError) {
+        console.warn("Could not load trip legs for hero:", {
+            message: tripLegsError.message,
+            code: tripLegsError.code,
+            details: tripLegsError.details,
+            hint: tripLegsError.hint,
+            tripId,
+        });
+    }
+
+    const manualTripLegIds = ((tripLegRows || []) as Array<{ id?: string | null }>)
+        .map((leg) => leg.id)
+        .filter(Boolean) as string[];
+    let tripMemberLegRows: Array<{
+        trip_leg_id: string;
+        trip_member_id: string;
+        is_joining?: boolean | null;
+    }> = [];
+
+    if (manualTripLegIds.length > 0) {
+        const { data: memberLegRows, error: memberLegRowsError } = await supabase
+            .from("trip_member_legs")
+            .select("trip_leg_id,trip_member_id,is_joining")
+            .eq("trip_id", tripId)
+            .in("trip_leg_id", manualTripLegIds);
+
+        if (memberLegRowsError) {
+            console.warn("Could not load trip leg members for hero:", {
+                message: memberLegRowsError.message,
+                code: memberLegRowsError.code,
+                details: memberLegRowsError.details,
+                hint: memberLegRowsError.hint,
+                tripId,
+            });
+        } else {
+            tripMemberLegRows = (memberLegRows || []) as typeof tripMemberLegRows;
+        }
+    }
+
+    const tripMemberIdsByLegId = new Map<string, string[]>();
+    tripMemberLegRows.forEach((row) => {
+        if (!row.is_joining) return;
+        const current = tripMemberIdsByLegId.get(row.trip_leg_id) || [];
+        current.push(row.trip_member_id);
+        tripMemberIdsByLegId.set(row.trip_leg_id, current);
+    });
+
+    const accommodationLocations: TripLegLocation[] = (
+        (accommodationRows || []) as Array<{
+            id: string;
+            hotel_name?: string | null;
+            city?: string | null;
+            region?: string | null;
+            country?: string | null;
+            check_in_date?: string | null;
+            check_out_date?: string | null;
+            status?: string | null;
+        }>
+    )
+        .filter((accommodation) => accommodation.status !== "cancelled")
+        .map((accommodation) => {
+            const name =
+                accommodation.city ||
+                accommodation.region ||
+                accommodation.country ||
+                accommodation.hotel_name ||
+                "Accommodation";
+
+            return {
+                id: accommodation.id,
+                source: "accommodation" as const,
+                name,
+                cityName: accommodation.city || accommodation.region || name,
+                countryName: accommodation.country || null,
+                startDate: accommodation.check_in_date || null,
+                endDate: accommodation.check_out_date || null,
+            };
+        });
+
+    const manualLocations: TripLegLocation[] = (
+        (tripLegRows || []) as Array<{
+            id: string;
+            name: string;
+            city_name?: string | null;
+            country_code?: string | null;
+            icon_emoji?: string | null;
+            start_date?: string | null;
+            end_date?: string | null;
+            leg_type?: string | null;
+        }>
+    )
+        .filter((leg) => leg.leg_type !== "accommodation")
+        .map((leg) => ({
+            id: leg.id,
+            source: "manual" as const,
+            name: leg.name,
+            cityName: leg.city_name || null,
+            countryCode: leg.country_code || null,
+            iconEmoji: leg.icon_emoji || null,
+            startDate: leg.start_date || null,
+            endDate: leg.end_date || null,
+            memberIds: tripMemberIdsByLegId.get(leg.id) || [],
+        }));
+
+    const destinationLocations: TripLegLocation[] = parseDestinationList(
+        trip.destination
+    ).map((destination, index) => {
+        const flag = getLeadingFlag(destination);
+        const countryCode = getCountryCodeFromFlag(flag);
+        const cleanDestination = stripLeadingFlag(destination);
+        const countryName = getCountryName(countryCode);
+
+        return {
+            id: `destination-${index}-${cleanDestination || destination}`,
+            source: "destination" as const,
+            name: cleanDestination || destination,
+            cityName: cleanDestination || destination,
+            countryCode,
+            countryName,
+            iconEmoji: flag || getFlagEmoji(countryCode) || null,
+            startDate: null,
+            endDate: null,
+            memberIds: [],
+        };
+    });
+
+    const heroLocations =
+        destinationLocations.length > 0
+            ? destinationLocations.map((destination) => {
+                  const manualMatch = manualLocations.find((location) =>
+                      locationsMatch(destination, location)
+                  );
+                  const accommodationMatch = accommodationLocations.find((location) =>
+                      locationsMatch(destination, location)
+                  );
+
+                  return {
+                      ...destination,
+                      persistedLegId: manualMatch?.id || null,
+                      startDate:
+                          accommodationMatch?.startDate ||
+                          manualMatch?.startDate ||
+                          null,
+                      endDate:
+                          accommodationMatch?.endDate ||
+                          manualMatch?.endDate ||
+                          null,
+                      memberIds: manualMatch?.memberIds || [],
+                  };
+              })
+            : [...accommodationLocations, ...manualLocations];
+    const tripLegMemberOptions: TripLegMemberOption[] = memberRows
+        .filter((member) => Boolean(member.id))
+        .map((member) => {
+            const profile = member.user_id
+                ? tripMembers.find((tripMember) => tripMember.user_id === member.user_id)
+                : null;
+            const displayName = [
+                profile?.first_name || "",
+                profile?.last_name || "",
+            ]
+                .join(" ")
+                .trim();
+
+            return {
+                id: member.id as string,
+                displayName: displayName || profile?.username || "Trip mate",
+                username: profile?.username || null,
+                avatarUrl: profile?.avatar_url || null,
+            };
+        });
+
     const userCategories = await getUserCategories(user.id);
     const categoryIds = Array.from(
         new Set(
@@ -3088,7 +3396,14 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
                 <div className="mx-auto max-w-7xl p-5 sm:p-7">
                     <div className={hideHeaderDetailsOnMobile ? "hidden sm:block" : ""}>
-                        <TripDestinationLine destination={trip.destination}>
+                        <TripLegLocationLine
+                            tripId={trip.id}
+                            revalidatePathname={`/trips/${trip.id}`}
+                            locations={heroLocations}
+                            memberOptions={tripLegMemberOptions}
+                            upsertLegAction={upsertTripLeg}
+                            deleteLegAction={deleteTripLeg}
+                        >
                             <TripMembersPanel
                                 tripId={trip.id}
                                 tripTitle={trip.title}
@@ -3102,7 +3417,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 addFamilyMemberAction={addTripFamilyMember}
                                 removeFamilyMemberAction={removeTripFamilyMember}
                             />
-                        </TripDestinationLine>
+                        </TripLegLocationLine>
                     </div>
 
                         <div className={`mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch ${

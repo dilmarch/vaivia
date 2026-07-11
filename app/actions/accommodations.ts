@@ -10,6 +10,7 @@ import {
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { createClient } from "@/lib/supabase/server";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
+import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
 
 export async function createAccommodation(formData: FormData) {
     const supabase = await createClient();
@@ -21,6 +22,15 @@ export async function createAccommodation(formData: FormData) {
 
     const tripId = String(formData.get("trip_id") || "");
     const payload = buildAccommodationPayload(formData, tripId);
+    payload.trip_leg_id = await resolveTripLegIdForLocation({
+        supabase,
+        tripId,
+        explicitTripLegId: payload.trip_leg_id,
+        city: payload.city,
+        region: payload.region,
+        country: payload.country,
+        itemDate: payload.check_in_date,
+    });
     const validationErrors = validateAccommodationPayload(payload);
 
     if (validationErrors.length > 0) {

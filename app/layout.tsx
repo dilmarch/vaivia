@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { Suspense } from "react";
@@ -6,6 +6,8 @@ import AppLayoutShell from "@/components/AppLayoutShell";
 import AppNav, { AppNavFallback } from "@/components/AppNav";
 import CountdownPreferenceProvider from "@/components/CountdownPreferenceProvider";
 import PinkModeProvider from "@/components/PinkModeProvider";
+import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
+import ServiceWorkerRegistration from "@/components/pwa/ServiceWorkerRegistration";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -16,6 +18,31 @@ export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "VAIVIA",
   description: "Plan trips, itineraries, ideas, and journeys in one place.",
+  applicationName: "VAIVIA",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "VAIVIA",
+    statusBarStyle: "black-translucent",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      { url: "/vaivia-icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/icons/apple-touch-icon.png",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0c0115",
 };
 
 const geistSans = Geist({
@@ -40,6 +67,7 @@ export default function RootLayout({
         >
           <CountdownPreferenceProvider />
           <PinkModeProvider />
+          <ServiceWorkerRegistration />
           <AppLayoutShell
             nav={
               <Suspense fallback={<AppNavFallback />}>
@@ -49,6 +77,7 @@ export default function RootLayout({
           >
             {children}
           </AppLayoutShell>
+          <PwaInstallPrompt />
         </ThemeProvider>
       </body>
     </html>

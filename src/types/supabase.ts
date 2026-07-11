@@ -14,6 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
+      airports: {
+        Row: {
+          continent: string | null
+          elevation_ft: number | null
+          gps_code: string | null
+          home_link: string | null
+          iata_code: string | null
+          id: string
+          ident: string | null
+          iso_country: string | null
+          iso_region: string | null
+          keywords: string | null
+          latitude_deg: number | null
+          local_code: string | null
+          longitude_deg: number | null
+          municipality: string | null
+          name: string
+          scheduled_service: boolean | null
+          source: string
+          type: string | null
+          updated_at: string
+          wikipedia_link: string | null
+        }
+        Insert: {
+          continent?: string | null
+          elevation_ft?: number | null
+          gps_code?: string | null
+          home_link?: string | null
+          iata_code?: string | null
+          id?: string
+          ident?: string | null
+          iso_country?: string | null
+          iso_region?: string | null
+          keywords?: string | null
+          latitude_deg?: number | null
+          local_code?: string | null
+          longitude_deg?: number | null
+          municipality?: string | null
+          name: string
+          scheduled_service?: boolean | null
+          source?: string
+          type?: string | null
+          updated_at?: string
+          wikipedia_link?: string | null
+        }
+        Update: {
+          continent?: string | null
+          elevation_ft?: number | null
+          gps_code?: string | null
+          home_link?: string | null
+          iata_code?: string | null
+          id?: string
+          ident?: string | null
+          iso_country?: string | null
+          iso_region?: string | null
+          keywords?: string | null
+          latitude_deg?: number | null
+          local_code?: string | null
+          longitude_deg?: number | null
+          municipality?: string | null
+          name?: string
+          scheduled_service?: boolean | null
+          source?: string
+          type?: string | null
+          updated_at?: string
+          wikipedia_link?: string | null
+        }
+        Relationships: []
+      }
       budget_items: {
         Row: {
           actual_amount: number | null
@@ -88,6 +157,101 @@ export type Database = {
         }
         Relationships: []
       }
+      countries: {
+        Row: {
+          alpha2: string
+          alpha3: string | null
+          arrival_label: string | null
+          arrival_label_source: string | null
+          capital: string | null
+          capital_lat: number | null
+          capital_lng: number | null
+          common_name: string
+          created_at: string
+          currencies: Json
+          default_entry_airport_id: string | null
+          fetched_at: string
+          flag_emoji: string | null
+          flag_png_url: string | null
+          flag_svg_url: string | null
+          languages: Json | null
+          official_name: string | null
+          primary_language_code: string | null
+          primary_language_name: string | null
+          region: string | null
+          rest_countries_payload: Json | null
+          source: string
+          subregion: string | null
+          updated_at: string
+          welcome_label: string | null
+          welcome_label_source: string
+        }
+        Insert: {
+          alpha2: string
+          alpha3?: string | null
+          arrival_label?: string | null
+          arrival_label_source?: string | null
+          capital?: string | null
+          capital_lat?: number | null
+          capital_lng?: number | null
+          common_name: string
+          created_at?: string
+          currencies?: Json
+          default_entry_airport_id?: string | null
+          fetched_at?: string
+          flag_emoji?: string | null
+          flag_png_url?: string | null
+          flag_svg_url?: string | null
+          languages?: Json | null
+          official_name?: string | null
+          primary_language_code?: string | null
+          primary_language_name?: string | null
+          region?: string | null
+          rest_countries_payload?: Json | null
+          source?: string
+          subregion?: string | null
+          updated_at?: string
+          welcome_label?: string | null
+          welcome_label_source?: string
+        }
+        Update: {
+          alpha2?: string
+          alpha3?: string | null
+          arrival_label?: string | null
+          arrival_label_source?: string | null
+          capital?: string | null
+          capital_lat?: number | null
+          capital_lng?: number | null
+          common_name?: string
+          created_at?: string
+          currencies?: Json
+          default_entry_airport_id?: string | null
+          fetched_at?: string
+          flag_emoji?: string | null
+          flag_png_url?: string | null
+          flag_svg_url?: string | null
+          languages?: Json | null
+          official_name?: string | null
+          primary_language_code?: string | null
+          primary_language_name?: string | null
+          region?: string | null
+          rest_countries_payload?: Json | null
+          source?: string
+          subregion?: string | null
+          updated_at?: string
+          welcome_label?: string | null
+          welcome_label_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "countries_default_entry_airport_id_fkey"
+            columns: ["default_entry_airport_id"]
+            isOneToOne: false
+            referencedRelation: "airports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       currency_exchange_rates: {
         Row: {
           base_currency: string
@@ -115,6 +279,51 @@ export type Database = {
           rate?: number
           rate_date?: string
           target_currency?: string
+        }
+        Relationships: []
+      }
+      feature_suggestions: {
+        Row: {
+          contact_email: string | null
+          created_at: string
+          current_path: string | null
+          id: string
+          message: string
+          metadata: Json
+          status: string
+          suggestion_type: string
+          title: string | null
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          contact_email?: string | null
+          created_at?: string
+          current_path?: string | null
+          id?: string
+          message: string
+          metadata?: Json
+          status?: string
+          suggestion_type?: string
+          title?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Update: {
+          contact_email?: string | null
+          created_at?: string
+          current_path?: string | null
+          id?: string
+          message?: string
+          metadata?: Json
+          status?: string
+          suggestion_type?: string
+          title?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -237,9 +446,37 @@ export type Database = {
           },
         ]
       }
+      language_welcome_labels: {
+        Row: {
+          created_at: string
+          language_code: string
+          language_name: string | null
+          source: string
+          updated_at: string
+          welcome_label: string
+        }
+        Insert: {
+          created_at?: string
+          language_code: string
+          language_name?: string | null
+          source?: string
+          updated_at?: string
+          welcome_label: string
+        }
+        Update: {
+          created_at?: string
+          language_code?: string
+          language_name?: string | null
+          source?: string
+          updated_at?: string
+          welcome_label?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           actor_user_id: string | null
+          archived_at: string | null
           body: string | null
           created_at: string | null
           id: string
@@ -253,6 +490,7 @@ export type Database = {
         }
         Insert: {
           actor_user_id?: string | null
+          archived_at?: string | null
           body?: string | null
           created_at?: string | null
           id?: string
@@ -266,6 +504,7 @@ export type Database = {
         }
         Update: {
           actor_user_id?: string | null
+          archived_at?: string | null
           body?: string | null
           created_at?: string | null
           id?: string
@@ -1456,6 +1695,7 @@ export type Database = {
           timezone_source: string | null
           title: string
           trip_id: string
+          trip_leg_id: string | null
           updated_at: string
           url: string | null
         }
@@ -1494,6 +1734,7 @@ export type Database = {
           timezone_source?: string | null
           title: string
           trip_id: string
+          trip_leg_id?: string | null
           updated_at?: string
           url?: string | null
         }
@@ -1532,6 +1773,7 @@ export type Database = {
           timezone_source?: string | null
           title?: string
           trip_id?: string
+          trip_leg_id?: string | null
           updated_at?: string
           url?: string | null
         }
@@ -1541,6 +1783,13 @@ export type Database = {
             columns: ["trip_id"]
             isOneToOne: false
             referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "trip_ideas_trip_leg_id_fkey"
+            columns: ["trip_leg_id"]
+            isOneToOne: false
+            referencedRelation: "trip_legs"
             referencedColumns: ["id"]
           },
         ]
@@ -2098,9 +2347,100 @@ export type Database = {
         }
         Relationships: []
       }
+      user_passport_stamps: {
+        Row: {
+          arrival_label_snapshot: string | null
+          country_code: string
+          country_name: string
+          created_at: string
+          first_entry_airport_formatted_address: string | null
+          first_entry_airport_google_place_id: string | null
+          first_entry_airport_id: string | null
+          first_entry_airport_name: string | null
+          first_entry_city: string | null
+          first_entry_iata_code: string | null
+          first_entry_icao_code: string | null
+          first_visited_on: string | null
+          flag_emoji: string | null
+          id: string
+          source: string
+          source_trip_id: string | null
+          stamp_display_country_name: string | null
+          stamp_display_flag: string | null
+          stamped_at: string
+          updated_at: string
+          user_id: string
+          welcome_label_snapshot: string | null
+        }
+        Insert: {
+          arrival_label_snapshot?: string | null
+          country_code: string
+          country_name: string
+          created_at?: string
+          first_entry_airport_formatted_address?: string | null
+          first_entry_airport_google_place_id?: string | null
+          first_entry_airport_id?: string | null
+          first_entry_airport_name?: string | null
+          first_entry_city?: string | null
+          first_entry_iata_code?: string | null
+          first_entry_icao_code?: string | null
+          first_visited_on?: string | null
+          flag_emoji?: string | null
+          id?: string
+          source?: string
+          source_trip_id?: string | null
+          stamp_display_country_name?: string | null
+          stamp_display_flag?: string | null
+          stamped_at?: string
+          updated_at?: string
+          user_id: string
+          welcome_label_snapshot?: string | null
+        }
+        Update: {
+          arrival_label_snapshot?: string | null
+          country_code?: string
+          country_name?: string
+          created_at?: string
+          first_entry_airport_formatted_address?: string | null
+          first_entry_airport_google_place_id?: string | null
+          first_entry_airport_id?: string | null
+          first_entry_airport_name?: string | null
+          first_entry_city?: string | null
+          first_entry_iata_code?: string | null
+          first_entry_icao_code?: string | null
+          first_visited_on?: string | null
+          flag_emoji?: string | null
+          id?: string
+          source?: string
+          source_trip_id?: string | null
+          stamp_display_country_name?: string | null
+          stamp_display_flag?: string | null
+          stamped_at?: string
+          updated_at?: string
+          user_id?: string
+          welcome_label_snapshot?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_passport_stamps_first_entry_airport_id_fkey"
+            columns: ["first_entry_airport_id"]
+            isOneToOne: false
+            referencedRelation: "airports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_passport_stamps_source_trip_id_fkey"
+            columns: ["source_trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_preferences: {
         Row: {
           clock_format: string
+          countdown_display_mode: string
           created_at: string
           default_time_zone: string | null
           itinerary_default_view: string
@@ -2109,6 +2449,7 @@ export type Database = {
         }
         Insert: {
           clock_format?: string
+          countdown_display_mode?: string
           created_at?: string
           default_time_zone?: string | null
           itinerary_default_view?: string
@@ -2117,6 +2458,7 @@ export type Database = {
         }
         Update: {
           clock_format?: string
+          countdown_display_mode?: string
           created_at?: string
           default_time_zone?: string | null
           itinerary_default_view?: string
@@ -2227,6 +2569,10 @@ export type Database = {
           target_personal_start_date?: string
         }
         Returns: string
+      }
+      can_access_trip_leg: {
+        Args: { target_trip_id: string; target_trip_leg_id: string }
+        Returns: boolean
       }
       create_trip_invitation: {
         Args: {

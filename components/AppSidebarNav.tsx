@@ -301,7 +301,7 @@ export default function AppSidebarNav({
 
             <Link
                 href="/"
-                className="fixed left-4 top-4 z-50 flex h-12 w-12 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/70 text-2xl font-black text-lime-300 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] backdrop-blur-xl transition hover:border-lime-300/50 hover:bg-white/[0.08] md:hidden"
+                className="fixed left-[calc(1rem+var(--safe-area-left))] top-[calc(1rem+var(--safe-area-top))] z-50 flex h-12 w-12 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/70 text-2xl font-black text-lime-300 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] backdrop-blur-xl transition hover:border-lime-300/50 hover:bg-white/[0.08] md:hidden"
                 aria-label="VAIVIA home"
                 prefetch
             >
@@ -310,11 +310,11 @@ export default function AppSidebarNav({
 
             <nav
                 ref={mobileDockRef}
-                className="fixed inset-x-0 bottom-0 z-50 h-[5.5rem] text-white md:hidden"
+                className="fixed inset-x-0 bottom-0 z-50 h-[calc(5.5rem+var(--safe-area-bottom))] text-white md:hidden"
                 aria-label="Mobile navigation"
             >
                 {mobileMenu === "view" ? (
-                    <div className="absolute bottom-[4.9rem] left-3 right-3 flex items-center gap-2 overflow-x-auto rounded-[1.75rem] border border-white/10 bg-[#0c0115]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl">
+                    <div className="absolute bottom-[calc(4.9rem+var(--safe-area-bottom))] left-[calc(0.75rem+var(--safe-area-left))] right-[calc(0.75rem+var(--safe-area-right))] flex items-center gap-2 overflow-x-auto overscroll-x-contain rounded-[1.75rem] border border-white/10 bg-[#0c0115]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl [scrollbar-width:none]">
                         {mobileViewItems.length > 0 ? (
                             mobileViewItems.map((item, index) => (
                                 <div
@@ -343,7 +343,7 @@ export default function AppSidebarNav({
                 ) : null}
 
                 {mobileMenu === "more" ? (
-                    <div className="absolute bottom-[4.9rem] left-3 right-3 flex items-center justify-end gap-2 overflow-x-auto rounded-[1.75rem] border border-white/10 bg-[#0c0115]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl">
+                    <div className="absolute bottom-[calc(4.9rem+var(--safe-area-bottom))] left-[calc(0.75rem+var(--safe-area-left))] right-[calc(0.75rem+var(--safe-area-right))] flex items-center justify-end gap-2 overflow-x-auto overscroll-x-contain rounded-[1.75rem] border border-white/10 bg-[#0c0115]/95 p-2 shadow-2xl shadow-black/50 backdrop-blur-xl [scrollbar-width:none]">
                         <Link
                             href="/settings"
                             onClick={() => setMobileMenu(null)}
@@ -375,7 +375,7 @@ export default function AppSidebarNav({
                     </div>
                 ) : null}
 
-                <div className="absolute inset-x-0 bottom-3 flex items-center justify-center gap-24 pointer-events-none">
+                <div className="pointer-events-none absolute inset-x-0 bottom-[calc(0.75rem+var(--safe-area-bottom))] flex items-center justify-center gap-24">
                     <button
                         type="button"
                         onClick={() =>

@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { Minus, Plus } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createAccommodation } from "@/app/actions/accommodations";
 import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
+import FeatureSuggestionModal from "@/components/FeatureSuggestionModal";
 
 type QuickAddTrip = {
     id: string;
@@ -47,6 +48,7 @@ function getTripLabel(trip: QuickAddTrip) {
 
 export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
     const pathname = usePathname();
+    const router = useRouter();
     const currentTripId = getCurrentTripId(pathname);
     const [isOpen, setIsOpen] = useState(false);
     const [tripPickerAction, setTripPickerAction] = useState<TripAction | null>(
@@ -55,6 +57,7 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
     const [accommodationTripId, setAccommodationTripId] = useState<string | null>(
         null
     );
+    const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const currentTrip = useMemo(
         () => trips.find((trip) => trip.id === currentTripId) || null,
@@ -91,7 +94,7 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
         }
 
         if (action === "food" && currentTripId) {
-            window.location.href = `/trips/${currentTripId}/food?addFood=1`;
+            router.push(`/trips/${currentTripId}/food?addFood=1`);
             return;
         }
 
@@ -121,10 +124,13 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                     onClose={() => setAccommodationTripId(null)}
                 />
             ) : null}
+            {isSuggestionOpen ? (
+                <FeatureSuggestionModal onClose={() => setIsSuggestionOpen(false)} />
+            ) : null}
 
             <div
                 ref={quickAddRef}
-                className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
+                className="fixed bottom-[calc(1rem+var(--safe-area-bottom))] left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
             >
                 {isOpen && (
                     <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
@@ -212,6 +218,22 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                                 </button>
                             )
                         )}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsSuggestionOpen(true);
+                                setIsOpen(false);
+                                setTripPickerAction(null);
+                            }}
+                            className={quickAddBubbleClass}
+                            style={{
+                                animationDelay: `${
+                                    (Object.keys(tripActionLabels).length + 1) * 34
+                                }ms`,
+                            }}
+                        >
+                            Suggest new feature
+                        </button>
                     </div>
                 )}
 

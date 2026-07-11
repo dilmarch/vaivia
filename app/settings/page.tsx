@@ -7,6 +7,7 @@ import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
 import SettingsFamilyMembersClient from "@/components/SettingsFamilyMembersClient";
 import SettingsFinancialClient from "@/components/SettingsFinancialClient";
 import { ALL_CURRENCY_OPTIONS, normalizeCurrencyCode } from "@/lib/currency";
+import { isCountdownUnit, type CountdownUnit } from "@/lib/countdownDisplay";
 import { createClient } from "@/lib/supabase/server";
 import {
     sortCategoriesByName,
@@ -301,6 +302,117 @@ async function updateFinanceSettings(formData: FormData) {
     redirect("/settings?section=financial");
 }
 
+async function updateCountdownDisplayMode(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const rawMode = String(formData.get("countdown_display_mode") || "").trim();
+    const countdownDisplayMode = isCountdownUnit(rawMode) ? rawMode : "days";
+    const { data: existingPreferences } = await supabase
+        .from("user_preferences")
+        .select("clock_format,default_time_zone,itinerary_default_view")
+        .eq("user_id", user.id)
+        .maybeSingle();
+    const payload = {
+        user_id: user.id,
+        clock_format:
+            existingPreferences?.clock_format === "24h" ? "24h" : "12h",
+        default_time_zone: existingPreferences?.default_time_zone || null,
+        itinerary_default_view:
+            existingPreferences?.itinerary_default_view === "day" ||
+            existingPreferences?.itinerary_default_view === "week"
+                ? existingPreferences.itinerary_default_view
+                : "list",
+        countdown_display_mode: countdownDisplayMode,
+        updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+        .from("user_preferences")
+        .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+        console.error("Error updating countdown display mode:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+        });
+        throw new Error(`Could not update countdown display mode: ${error.message}`);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+}
+
+async function updateTimeDatePreferences(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const clockFormat =
+        String(formData.get("clock_format") || "") === "24h" ? "24h" : "12h";
+    const defaultTimeZone =
+        String(formData.get("default_time_zone") || "").trim() || null;
+    const rawDefaultView = String(
+        formData.get("itinerary_default_view") || ""
+    ).trim();
+    const itineraryDefaultView =
+        rawDefaultView === "day" || rawDefaultView === "week"
+            ? rawDefaultView
+            : "list";
+    const { data: existingPreferences } = await supabase
+        .from("user_preferences")
+        .select("countdown_display_mode")
+        .eq("user_id", user.id)
+        .maybeSingle();
+    const rawCountdownDisplayMode =
+        typeof existingPreferences?.countdown_display_mode === "string"
+            ? existingPreferences.countdown_display_mode
+            : null;
+    const payload = {
+        user_id: user.id,
+        clock_format: clockFormat,
+        default_time_zone: defaultTimeZone,
+        itinerary_default_view: itineraryDefaultView,
+        countdown_display_mode: isCountdownUnit(rawCountdownDisplayMode)
+            ? rawCountdownDisplayMode
+            : "days",
+        updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+        .from("user_preferences")
+        .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+        console.error("Error updating time/date preferences:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+        });
+        throw new Error(`Could not update time/date preferences: ${error.message}`);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/trips/[tripId]", "page");
+    redirect("/settings?section=time-date");
+}
+
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
     const params = searchParams ? await searchParams : {};
     const activeSection =
@@ -310,6 +422,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
               ? "family"
               : params.section === "financial"
                 ? "financial"
+                : params.section === "time-date"
+                  ? "time-date"
               : "general";
     const supabase = await createClient();
     const {
@@ -323,6 +437,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         { data: colorRows },
         { data: familyRows },
         { data: financeSettings },
+        { data: userPreferences },
     ] =
         await Promise.all([
         supabase
@@ -343,6 +458,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             .select("home_currency")
             .eq("user_id", user.id)
             .maybeSingle(),
+        supabase
+            .from("user_preferences")
+            .select(
+                "clock_format,default_time_zone,itinerary_default_view,countdown_display_mode"
+            )
+            .eq("user_id", user.id)
+            .maybeSingle(),
     ]);
 
     const categories = sortCategoriesByName((categoryRows || []) as UserCategory[]);
@@ -356,6 +478,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         typeof financeSettings?.home_currency === "string"
             ? financeSettings.home_currency
             : null;
+    const rawCountdownDisplayMode =
+        typeof userPreferences?.countdown_display_mode === "string"
+            ? userPreferences.countdown_display_mode
+            : null;
+    const countdownDisplayMode: CountdownUnit = isCountdownUnit(
+        rawCountdownDisplayMode
+    )
+        ? rawCountdownDisplayMode
+        : "days";
     const currencyOptions = ALL_CURRENCY_OPTIONS.map((currency) => ({
         code: currency.code,
         name: currency.name,
@@ -379,6 +510,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             }`}
                         >
                             General
+                        </Link>
+                        <Link
+                            href="/settings?section=time-date"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "time-date"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Time/date
                         </Link>
                         <Link
                             href="/settings?section=categories"
@@ -428,7 +569,89 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                 </p>
                             </div>
                             <PinkModeToggle />
-                            <CountdownUnitToggle />
+                        </div>
+                    ) : activeSection === "time-date" ? (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Time/date
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Time and date preferences
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Set itinerary defaults, time display, timezone, and
+                                    countdown style.
+                                </p>
+                            </div>
+                            <form
+                                action={updateTimeDatePreferences}
+                                className="grid gap-4 rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5 sm:grid-cols-2"
+                            >
+                                <label className="block">
+                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                        Clock format
+                                    </span>
+                                    <select
+                                        name="clock_format"
+                                        defaultValue={
+                                            userPreferences?.clock_format === "24h"
+                                                ? "24h"
+                                                : "12h"
+                                        }
+                                        className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white"
+                                    >
+                                        <option value="12h">12-hour clock</option>
+                                        <option value="24h">24-hour clock</option>
+                                    </select>
+                                </label>
+                                <label className="block">
+                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                        Default itinerary view
+                                    </span>
+                                    <select
+                                        name="itinerary_default_view"
+                                        defaultValue={
+                                            userPreferences?.itinerary_default_view ===
+                                                "day" ||
+                                            userPreferences?.itinerary_default_view ===
+                                                "week"
+                                                ? userPreferences.itinerary_default_view
+                                                : "list"
+                                        }
+                                        className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white"
+                                    >
+                                        <option value="list">List</option>
+                                        <option value="day">Day</option>
+                                        <option value="week">Week</option>
+                                    </select>
+                                </label>
+                                <label className="block sm:col-span-2">
+                                    <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                        Default time zone
+                                    </span>
+                                    <input
+                                        name="default_time_zone"
+                                        defaultValue={
+                                            userPreferences?.default_time_zone || ""
+                                        }
+                                        placeholder="Device timezone"
+                                        className="mt-2 h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-sm font-bold text-white placeholder:text-slate-500"
+                                    />
+                                </label>
+                                <div className="sm:col-span-2">
+                                    <button
+                                        type="submit"
+                                        className="rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200"
+                                    >
+                                        Save time/date preferences
+                                    </button>
+                                </div>
+                            </form>
+                            <CountdownUnitToggle
+                                initialUnit={countdownDisplayMode}
+                                updateAction={updateCountdownDisplayMode}
+                            />
                         </div>
                     ) : activeSection === "categories" ? (
                         <div className="space-y-6">

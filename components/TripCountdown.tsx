@@ -10,11 +10,11 @@ import {
     getStoredCountdownUnit,
     setCountdownUnit,
 } from "@/components/CountdownPreferenceProvider";
-
-type CountdownDisplay = {
-    value: string;
-    label: string;
-};
+import {
+    MS_PER_MINUTE,
+    MS_PER_SECOND,
+    getCountdownDisplay,
+} from "@/lib/countdownDisplay";
 
 export type TripCountdownTargetOption = {
     id: string;
@@ -39,12 +39,6 @@ type TripCountdownProps = {
     tripId?: string;
 };
 
-const MS_PER_SECOND = 1000;
-const MS_PER_MINUTE = 60 * MS_PER_SECOND;
-const MS_PER_HOUR = 60 * MS_PER_MINUTE;
-const MS_PER_DAY = 24 * MS_PER_HOUR;
-const MS_PER_WEEK = 7 * MS_PER_DAY;
-
 function parseLocalDateTime(dateString?: string | null, timeString?: string | null) {
     if (!dateString) return null;
     return new Date(`${dateString}T${timeString || "00:00"}`);
@@ -52,61 +46,6 @@ function parseLocalDateTime(dateString?: string | null, timeString?: string | nu
 
 function parseTripStart(dateString?: string | null) {
     return parseLocalDateTime(dateString, "00:00");
-}
-
-function formatNumber(value: number) {
-    return new Intl.NumberFormat("en-US").format(value);
-}
-
-function getUnitLabel(unit: CountdownUnit, value: number) {
-    if (unit === "weeks") return Math.abs(value) === 1 ? "week" : "weeks";
-    if (unit === "hours") return Math.abs(value) === 1 ? "hour" : "hours";
-    if (unit === "minutes") return Math.abs(value) === 1 ? "minute" : "minutes";
-    if (unit === "seconds") return Math.abs(value) === 1 ? "second" : "seconds";
-
-    return Math.abs(value) === 1 ? "day" : "days";
-}
-
-function getDivisor(unit: CountdownUnit) {
-    if (unit === "weeks") return MS_PER_WEEK;
-    if (unit === "hours") return MS_PER_HOUR;
-    if (unit === "minutes") return MS_PER_MINUTE;
-    if (unit === "seconds") return MS_PER_SECOND;
-    return MS_PER_DAY;
-}
-
-function getCountdownDisplay(
-    targetDate: Date | null,
-    unit: CountdownUnit,
-    now: Date
-): CountdownDisplay {
-    if (!targetDate) {
-        return {
-            value: "TBD",
-            label: "Countdown target",
-        };
-    }
-
-    const differenceMs = targetDate.getTime() - now.getTime();
-    const isPast = differenceMs < 0;
-
-    if (Math.abs(differenceMs) < MS_PER_SECOND) {
-        return {
-            value: "0",
-            label: "It begins now",
-        };
-    }
-
-    const divisor = getDivisor(unit);
-    const rawValue = differenceMs / divisor;
-    const value = isPast ? Math.floor(rawValue) : Math.ceil(rawValue);
-    const absoluteValue = Math.abs(value);
-    const unitLabel = getUnitLabel(unit, absoluteValue);
-
-    return {
-        value: formatNumber(absoluteValue),
-        label: `${unitLabel} ${isPast ? "since it began" : "until it begins"}`,
-    };
 }
 
 function formatTargetDate(option: TripCountdownTargetOption) {
@@ -271,6 +210,8 @@ export default function TripCountdown({
         const intervalMs =
             unit === "seconds"
                 ? MS_PER_SECOND
+                : unit === "mixed"
+                ? MS_PER_SECOND
                 : unit === "minutes" || unit === "hours"
                   ? MS_PER_MINUTE
                   : 0;
@@ -288,8 +229,15 @@ export default function TripCountdown({
         () => getCountdownDisplay(targetDate, unit, now),
         [now, targetDate, unit]
     );
-    const countdownCharacterCount = Math.max(countdown.value.length, 1);
-    const countdownFontSize = `clamp(2.5rem, min(28cqw, calc(100cqw / ${countdownCharacterCount * 0.86})), 6rem)`;
+    const countdownLines = countdown.lines?.length ? countdown.lines : null;
+    const countdownCharacterCount = Math.max(
+        ...(countdownLines || [countdown.value]).map((line) => line.length),
+        1
+    );
+    const countdownFontSize =
+        unit === "mixed"
+            ? `clamp(1.45rem, min(18cqw, calc(100cqw / ${countdownCharacterCount * 0.58})), 2.8rem)`
+            : `clamp(2.5rem, min(28cqw, calc(100cqw / ${countdownCharacterCount * 0.86})), 6rem)`;
 
     function openSettings() {
         setPendingUnit(unit);
@@ -399,12 +347,34 @@ export default function TripCountdown({
             </p>
             <div className="mt-1 flex min-w-0 flex-col gap-1.5">
                 <span className="block w-full min-w-0 max-w-full pr-4 [container-type:inline-size]">
-                    <span
-                        className="block max-w-full whitespace-nowrap font-black leading-none tracking-[-0.06em]"
-                        style={{ fontSize: countdownFontSize }}
-                    >
-                        {countdown.value}
-                    </span>
+                    {countdownLines ? (
+                        <span className="block space-y-0.5">
+                            {countdownLines.map((line, index) => {
+                                const displayLine =
+                                    countdownLines.length > 1 &&
+                                    index === countdownLines.length - 2
+                                        ? `${line} &`
+                                        : line;
+
+                                return (
+                                    <span
+                                        key={`${line}-${index}`}
+                                        className="block max-w-full whitespace-nowrap font-black leading-[0.92] tracking-[-0.045em]"
+                                        style={{ fontSize: countdownFontSize }}
+                                    >
+                                        {displayLine}
+                                    </span>
+                                );
+                            })}
+                        </span>
+                    ) : (
+                        <span
+                            className="block max-w-full whitespace-nowrap font-black leading-none tracking-[-0.06em]"
+                            style={{ fontSize: countdownFontSize }}
+                        >
+                            {countdown.value}
+                        </span>
+                    )}
                 </span>
                 <span className="text-base font-black uppercase leading-tight tracking-[0.12em]">
                     {countdown.label}

@@ -33,6 +33,10 @@
     --vaivia-neon-soft-rgb: 212,255,47;
     --vaivia-neon-solid: #bef264;
     --vaivia-neon-soft-solid: #d4ff2f;
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
   }
   :root[data-pink-mode="true"] {
     --vaivia-neon-rgb: 255,54,190;
@@ -72,8 +76,43 @@
   * {
     @apply border-border;
   }
+  html {
+    min-height: 100%;
+    overflow-x: clip;
+    background: #0c0115;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
   body {
     @apply bg-[#0c0115] text-foreground;
+    min-height: 100dvh;
+    overflow-x: clip;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a,
+  input,
+  select,
+  textarea,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+  @media (max-width: 640px) {
+    button,
+    a,
+    input,
+    select,
+    textarea,
+    [role="button"] {
+      min-height: 44px;
+    }
+    input,
+    select,
+    textarea {
+      font-size: 16px;
+    }
   }
 }
 
@@ -273,6 +312,8 @@
 
   .vaivia-modal-backdrop {
     @apply fixed inset-0 z-50 flex items-center justify-center bg-[#0c0115]/75 px-4 py-6 backdrop-blur-sm;
+    padding-left: max(1rem, var(--safe-area-left));
+    padding-right: max(1rem, var(--safe-area-right));
   }
 
   .vaivia-modal-backdrop[data-vaivia-modal-state="open"] {
@@ -285,7 +326,9 @@
   }
 
   .vaivia-modal-panel {
-    @apply max-h-[90vh] w-full overflow-y-auto rounded-[28px] border border-white/10 bg-[#080511] text-white shadow-2xl shadow-black/60;
+    @apply max-h-[90vh] w-full overflow-y-auto overscroll-contain rounded-[28px] border border-white/10 bg-[#080511] text-white shadow-2xl shadow-black/60;
+    max-height: min(90vh, calc(100dvh - 3rem));
+    -webkit-overflow-scrolling: touch;
   }
 
   .vaivia-modal-panel[data-vaivia-modal-state="open"],
@@ -364,10 +407,34 @@
   }
 
   @media (max-width: 640px) {
+    .vaivia-modal-backdrop {
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0;
+      padding-top: max(1rem, var(--safe-area-top));
+    }
+
+    .vaivia-modal-panel {
+      max-height: calc(100dvh - max(1rem, var(--safe-area-top)));
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+      border-left: 0;
+      border-right: 0;
+      border-bottom: 0;
+      padding-bottom: var(--safe-area-bottom);
+    }
+
+    .vaivia-modal-footer {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      padding-bottom: calc(1.25rem + var(--safe-area-bottom));
+    }
+
     @keyframes vaivia-modal-panel-in {
       from {
         opacity: 0;
-        transform: translate3d(0, 16px, 0) scale(0.99);
+        transform: translate3d(0, 100%, 0) scale(1);
       }
       to {
         opacity: 1;
@@ -382,7 +449,7 @@
       }
       to {
         opacity: 0;
-        transform: translate3d(0, 16px, 0) scale(0.99);
+        transform: translate3d(0, 100%, 0) scale(1);
       }
     }
   }

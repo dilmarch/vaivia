@@ -7,6 +7,10 @@ import TripDashboardClient, {
   type DashboardTrip,
 } from "@/components/TripDashboardClient";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
+import {
+  isCountdownUnit,
+  type CountdownUnit,
+} from "@/lib/countdownDisplay";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
 import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
@@ -31,6 +35,161 @@ type DashboardAccommodationSummary = NonNullable<
 type DashboardTransportationSummary = NonNullable<
   DashboardPlanning["transportation"]
 >[number];
+
+type DashboardCountdownTarget = {
+  tripTitle: string;
+  targetTitle: string;
+  targetDateIso: string;
+};
+
+function getDateTimeIso(date?: string | null, time?: string | null) {
+  if (!date) return null;
+  return `${date}T${time || "00:00"}:00`;
+}
+
+function isFutureIso(value: string, now = new Date()) {
+  const date = new Date(value);
+  return !Number.isNaN(date.getTime()) && date.getTime() > now.getTime();
+}
+
+function getFutureCountdownTarget(
+  preferredTarget: DashboardCountdownTarget | null,
+  fallbackTarget: DashboardCountdownTarget | null,
+  now: Date
+) {
+  if (
+    preferredTarget?.targetDateIso &&
+    isFutureIso(preferredTarget.targetDateIso, now)
+  ) {
+    return preferredTarget;
+  }
+
+  if (
+    fallbackTarget?.targetDateIso &&
+    isFutureIso(fallbackTarget.targetDateIso, now)
+  ) {
+    return fallbackTarget;
+  }
+
+  return null;
+}
+
+async function loadDashboardCountdownTarget(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  trips: DashboardTrip[]
+): Promise<DashboardCountdownTarget | null> {
+  const now = new Date();
+  const targetItineraryIds = trips
+    .filter((trip) => trip.countdown_target_type === "itinerary_item")
+    .map((trip) => trip.countdown_target_id || trip.countdown_target_itinerary_item_id)
+    .filter((id): id is string => Boolean(id));
+  const targetTransportationIds = trips
+    .filter((trip) => trip.countdown_target_type === "transportation_item")
+    .map((trip) => trip.countdown_target_id)
+    .filter((id): id is string => Boolean(id));
+  const [itineraryResult, transportationResult] = await Promise.all([
+    targetItineraryIds.length > 0
+      ? supabase
+          .from("itinerary_items")
+          .select("id,title,item_date,start_time")
+          .in("id", targetItineraryIds)
+      : Promise.resolve({ data: [], error: null }),
+    targetTransportationIds.length > 0
+      ? supabase
+          .from("transportation_items")
+          .select("id,title,departure_date,departure_time,transport_number")
+          .in("id", targetTransportationIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (itineraryResult.error) {
+    console.warn("Could not load dashboard countdown itinerary targets:", {
+      message: itineraryResult.error.message,
+      code: itineraryResult.error.code,
+      details: itineraryResult.error.details,
+      hint: itineraryResult.error.hint,
+    });
+  }
+
+  if (transportationResult.error) {
+    console.warn("Could not load dashboard countdown transportation targets:", {
+      message: transportationResult.error.message,
+      code: transportationResult.error.code,
+      details: transportationResult.error.details,
+      hint: transportationResult.error.hint,
+    });
+  }
+
+  const itineraryTargets = new Map(
+    ((itineraryResult.data || []) as Array<{
+      id: string;
+      title?: string | null;
+      item_date?: string | null;
+      start_time?: string | null;
+    }>).map((item) => [item.id, item])
+  );
+  const transportationTargets = new Map(
+    ((transportationResult.data || []) as Array<{
+      id: string;
+      title?: string | null;
+      departure_date?: string | null;
+      departure_time?: string | null;
+      transport_number?: string | null;
+    }>).map((item) => [item.id, item])
+  );
+  const candidates = trips
+    .map((trip): DashboardCountdownTarget | null => {
+      const tripTitle = trip.title || "Untitled trip";
+      const fallbackTarget = getDateTimeIso(trip.start_date)
+        ? {
+            tripTitle,
+            targetTitle: "Trip begins",
+            targetDateIso: getDateTimeIso(trip.start_date) as string,
+          }
+        : null;
+      let preferredTarget: DashboardCountdownTarget | null = null;
+
+      if (trip.countdown_target_type === "itinerary_item") {
+        const id = trip.countdown_target_id || trip.countdown_target_itinerary_item_id;
+        const target = id ? itineraryTargets.get(id) : null;
+        const itemDateIso = getDateTimeIso(target?.item_date, target?.start_time);
+        if (itemDateIso) {
+          preferredTarget = {
+            tripTitle,
+            targetTitle: target?.title || "Itinerary item",
+            targetDateIso: itemDateIso,
+          };
+        }
+      } else if (trip.countdown_target_type === "transportation_item") {
+        const target = trip.countdown_target_id
+          ? transportationTargets.get(trip.countdown_target_id)
+          : null;
+        const itemDateIso = getDateTimeIso(
+          target?.departure_date,
+          target?.departure_time
+        );
+        if (itemDateIso) {
+          preferredTarget = {
+            tripTitle,
+            targetTitle:
+              target?.transport_number || target?.title || "Transportation",
+            targetDateIso: itemDateIso,
+          };
+        }
+      }
+
+      return getFutureCountdownTarget(preferredTarget, fallbackTarget, now);
+    })
+    .filter((target): target is DashboardCountdownTarget => Boolean(target));
+
+  return (
+    candidates.sort(
+      (a, b) =>
+        new Date(a.targetDateIso).getTime() -
+        new Date(b.targetDateIso).getTime()
+    )[0] || null
+  );
+}
 
 async function addDashboardPlanningData(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -294,6 +453,22 @@ async function TripsDashboard() {
     });
   }
 
+  const { data: preferences, error: preferencesError } = await supabase
+    .from("user_preferences")
+    .select("countdown_display_mode")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (preferencesError) {
+    console.warn("Could not load dashboard countdown preference:", {
+      message: preferencesError.message,
+      code: preferencesError.code,
+      details: preferencesError.details,
+      hint: preferencesError.hint,
+      userId: user.id,
+    });
+  }
+
   const authProfileDefaults = getUserProfileDefaults(user);
   const dashboardName =
     profile?.first_name ||
@@ -308,11 +483,26 @@ async function TripsDashboard() {
     supabase,
     (trips || []) as DashboardTrip[]
   );
+  const rawCountdownDisplayMode =
+    typeof preferences?.countdown_display_mode === "string"
+      ? preferences.countdown_display_mode
+      : null;
+  const countdownUnit: CountdownUnit = isCountdownUnit(rawCountdownDisplayMode)
+    ? rawCountdownDisplayMode
+    : "days";
+  const dashboardCountdownTarget = await loadDashboardCountdownTarget(
+    supabase,
+    dashboardTrips
+  );
 
   return (
     <main className="min-h-screen bg-[#0c0115] text-white">
       <div className="space-y-1.5">
-        <DashboardHero name={dashboardName} />
+        <DashboardHero
+          name={dashboardName}
+          countdownTarget={dashboardCountdownTarget}
+          countdownUnit={countdownUnit}
+        />
 
         <div className="mx-4 md:mx-8">
           <TripDashboardClient

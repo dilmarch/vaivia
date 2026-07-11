@@ -8,11 +8,22 @@ import {
     setCountdownUnit,
 } from "@/components/CountdownPreferenceProvider";
 
-export default function CountdownUnitToggle() {
+type CountdownUnitToggleProps = {
+    initialUnit?: CountdownUnit;
+    updateAction?: (formData: FormData) => Promise<void>;
+};
+
+export default function CountdownUnitToggle({
+    initialUnit = "days",
+    updateAction,
+}: CountdownUnitToggleProps) {
     const [selectedUnit, setSelectedUnit] = useState<CountdownUnit>("days");
 
     useEffect(() => {
-        setSelectedUnit(getStoredCountdownUnit());
+        const storedUnit = getStoredCountdownUnit(initialUnit);
+        const nextUnit = storedUnit || initialUnit;
+        setSelectedUnit(nextUnit);
+        setCountdownUnit(nextUnit);
 
         function handleCountdownUnitChange(event: Event) {
             const detail = (event as CustomEvent<{ unit?: CountdownUnit }>).detail;
@@ -28,7 +39,18 @@ export default function CountdownUnitToggle() {
                 "vaivia:countdown-unit-change",
                 handleCountdownUnitChange
             );
-    }, []);
+    }, [initialUnit]);
+
+    function updateUnit(unit: CountdownUnit) {
+        setSelectedUnit(unit);
+        setCountdownUnit(unit);
+
+        if (!updateAction) return;
+
+        const formData = new FormData();
+        formData.set("countdown_display_mode", unit);
+        void updateAction(formData);
+    }
 
     return (
         <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-5">
@@ -50,10 +72,7 @@ export default function CountdownUnitToggle() {
                                 key={unit.value}
                                 type="button"
                                 aria-pressed={isSelected}
-                                onClick={() => {
-                                    setSelectedUnit(unit.value);
-                                    setCountdownUnit(unit.value);
-                                }}
+                                onClick={() => updateUnit(unit.value)}
                                 className={`rounded-full px-4 py-2 text-sm font-black uppercase tracking-wide transition ${
                                     isSelected
                                         ? "bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)]"

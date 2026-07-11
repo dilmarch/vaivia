@@ -90,9 +90,11 @@ export default async function AppNav() {
         const { data: notificationRows, error: notificationsError } = await supabase
             .from("notifications")
             .select(
-                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id"
+                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id,archived_at"
             )
             .eq("user_id", user.id)
+            .is("archived_at", null)
+            .or("read_at.is.null,type.eq.trip_invite_received")
             .order("created_at", { ascending: false })
             .limit(10);
 

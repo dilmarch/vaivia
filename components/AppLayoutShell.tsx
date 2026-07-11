@@ -19,7 +19,7 @@ export default function AppLayoutShell({ children, nav }: AppLayoutShellProps) {
                 className={
                     isAuthRoute
                         ? "min-h-screen"
-                        : "min-h-screen pb-20 md:pb-0 md:pl-24"
+                        : "min-h-screen pb-[calc(6.25rem+var(--safe-area-bottom))] md:pb-0 md:pl-24"
                 }
             >
                 {children}

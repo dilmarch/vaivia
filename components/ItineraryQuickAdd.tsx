@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAccommodation } from "@/app/actions/accommodations";
 import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
 import AnimatedModal from "@/components/AnimatedModal";
+import FeatureSuggestionModal from "@/components/FeatureSuggestionModal";
 import { IdeaForm } from "@/components/IdeasTab";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import TransportationForm from "@/components/TransportationForm";
@@ -44,6 +45,7 @@ export default function ItineraryQuickAdd({
     const [isTransportationOpen, setIsTransportationOpen] = useState(false);
     const [isAccommodationOpen, setIsAccommodationOpen] = useState(false);
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
+    const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -145,10 +147,13 @@ export default function ItineraryQuickAdd({
                     )}
                 </AnimatedModal>
             )}
+            {isSuggestionOpen ? (
+                <FeatureSuggestionModal onClose={() => setIsSuggestionOpen(false)} />
+            ) : null}
 
             <div
                 ref={quickAddRef}
-                className="fixed bottom-4 left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
+                className="fixed bottom-[calc(1rem+var(--safe-area-bottom))] left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
             >
                 {isOpen && (
                     <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
@@ -213,6 +218,16 @@ export default function ItineraryQuickAdd({
                             className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50 md:text-right"
                         >
                             Add activity idea
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setIsSuggestionOpen(true);
+                                setIsOpen(false);
+                            }}
+                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
+                        >
+                            Suggest new feature
                         </button>
                     </div>
                 )}

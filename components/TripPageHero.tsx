@@ -2,9 +2,12 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import TripCountdown from "@/components/TripCountdown";
-import TripDestinationLine from "@/components/TripDestinationLine";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripHeaderCover from "@/components/TripHeaderCover";
+import TripLegLocationLine, {
+    type TripLegLocation,
+    type TripLegMemberOption,
+} from "@/components/TripLegLocationLine";
 import TripMembersPanel, {
     type TripHeaderFamilyMember,
     type TripHeaderInvitation,
@@ -58,6 +61,91 @@ function formatTripDate(dateString?: string | null) {
         day: "numeric",
         year: "numeric",
     });
+}
+
+function getFlagEmoji(countryCode?: string | null) {
+    const normalized = countryCode?.trim().toUpperCase();
+    if (!normalized || !/^[A-Z]{2}$/.test(normalized)) return "";
+
+    return normalized
+        .split("")
+        .map((letter) => String.fromCodePoint(letter.charCodeAt(0) + 127397))
+        .join("");
+}
+
+function getCountryName(countryCode?: string | null) {
+    const normalized = countryCode?.trim().toUpperCase();
+    if (!normalized || !/^[A-Z]{2}$/.test(normalized)) return null;
+
+    try {
+        return new Intl.DisplayNames(["en"], { type: "region" }).of(normalized) || null;
+    } catch {
+        return null;
+    }
+}
+
+function getCountryCodeFromFlag(flag: string) {
+    const codePoints = Array.from(flag);
+    if (codePoints.length !== 2) return null;
+
+    const countryCode = codePoints
+        .map((character) => character.codePointAt(0))
+        .filter((codePoint): codePoint is number => Boolean(codePoint))
+        .map((codePoint) => String.fromCharCode(codePoint - 127397))
+        .join("");
+
+    return /^[A-Z]{2}$/.test(countryCode) ? countryCode : null;
+}
+
+function parseDestinationList(destination?: string | null) {
+    if (!destination) return [];
+    return destination
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+}
+
+function getLeadingFlag(destination: string) {
+    return destination.match(/^[\u{1F1E6}-\u{1F1FF}]{2}/u)?.[0] || "";
+}
+
+function stripLeadingFlag(destination: string) {
+    return destination.replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "").trim();
+}
+
+function normalizeLocationText(value?: string | null) {
+    return String(value || "")
+        .trim()
+        .toLowerCase();
+}
+
+function locationsMatch(
+    base: TripLegLocation,
+    candidate?: TripLegLocation | null
+) {
+    if (!candidate) return false;
+    const baseCountryCode = String(base.countryCode || "").toUpperCase();
+    const candidateCountryCode = String(candidate.countryCode || "").toUpperCase();
+
+    if (baseCountryCode && candidateCountryCode && baseCountryCode === candidateCountryCode) {
+        return true;
+    }
+
+    const baseNames = [base.name, base.cityName, base.countryName]
+        .map(normalizeLocationText)
+        .filter(Boolean);
+    const candidateNames = [candidate.name, candidate.cityName, candidate.countryName]
+        .map(normalizeLocationText)
+        .filter(Boolean);
+
+    return baseNames.some((baseName) =>
+        candidateNames.some(
+            (candidateName) =>
+                candidateName === baseName ||
+                candidateName.includes(baseName) ||
+                baseName.includes(candidateName)
+        )
+    );
 }
 
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
@@ -257,6 +345,164 @@ async function removeTripFamilyMember(formData: FormData) {
     revalidatePath(revalidatePathname || `/trips/${tripId}`);
 }
 
+async function upsertTripLeg(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "");
+    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
+    const revalidatePathname = String(formData.get("revalidate_path") || "");
+    const now = new Date().toISOString();
+    const name = String(formData.get("name") || "").trim();
+    const cityName = String(formData.get("city_name") || "").trim();
+    const countryCode = String(formData.get("country_code") || "")
+        .trim()
+        .toUpperCase();
+    const iconEmoji = String(formData.get("icon_emoji") || "").trim();
+    const startDate = String(formData.get("start_date") || "").trim();
+    const endDate = String(formData.get("end_date") || "").trim();
+    const tripMemberIds = Array.from(
+        new Set(
+            formData
+                .getAll("trip_member_ids")
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+        )
+    );
+
+    if (!tripId || !name) {
+        throw new Error("Could not save trip leg");
+    }
+
+    const payload = {
+        trip_id: tripId,
+        name,
+        city_name: cityName || null,
+        country_code: /^[A-Z]{2}$/.test(countryCode) ? countryCode : null,
+        icon_emoji: iconEmoji || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        leg_type: "custom",
+        created_by: user.id,
+        updated_at: now,
+    };
+
+    const { data: savedLeg, error } = tripLegId
+        ? await supabase
+              .from("trip_legs")
+              .update(payload)
+              .eq("id", tripLegId)
+              .eq("trip_id", tripId)
+              .select("id")
+              .single()
+        : await supabase
+              .from("trip_legs")
+              .insert(payload)
+              .select("id")
+              .single();
+
+    if (error || !savedLeg?.id) {
+        console.error("Error saving trip leg:", {
+            message: error?.message,
+            code: error?.code,
+            details: error?.details,
+            hint: error?.hint,
+            payload,
+        });
+        throw new Error(
+            `Could not save trip leg: ${error?.message ?? "Unknown Supabase error"}`
+        );
+    }
+
+    const { error: deleteMembersError } = await supabase
+        .from("trip_member_legs")
+        .delete()
+        .eq("trip_id", tripId)
+        .eq("trip_leg_id", savedLeg.id);
+
+    if (deleteMembersError) {
+        console.error("Error clearing trip leg members:", deleteMembersError);
+        throw new Error("Could not update trip leg members");
+    }
+
+    if (tripMemberIds.length > 0) {
+        const { error: insertMembersError } = await supabase
+            .from("trip_member_legs")
+            .insert(
+                tripMemberIds.map((tripMemberId) => ({
+                    trip_id: tripId,
+                    trip_leg_id: savedLeg.id,
+                    trip_member_id: tripMemberId,
+                    start_date: startDate || null,
+                    end_date: endDate || null,
+                    is_joining: true,
+                    updated_at: now,
+                }))
+            );
+
+        if (insertMembersError) {
+            console.error("Error saving trip leg members:", {
+                message: insertMembersError.message,
+                code: insertMembersError.code,
+                details: insertMembersError.details,
+                hint: insertMembersError.hint,
+                tripId,
+                tripLegId: savedLeg.id,
+                tripMemberIds,
+            });
+            throw new Error("Could not update trip leg members");
+        }
+    }
+
+    revalidatePath(revalidatePathname || `/trips/${tripId}`);
+}
+
+async function deleteTripLeg(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "");
+    const tripLegId = String(formData.get("trip_leg_id") || "").trim();
+    const revalidatePathname = String(formData.get("revalidate_path") || "");
+
+    if (!tripId || !tripLegId) {
+        throw new Error("Could not delete trip leg");
+    }
+
+    const { error } = await supabase
+        .from("trip_legs")
+        .delete()
+        .eq("id", tripLegId)
+        .eq("trip_id", tripId)
+        .eq("leg_type", "custom");
+
+    if (error) {
+        console.error("Error deleting trip leg:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            tripLegId,
+        });
+        throw new Error("Could not delete trip leg");
+    }
+
+    revalidatePath(revalidatePathname || `/trips/${tripId}`);
+}
+
 export default async function TripPageHero({
     tripId,
     pageLabel,
@@ -425,6 +671,205 @@ export default async function TripPageHero({
                 : null,
     }));
 
+    const { data: tripLegRows, error: tripLegsError } = await supabase
+        .from("trip_legs")
+        .select(
+            "id,name,city_name,country_code,icon_emoji,start_date,end_date,leg_type,sort_order"
+        )
+        .eq("trip_id", tripId)
+        .order("start_date", { ascending: true, nullsFirst: false })
+        .order("sort_order", { ascending: true });
+
+    if (tripLegsError) {
+        console.warn("Could not load trip legs for hero:", {
+            message: tripLegsError.message,
+            code: tripLegsError.code,
+            details: tripLegsError.details,
+            hint: tripLegsError.hint,
+            tripId,
+        });
+    }
+
+    const manualTripLegIds = ((tripLegRows || []) as Array<{ id?: string | null }>)
+        .map((leg) => leg.id)
+        .filter(Boolean) as string[];
+    let tripMemberLegRows: Array<{
+        trip_leg_id: string;
+        trip_member_id: string;
+        is_joining?: boolean | null;
+    }> = [];
+
+    if (manualTripLegIds.length > 0) {
+        const { data: memberLegRows, error: memberLegRowsError } = await supabase
+            .from("trip_member_legs")
+            .select("trip_leg_id,trip_member_id,is_joining")
+            .eq("trip_id", tripId)
+            .in("trip_leg_id", manualTripLegIds);
+
+        if (memberLegRowsError) {
+            console.warn("Could not load trip leg members for hero:", {
+                message: memberLegRowsError.message,
+                code: memberLegRowsError.code,
+                details: memberLegRowsError.details,
+                hint: memberLegRowsError.hint,
+                tripId,
+            });
+        } else {
+            tripMemberLegRows = (memberLegRows || []) as typeof tripMemberLegRows;
+        }
+    }
+
+    const tripMemberIdsByLegId = new Map<string, string[]>();
+    tripMemberLegRows.forEach((row) => {
+        if (!row.is_joining) return;
+        const current = tripMemberIdsByLegId.get(row.trip_leg_id) || [];
+        current.push(row.trip_member_id);
+        tripMemberIdsByLegId.set(row.trip_leg_id, current);
+    });
+
+    const { data: accommodationLocationRows, error: accommodationLocationError } =
+        await supabase
+            .from("trip_accommodations")
+            .select("id,hotel_name,city,region,country,check_in_date,check_out_date")
+            .eq("trip_id", tripId)
+            .neq("status", "cancelled")
+            .order("check_in_date", { ascending: true });
+
+    if (accommodationLocationError) {
+        console.warn("Could not load accommodation locations for hero:", {
+            message: accommodationLocationError.message,
+            code: accommodationLocationError.code,
+            details: accommodationLocationError.details,
+            hint: accommodationLocationError.hint,
+            tripId,
+        });
+    }
+
+    const accommodationLocations: TripLegLocation[] = (
+        (accommodationLocationRows || []) as Array<{
+            id: string;
+            hotel_name?: string | null;
+            city?: string | null;
+            region?: string | null;
+            country?: string | null;
+            check_in_date?: string | null;
+            check_out_date?: string | null;
+        }>
+    )
+        .map((accommodation) => {
+            const name =
+                accommodation.city ||
+                accommodation.region ||
+                accommodation.country ||
+                accommodation.hotel_name ||
+                "Accommodation";
+
+            return {
+                id: accommodation.id,
+                source: "accommodation" as const,
+                name,
+                cityName: accommodation.city || accommodation.region || name,
+                countryName: accommodation.country || null,
+                startDate: accommodation.check_in_date || null,
+                endDate: accommodation.check_out_date || null,
+            };
+        })
+        .filter((location) => location.name.trim().length > 0);
+
+    const manualLocations: TripLegLocation[] = (
+        (tripLegRows || []) as Array<{
+            id: string;
+            name: string;
+            city_name?: string | null;
+            country_code?: string | null;
+            icon_emoji?: string | null;
+            start_date?: string | null;
+            end_date?: string | null;
+            leg_type?: string | null;
+        }>
+    )
+        .filter((leg) => leg.leg_type !== "accommodation")
+        .map((leg) => ({
+            id: leg.id,
+            source: "manual" as const,
+            name: leg.name,
+            cityName: leg.city_name || null,
+            countryCode: leg.country_code || null,
+            iconEmoji: leg.icon_emoji || null,
+            startDate: leg.start_date || null,
+            endDate: leg.end_date || null,
+            memberIds: tripMemberIdsByLegId.get(leg.id) || [],
+        }));
+
+    const destinationLocations: TripLegLocation[] = parseDestinationList(
+        tripRecord.destination
+    ).map((destination, index) => {
+        const flag = getLeadingFlag(destination);
+        const countryCode = getCountryCodeFromFlag(flag);
+        const cleanDestination = stripLeadingFlag(destination);
+        const countryName = getCountryName(countryCode);
+
+        return {
+            id: `destination-${index}-${cleanDestination || destination}`,
+            source: "destination" as const,
+            name: cleanDestination || destination,
+            cityName: cleanDestination || destination,
+            countryCode,
+            countryName,
+            iconEmoji: flag || getFlagEmoji(countryCode) || null,
+            startDate: null,
+            endDate: null,
+            memberIds: [],
+        };
+    });
+
+    const heroLocations =
+        destinationLocations.length > 0
+            ? destinationLocations.map((destination) => {
+                  const manualMatch = manualLocations.find((location) =>
+                      locationsMatch(destination, location)
+                  );
+                  const accommodationMatch = accommodationLocations.find((location) =>
+                      locationsMatch(destination, location)
+                  );
+
+                  return {
+                      ...destination,
+                      persistedLegId: manualMatch?.id || null,
+                      startDate:
+                          accommodationMatch?.startDate ||
+                          manualMatch?.startDate ||
+                          null,
+                      endDate:
+                          accommodationMatch?.endDate ||
+                          manualMatch?.endDate ||
+                          null,
+                      memberIds: manualMatch?.memberIds || [],
+                  };
+              })
+            : [...accommodationLocations, ...manualLocations];
+    const tripLegMemberOptions: TripLegMemberOption[] = memberRows
+        .filter((member) => Boolean(member.id))
+        .map((member) => {
+            const profile = member.user_id
+                ? tripMembers.find((tripMember) => tripMember.user_id === member.user_id)
+                : null;
+            const displayName = [
+                profile?.first_name || "",
+                profile?.last_name || "",
+            ]
+                .join(" ")
+                .trim();
+
+            return {
+                id: member.id as string,
+                displayName:
+                    displayName || profile?.username || member.role || "Trip mate",
+                username: profile?.username || null,
+                avatarUrl: profile?.avatar_url || null,
+            };
+        });
+
     return (
         <header className="mb-8 overflow-hidden border-b border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/40">
             <TripDocumentTitle
@@ -470,21 +915,28 @@ export default async function TripPageHero({
                             />
                         </div>
                     ) : (
-                        <TripDestinationLine destination={tripRecord.destination}>
-                        <TripMembersPanel
+                        <TripLegLocationLine
                             tripId={tripRecord.id}
-                            tripTitle={tripRecord.title}
-                            members={tripMembers}
-                            familyMembers={tripFamilyMembers}
-                            availableFamilyMembers={savedFamilyMembers}
-                            invitations={pendingInvitations}
-                            currentUserId={user.id}
-                            tripOwnerId={tripRecord.user_id}
-                            removeMemberAction={removeTripMember}
-                            addFamilyMemberAction={addTripFamilyMember}
-                            removeFamilyMemberAction={removeTripFamilyMember}
-                        />
-                        </TripDestinationLine>
+                            revalidatePathname={revalidatePathname}
+                            locations={heroLocations}
+                            memberOptions={tripLegMemberOptions}
+                            upsertLegAction={upsertTripLeg}
+                            deleteLegAction={deleteTripLeg}
+                        >
+                            <TripMembersPanel
+                                tripId={tripRecord.id}
+                                tripTitle={tripRecord.title}
+                                members={tripMembers}
+                                familyMembers={tripFamilyMembers}
+                                availableFamilyMembers={savedFamilyMembers}
+                                invitations={pendingInvitations}
+                                currentUserId={user.id}
+                                tripOwnerId={tripRecord.user_id}
+                                removeMemberAction={removeTripMember}
+                                addFamilyMemberAction={addTripFamilyMember}
+                                removeFamilyMemberAction={removeTripFamilyMember}
+                            />
+                        </TripLegLocationLine>
                     )}
                 </div>
 

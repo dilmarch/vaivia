@@ -1,34 +1,21 @@
 "use client";
 
 import { useEffect } from "react";
+import {
+    COUNTDOWN_UNITS,
+    isCountdownUnit,
+    type CountdownUnit,
+} from "@/lib/countdownDisplay";
 
-export type CountdownUnit = "days" | "weeks" | "hours" | "minutes" | "seconds";
+export { COUNTDOWN_UNITS, isCountdownUnit, type CountdownUnit };
 
 export const COUNTDOWN_UNIT_STORAGE_KEY = "vaivia:countdown-unit";
 
-export const COUNTDOWN_UNITS: Array<{ value: CountdownUnit; label: string }> = [
-    { value: "days", label: "Days" },
-    { value: "weeks", label: "Weeks" },
-    { value: "hours", label: "Hours" },
-    { value: "minutes", label: "Minutes" },
-    { value: "seconds", label: "Seconds" },
-];
-
-export function isCountdownUnit(value: string | null): value is CountdownUnit {
-    return (
-        value === "days" ||
-        value === "weeks" ||
-        value === "hours" ||
-        value === "minutes" ||
-        value === "seconds"
-    );
-}
-
-export function getStoredCountdownUnit(): CountdownUnit {
-    if (typeof window === "undefined") return "days";
+export function getStoredCountdownUnit(fallback: CountdownUnit = "days"): CountdownUnit {
+    if (typeof window === "undefined") return fallback;
 
     const storedValue = window.localStorage.getItem(COUNTDOWN_UNIT_STORAGE_KEY);
-    return isCountdownUnit(storedValue) ? storedValue : "days";
+    return isCountdownUnit(storedValue) ? storedValue : fallback;
 }
 
 export function setCountdownUnit(unit: CountdownUnit) {

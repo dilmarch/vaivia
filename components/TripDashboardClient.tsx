@@ -27,6 +27,9 @@ export type DashboardTrip = {
     destination?: string | null;
     cover_image_url?: string | null;
     trip_cover_image_url?: string | null;
+    countdown_target_type?: string | null;
+    countdown_target_id?: string | null;
+    countdown_target_itinerary_item_id?: string | null;
     start_date?: string | null;
     end_date?: string | null;
     notes?: string | null;

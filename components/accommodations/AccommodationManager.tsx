@@ -802,7 +802,7 @@ function AccommodationCard({
                     <a
                         href={accommodation.website}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className={secondaryButtonClass}
                     >
                         Website
@@ -813,7 +813,7 @@ function AccommodationCard({
                     <a
                         href={accommodation.google_maps_url}
                         target="_blank"
-                        rel="noreferrer"
+                        rel="noopener noreferrer"
                         className={secondaryButtonClass}
                     >
                         Open in Google Maps

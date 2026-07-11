@@ -1840,7 +1840,7 @@ function EventCardActions({
                 <a
                     href={ticketWebsite}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className={`${buttonClass} border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.18)] hover:bg-lime-200`}
                 >
                     Buy Tickets
@@ -1850,7 +1850,7 @@ function EventCardActions({
                 <a
                     href={mapsUrl}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className={`${buttonClass} ${subtleButtonClass}`}
                 >
                     Location
@@ -1860,7 +1860,7 @@ function EventCardActions({
                 <a
                     href={venueWebsite}
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     className={`${buttonClass} ${subtleButtonClass}`}
                 >
                     Venue
@@ -2814,7 +2814,7 @@ function ItineraryItemModal({
                                     <a
                                         href={locationWebsite}
                                         target="_blank"
-                                        rel="noreferrer"
+                                        rel="noopener noreferrer"
                                         className="rounded-md border border-slate-200 p-3 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
                                     >
                                         Location website
@@ -2824,7 +2824,7 @@ function ItineraryItemModal({
                                     <a
                                         href={ticketWebsite}
                                         target="_blank"
-                                        rel="noreferrer"
+                                        rel="noopener noreferrer"
                                         className="rounded-md border border-slate-200 p-3 text-sm font-medium text-slate-800 transition hover:bg-slate-50"
                                     >
                                         Ticket website
@@ -2956,7 +2956,7 @@ function ItineraryItemModal({
                         <a
                             href={locationWebsite}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                         >
                             <ExternalLink className="h-4 w-4" aria-hidden="true" />
@@ -2967,7 +2967,7 @@ function ItineraryItemModal({
                         <a
                             href={ticketWebsite}
                             target="_blank"
-                            rel="noreferrer"
+                            rel="noopener noreferrer"
                             className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-slate-900 px-4 text-sm font-medium text-white transition hover:bg-slate-700"
                         >
                             <ExternalLink className="h-4 w-4" aria-hidden="true" />
