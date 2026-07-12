@@ -888,7 +888,7 @@ export default async function TripPageHero({
                             {pageLabel}
                         </p>
                     ) : null}
-                    <h1 className="max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
+                    <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
                         {tripRecord.title || "Untitled trip"}
                     </h1>
                 </div>

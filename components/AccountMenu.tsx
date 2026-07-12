@@ -21,6 +21,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import AnimatedModal from "@/components/AnimatedModal";
 import PassportStampCard from "@/components/PassportStamp";
+import {
+    getStoredVaiviaThemeMode,
+    type VaiviaThemeMode,
+} from "@/components/PinkModeProvider";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import Portal from "@/components/Portal";
 import { createClient } from "@/lib/supabase/client";
@@ -67,6 +71,9 @@ type PassportStamp = {
     arrivalLabel?: string | null;
     airportCode?: string | null;
     airportCity?: string | null;
+    airportName?: string | null;
+    airportGooglePlaceId?: string | null;
+    airportFormattedAddress?: string | null;
     sourceTripTitle?: string | null;
     source: "auto" | "manual";
 };
@@ -93,6 +100,25 @@ type ProfileStats = {
     tripsPlanned: number;
     friendsCount: number;
     stamps: PassportStamp[];
+};
+
+const THEME_PROFILE_LABELS: Record<VaiviaThemeMode, string> = {
+    dark: "Dark Mode",
+    pink: "Pink Mode",
+    greyscale: "Greyscale",
+    brat: "Brat Mode",
+    pride: "Pride Mode",
+    light: "Light Mode",
+};
+
+const THEME_PROFILE_BADGE_CLASSES: Record<VaiviaThemeMode, string> = {
+    dark: "border-lime-300/30 bg-lime-300/10 text-lime-100",
+    pink: "border-pink-300/35 bg-pink-400/15 text-pink-100",
+    greyscale: "border-slate-300/35 bg-slate-200/15 text-slate-100",
+    brat: "border-black/30 bg-black text-[#8ACE00]",
+    pride:
+        "border-white/25 bg-[linear-gradient(90deg,#e40303,#ff8c00,#ffed00,#008026,#24408e,#732982)] text-white",
+    light: "border-slate-300 bg-white text-slate-950",
 };
 
 function formatJoinDate(value?: string | null) {
@@ -336,6 +362,8 @@ export default function AccountMenu({
         friendsCount: 0,
         stamps: [],
     });
+    const [currentThemeMode, setCurrentThemeMode] =
+        useState<VaiviaThemeMode>("dark");
     const [isLoadingProfileStats, setIsLoadingProfileStats] = useState(false);
     const [countryOptions, setCountryOptions] = useState<CountryOption[]>([]);
     const [isLoadingCountries, setIsLoadingCountries] = useState(false);
@@ -353,6 +381,8 @@ export default function AccountMenu({
     const [selectedAirportParsedCode, setSelectedAirportParsedCode] = useState("");
     const [selectedPassportStamp, setSelectedPassportStamp] =
         useState<PassportStamp | null>(null);
+    const [isEditingPassportStamp, setIsEditingPassportStamp] = useState(false);
+    const [editStampYear, setEditStampYear] = useState("");
     const [isSavingStamp, setIsSavingStamp] = useState(false);
 
     const displayName = useMemo(() => {
@@ -366,6 +396,8 @@ export default function AccountMenu({
         profile?.join_date || profile?.created_at || joinedAt
     );
     const passportStamps = profileStats.stamps;
+    const currentThemeLabel = THEME_PROFILE_LABELS[currentThemeMode];
+    const currentThemeBadgeClass = THEME_PROFILE_BADGE_CLASSES[currentThemeMode];
     const selectedStampCountry = useMemo(
         () =>
             countryOptions.find(
@@ -486,6 +518,22 @@ export default function AccountMenu({
             isCancelled = true;
         };
     }, [isOpen]);
+
+    useEffect(() => {
+        setCurrentThemeMode(getStoredVaiviaThemeMode());
+
+        function handleThemeChange(event: Event) {
+            const detail = (event as CustomEvent<{ mode?: VaiviaThemeMode }>).detail;
+            if (detail?.mode) setCurrentThemeMode(detail.mode);
+        }
+
+        window.addEventListener("vaivia:theme-mode-change", handleThemeChange);
+        return () =>
+            window.removeEventListener(
+                "vaivia:theme-mode-change",
+                handleThemeChange
+            );
+    }, []);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -716,6 +764,11 @@ export default function AccountMenu({
                                 stamp.first_entry_icao_code ||
                                 null,
                             airportCity: stamp.first_entry_city || null,
+                            airportName: stamp.first_entry_airport_name || null,
+                            airportGooglePlaceId:
+                                stamp.first_entry_airport_google_place_id || null,
+                            airportFormattedAddress:
+                                stamp.first_entry_airport_formatted_address || null,
                             source: "manual" as const,
                         });
 
@@ -1192,6 +1245,11 @@ export default function AccountMenu({
                     data?.first_entry_icao_code ||
                     null,
                 airportCity: data?.first_entry_city || selectedCountry.capital || null,
+                airportName: data?.first_entry_airport_name || null,
+                airportGooglePlaceId:
+                    data?.first_entry_airport_google_place_id || null,
+                airportFormattedAddress:
+                    data?.first_entry_airport_formatted_address || null,
                 source: "manual",
             };
 
@@ -1249,6 +1307,133 @@ export default function AccountMenu({
                 userId,
             });
             setErrorMessage("Could not remove passport stamp.");
+        } finally {
+            setIsSavingStamp(false);
+        }
+    }
+
+    function beginEditPassportStamp(stamp: PassportStamp) {
+        if (stamp.source !== "manual") return;
+
+        setErrorMessage(null);
+        setIsEditingPassportStamp(true);
+        setEditStampYear(
+            stamp.firstVisitYear ? String(stamp.firstVisitYear) : ""
+        );
+        setAirportSearchValue(
+            [
+                stamp.airportName,
+                stamp.airportFormattedAddress,
+                stamp.airportCode && !stamp.airportName ? stamp.airportCode : null,
+            ]
+                .filter(Boolean)
+                .join(" · ")
+        );
+        setSelectedAirportPlaceId(stamp.airportGooglePlaceId || "");
+        setSelectedAirportName(stamp.airportName || "");
+        setSelectedAirportFormattedAddress(stamp.airportFormattedAddress || "");
+        setSelectedAirportCity(stamp.airportCity || "");
+        setSelectedAirportParsedCode(stamp.airportCode || "");
+    }
+
+    async function handleUpdatePassportStamp(stamp: PassportStamp) {
+        if (stamp.source !== "manual" || !stamp.id) return;
+
+        if (!selectedAirportPlaceId || !selectedAirportName.trim()) {
+            setErrorMessage(
+                "Select a Google Maps airport result for the airport of entry."
+            );
+            return;
+        }
+
+        const supabase = createClient();
+        setIsSavingStamp(true);
+        setErrorMessage(null);
+
+        try {
+            const airportSnapshot = await resolveAirportSnapshot(
+                supabase,
+                stamp.countryCode
+            );
+            const firstVisitedOn = getManualFirstVisitedOn(editStampYear);
+            const payload = {
+                first_visited_on: firstVisitedOn,
+                first_entry_airport_id: airportSnapshot.airportId,
+                first_entry_iata_code: airportSnapshot.iataCode,
+                first_entry_icao_code: airportSnapshot.icaoCode,
+                first_entry_city: airportSnapshot.city || selectedAirportCity || null,
+                first_entry_airport_name: airportSnapshot.name,
+                first_entry_airport_google_place_id: airportSnapshot.googlePlaceId,
+                first_entry_airport_formatted_address:
+                    airportSnapshot.formattedAddress,
+                updated_at: new Date().toISOString(),
+            };
+
+            const { data, error } = await supabase
+                .from("user_passport_stamps")
+                .update(payload)
+                .eq("id", stamp.id)
+                .eq("user_id", userId)
+                .select(
+                    "id,country_code,country_name,flag_emoji,first_visited_on,welcome_label_snapshot,arrival_label_snapshot,stamp_display_country_name,stamp_display_flag,first_entry_iata_code,first_entry_icao_code,first_entry_city,first_entry_airport_name,first_entry_airport_google_place_id,first_entry_airport_formatted_address"
+                )
+                .single();
+
+            if (error) throw error;
+
+            const updatedStamp: PassportStamp = {
+                ...stamp,
+                countryCode: data?.country_code || stamp.countryCode,
+                countryName:
+                    data?.stamp_display_country_name ||
+                    data?.country_name ||
+                    stamp.countryName,
+                flagEmoji:
+                    data?.stamp_display_flag ||
+                    data?.flag_emoji ||
+                    stamp.flagEmoji,
+                firstVisitedOn: data?.first_visited_on || null,
+                firstVisitYear: getYearFromDate(data?.first_visited_on),
+                welcomeLabel:
+                    data?.welcome_label_snapshot ||
+                    data?.arrival_label_snapshot ||
+                    stamp.welcomeLabel ||
+                    null,
+                arrivalLabel:
+                    data?.arrival_label_snapshot || stamp.arrivalLabel || null,
+                airportCode:
+                    data?.first_entry_iata_code ||
+                    data?.first_entry_icao_code ||
+                    null,
+                airportCity: data?.first_entry_city || null,
+                airportName: data?.first_entry_airport_name || null,
+                airportGooglePlaceId:
+                    data?.first_entry_airport_google_place_id || null,
+                airportFormattedAddress:
+                    data?.first_entry_airport_formatted_address || null,
+                source: "manual",
+            };
+
+            setSelectedPassportStamp(updatedStamp);
+            setProfileStats((current) => ({
+                ...current,
+                stamps: mergePassportStamps(
+                    current.stamps.map((currentStamp) =>
+                        currentStamp.source === "manual" &&
+                        currentStamp.id === stamp.id
+                            ? updatedStamp
+                            : currentStamp
+                    )
+                ),
+            }));
+            setIsEditingPassportStamp(false);
+        } catch (error) {
+            console.error("Could not update passport stamp:", {
+                ...getErrorDetails(error),
+                stamp,
+                userId,
+            });
+            setErrorMessage("Could not update passport stamp.");
         } finally {
             setIsSavingStamp(false);
         }
@@ -1395,6 +1580,11 @@ export default function AccountMenu({
                                 <p className="mt-2 text-sm font-semibold text-slate-300">
                                     {profileSubtitle}
                                 </p>
+                                <span
+                                    className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.16em] shadow-xl shadow-black/20 ${currentThemeBadgeClass}`}
+                                >
+                                    {currentThemeLabel}
+                                </span>
                                 <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
                                     Joined {joinDateLabel}
                                 </p>
@@ -1658,7 +1848,10 @@ export default function AccountMenu({
                                         airportCode={stamp.airportCode}
                                         airportCity={stamp.airportCity}
                                         size="sm"
-                                        onClick={() => setSelectedPassportStamp(stamp)}
+                                        onClick={() => {
+                                            setIsEditingPassportStamp(false);
+                                            setSelectedPassportStamp(stamp);
+                                        }}
                                         removable={stamp.source === "manual"}
                                         onRemove={() => handleDeletePassportStamp(stamp)}
                                     />
@@ -2055,7 +2248,10 @@ export default function AccountMenu({
             {selectedPassportStamp ? (
                 <Portal>
                     <AnimatedModal
-                        onClose={() => setSelectedPassportStamp(null)}
+                        onClose={() => {
+                            setIsEditingPassportStamp(false);
+                            setSelectedPassportStamp(null);
+                        }}
                         className="z-[110] items-center bg-slate-950/60"
                         panelClassName="max-w-xl overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/60"
                         labelledBy="passportStampDetailTitle"
@@ -2146,6 +2342,104 @@ export default function AccountMenu({
                                             </dd>
                                         </div>
                                     </dl>
+                                    {selectedPassportStamp.source === "manual" ? (
+                                        <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+                                            {isEditingPassportStamp ? (
+                                                <div className="space-y-3">
+                                                    <div>
+                                                        <Label
+                                                            htmlFor="passportStampEditYear"
+                                                            className="text-xs font-black uppercase tracking-[0.18em] text-lime-200"
+                                                        >
+                                                            Year of first completed travel
+                                                        </Label>
+                                                        <input
+                                                            id="passportStampEditYear"
+                                                            value={editStampYear}
+                                                            onChange={(event) =>
+                                                                setEditStampYear(
+                                                                    event.target.value
+                                                                        .replace(/\D/g, "")
+                                                                        .slice(0, 4)
+                                                                )
+                                                            }
+                                                            placeholder="Year"
+                                                            inputMode="numeric"
+                                                            className="mt-2 w-full rounded-full border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <Label
+                                                            htmlFor="passportStampEditAirport"
+                                                            className="text-xs font-black uppercase tracking-[0.18em] text-lime-200"
+                                                        >
+                                                            Airport of entry
+                                                        </Label>
+                                                        <PlaceAutocompleteInput
+                                                            id="passportStampEditAirport"
+                                                            value={airportSearchValue}
+                                                            onInputChange={(value) => {
+                                                                setAirportSearchValue(value);
+                                                                resetSelectedAirport();
+                                                            }}
+                                                            onPlaceSelect={
+                                                                handleAirportPlaceSelect
+                                                            }
+                                                            placeholder="Airport of entry, e.g. YUL or Montréal airport"
+                                                            className="mt-2 w-full rounded-full border border-white/10 bg-slate-950 px-4 py-2.5 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                                        />
+                                                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                                                            Select a Google Maps airport result
+                                                            so VAIVIA can snapshot the airport
+                                                            name and code.
+                                                        </p>
+                                                    </div>
+                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={() =>
+                                                                setIsEditingPassportStamp(false)
+                                                            }
+                                                            className="border-white/10 bg-white/[0.08] text-slate-100 hover:bg-white/[0.14] hover:text-white"
+                                                        >
+                                                            Cancel
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleUpdatePassportStamp(
+                                                                    selectedPassportStamp
+                                                                )
+                                                            }
+                                                            disabled={isSavingStamp}
+                                                            className="bg-lime-300 text-slate-950 hover:bg-lime-200"
+                                                        >
+                                                            {isSavingStamp
+                                                                ? "Saving..."
+                                                                : "Save changes"}
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        beginEditPassportStamp(
+                                                            selectedPassportStamp
+                                                        )
+                                                    }
+                                                    className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                                >
+                                                    <Pencil
+                                                        className="h-4 w-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Edit stamp
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : null}
                                 </div>
                             </div>
                         )}

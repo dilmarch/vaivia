@@ -67,7 +67,7 @@ export default function DashboardCountdownWidget({
     if (!target) return null;
 
     return (
-        <aside className="rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-4 text-white shadow-2xl shadow-black/35 backdrop-blur-xl md:min-w-72">
+        <aside className="vaivia-dashboard-countdown-widget rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-4 text-white shadow-2xl shadow-black/35 backdrop-blur-xl md:min-w-72">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-lime-200">
                 Next countdown
             </p>

@@ -63,7 +63,7 @@ export default function VaiviaLoadingScreen({
 
                         <div className="relative z-10">
                             <Sparkles className="mb-5 h-6 w-6 text-lime-300 drop-shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.9)]" />
-                            <h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">
+                            <h1 className="vaivia-loading-title text-2xl font-black tracking-tight text-white md:text-3xl">
                                 {title}
                             </h1>
                             <p className="mt-3 max-w-xs text-sm leading-6 text-slate-300">

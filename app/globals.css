@@ -33,16 +33,109 @@
     --vaivia-neon-soft-rgb: 212,255,47;
     --vaivia-neon-solid: #bef264;
     --vaivia-neon-soft-solid: #d4ff2f;
+    --vaivia-theme-accent-rgb: 190,242,100;
+    --vaivia-theme-accent-soft-rgb: 212,255,47;
+    --vaivia-theme-accent-solid: #bef264;
+    --vaivia-theme-accent-soft-solid: #d4ff2f;
+    --vaivia-theme-accent-bg: #bef264;
+    --vaivia-theme-accent-hover-bg: #d9f99d;
+    --vaivia-theme-accent-light-bg: #ecfccb;
+    --vaivia-theme-accent-faint-bg: #f7fee7;
+    --vaivia-theme-accent-text: #bef264;
+    --vaivia-theme-accent-text-soft: #d9f99d;
+    --vaivia-theme-accent-text-dark: #365314;
     --safe-area-top: env(safe-area-inset-top, 0px);
     --safe-area-right: env(safe-area-inset-right, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
   }
+  :root[data-vaivia-theme="pink"],
   :root[data-pink-mode="true"] {
     --vaivia-neon-rgb: 255,54,190;
     --vaivia-neon-soft-rgb: 244,114,182;
     --vaivia-neon-solid: #ff36be;
     --vaivia-neon-soft-solid: #f472b6;
+    --vaivia-theme-accent-rgb: 255,54,190;
+    --vaivia-theme-accent-soft-rgb: 244,114,182;
+    --vaivia-theme-accent-solid: #ff36be;
+    --vaivia-theme-accent-soft-solid: #f472b6;
+    --vaivia-theme-accent-bg: #ff36be;
+    --vaivia-theme-accent-hover-bg: #f472b6;
+    --vaivia-theme-accent-light-bg: #fbcfe8;
+    --vaivia-theme-accent-faint-bg: #fdf2f8;
+    --vaivia-theme-accent-text: #ff36be;
+    --vaivia-theme-accent-text-soft: #fbcfe8;
+    --vaivia-theme-accent-text-dark: #9d174d;
+  }
+  :root[data-vaivia-theme="greyscale"] {
+    --vaivia-neon-rgb: 203,213,225;
+    --vaivia-neon-soft-rgb: 226,232,240;
+    --vaivia-neon-solid: #cbd5e1;
+    --vaivia-neon-soft-solid: #e2e8f0;
+    --vaivia-theme-accent-rgb: 203,213,225;
+    --vaivia-theme-accent-soft-rgb: 226,232,240;
+    --vaivia-theme-accent-solid: #cbd5e1;
+    --vaivia-theme-accent-soft-solid: #e2e8f0;
+    --vaivia-theme-accent-bg: #cbd5e1;
+    --vaivia-theme-accent-hover-bg: #e2e8f0;
+    --vaivia-theme-accent-light-bg: #f1f5f9;
+    --vaivia-theme-accent-faint-bg: #f8fafc;
+    --vaivia-theme-accent-text: #e2e8f0;
+    --vaivia-theme-accent-text-soft: #f1f5f9;
+    --vaivia-theme-accent-text-dark: #111827;
+  }
+  :root[data-vaivia-theme="brat"] {
+    --vaivia-neon-rgb: 138,206,0;
+    --vaivia-neon-soft-rgb: 163,236,19;
+    --vaivia-neon-solid: #8ace00;
+    --vaivia-neon-soft-solid: #a3ec13;
+    --vaivia-theme-accent-rgb: 138,206,0;
+    --vaivia-theme-accent-soft-rgb: 163,236,19;
+    --vaivia-theme-accent-solid: #8ace00;
+    --vaivia-theme-accent-soft-solid: #a3ec13;
+    --vaivia-theme-accent-bg: #8ace00;
+    --vaivia-theme-accent-hover-bg: #a3ec13;
+    --vaivia-theme-accent-light-bg: #d5ff65;
+    --vaivia-theme-accent-faint-bg: #efffcc;
+    --vaivia-theme-accent-text: #a3ec13;
+    --vaivia-theme-accent-text-soft: #d5ff65;
+    --vaivia-theme-accent-text-dark: #193300;
+  }
+  :root[data-vaivia-theme="pride"] {
+    --vaivia-neon-rgb: 255,237,0;
+    --vaivia-neon-soft-rgb: 255,140,0;
+    --vaivia-neon-solid: #ffed00;
+    --vaivia-neon-soft-solid: #ff8c00;
+    --vaivia-theme-accent-rgb: 255,237,0;
+    --vaivia-theme-accent-soft-rgb: 255,140,0;
+    --vaivia-theme-accent-solid: #ffed00;
+    --vaivia-theme-accent-soft-solid: #ff8c00;
+    --vaivia-theme-accent-bg: linear-gradient(90deg,#e40303,#ff8c00,#ffed00,#008026,#24408e,#732982);
+    --vaivia-theme-accent-hover-bg: linear-gradient(90deg,#ff3b3b,#ff9f1c,#fff24a,#00b33c,#3c5cff,#9b4dca);
+    --vaivia-theme-accent-light-bg: #fff7ad;
+    --vaivia-theme-accent-faint-bg: #fffbe6;
+    --vaivia-theme-accent-text: #ffed00;
+    --vaivia-theme-accent-text-soft: #fff7ad;
+    --vaivia-theme-accent-text-dark: #111827;
+  }
+  :root[data-vaivia-theme="light"] {
+    --background: 0 0% 98%;
+    --foreground: 222 47% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 8%;
+    --primary: 222 47% 8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222 47% 8%;
+    --muted: 210 40% 94%;
+    --muted-foreground: 215 16% 36%;
+    --accent: 210 40% 94%;
+    --accent-foreground: 222 47% 8%;
+    --border: 214 32% 82%;
+    --input: 214 32% 82%;
+    --ring: 222 47% 8%;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -174,20 +267,20 @@
     background-color: rgb(244 114 182 / 0.1) !important;
   }
 
-  :root[data-pink-mode="true"] .hover\:bg-lime-300:hover,
-  :root[data-pink-mode="true"] .hover\:bg-lime-200:hover,
-  :root[data-pink-mode="true"] .hover\:bg-lime-100:hover,
-  :root[data-pink-mode="true"] .focus\:bg-lime-300:focus,
-  :root[data-pink-mode="true"] .focus-visible\:bg-lime-300:focus-visible {
+  :root[data-pink-mode="true"] [class~="hover:bg-lime-300"]:hover,
+  :root[data-pink-mode="true"] [class~="hover:bg-lime-200"]:hover,
+  :root[data-pink-mode="true"] [class~="hover:bg-lime-100"]:hover,
+  :root[data-pink-mode="true"] [class~="focus:bg-lime-300"]:focus,
+  :root[data-pink-mode="true"] [class~="focus-visible:bg-lime-300"]:focus-visible {
     --tw-bg-opacity: 1;
     background-color: rgb(244 114 182 / var(--tw-bg-opacity, 1)) !important;
   }
 
-  :root[data-pink-mode="true"] .hover\:bg-lime-300\/10:hover {
+  :root[data-pink-mode="true"] [class~="hover:bg-lime-300/10"]:hover {
     background-color: rgb(255 54 190 / 0.1) !important;
   }
 
-  :root[data-pink-mode="true"] .hover\:bg-lime-300\/20:hover {
+  :root[data-pink-mode="true"] [class~="hover:bg-lime-300/20"]:hover {
     background-color: rgb(255 54 190 / 0.2) !important;
   }
 
@@ -301,6 +394,660 @@
 
   :root[data-pink-mode="true"] .decoration-lime-300 {
     text-decoration-color: rgb(255 54 190 / 1) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300 {
+    --tw-bg-opacity: 1;
+    background: var(--vaivia-theme-accent-bg) !important;
+    background-color: var(--vaivia-theme-accent-solid) !important;
+  }
+
+  :root[data-vaivia-theme="pride"] .bg-lime-300 {
+    background: var(--vaivia-theme-accent-bg) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-50 {
+    background-color: var(--vaivia-theme-accent-faint-bg) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-100,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-200 {
+    background-color: var(--vaivia-theme-accent-light-bg) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-400 {
+    background-color: var(--vaivia-theme-accent-soft-solid) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/10 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.1) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/15 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.15) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/20 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.2) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/25 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.25) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/30 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.3) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/40 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.4) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-300\/50 {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.5) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .bg-lime-400\/10 {
+    background-color: rgb(var(--vaivia-theme-accent-soft-rgb) / 0.1) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="hover:bg-lime-300"]:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="hover:bg-lime-200"]:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="hover:bg-lime-100"]:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="focus:bg-lime-300"]:focus,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="focus-visible:bg-lime-300"]:focus-visible {
+    background: var(--vaivia-theme-accent-hover-bg) !important;
+    background-color: var(--vaivia-theme-accent-soft-solid) !important;
+  }
+
+  :root[data-vaivia-theme="pride"] [class~="hover:bg-lime-300"]:hover,
+  :root[data-vaivia-theme="pride"] [class~="hover:bg-lime-200"]:hover,
+  :root[data-vaivia-theme="pride"] [class~="hover:bg-lime-100"]:hover {
+    background: var(--vaivia-theme-accent-hover-bg) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="hover:bg-lime-300/10"]:hover {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.1) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) [class~="hover:bg-lime-300/20"]:hover {
+    background-color: rgb(var(--vaivia-theme-accent-rgb) / 0.2) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-300,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:text-lime-300:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:text-lime-200:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:text-lime-100:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus\:text-lime-300:focus,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus-visible\:text-lime-300:focus-visible {
+    color: var(--vaivia-theme-accent-text) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-100,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-200 {
+    color: var(--vaivia-theme-accent-text-soft) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-100\/80,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-200\/80,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-300\/80 {
+    color: rgb(var(--vaivia-theme-accent-rgb) / 0.8) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .text-lime-800 {
+    color: var(--vaivia-theme-accent-text-dark) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-200,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:border-lime-300:hover,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus\:border-lime-300:focus,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus-visible\:border-lime-300:focus-visible {
+    border-color: var(--vaivia-theme-accent-solid) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/20,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:border-lime-300\/20:hover {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.2) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/25 {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.25) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/30,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:border-lime-300\/30:hover {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.3) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/35 {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.35) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/40 {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.4) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/70 {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.7) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .border-lime-300\/80 {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.8) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:border-lime-300\/45:hover {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.45) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .hover\:border-lime-300\/50:hover {
+    border-color: rgb(var(--vaivia-theme-accent-rgb) / 0.5) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .ring-lime-300,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus\:ring-lime-300:focus,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus-visible\:ring-lime-300:focus-visible {
+    --tw-ring-color: var(--vaivia-theme-accent-solid) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .ring-lime-300\/25,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus\:ring-lime-300\/20:focus,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus\:ring-lime-300\/40:focus,
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .focus\:ring-lime-300\/50:focus {
+    --tw-ring-color: rgb(var(--vaivia-theme-accent-rgb) / 0.35) !important;
+  }
+
+  :root[data-vaivia-theme]:not([data-vaivia-theme="dark"]) .decoration-lime-300 {
+    text-decoration-color: var(--vaivia-theme-accent-solid) !important;
+  }
+
+  :root[data-vaivia-theme="pride"] .text-lime-300,
+  :root[data-vaivia-theme="pride"] .text-lime-200,
+  :root[data-vaivia-theme="pride"] .text-lime-100 {
+    background: linear-gradient(90deg,#e40303,#ff8c00,#ffed00,#008026,#24408e,#732982);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] img,
+  :root[data-vaivia-theme="greyscale"] video,
+  :root[data-vaivia-theme="greyscale"] canvas,
+  :root[data-vaivia-theme="greyscale"] picture {
+    filter: grayscale(1) contrast(1.05) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] body {
+    filter: grayscale(1);
+  }
+
+  :root[data-vaivia-theme="brat"],
+  :root[data-vaivia-theme="brat"] body {
+    background: #8ace00 !important;
+    color: #111111 !important;
+    font-family: "Arial Narrow", "Arial Nova Condensed", Arial, sans-serif !important;
+    font-stretch: 90%;
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1;
+    text-transform: lowercase !important;
+  }
+
+  :root[data-vaivia-theme="brat"] body *,
+  :root[data-vaivia-theme="brat"] input,
+  :root[data-vaivia-theme="brat"] textarea,
+  :root[data-vaivia-theme="brat"] select,
+  :root[data-vaivia-theme="brat"] button {
+    font-family: "Arial Narrow", "Arial Nova Condensed", Arial, sans-serif !important;
+    font-stretch: 90%;
+    font-kerning: normal;
+    font-style: normal !important;
+    font-weight: 400 !important;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1;
+    text-shadow: none !important;
+    text-transform: lowercase !important;
+  }
+
+  :root[data-vaivia-theme="brat"] b,
+  :root[data-vaivia-theme="brat"] strong,
+  :root[data-vaivia-theme="brat"] em,
+  :root[data-vaivia-theme="brat"] i,
+  :root[data-vaivia-theme="brat"] [class*="font-"],
+  :root[data-vaivia-theme="brat"] [class*="italic"] {
+    font-style: normal !important;
+    font-weight: 400 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-page-bg {
+    background:
+      radial-gradient(circle at 78% 8%, rgb(255 255 255 / 0.22), transparent 26%),
+      radial-gradient(circle at 10% 82%, rgb(0 0 0 / 0.18), transparent 30%),
+      linear-gradient(180deg, #8ace00 0%, #79b900 52%, #8ace00 100%) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-\[\#0c0115\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#080511\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#03030a\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#05030b\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#05050c\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#050712\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#06050d\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#070611\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#080711\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#080b16\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#090713\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#12051c\],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#0c0115]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080511]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#03030a]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#05030b]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#05050c]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#050712]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#06050d]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#070611]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080711]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080b16]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#090713]"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#12051c]"] {
+    background-color: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-slate-950,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/50,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/55,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/70,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/90,
+  :root[data-vaivia-theme="brat"] .bg-slate-900,
+  :root[data-vaivia-theme="brat"] .bg-slate-900\/50,
+  :root[data-vaivia-theme="brat"] .bg-slate-900\/70,
+  :root[data-vaivia-theme="brat"] .bg-slate-900\/90 {
+    background-color: rgb(138 206 0 / 0.9) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.04\],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.05\],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.06\],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.08\],
+  :root[data-vaivia-theme="brat"] .bg-white\/10,
+  :root[data-vaivia-theme="brat"] .bg-white\/15 {
+    background-color: rgb(138 206 0 / 0.72) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-\[\#0c0115\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#080511\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#03030a\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#05030b\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#05050c\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#050712\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#06050d\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#070611\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#080711\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#080b16\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#090713\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#12051c\] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#0c0115]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080511]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#03030a]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#05030b]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#05050c]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#050712]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#06050d]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#070611]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080711]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080b16]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#090713]"] *,
+  :root[data-vaivia-theme="brat"] [class*="bg-[#12051c]"] *,
+  :root[data-vaivia-theme="brat"] .bg-slate-950 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/50 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/55 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/70 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/90 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-900 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-900\/50 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-900\/70 *,
+  :root[data-vaivia-theme="brat"] .bg-slate-900\/90 *,
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.04\] *,
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.05\] *,
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.06\] *,
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.08\] *,
+  :root[data-vaivia-theme="brat"] .bg-white\/10 *,
+  :root[data-vaivia-theme="brat"] .bg-white\/15 * {
+    color: #111111 !important;
+    border-color: rgb(0 0 0 / 0.22) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] input::placeholder,
+  :root[data-vaivia-theme="brat"] textarea::placeholder {
+    color: rgb(17 17 17 / 0.58) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="text-slate"],
+  :root[data-vaivia-theme="brat"] .text-white {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .border-white\/10,
+  :root[data-vaivia-theme="brat"] .border-white\/15,
+  :root[data-vaivia-theme="brat"] .border-white\/20 {
+    border-color: rgb(0 0 0 / 0.18) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-lime-300,
+  :root[data-vaivia-theme="brat"] .bg-lime-200,
+  :root[data-vaivia-theme="brat"] .bg-lime-100 {
+    background: #8ace00 !important;
+    background-color: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-lime-300 *,
+  :root[data-vaivia-theme="brat"] .bg-lime-200 *,
+  :root[data-vaivia-theme="brat"] .bg-lime-100 * {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-lime-300:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-lime-200:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-lime-100:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .vaivia-quick-add-bubble,
+  :root[data-vaivia-theme="brat"] .bg-black,
+  :root[data-vaivia-theme="brat"] .bg-black\/20,
+  :root[data-vaivia-theme="brat"] .bg-black\/30,
+  :root[data-vaivia-theme="brat"] .bg-black\/40,
+  :root[data-vaivia-theme="brat"] .bg-black\/50 {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-lime-300:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-lime-200:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-lime-100:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .vaivia-quick-add-bubble *,
+  :root[data-vaivia-theme="brat"] .bg-black *,
+  :root[data-vaivia-theme="brat"] .bg-black\/20 *,
+  :root[data-vaivia-theme="brat"] .bg-black\/30 *,
+  :root[data-vaivia-theme="brat"] .bg-black\/40 *,
+  :root[data-vaivia-theme="brat"] .bg-black\/50 * {
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-\[\#8ACE00\],
+  :root[data-vaivia-theme="brat"] .bg-\[\#8ace00\] {
+    background-color: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-\[\#8ACE00\] *,
+  :root[data-vaivia-theme="brat"] .bg-\[\#8ace00\] * {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .group\/sidebar,
+  :root[data-vaivia-theme="brat"] aside.group\/sidebar {
+    background:
+      radial-gradient(circle at top left, rgb(138 206 0 / 0.18), transparent 34%),
+      linear-gradient(180deg, rgb(0 0 0 / 0.96), rgb(0 0 0 / 0.92)) !important;
+    border-color: rgb(138 206 0 / 0.28) !important;
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .group\/sidebar *,
+  :root[data-vaivia-theme="brat"] aside.group\/sidebar * {
+    color: #8ace00 !important;
+    border-color: rgb(138 206 0 / 0.26) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .group\/sidebar .text-slate-300,
+  :root[data-vaivia-theme="brat"] .group\/sidebar .text-slate-400,
+  :root[data-vaivia-theme="brat"] .group\/sidebar .text-white,
+  :root[data-vaivia-theme="brat"] .group\/sidebar .text-lime-200,
+  :root[data-vaivia-theme="brat"] .group\/sidebar .text-lime-300,
+  :root[data-vaivia-theme="brat"] .group\/sidebar a,
+  :root[data-vaivia-theme="brat"] .group\/sidebar button,
+  :root[data-vaivia-theme="brat"] .group\/sidebar svg,
+  :root[data-vaivia-theme="brat"] .group\/sidebar span {
+    color: #8ace00 !important;
+    stroke: currentColor !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .group\/sidebar a:hover,
+  :root[data-vaivia-theme="brat"] .group\/sidebar button:hover,
+  :root[data-vaivia-theme="brat"] .group\/sidebar a[aria-current="page"] {
+    background-color: #8ace00 !important;
+    border-color: rgb(138 206 0 / 0.34) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .group\/sidebar a:hover *,
+  :root[data-vaivia-theme="brat"] .group\/sidebar button:hover *,
+  :root[data-vaivia-theme="brat"] .group\/sidebar a[aria-current="page"] * {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="dark"] .vaivia-trip-card-title,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="dark"] .vaivia-trip-card-date {
+    color: #8ace00 !important;
+    text-shadow: 0 2px 18px rgb(0 0 0 / 0.82) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="light"] .vaivia-trip-card-title,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="light"] .vaivia-trip-card-date {
+    color: #050505 !important;
+    text-shadow: 0 1px 14px rgb(255 255 255 / 0.72) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .lucide-pencil {
+    color: #8ace00 !important;
+    stroke: #8ace00 !important;
+    background: #000000 !important;
+    border-radius: 9999px !important;
+    box-shadow:
+      0 0 0 0.42rem #000000,
+      0 0 18px rgb(0 0 0 / 0.36) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-page-bg [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#8ACE00]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#8ace00]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#0c0115]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080511]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#03030a]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#05030b]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#05050c]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#050712]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#06050d]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#070611]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080711]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#080b16]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#090713]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] [class*="bg-[#12051c]"] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.04\] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.05\] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.06\] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-white\/\[0\.08\] [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-white\/10 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-white\/15 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-slate-950 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/50 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/55 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/70 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-slate-950\/90 [class*="text-lime"] {
+    color: #242424 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .group\/sidebar [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/20 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/30 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/40 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/50 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-lime-300:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-lime-200:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-lime-100:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .vaivia-quick-add-bubble [class*="text-lime"] {
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content,
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content > p,
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content h1,
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content h1 span,
+  :root[data-vaivia-theme="brat"] .vaivia-loading-title,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-hero-title {
+    background: none !important;
+    color: #8ace00 !important;
+    -webkit-text-fill-color: #8ace00 !important;
+    text-shadow: 0 2px 18px rgb(0 0 0 / 0.72) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget {
+    background:
+      radial-gradient(circle at 15% 12%, rgb(138 206 0 / 0.14), transparent 34%),
+      linear-gradient(180deg, rgb(0 0 0 / 0.92), rgb(0 0 0 / 0.86)) !important;
+    border-color: rgb(138 206 0 / 0.28) !important;
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget *,
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget [class*="text-slate"],
+  :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget .text-white {
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-trip-countdown,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-countdown *,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-countdown [class*="text-slate"],
+  :root[data-vaivia-theme="brat"] .vaivia-trip-countdown [class*="text-lime"] {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar {
+    background:
+      radial-gradient(circle at 85% 0%, rgb(138 206 0 / 0.14), transparent 28%),
+      linear-gradient(180deg, #050505, #000000) !important;
+    border-color: rgb(138 206 0 / 0.24) !important;
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar *,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [class*="text-slate"],
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .text-white {
+    color: #8ace00 !important;
+    border-color: rgb(138 206 0 / 0.24) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-300,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-200,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-100,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [class*="bg-lime"]:not([class*="text-lime"]) {
+    background: #8ace00 !important;
+    background-color: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-300 *,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-200 *,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-100 *,
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [class*="bg-lime"]:not([class*="text-lime"]) * {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar button:not(.bg-lime-300):not(.bg-lime-200):not(.bg-lime-100),
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar a:not(.bg-lime-300):not(.bg-lime-200):not(.bg-lime-100) {
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="pride"],
+  :root[data-vaivia-theme="pride"] body {
+    background: #090318 !important;
+  }
+
+  :root[data-vaivia-theme="pride"] .vaivia-page-bg {
+    background:
+      radial-gradient(circle at 82% 6%, rgb(228 3 3 / 0.2), transparent 22%),
+      radial-gradient(circle at 12% 20%, rgb(255 140 0 / 0.16), transparent 24%),
+      radial-gradient(circle at 88% 76%, rgb(0 128 38 / 0.18), transparent 26%),
+      radial-gradient(circle at 8% 84%, rgb(115 41 130 / 0.22), transparent 30%),
+      linear-gradient(180deg, #0d0318 0%, #03030a 52%, #0d0318 100%) !important;
+  }
+
+  :root[data-vaivia-theme="pride"] .bg-\[\#0c0115\],
+  :root[data-vaivia-theme="pride"] .bg-\[\#080511\],
+  :root[data-vaivia-theme="pride"] .bg-\[\#03030a\],
+  :root[data-vaivia-theme="pride"] .bg-\[\#05030b\],
+  :root[data-vaivia-theme="pride"] .bg-\[\#090713\],
+  :root[data-vaivia-theme="pride"] .bg-\[\#12051c\] {
+    background-color: #0d0318 !important;
+  }
+
+  :root[data-vaivia-theme="pride"] .bg-slate-950,
+  :root[data-vaivia-theme="pride"] .bg-slate-950\/50,
+  :root[data-vaivia-theme="pride"] .bg-slate-950\/55,
+  :root[data-vaivia-theme="pride"] .bg-slate-950\/70,
+  :root[data-vaivia-theme="pride"] .bg-slate-950\/90 {
+    background-color: rgb(13 3 24 / 0.92) !important;
+  }
+
+  :root[data-vaivia-theme="light"],
+  :root[data-vaivia-theme="light"] body {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+  }
+
+  :root[data-vaivia-theme="light"] .bg-\[\#0c0115\],
+  :root[data-vaivia-theme="light"] .bg-\[\#080511\],
+  :root[data-vaivia-theme="light"] .bg-\[\#03030a\],
+  :root[data-vaivia-theme="light"] .bg-\[\#05030b\],
+  :root[data-vaivia-theme="light"] .bg-\[\#090713\],
+  :root[data-vaivia-theme="light"] .bg-\[\#12051c\] {
+    background-color: #f8fafc !important;
+  }
+
+  :root[data-vaivia-theme="light"] .bg-slate-950,
+  :root[data-vaivia-theme="light"] .bg-slate-950\/50,
+  :root[data-vaivia-theme="light"] .bg-slate-950\/55,
+  :root[data-vaivia-theme="light"] .bg-slate-950\/70,
+  :root[data-vaivia-theme="light"] .bg-slate-950\/90,
+  :root[data-vaivia-theme="light"] .bg-slate-900,
+  :root[data-vaivia-theme="light"] .bg-slate-900\/50,
+  :root[data-vaivia-theme="light"] .bg-slate-900\/70,
+  :root[data-vaivia-theme="light"] .bg-slate-900\/90 {
+    background-color: rgb(255 255 255 / 0.92) !important;
+  }
+
+  :root[data-vaivia-theme="light"] .text-white,
+  :root[data-vaivia-theme="light"] .text-slate-100,
+  :root[data-vaivia-theme="light"] .text-slate-200,
+  :root[data-vaivia-theme="light"] .text-slate-300 {
+    color: #0f172a !important;
+  }
+
+  :root[data-vaivia-theme="light"] .text-slate-400,
+  :root[data-vaivia-theme="light"] .text-slate-500 {
+    color: #475569 !important;
+  }
+
+  :root[data-vaivia-theme="light"] .border-white\/10,
+  :root[data-vaivia-theme="light"] .border-white\/15,
+  :root[data-vaivia-theme="light"] .border-white\/20 {
+    border-color: rgb(15 23 42 / 0.12) !important;
+  }
+
+  :root[data-vaivia-theme="light"] .bg-white\/\[0\.04\],
+  :root[data-vaivia-theme="light"] .bg-white\/\[0\.05\],
+  :root[data-vaivia-theme="light"] .bg-white\/\[0\.06\],
+  :root[data-vaivia-theme="light"] .bg-white\/\[0\.08\],
+  :root[data-vaivia-theme="light"] .bg-white\/10,
+  :root[data-vaivia-theme="light"] .bg-white\/15 {
+    background-color: rgb(255 255 255 / 0.82) !important;
   }
 
   .vaivia-page-bg {

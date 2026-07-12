@@ -101,6 +101,65 @@ const tripCardVariants = [
     },
 ];
 
+type TripCardImageTone = "dark" | "light";
+
+function detectImageTone(src: string): Promise<TripCardImageTone> {
+    return new Promise((resolve) => {
+        const image = new Image();
+        image.crossOrigin = "anonymous";
+        image.decoding = "async";
+
+        image.onload = () => {
+            try {
+                const canvas = document.createElement("canvas");
+                const context = canvas.getContext("2d", {
+                    willReadFrequently: true,
+                });
+
+                if (!context) {
+                    resolve("dark");
+                    return;
+                }
+
+                const sampleWidth = 24;
+                const sampleHeight = 24;
+                canvas.width = sampleWidth;
+                canvas.height = sampleHeight;
+                context.drawImage(image, 0, 0, sampleWidth, sampleHeight);
+
+                const lowerHalf = context.getImageData(
+                    0,
+                    Math.floor(sampleHeight * 0.45),
+                    sampleWidth,
+                    Math.ceil(sampleHeight * 0.55)
+                ).data;
+                let luminanceTotal = 0;
+                let pixelCount = 0;
+
+                for (let index = 0; index < lowerHalf.length; index += 4) {
+                    const alpha = lowerHalf[index + 3] / 255;
+                    const red = lowerHalf[index] * alpha + 255 * (1 - alpha);
+                    const green = lowerHalf[index + 1] * alpha + 255 * (1 - alpha);
+                    const blue = lowerHalf[index + 2] * alpha + 255 * (1 - alpha);
+
+                    luminanceTotal += 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+                    pixelCount += 1;
+                }
+
+                const averageLuminance = pixelCount
+                    ? luminanceTotal / pixelCount
+                    : 0;
+                resolve(averageLuminance > 145 ? "light" : "dark");
+            } catch {
+                resolve("dark");
+            }
+        };
+
+        image.onerror = () => resolve("dark");
+        image.src = src;
+    });
+}
+
 function travelInputProps() {
     return {
         autoComplete: "off",
@@ -406,6 +465,7 @@ export function DashboardTripCard({
     const secondLineDestinations = destinations.slice(1, 3);
     const thirdLineDestinations = destinations.slice(3, 5);
     const days = getTripDays(trip.start_date, trip.end_date);
+    const [imageTone, setImageTone] = useState<TripCardImageTone>("dark");
     const otherMemberProfiles = (trip.memberProfiles || []).filter(
         (member) => member.id !== currentUserId
     );
@@ -424,12 +484,33 @@ export function DashboardTripCard({
 
     useEffect(() => {
         setHasImageLoadError(false);
+        setImageTone("dark");
     }, [coverImageUrl]);
+
+    useEffect(() => {
+        let isActive = true;
+
+        if (!coverImageUrl || hasImageLoadError) {
+            setImageTone("dark");
+            return;
+        }
+
+        detectImageTone(coverImageUrl).then((tone) => {
+            if (isActive) {
+                setImageTone(tone);
+            }
+        });
+
+        return () => {
+            isActive = false;
+        };
+    }, [coverImageUrl, hasImageLoadError]);
 
     return (
         <Link
             href={`/trips/${trip.id}`}
-            className={`group relative block h-[500px] min-w-[300px] snap-start transition-all duration-500 ease-out md:h-[535px] md:min-w-[330px] lg:h-[560px] lg:min-w-[355px] ${
+            data-image-tone={imageTone}
+            className={`vaivia-trip-card group relative block h-[500px] min-w-[300px] snap-start transition-all duration-500 ease-out md:h-[535px] md:min-w-[330px] lg:h-[560px] lg:min-w-[355px] ${
                 disableHoverTransform ? "" : "hover:-translate-y-3 hover:scale-110"
             } ${variant.transform}`}
             style={{
@@ -488,17 +569,17 @@ export function DashboardTripCard({
                     {days || "-"}
                 </span>
                 <span className="mt-0.5 text-[9px] font-black uppercase leading-none tracking-[0.08em]">
-                    Days
+                    Days Total
                 </span>
             </div>
 
             <TripMemberAvatarStack members={otherMemberProfiles} />
 
             <div
-                className={`absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
+                className={`vaivia-trip-card-copy absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
             >
                 <h3
-                    className="max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
+                    className="vaivia-trip-card-title max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
                     style={{
                         color: accent,
                         fontSize: getPrimaryDestinationFontSize(primaryDestination),
@@ -511,7 +592,7 @@ export function DashboardTripCard({
 
                 {secondLineDestinations.length > 0 ? (
                     <p
-                        className="mt-2 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
+                        className="vaivia-trip-card-title mt-2 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
                         style={{ color: accent }}
                     >
                         {formatDestinationPair(secondLineDestinations)}
@@ -520,14 +601,14 @@ export function DashboardTripCard({
 
                 {thirdLineDestinations.length > 0 ? (
                     <p
-                        className="mt-1 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
+                        className="vaivia-trip-card-title mt-1 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
                         style={{ color: accent }}
                     >
                         {formatDestinationPair(thirdLineDestinations)}
                     </p>
                 ) : null}
 
-                <p className={`mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}>
+                <p className={`vaivia-trip-card-date mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}>
                     {formatTripDateRange(trip.start_date, trip.end_date)}
                 </p>
             </div>

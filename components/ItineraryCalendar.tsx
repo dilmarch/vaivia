@@ -3842,7 +3842,7 @@ export default function ItineraryCalendar({
     }
 
     return (
-        <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/30">
+        <section className="vaivia-itinerary-calendar overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/30">
             <Script
                 src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
                 strategy="afterInteractive"

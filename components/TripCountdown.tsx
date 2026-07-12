@@ -332,7 +332,7 @@ export default function TripCountdown({
     }
 
     return (
-        <div className="group/countdown relative">
+        <div className="vaivia-trip-countdown group/countdown relative">
             <button
                 type="button"
                 onClick={openSettings}

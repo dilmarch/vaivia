@@ -650,7 +650,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                     General settings
                                 </h1>
                                 <p className="mt-2 text-slate-400">
-                                    Personalize the look and feel of VAIVIA.
+                                    Personalize the look and feel of VAIVIA with
+                                    a site-wide theme.
                                 </p>
                             </div>
                             <PinkModeToggle />

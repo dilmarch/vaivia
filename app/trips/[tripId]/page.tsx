@@ -54,6 +54,7 @@ import { deleteTripLeg, upsertTripLeg } from "@/app/actions/tripLegs";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { getMoveTargetTrips } from "@/lib/tripMove";
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
+import { maybeCreatePassportStampForTransportationArrival } from "@/lib/passportArrivalStamps";
 import {
     resolveTripLegIdForDate,
     resolveTripLegIdForLocation,
@@ -1416,6 +1417,19 @@ async function createTransportationItem(formData: FormData) {
                 }`
             );
         }
+
+        await maybeCreatePassportStampForTransportationArrival({
+            supabase,
+            userId: user.id,
+            tripId,
+            transportationItemId,
+            title,
+            departureLocation,
+            arrivalLocation,
+            arrivalDate: endDate,
+            arrivalTime: endTime,
+            arrivalTimezone,
+        });
     }
 
     if (!isPrivate) {
@@ -1570,6 +1584,19 @@ async function updateTransportationItem(formData: FormData) {
             }`
         );
     }
+
+    await maybeCreatePassportStampForTransportationArrival({
+        supabase,
+        userId: user.id,
+        tripId,
+        transportationItemId: itemId,
+        title,
+        departureLocation,
+        arrivalLocation,
+        arrivalDate: endDate,
+        arrivalTime: endTime,
+        arrivalTimezone,
+    });
 
     redirect(`/trips/${tripId}`);
 }
@@ -3389,7 +3416,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     updateTripAction={updateTrip}
                     deleteTripAction={deleteTrip}
                 >
-                    <h1 className="max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
+                    <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
                         {trip.title || "Untitled trip"}
                     </h1>
                 </TripHeaderCover>
