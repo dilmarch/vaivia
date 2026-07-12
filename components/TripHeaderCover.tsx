@@ -60,12 +60,12 @@ export default function TripHeaderCover({
             />
 
             {coverImageUrl && !coverLoadError && (
-                <div className="relative overflow-hidden">
+                <div className="vaivia-trip-header-cover relative overflow-hidden">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                         src={coverImageUrl}
                         alt=""
-                        className="aspect-[16/7] w-full object-cover"
+                        className="vaivia-trip-header-cover-media aspect-[16/7] w-full object-cover"
                         onLoad={() => setCoverLoadError("")}
                         onError={() =>
                             setCoverLoadError(
@@ -75,7 +75,7 @@ export default function TripHeaderCover({
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/15 to-transparent" />
                     {children && (
-                        <div className="absolute bottom-6 left-6 right-24 sm:bottom-8 sm:left-8">
+                        <div className="vaivia-trip-header-cover-content absolute bottom-6 left-6 right-24 sm:bottom-8 sm:left-8">
                             {children}
                         </div>
                     )}
@@ -104,7 +104,7 @@ export default function TripHeaderCover({
             )}
 
             {(!coverImageUrl || coverLoadError) && (
-                <div className="relative flex min-h-72 items-end overflow-hidden bg-slate-900 p-6 sm:p-8">
+                <div className="vaivia-trip-header-cover vaivia-trip-header-cover-fallback relative flex min-h-72 items-end overflow-hidden bg-slate-900 p-6 sm:p-8">
                     {children}
                     {coverLoadError && (
                         <div className="absolute left-4 top-4 max-w-lg rounded-md bg-white/95 px-3 py-2 text-sm text-red-700 shadow-sm">

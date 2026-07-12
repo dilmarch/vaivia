@@ -66,7 +66,7 @@ export default function DashboardHero({
     }, []);
 
     return (
-        <section className="relative min-h-[420px] overflow-hidden bg-[#0c0115] shadow-2xl shadow-black/30 md:min-h-[520px]">
+        <section className="vaivia-dashboard-hero relative min-h-[420px] overflow-hidden bg-[#0c0115] shadow-2xl shadow-black/30 md:min-h-[520px]">
             <div className="absolute inset-0 bg-[url('/dashboard-bg.png')] bg-cover bg-center opacity-95" />
             <div className="absolute inset-0 bg-gradient-to-r from-black via-black/55 to-transparent" />
             <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-[#0c0115]" />
@@ -78,7 +78,7 @@ export default function DashboardHero({
                 />
             </div>
 
-            <div className="relative z-10 flex min-h-[420px] flex-col justify-center px-8 pb-20 pt-24 md:min-h-[520px] md:px-14 md:pt-28">
+            <div className="vaivia-dashboard-hero-content relative z-10 flex min-h-[420px] flex-col justify-center px-8 pb-20 pt-24 md:min-h-[520px] md:px-14 md:pt-28">
                 <p className="text-xl font-medium text-fuchsia-300 md:text-2xl">
                     {greeting}
                 </p>

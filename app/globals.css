@@ -310,6 +310,31 @@
       linear-gradient(180deg, #0c0115 0%, #05030b 48%, #0c0115 100%);
   }
 
+  @media (max-width: 767px) {
+    :root[data-vaivia-standalone="true"] .vaivia-dashboard-hero {
+      min-height: calc(500px + var(--safe-area-top));
+    }
+
+    :root[data-vaivia-standalone="true"] .vaivia-dashboard-hero-content {
+      min-height: calc(500px + var(--safe-area-top));
+      padding-top: calc(8.5rem + var(--safe-area-top));
+      justify-content: flex-start;
+    }
+
+    :root[data-vaivia-standalone="true"] .vaivia-trip-header-cover-media {
+      aspect-ratio: 16 / 14;
+      min-height: calc(22rem + var(--safe-area-top));
+    }
+
+    :root[data-vaivia-standalone="true"] .vaivia-trip-header-cover-fallback {
+      min-height: calc(36rem + var(--safe-area-top));
+    }
+
+    :root[data-vaivia-standalone="true"] .vaivia-trip-header-cover-content {
+      bottom: 2rem;
+    }
+  }
+
   .vaivia-modal-backdrop {
     @apply fixed inset-0 z-50 flex items-center justify-center bg-[#0c0115]/75 px-4 py-6 backdrop-blur-sm;
     padding-left: max(1rem, var(--safe-area-left));
