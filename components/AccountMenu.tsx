@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
     Camera,
@@ -306,6 +306,8 @@ export default function AccountMenu({
     variant = "top",
 }: AccountMenuProps) {
     const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [isOpen, setIsOpen] = useState(false);
     const [avatarUrl, setAvatarUrl] = useState(() =>
         getInitialValue(profile?.avatar_url)
@@ -404,6 +406,26 @@ export default function AccountMenu({
         setMode("profile");
         setIsOpen(true);
     }
+
+    useEffect(() => {
+        const profileTarget = searchParams.get("profile");
+        if (
+            profileTarget !== "passport" ||
+            !["top", "sidebar-profile"].includes(variant)
+        ) {
+            return;
+        }
+
+        setMode("profile");
+        setIsOpen(true);
+
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.delete("profile");
+        router.replace(
+            `${pathname || "/"}${nextParams.toString() ? `?${nextParams}` : ""}`,
+            { scroll: false }
+        );
+    }, [pathname, router, searchParams, variant]);
 
     useEffect(() => {
         if (!isOpen) return;

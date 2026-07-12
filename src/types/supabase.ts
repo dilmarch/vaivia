@@ -2476,6 +2476,10 @@ export type Database = {
           id: string
           join_date: string
           last_name: string | null
+          marketing_emails_consent: boolean
+          marketing_emails_consented_at: string | null
+          onboarding_completed_at: string | null
+          terms_accepted_at: string | null
           updated_at: string
           username: string | null
         }
@@ -2487,6 +2491,10 @@ export type Database = {
           id: string
           join_date?: string
           last_name?: string | null
+          marketing_emails_consent?: boolean
+          marketing_emails_consented_at?: string | null
+          onboarding_completed_at?: string | null
+          terms_accepted_at?: string | null
           updated_at?: string
           username?: string | null
         }
@@ -2498,6 +2506,10 @@ export type Database = {
           id?: string
           join_date?: string
           last_name?: string | null
+          marketing_emails_consent?: boolean
+          marketing_emails_consented_at?: string | null
+          onboarding_completed_at?: string | null
+          terms_accepted_at?: string | null
           updated_at?: string
           username?: string | null
         }

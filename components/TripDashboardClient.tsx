@@ -794,7 +794,7 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
                                         <Link
                                             key={`${segment.trip.id}-${weekIndex}`}
                                             href={`/trips/${segment.trip.id}`}
-                                            className="absolute z-10 h-5 truncate px-2 text-[10px] font-black uppercase leading-5 text-slate-950 shadow-[0_0_16px_rgba(0,0,0,0.20)] transition hover:brightness-110"
+                                            className="absolute z-10 flex h-5 items-center truncate px-2 text-[10px] font-black uppercase leading-none text-slate-950 shadow-[0_0_16px_rgba(0,0,0,0.20)] transition hover:brightness-110"
                                             style={{
                                                 left: `${leftPercent}%`,
                                                 top: `${34 + segmentIndex * 23}px`,
@@ -848,9 +848,11 @@ function getDateRangeGap(
     accommodations: NonNullable<DashboardTrip["planning"]>["accommodations"] = []
 ) {
     const start = parseTripPlainDate(tripStartDate);
-    const end = parseTripPlainDate(tripEndDate || tripStartDate);
+    const returnDate = parseTripPlainDate(tripEndDate || tripStartDate);
 
-    if (!start || !end) return null;
+    if (!start || !returnDate || returnDate <= start) return null;
+
+    const lastRequiredNight = addDays(returnDate, -1);
 
     const activeStays = accommodations
         .filter((stay) => stay.status !== "cancelled")
@@ -869,16 +871,16 @@ function getDateRangeGap(
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     if (activeStays.length === 0) {
-        return { start, end };
+        return { start, end: lastRequiredNight };
     }
 
     const cursor = new Date(start);
 
     for (const stay of activeStays) {
         const stayStart = new Date(Math.max(stay.start.getTime(), start.getTime()));
-        const stayEnd = new Date(Math.min(stay.end.getTime(), end.getTime()));
+        const stayEnd = new Date(Math.min(stay.end.getTime(), returnDate.getTime()));
 
-        if (stayEnd <= start || stayStart > end) continue;
+        if (stayEnd <= start || stayStart >= returnDate) continue;
 
         if (stayStart > cursor) {
             return { start: cursor, end: addDays(stayStart, -1) };
@@ -888,11 +890,11 @@ function getDateRangeGap(
             cursor.setTime(stayEnd.getTime());
         }
 
-        if (cursor > end) return null;
+        if (cursor >= returnDate) return null;
     }
 
-    if (cursor <= end) {
-        return { start: cursor, end };
+    if (cursor < returnDate) {
+        return { start: cursor, end: lastRequiredNight };
     }
 
     return null;

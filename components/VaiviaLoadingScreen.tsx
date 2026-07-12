@@ -47,51 +47,49 @@ export default function VaiviaLoadingScreen({
     const cardWidthClass = compact ? "max-w-[400px]" : "max-w-[440px]";
 
     return (
-        <main className="relative min-h-screen overflow-hidden bg-[#0c0115] text-white">
+        <main className="relative grid min-h-[100dvh] w-full place-items-center overflow-hidden bg-[#0c0115] px-5 pb-[max(2.5rem,var(--safe-area-bottom))] pt-[max(2.5rem,var(--safe-area-top))] text-white">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_20%,rgba(var(--vaivia-neon-rgb),0.16),transparent_26%),radial-gradient(circle_at_80%_18%,rgba(255,54,190,0.18),transparent_28%),linear-gradient(180deg,#0c0115_0%,#05030b_52%,#0c0115_100%)]" />
             <div className="absolute inset-0 bg-[url('/dashboard-bg.png')] bg-cover bg-center opacity-20 mix-blend-screen" />
             <div className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]" />
 
-            <div className="relative z-10 grid min-h-screen place-items-center px-5 py-10">
-                <section className="flex min-h-screen items-center justify-center px-5 py-10 md:px-10">
-                    <div
-                        className={`relative w-full ${cardWidthClass} overflow-hidden rounded-[2.25rem] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/50 backdrop-blur-2xl`}
-                    >
-                        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_12%,rgba(var(--vaivia-neon-rgb),0.22),transparent_24%),radial-gradient(circle_at_86%_28%,rgba(255,54,190,0.18),transparent_28%),radial-gradient(circle_at_58%_56%,rgba(124,60,255,0.22),transparent_32%)]" />
-                        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_30%,rgba(255,255,255,0.03))]" />
-                        <div className="pointer-events-none absolute inset-px rounded-[2.2rem] border border-white/10" />
+            <section className="relative z-10 flex w-full justify-center px-0 md:px-10">
+                <div
+                    className={`relative w-full ${cardWidthClass} overflow-hidden rounded-[2.25rem] border border-white/10 bg-white/[0.055] p-8 shadow-2xl shadow-black/50 backdrop-blur-2xl`}
+                >
+                    <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_12%,rgba(var(--vaivia-neon-rgb),0.22),transparent_24%),radial-gradient(circle_at_86%_28%,rgba(255,54,190,0.18),transparent_28%),radial-gradient(circle_at_58%_56%,rgba(124,60,255,0.22),transparent_32%)]" />
+                    <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.08),transparent_30%,rgba(255,255,255,0.03))]" />
+                    <div className="pointer-events-none absolute inset-px rounded-[2.2rem] border border-white/10" />
 
-                        <div className="relative z-10">
-                            <Sparkles className="mb-5 h-6 w-6 text-lime-300 drop-shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.9)]" />
-                            <h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">
-                                {title}
-                            </h1>
-                            <p className="mt-3 max-w-xs text-sm leading-6 text-slate-300">
-                                {subtitle}
-                            </p>
-                        </div>
-
-                        <div className="relative z-10 mt-10 h-56">
-                            {loadingChips.map(({ label, icon: Icon, className }) => (
-                                <div
-                                    key={label}
-                                    className={`absolute inline-flex items-center gap-2 rounded-full border bg-slate-950/55 px-4 py-2.5 text-sm font-black backdrop-blur-xl transition ${className}`}
-                                >
-                                    <Icon className="h-4 w-4" aria-hidden="true" />
-                                    {label}
-                                </div>
-                            ))}
-                        </div>
-
-                        <div className="relative z-10 mt-8 flex items-center gap-3">
-                            <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                                <div className="h-full rounded-full bg-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.75)] animate-vaivia-loading-bar" />
-                            </div>
-                            <span className="text-xs font-black text-lime-300">65%</span>
-                        </div>
+                    <div className="relative z-10">
+                        <Sparkles className="mb-5 h-6 w-6 text-lime-300 drop-shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.9)]" />
+                        <h1 className="text-2xl font-black tracking-tight text-white md:text-3xl">
+                            {title}
+                        </h1>
+                        <p className="mt-3 max-w-xs text-sm leading-6 text-slate-300">
+                            {subtitle}
+                        </p>
                     </div>
-                </section>
-            </div>
+
+                    <div className="relative z-10 mt-10 h-56">
+                        {loadingChips.map(({ label, icon: Icon, className }) => (
+                            <div
+                                key={label}
+                                className={`absolute inline-flex items-center gap-2 rounded-full border bg-slate-950/55 px-4 py-2.5 text-sm font-black backdrop-blur-xl transition ${className}`}
+                            >
+                                <Icon className="h-4 w-4" aria-hidden="true" />
+                                {label}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="relative z-10 mt-8 flex items-center gap-3">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                            <div className="h-full rounded-full bg-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.75)] animate-vaivia-loading-bar" />
+                        </div>
+                        <span className="text-xs font-black text-lime-300">65%</span>
+                    </div>
+                </div>
+            </section>
         </main>
     );
 }
