@@ -6,6 +6,7 @@ import PinkModeToggle from "@/components/PinkModeToggle";
 import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
 import SettingsFamilyMembersClient from "@/components/SettingsFamilyMembersClient";
 import SettingsFinancialClient from "@/components/SettingsFinancialClient";
+import SettingsSecurityClient from "@/components/SettingsSecurityClient";
 import { ALL_CURRENCY_OPTIONS, normalizeCurrencyCode } from "@/lib/currency";
 import { isCountdownUnit, type CountdownUnit } from "@/lib/countdownDisplay";
 import { createClient } from "@/lib/supabase/server";
@@ -46,6 +47,13 @@ function isMaxCategoryError(error: { message?: string; code?: string }) {
 
 function isMaxFamilyMemberError(error: { message?: string; code?: string }) {
     return Boolean(getFamilyLimitMessage(error.message) || error.code === "23514");
+}
+
+function getAuthProviderLabel(provider?: string | null) {
+    if (provider === "azure") return "Microsoft";
+    if (provider === "google") return "Google";
+    if (provider === "email") return "Email/password";
+    return provider || "Unknown";
 }
 
 async function addFamilyMember(formData: FormData) {
@@ -413,6 +421,46 @@ async function updateTimeDatePreferences(formData: FormData) {
     redirect("/settings?section=time-date");
 }
 
+async function updateSecuritySettings(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const biometricLoginEnabled =
+        String(formData.get("biometric_login_enabled") || "") === "true";
+    const payload = {
+        biometric_login_enabled: biometricLoginEnabled,
+        biometric_login_enabled_at: biometricLoginEnabled
+            ? new Date().toISOString()
+            : null,
+        updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+        .from("user_profiles")
+        .update(payload)
+        .eq("id", user.id);
+
+    if (error) {
+        console.error("Error updating password/security settings:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            userId: user.id,
+            payload,
+        });
+        throw new Error(`Could not update security settings: ${error.message}`);
+    }
+
+    revalidatePath("/settings");
+}
+
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
     const params = searchParams ? await searchParams : {};
     const activeSection =
@@ -424,6 +472,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 ? "financial"
                 : params.section === "time-date"
                   ? "time-date"
+                  : params.section === "security"
+                    ? "security"
               : "general";
     const supabase = await createClient();
     const {
@@ -438,6 +488,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         { data: familyRows },
         { data: financeSettings },
         { data: userPreferences },
+        { data: userProfile },
     ] =
         await Promise.all([
         supabase
@@ -464,6 +515,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 "clock_format,default_time_zone,itinerary_default_view,countdown_display_mode"
             )
             .eq("user_id", user.id)
+            .maybeSingle(),
+        supabase
+            .from("user_profiles")
+            .select("biometric_login_enabled")
+            .eq("id", user.id)
             .maybeSingle(),
     ]);
 
@@ -492,6 +548,25 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         name: currency.name,
         symbol: currency.symbol,
     }));
+    const identityProviders = new Set(
+        (user.identities || [])
+            .map((identity) => identity.provider)
+            .filter(Boolean)
+    );
+    const fallbackProvider =
+        typeof user.app_metadata?.provider === "string"
+            ? user.app_metadata.provider
+            : "";
+    if (fallbackProvider) identityProviders.add(fallbackProvider);
+    const canChangePassword =
+        identityProviders.has("email") || identityProviders.size === 0;
+    const socialProviderLabels = Array.from(identityProviders)
+        .filter((provider) => provider !== "email")
+        .map(getAuthProviderLabel);
+    const authProviderLabels =
+        socialProviderLabels.length > 0
+            ? socialProviderLabels
+            : Array.from(identityProviders).map(getAuthProviderLabel);
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-4 py-8 text-white md:pl-28">
@@ -520,6 +595,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             }`}
                         >
                             Time/date
+                        </Link>
+                        <Link
+                            href="/settings?section=security"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "security"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Password & Security
                         </Link>
                         <Link
                             href="/settings?section=categories"
@@ -651,6 +736,29 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             <CountdownUnitToggle
                                 initialUnit={countdownDisplayMode}
                                 updateAction={updateCountdownDisplayMode}
+                            />
+                        </div>
+                    ) : activeSection === "security" ? (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Password & Security
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Password & Security
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Manage Face ID preferences and sign-in
+                                    credentials for your VAIVIA account.
+                                </p>
+                            </div>
+                            <SettingsSecurityClient
+                                canChangePassword={canChangePassword}
+                                authProviderLabels={authProviderLabels}
+                                biometricEnabled={Boolean(
+                                    userProfile?.biometric_login_enabled
+                                )}
+                                updateBiometricAction={updateSecuritySettings}
                             />
                         </div>
                     ) : activeSection === "categories" ? (

@@ -2470,6 +2470,8 @@ export type Database = {
       user_profiles: {
         Row: {
           avatar_url: string | null
+          biometric_login_enabled: boolean
+          biometric_login_enabled_at: string | null
           created_at: string
           email: string | null
           first_name: string | null
@@ -2485,6 +2487,8 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          biometric_login_enabled?: boolean
+          biometric_login_enabled_at?: string | null
           created_at?: string
           email?: string | null
           first_name?: string | null
@@ -2500,6 +2504,8 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          biometric_login_enabled?: boolean
+          biometric_login_enabled_at?: string | null
           created_at?: string
           email?: string | null
           first_name?: string | null
