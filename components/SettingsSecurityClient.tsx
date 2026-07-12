@@ -47,6 +47,7 @@ export default function SettingsSecurityClient({
                 : "Email/password",
         [authProviderLabels]
     );
+    const isBiometricUnavailable = isBiometricSupported === false;
 
     useEffect(() => {
         let isMounted = true;
@@ -130,11 +131,23 @@ export default function SettingsSecurityClient({
 
     return (
         <div className="space-y-5">
-            <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/20">
+            <section
+                className={`rounded-[1.5rem] border p-5 shadow-xl shadow-black/20 transition ${
+                    isBiometricUnavailable
+                        ? "border-white/5 bg-white/[0.035] opacity-70"
+                        : "border-white/10 bg-white/[0.06]"
+                }`}
+            >
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="max-w-2xl">
                         <div className="flex items-center gap-3">
-                            <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950 text-lime-200 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                            <span
+                                className={`flex h-11 w-11 items-center justify-center rounded-2xl border bg-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.16)] ${
+                                    isBiometricUnavailable
+                                        ? "border-white/10 text-slate-500 shadow-none"
+                                        : "border-lime-300/25 text-lime-200"
+                                }`}
+                            >
                                 <Fingerprint className="h-5 w-5" aria-hidden="true" />
                             </span>
                             <div>
@@ -153,12 +166,14 @@ export default function SettingsSecurityClient({
 
                     <button
                         type="button"
-                        disabled={isBiometricSupported === false || isPending}
+                        disabled={isBiometricUnavailable || isPending}
                         onClick={() =>
                             saveBiometricPreference(!isBiometricEnabled)
                         }
                         className={`inline-flex min-h-12 items-center justify-center gap-2 rounded-full px-5 text-sm font-black transition ${
-                            isBiometricEnabled
+                            isBiometricUnavailable
+                                ? "border border-white/10 bg-slate-800/60 text-slate-500"
+                                : isBiometricEnabled
                                 ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.24)] hover:bg-lime-200"
                                 : "border border-white/10 bg-white/[0.08] text-white hover:bg-white/[0.14]"
                         } disabled:cursor-not-allowed disabled:opacity-45`}
@@ -172,13 +187,12 @@ export default function SettingsSecurityClient({
                     </button>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/55 p-4 text-sm font-bold text-slate-300">
-                    {isBiometricSupported === null
-                        ? "Checking this device..."
-                        : isBiometricSupported
-                          ? "This device reports biometric/passkey support."
-                          : "This device or browser does not currently report Face ID/passkey support."}
-                </div>
+                {isBiometricUnavailable ? (
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-slate-950/55 p-4 text-sm font-bold text-slate-400">
+                        This device or browser does not currently support Face ID
+                        for VAIVIA.
+                    </div>
+                ) : null}
             </section>
 
             <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/20">

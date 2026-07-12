@@ -569,7 +569,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             : Array.from(identityProviders).map(getAuthProviderLabel);
 
     return (
-        <main className="min-h-screen bg-[#0c0115] px-4 py-8 text-white md:pl-28">
+        <main className="min-h-screen bg-[#0c0115] px-4 pb-8 pt-[calc(6.25rem+var(--safe-area-top))] text-white md:py-8 md:pl-28">
             <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[220px_1fr]">
                 <aside className="rounded-[1.5rem] border border-white/10 bg-[#080511]/90 p-3 shadow-2xl shadow-black/30">
                     <p className="px-3 py-2 text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
