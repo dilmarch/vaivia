@@ -4881,7 +4881,7 @@ export default function AccountMenu({
                                 </div>
                                 <div className="md:hidden">
                                     <Link
-                                        href="/scratch-map"
+                                        href={`/scratch-map/friends/${friend.id}`}
                                         className="flex min-h-24 items-center justify-between gap-4 rounded-[1.25rem] border border-lime-300/25 bg-lime-300/10 p-4 text-left text-lime-100 shadow-xl shadow-black/20 transition hover:bg-lime-300 hover:text-slate-950"
                                         prefetch
                                     >
