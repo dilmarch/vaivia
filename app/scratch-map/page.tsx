@@ -129,7 +129,7 @@ export default async function ScratchMapPage() {
                         scratchedCountryCodes={scratchedCountryCodes}
                         settingsHref="/profile"
                         statsClassName="grid grid-cols-3 gap-2"
-                        mapViewportClassName="relative min-h-[58vh] w-full sm:aspect-[2/1] sm:min-h-0"
+                        mapViewportClassName="relative h-[62vh] w-full sm:aspect-[2/1] sm:h-auto"
                     />
                 </section>
             </div>
