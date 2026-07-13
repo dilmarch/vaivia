@@ -273,6 +273,8 @@ export default function AppSidebarNav({
     const adminItem = getAdminItem();
     const adminUsersItem = getAdminUsersItem();
     const adminStatsItem = getAdminStatsItem();
+    const newsFeedItem = navItems.find((item) => item.label === "News Feed");
+    const isAdminRoute = pathname.startsWith("/admin");
     const [mobileMenu, setMobileMenu] = useState<"view" | "more" | null>(null);
     const mobileDockRef = useRef<HTMLDivElement | null>(null);
     const mobileViewItems = navItems.filter((item) =>
@@ -286,12 +288,20 @@ export default function AppSidebarNav({
             "Accommodations",
         ].includes(item.label)
     );
-    const mobileAdminItems = [
-        ...(isSuperAdmin ? [adminItem] : []),
-        ...(isSuperAdmin && pathname.startsWith("/admin")
-            ? [adminStatsItem, adminUsersItem]
-            : []),
-    ];
+    const mobileAdminItems =
+        isSuperAdmin && isAdminRoute
+            ? [
+                  ...(newsFeedItem ? [newsFeedItem] : []),
+                  adminItem,
+                  adminStatsItem,
+                  adminUsersItem,
+              ]
+            : [
+                  ...(isSuperAdmin ? [adminItem] : []),
+                  ...(isSuperAdmin && isAdminRoute
+                      ? [adminStatsItem, adminUsersItem]
+                      : []),
+              ];
 
     useEffect(() => {
         setMobileMenu(null);
@@ -456,44 +466,54 @@ export default function AppSidebarNav({
                                   </div>
                               ))
                             : null}
-                        <Link
-                            href="/settings"
-                            onClick={() => setMobileMenu(null)}
-                            className="group/item animate-vaivia-add-fan-out flex min-w-0 justify-center text-center text-[8px] font-black uppercase leading-[0.88] tracking-[0.02em] text-slate-200 transition hover:text-white"
-                            prefetch
-                        >
-                            <span className="flex h-16 w-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-full border border-white/10 bg-[#1f2937] px-1.5 text-slate-100 shadow-2xl shadow-black/35 backdrop-blur-xl transition group-hover/item:border-lime-300/55 group-hover/item:bg-lime-300 group-hover/item:text-slate-950">
-                                <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                <span className="line-clamp-2 max-w-full break-words text-center">
-                                    Settings
-                                </span>
-                            </span>
-                        </Link>
-                        {userId ? (
-                            <div className="animate-vaivia-add-fan-out min-w-0">
-                                <AccountMenu
-                                    userId={userId}
-                                    email={email}
-                                    joinedAt={joinedAt}
-                                    profile={profile}
-                                    preferences={preferences}
-                                    variant="mobile-profile"
-                                />
-                            </div>
-                        ) : (
-                            <Link
-                                href="/auth/login"
-                                onClick={() => setMobileMenu(null)}
-                                className="group/item animate-vaivia-add-fan-out flex min-w-0 justify-center text-center text-[8px] font-black uppercase leading-[0.88] tracking-[0.02em] text-slate-200 transition hover:text-white"
-                            >
-                                <span className="flex h-16 w-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-full border border-white/10 bg-[#1f2937] px-1.5 text-slate-100 shadow-2xl shadow-black/35 backdrop-blur-xl transition group-hover/item:border-lime-300/55 group-hover/item:bg-lime-300 group-hover/item:text-slate-950">
-                                    <Settings className="h-4 w-4 shrink-0" aria-hidden="true" />
-                                    <span className="line-clamp-2 max-w-full break-words text-center">
-                                        Sign in
+                        {!isAdminRoute ? (
+                            <>
+                                <Link
+                                    href="/settings"
+                                    onClick={() => setMobileMenu(null)}
+                                    className="group/item animate-vaivia-add-fan-out flex min-w-0 justify-center text-center text-[8px] font-black uppercase leading-[0.88] tracking-[0.02em] text-slate-200 transition hover:text-white"
+                                    prefetch
+                                >
+                                    <span className="flex h-16 w-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-full border border-white/10 bg-[#1f2937] px-1.5 text-slate-100 shadow-2xl shadow-black/35 backdrop-blur-xl transition group-hover/item:border-lime-300/55 group-hover/item:bg-lime-300 group-hover/item:text-slate-950">
+                                        <Settings
+                                            className="h-4 w-4 shrink-0"
+                                            aria-hidden="true"
+                                        />
+                                        <span className="line-clamp-2 max-w-full break-words text-center">
+                                            Settings
+                                        </span>
                                     </span>
-                                </span>
-                            </Link>
-                        )}
+                                </Link>
+                                {userId ? (
+                                    <div className="animate-vaivia-add-fan-out min-w-0">
+                                        <AccountMenu
+                                            userId={userId}
+                                            email={email}
+                                            joinedAt={joinedAt}
+                                            profile={profile}
+                                            preferences={preferences}
+                                            variant="mobile-profile"
+                                        />
+                                    </div>
+                                ) : (
+                                    <Link
+                                        href="/auth/login"
+                                        onClick={() => setMobileMenu(null)}
+                                        className="group/item animate-vaivia-add-fan-out flex min-w-0 justify-center text-center text-[8px] font-black uppercase leading-[0.88] tracking-[0.02em] text-slate-200 transition hover:text-white"
+                                    >
+                                        <span className="flex h-16 w-16 flex-col items-center justify-center gap-1 overflow-hidden rounded-full border border-white/10 bg-[#1f2937] px-1.5 text-slate-100 shadow-2xl shadow-black/35 backdrop-blur-xl transition group-hover/item:border-lime-300/55 group-hover/item:bg-lime-300 group-hover/item:text-slate-950">
+                                            <Settings
+                                                className="h-4 w-4 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                            <span className="line-clamp-2 max-w-full break-words text-center">
+                                                Sign in
+                                            </span>
+                                        </span>
+                                    </Link>
+                                )}
+                            </>
+                        ) : null}
                     </div>
                 ) : null}
 
