@@ -110,6 +110,46 @@ export default function AppTopActionBar({
     }, []);
 
     useEffect(() => {
+        let isMounted = true;
+        let channel: ReturnType<ReturnType<typeof createClient>["channel"]> | null =
+            null;
+        const supabase = createClient();
+
+        async function subscribeToNotifications() {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+
+            if (!isMounted || !user) return;
+
+            channel = supabase
+                .channel(`app-notifications-${user.id}`)
+                .on(
+                    "postgres_changes",
+                    {
+                        event: "*",
+                        schema: "public",
+                        table: "notifications",
+                        filter: `user_id=eq.${user.id}`,
+                    },
+                    () => {
+                        void refreshNotifications();
+                    }
+                )
+                .subscribe();
+        }
+
+        void subscribeToNotifications();
+
+        return () => {
+            isMounted = false;
+            if (channel) {
+                void supabase.removeChannel(channel);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
         if (!openMenu) return;
 
         function closeOnOutsideClick(event: MouseEvent) {
