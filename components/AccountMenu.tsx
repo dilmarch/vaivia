@@ -196,6 +196,16 @@ type ProfileStats = {
     scratchMapCountries: ScratchMapCountry[];
 };
 
+type FriendProfileSnapshot = {
+    friend: FriendProfile;
+    points: number;
+    level: number;
+    levelName: string;
+    stamps: PassportStamp[];
+    bucketList: TravelBucketListItem[];
+    scratchMapCountries: ScratchMapCountry[];
+};
+
 const FRIENDS_HEADER_PHRASES = [
     "The real ones who leave the group chat.",
     "Your favourite travel besties.",
@@ -1013,6 +1023,9 @@ export default function AccountMenu({
     const [friendInviteIdentifier, setFriendInviteIdentifier] = useState("");
     const [isSavingFriendInvite, setIsSavingFriendInvite] = useState(false);
     const [selectedFriend, setSelectedFriend] = useState<FriendProfile | null>(null);
+    const [selectedFriendSnapshot, setSelectedFriendSnapshot] =
+        useState<FriendProfileSnapshot | null>(null);
+    const [isLoadingFriendSnapshot, setIsLoadingFriendSnapshot] = useState(false);
     const [friendsHeaderPhraseIndex, setFriendsHeaderPhraseIndex] = useState(0);
 
     const displayName = useMemo(() => {
@@ -3660,6 +3673,223 @@ export default function AccountMenu({
         }
     }
 
+    function normalizeFriendSnapshot(
+        fallbackFriend: FriendProfile,
+        snapshot: any
+    ): FriendProfileSnapshot {
+        const profile = snapshot?.profile || {};
+        const preferences = snapshot?.preferences || {};
+        const points = snapshot?.points || {};
+        const stampRows: any[] = Array.isArray(snapshot?.stamps)
+            ? snapshot.stamps
+            : [];
+        const bucketRows: any[] = Array.isArray(snapshot?.bucketList)
+            ? snapshot.bucketList
+            : [];
+        const scratchRows: any[] = Array.isArray(snapshot?.scratchMapCountries)
+            ? snapshot.scratchMapCountries
+            : [];
+
+        const friend: FriendProfile = {
+            ...fallbackFriend,
+            id: String(profile.id || fallbackFriend.id),
+            firstName: profile.first_name ?? fallbackFriend.firstName ?? null,
+            lastName: profile.last_name ?? fallbackFriend.lastName ?? null,
+            username: profile.username ?? fallbackFriend.username ?? null,
+            email: profile.email ?? fallbackFriend.email ?? null,
+            avatarUrl: profile.avatar_url ?? fallbackFriend.avatarUrl ?? null,
+            role: profile.role ?? fallbackFriend.role ?? null,
+            themeMode: isVaiviaThemeMode(preferences.theme_mode)
+                ? preferences.theme_mode
+                : fallbackFriend.themeMode || null,
+            joinedAt:
+                profile.join_date ||
+                profile.created_at ||
+                fallbackFriend.joinedAt ||
+                null,
+        };
+
+        const stamps = stampRows.reduce<PassportStamp[]>((items, stamp: any) => {
+            const countryCode = String(stamp.country_code || "")
+                .trim()
+                .toUpperCase();
+            if (!/^[A-Z]{2}$/.test(countryCode)) return items;
+
+            items.push({
+                id: stamp.id,
+                countryCode,
+                countryName:
+                    stamp.stamp_display_country_name ||
+                    stamp.country_name ||
+                    getCountryName(countryCode),
+                flagEmoji:
+                    stamp.stamp_display_flag ||
+                    stamp.flag_emoji ||
+                    getFlagEmoji(countryCode),
+                firstVisitedOn: stamp.first_visited_on || null,
+                firstVisitYear:
+                    getYearFromDate(stamp.first_visited_on) ||
+                    getYearFromDate(stamp.stamped_at) ||
+                    getYearFromDate(stamp.created_at),
+                welcomeLabel:
+                    stamp.welcome_label_snapshot ||
+                    stamp.arrival_label_snapshot ||
+                    null,
+                arrivalLabel: stamp.arrival_label_snapshot || null,
+                stampLanguageCode: stamp.stamp_language_code || null,
+                stampLanguageName: stamp.stamp_language_name || null,
+                airportCode:
+                    stamp.first_entry_iata_code ||
+                    stamp.first_entry_icao_code ||
+                    null,
+                airportCity: stamp.first_entry_city || null,
+                airportName: stamp.first_entry_airport_name || null,
+                airportGooglePlaceId:
+                    stamp.first_entry_airport_google_place_id || null,
+                airportFormattedAddress:
+                    stamp.first_entry_airport_formatted_address || null,
+                visitCity: stamp.visit_city || null,
+                visitRegion: stamp.visit_region || null,
+                visitMonth: stamp.visit_month || null,
+                visitStatus: stamp.visit_status || "visited",
+                portOfEntryType: stamp.port_of_entry_type || null,
+                portOfEntryName: stamp.port_of_entry_name || null,
+                source: "manual",
+            });
+            return items;
+        }, []);
+
+        const bucketList = bucketRows.reduce<TravelBucketListItem[]>(
+            (items, item: any) => {
+                const countryCode = String(item.country_code || "")
+                    .trim()
+                    .toUpperCase();
+                if (!/^[A-Z]{2}$/.test(countryCode)) return items;
+
+                items.push({
+                    id: String(item.id || ""),
+                    placeLabel: String(item.place_label || "").trim(),
+                    city: item.city || null,
+                    region: item.region || null,
+                    countryCode,
+                    countryName: item.country_name || getCountryName(countryCode),
+                    flagEmoji: item.flag_emoji || getFlagEmoji(countryCode),
+                    googlePlaceId: item.google_place_id || null,
+                    googleFormattedAddress: item.google_formatted_address || null,
+                    latitude:
+                        typeof item.latitude === "number" ? item.latitude : null,
+                    longitude:
+                        typeof item.longitude === "number" ? item.longitude : null,
+                    status:
+                        item.status === "completed" ? "completed" : "in_progress",
+                    completedAt: item.completed_at || null,
+                    passportStampId: item.passport_stamp_id || null,
+                });
+                return items;
+            },
+            []
+        );
+
+        const scratchMapCountries = scratchRows.reduce<ScratchMapCountry[]>(
+            (items, item: any) => {
+                const countryCode = String(item.country_code || "")
+                    .trim()
+                    .toUpperCase();
+                if (!/^[A-Z]{3}$/.test(countryCode)) return items;
+                items.push({ id: String(item.id || countryCode), countryCode });
+                return items;
+            },
+            []
+        );
+
+        return {
+            friend,
+            points: Number.isFinite(Number(points.points))
+                ? Math.max(0, Number(points.points))
+                : 0,
+            level: Number.isFinite(Number(points.level))
+                ? Math.max(1, Number(points.level))
+                : 1,
+            levelName:
+                typeof points.level_name === "string" && points.level_name.trim()
+                    ? points.level_name.trim()
+                    : "Still Packing",
+            stamps,
+            bucketList,
+            scratchMapCountries,
+        };
+    }
+
+    async function handleSelectFriend(friend: FriendProfile) {
+        const supabase = createClient();
+        setSelectedFriend(friend);
+        setSelectedFriendSnapshot(null);
+        setIsLoadingFriendSnapshot(true);
+        setErrorMessage(null);
+
+        try {
+            const { data, error } = await (supabase.rpc as any)(
+                "get_friend_profile_snapshot",
+                { target_user_id: friend.id }
+            );
+
+            if (error) throw error;
+
+            setSelectedFriendSnapshot(normalizeFriendSnapshot(friend, data));
+        } catch (error) {
+            console.error("Could not load friend profile:", {
+                ...getErrorDetails(error),
+                friendId: friend.id,
+            });
+            setErrorMessage("Could not load this friend profile.");
+        } finally {
+            setIsLoadingFriendSnapshot(false);
+        }
+    }
+
+    async function handleDeleteFriend(friend: FriendProfile) {
+        const confirmed = window.confirm(
+            `Remove ${getFriendDisplayName(friend)} as a friend? They can add you again later.`
+        );
+        if (!confirmed) return;
+
+        const supabase = createClient();
+        setErrorMessage(null);
+        setStatusMessage(null);
+
+        try {
+            const { error } = await (supabase.rpc as any)("unfriend_user", {
+                target_user_id: friend.id,
+            });
+
+            if (error) throw error;
+
+            setProfileStats((current) => {
+                const nextFriends = current.friends.filter(
+                    (currentFriend) => currentFriend.id !== friend.id
+                );
+
+                return {
+                    ...current,
+                    friends: nextFriends,
+                    friendsCount: nextFriends.length,
+                };
+            });
+            setSelectedFriend(null);
+            setSelectedFriendSnapshot(null);
+            setStatusMessage(`${getFriendDisplayName(friend)} has been removed.`);
+            router.refresh();
+        } catch (error) {
+            console.error("Could not remove friend:", {
+                ...getErrorDetails(error),
+                friendId: friend.id,
+            });
+            setErrorMessage(
+                error instanceof Error ? error.message : "Could not remove friend."
+            );
+        }
+    }
+
     async function handleFriendInvitationStatus(
         invitationId: string,
         nextStatus: "accepted" | "declined" | "cancelled"
@@ -3879,7 +4109,7 @@ export default function AccountMenu({
                                     <button
                                         key={friend.id}
                                         type="button"
-                                        onClick={() => setSelectedFriend(friend)}
+                                        onClick={() => void handleSelectFriend(friend)}
                                         className="group/member flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-1.5 pr-3 text-left text-white shadow-xl shadow-black/10 transition hover:border-lime-300/30 hover:bg-white/[0.1]"
                                     >
                                         <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/15 bg-slate-950 text-xs font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.26)]">
@@ -4271,6 +4501,340 @@ export default function AccountMenu({
                             {errorMessage}
                         </p>
                     ) : null}
+                </div>
+            </div>
+        );
+    }
+
+    function renderFriendProfileView(requestClose: () => void) {
+        if (!selectedFriend) return null;
+
+        const friendSnapshot = selectedFriendSnapshot;
+        const friend = friendSnapshot?.friend || selectedFriend;
+        const friendStamps = friendSnapshot?.stamps || [];
+        const friendBucketList = friendSnapshot?.bucketList || [];
+        const friendScratchMapCountries = friendSnapshot?.scratchMapCountries || [];
+        const friendThemeMode = friend.themeMode || "dark";
+        const friendCountriesVisited = getUniqueStampCountryCount(friendStamps);
+        const friendContinentsVisited = new Set(
+            friendStamps
+                .map((stamp) => {
+                    const country = countryOptions.find(
+                        (option) => option.code === stamp.countryCode
+                    );
+                    return country?.region || "";
+                })
+                .filter(Boolean)
+        ).size;
+        const friendBucketListInProgress = friendBucketList.filter(
+            (item) => item.status === "in_progress"
+        );
+        const friendBucketListCompleted = friendBucketList.filter(
+            (item) => item.status === "completed"
+        );
+        const friendScratchMapCountryCodes = Array.from(
+            new Set(
+                friendStamps
+                    .flatMap((stamp) => [stamp.countryCode, stamp.countryName])
+                    .filter(Boolean) as string[]
+            )
+        );
+        const friendScratchMapCountryYears = friendStamps.reduce<
+            Record<string, number[]>
+        >((yearsByCountry, stamp) => {
+            const countryCode = stamp.countryCode?.trim().toUpperCase();
+            const year =
+                stamp.firstVisitYear || getYearFromDate(stamp.firstVisitedOn);
+
+            if (!countryCode || !year) return yearsByCountry;
+
+            yearsByCountry[countryCode] = Array.from(
+                new Set([...(yearsByCountry[countryCode] || []), year])
+            ).sort((yearA, yearB) => yearB - yearA);
+
+            return yearsByCountry;
+        }, {});
+        const friendManualScratchCodes = friendScratchMapCountries.map(
+            (country) => country.countryCode
+        );
+        const readOnlyBucketListCard = (item: TravelBucketListItem) => {
+            const display = getBucketListPlaceDisplay(item);
+            const completedDate = formatBucketListCompletedDate(item.completedAt);
+            const isCompleted = item.status === "completed";
+
+            return (
+                <div
+                    key={item.id}
+                    className={`flex h-40 w-32 flex-col items-center justify-start gap-2 rounded-[1.25rem] border px-3 py-3 text-center shadow-xl shadow-black/20 sm:h-44 sm:w-36 ${
+                        isCompleted
+                            ? "border-yellow-300/45 bg-yellow-300/20 text-yellow-50 shadow-yellow-950/20"
+                            : "border-white/10 bg-white/[0.06] text-white"
+                    }`}
+                >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-950/70 text-3xl ring-1 ring-lime-300/25 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                        {item.flagEmoji || getFlagEmoji(item.countryCode)}
+                    </span>
+                    <div className="min-w-0 leading-tight">
+                        <div className="line-clamp-2 text-sm font-black">
+                            {display.primary}
+                        </div>
+                        {display.secondary ? (
+                            <div className="mt-0.5 line-clamp-2 text-xs font-semibold text-slate-400">
+                                {display.secondary}
+                            </div>
+                        ) : null}
+                        {isCompleted && completedDate ? (
+                            <div className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-yellow-100/80">
+                                {completedDate}
+                            </div>
+                        ) : null}
+                    </div>
+                </div>
+            );
+        };
+
+        return (
+            <div className="bg-[#050712] text-white">
+                <div className="relative overflow-hidden border-b border-white/10 p-6 sm:p-8">
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(var(--vaivia-neon-rgb),0.22),transparent_34%),radial-gradient(circle_at_80%_20%,rgba(217,70,239,0.18),transparent_34%)]" />
+                    <div className="relative flex items-start justify-between gap-4">
+                        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end">
+                            <span className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[2rem] border border-lime-300/30 bg-slate-950 text-4xl font-black text-lime-200 shadow-[0_0_44px_rgba(var(--vaivia-neon-rgb),0.22)]">
+                                {friend.avatarUrl ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={friend.avatarUrl}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    getFriendInitials(friend)
+                                )}
+                            </span>
+                            <div className="min-w-0">
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200">
+                                    Friend profile
+                                </p>
+                                <h2
+                                    id="friendProfileTitle"
+                                    className="mt-2 truncate text-4xl font-black tracking-tight text-white"
+                                >
+                                    {getFriendDisplayName(friend)}
+                                </h2>
+                                <p className="mt-2 text-sm font-semibold text-slate-300">
+                                    {friend.username
+                                        ? `@${friend.username}`
+                                        : friend.email || "VAIVIA traveller"}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                    <span className="inline-flex rounded-full border border-lime-300/35 bg-lime-300/[0.12] px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-lime-100 shadow-xl shadow-black/20">
+                                        {formatUserRoleLabel(friend.role)}
+                                    </span>
+                                    <span
+                                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.16em] shadow-xl shadow-black/20 ${
+                                            THEME_PROFILE_BADGE_CLASSES[
+                                                friendThemeMode
+                                            ]
+                                        }`}
+                                    >
+                                        {THEME_PROFILE_LABELS[friendThemeMode]}
+                                    </span>
+                                    <span className="inline-flex rounded-full border border-lime-300/35 bg-lime-300/[0.12] px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-lime-100 shadow-xl shadow-black/20">
+                                        Level {friendSnapshot?.level || 1}
+                                    </span>
+                                </div>
+                                <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
+                                    Joined {formatJoinDate(friend.joinedAt)}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={requestClose}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
+                            aria-label="Close friend profile"
+                        >
+                            <X className="h-5 w-5" aria-hidden="true" />
+                        </button>
+                    </div>
+                </div>
+
+                <div className="max-h-[70vh] space-y-5 overflow-y-auto p-6 sm:p-8">
+                    {isLoadingFriendSnapshot ? (
+                        <p className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm font-semibold text-slate-300">
+                            Loading their profile...
+                        </p>
+                    ) : (
+                        <>
+                            <p className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm font-semibold text-slate-300">
+                                This is a read-only friend view. Private account
+                                controls and edit actions are hidden.
+                            </p>
+
+                            <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                {[
+                                    {
+                                        label: "Points",
+                                        value: friendSnapshot?.points || 0,
+                                        detail:
+                                            friendSnapshot?.levelName ||
+                                            "Still Packing",
+                                    },
+                                    {
+                                        label: "Passport stamps",
+                                        value: friendStamps.length,
+                                        detail: `${friendCountriesVisited} countries`,
+                                    },
+                                    {
+                                        label: "Continents",
+                                        value: friendContinentsVisited,
+                                        detail: "visited",
+                                    },
+                                    {
+                                        label: "Bucket list",
+                                        value: friendBucketListInProgress.length,
+                                        detail: "in progress",
+                                    },
+                                    {
+                                        label: "Completed",
+                                        value: friendBucketListCompleted.length,
+                                        detail: "bucket list",
+                                    },
+                                ].map((stat) => (
+                                    <div
+                                        key={stat.label}
+                                        className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4"
+                                    >
+                                        <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            {stat.label}
+                                        </p>
+                                        <p className="mt-2 text-3xl font-black text-white">
+                                            {stat.value}
+                                        </p>
+                                        <p className="mt-1 text-xs font-semibold text-slate-400">
+                                            {stat.detail}
+                                        </p>
+                                    </div>
+                                ))}
+                            </section>
+
+                            <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20">
+                                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                    Passport stamps
+                                </p>
+                                {friendStamps.length > 0 ? (
+                                    <div className="mt-5 grid grid-cols-2 justify-items-center gap-4 sm:grid-cols-3">
+                                        {friendStamps.map((stamp, stampIndex) => (
+                                            <PassportStampCard
+                                                key={`${stamp.countryCode}-${stamp.id || stampIndex}`}
+                                                countryName={stamp.countryName}
+                                                countryCode={stamp.countryCode}
+                                                flagEmoji={stamp.flagEmoji}
+                                                flagSvgUrl={stamp.flagSvgUrl}
+                                                firstVisitYear={stamp.firstVisitYear}
+                                                welcomeLabel={stamp.welcomeLabel}
+                                                airportCode={stamp.airportCode}
+                                                airportCity={stamp.airportCity}
+                                                portOfEntryLabel={
+                                                    stamp.portOfEntryName
+                                                }
+                                                size="sm"
+                                            />
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm font-semibold text-slate-300">
+                                        No passport stamps yet.
+                                    </p>
+                                )}
+                            </section>
+
+                            <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20">
+                                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                    Travel bucket list
+                                </p>
+                                {friendBucketList.length > 0 ? (
+                                    <div className="mt-5 space-y-5">
+                                        <div>
+                                            <h3 className="text-sm font-black text-white">
+                                                In progress
+                                            </h3>
+                                            {friendBucketListInProgress.length > 0 ? (
+                                                <div className="mt-3 grid grid-cols-2 justify-items-center gap-4 sm:grid-cols-3">
+                                                    {friendBucketListInProgress.map(
+                                                        readOnlyBucketListCard
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm font-semibold text-slate-300">
+                                                    No in-progress bucket list places.
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-white">
+                                                Completed
+                                            </h3>
+                                            {friendBucketListCompleted.length > 0 ? (
+                                                <div className="mt-3 grid grid-cols-2 justify-items-center gap-4 sm:grid-cols-3">
+                                                    {friendBucketListCompleted.map(
+                                                        readOnlyBucketListCard
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <p className="mt-3 rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm font-semibold text-slate-300">
+                                                    No completed bucket list places.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <p className="mt-4 rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm font-semibold text-slate-300">
+                                        No bucket list places yet.
+                                    </p>
+                                )}
+                            </section>
+
+                            <section className="overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-4 shadow-xl shadow-black/20">
+                                <div className="mb-4 flex items-center gap-2">
+                                    <Globe2
+                                        className="h-5 w-5 text-lime-200"
+                                        aria-hidden="true"
+                                    />
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                            Scratch map
+                                        </p>
+                                        <p className="text-sm font-semibold text-slate-400">
+                                            Their visited and scratched-off countries.
+                                        </p>
+                                    </div>
+                                </div>
+                                <ScratchMap
+                                    visitedCountryCodes={friendScratchMapCountryCodes}
+                                    visitedCountryYears={friendScratchMapCountryYears}
+                                    scratchedCountryCodes={friendManualScratchCodes}
+                                />
+                            </section>
+                        </>
+                    )}
+
+                    <div className="flex flex-wrap justify-end gap-3 border-t border-white/10 pt-5">
+                        <button
+                            type="button"
+                            onClick={() => void handleDeleteFriend(friend)}
+                            className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.12]"
+                        >
+                            Delete friend
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleBlockFriend(friend)}
+                            className="rounded-full border border-red-300/30 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20"
+                        >
+                            Block friend
+                        </button>
+                    </div>
                 </div>
             </div>
         );
@@ -4766,103 +5330,14 @@ export default function AccountMenu({
             {selectedFriend ? (
                 <Portal>
                     <AnimatedModal
-                        onClose={() => setSelectedFriend(null)}
-                        panelClassName="max-w-xl overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/50"
+                        onClose={() => {
+                            setSelectedFriend(null);
+                            setSelectedFriendSnapshot(null);
+                        }}
+                        panelClassName="max-w-5xl overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/50"
                         labelledBy="friendProfileTitle"
                     >
-                        {({ requestClose }) => (
-                            <div className="bg-[#050712] text-white">
-                                <div className="relative overflow-hidden border-b border-white/10 p-6">
-                                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(var(--vaivia-neon-rgb),0.22),transparent_34%),radial-gradient(circle_at_80%_20%,rgba(217,70,239,0.18),transparent_34%)]" />
-                                    <div className="relative flex items-start justify-between gap-4">
-                                        <div className="flex min-w-0 items-end gap-4">
-                                            <span className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] border border-lime-300/30 bg-slate-950 text-3xl font-black text-lime-200 shadow-[0_0_44px_rgba(var(--vaivia-neon-rgb),0.22)]">
-                                                {selectedFriend.avatarUrl ? (
-                                                    // eslint-disable-next-line @next/next/no-img-element
-                                                    <img
-                                                        src={selectedFriend.avatarUrl}
-                                                        alt=""
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                ) : (
-                                                    getFriendInitials(selectedFriend)
-                                                )}
-                                            </span>
-                                            <div className="min-w-0">
-                                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200">
-                                                    Friend profile
-                                                </p>
-                                                <h2
-                                                    id="friendProfileTitle"
-                                                    className="mt-2 truncate text-4xl font-black tracking-tight text-white"
-                                                >
-                                                    {getFriendDisplayName(selectedFriend)}
-                                                </h2>
-                                                <p className="mt-2 text-sm font-semibold text-slate-300">
-                                                    {selectedFriend.username
-                                                        ? `@${selectedFriend.username}`
-                                                        : selectedFriend.email ||
-                                                          "VAIVIA traveller"}
-                                                </p>
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    <span className="inline-flex rounded-full border border-lime-300/35 bg-lime-300/[0.12] px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-lime-100 shadow-xl shadow-black/20">
-                                                        {formatUserRoleLabel(
-                                                            selectedFriend.role
-                                                        )}
-                                                    </span>
-                                                    <span
-                                                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.16em] shadow-xl shadow-black/20 ${
-                                                            THEME_PROFILE_BADGE_CLASSES[
-                                                                selectedFriend.themeMode ||
-                                                                    "dark"
-                                                            ]
-                                                        }`}
-                                                    >
-                                                        {
-                                                            THEME_PROFILE_LABELS[
-                                                                selectedFriend.themeMode ||
-                                                                    "dark"
-                                                            ]
-                                                        }
-                                                    </span>
-                                                </div>
-                                                <p className="mt-2 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                                                    Joined{" "}
-                                                    {formatJoinDate(
-                                                        selectedFriend.joinedAt
-                                                    )}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={requestClose}
-                                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
-                                            aria-label="Close friend profile"
-                                        >
-                                            <X className="h-5 w-5" aria-hidden="true" />
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="p-6">
-                                    <p className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm font-semibold text-slate-300">
-                                        This is a read-only friend view. Private account
-                                        controls and edit actions are hidden.
-                                    </p>
-                                    <div className="mt-4 flex justify-end">
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                handleBlockFriend(selectedFriend)
-                                            }
-                                            className="rounded-full border border-red-300/30 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20"
-                                        >
-                                            Block friend
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                        {({ requestClose }) => renderFriendProfileView(requestClose)}
                     </AnimatedModal>
                 </Portal>
             ) : null}
