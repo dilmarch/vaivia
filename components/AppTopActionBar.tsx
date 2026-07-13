@@ -28,6 +28,10 @@ type AppTopActionBarProps = {
 
 export type AppNotification = DropdownNotification;
 
+type RefreshNotificationsOptions = {
+    markPassiveAsViewed?: boolean;
+};
+
 function tripLabel(trip: TopNavTrip) {
     return trip.title?.trim() || "Untitled trip";
 }
@@ -83,6 +87,7 @@ export default function AppTopActionBar({
     );
     const [visibleNotifications, setVisibleNotifications] =
         useState<AppNotification[]>(notifications);
+    const [hasSyncedNotifications, setHasSyncedNotifications] = useState(false);
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
     const [activeInviteNotification, setActiveInviteNotification] =
         useState<AppNotification | null>(null);
@@ -91,11 +96,18 @@ export default function AppTopActionBar({
     const [activePassportStampNotification, setActivePassportStampNotification] =
         useState<AppNotification | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
-    const dropdownNotificationCount = visibleNotifications.length;
+    const dropdownNotificationCount = hasSyncedNotifications
+        ? visibleNotifications.length
+        : 0;
 
     useEffect(() => {
+        if (hasSyncedNotifications) return;
         setVisibleNotifications(notifications);
-    }, [notifications]);
+    }, [hasSyncedNotifications, notifications]);
+
+    useEffect(() => {
+        void refreshNotifications();
+    }, []);
 
     useEffect(() => {
         if (!openMenu) return;
@@ -124,7 +136,9 @@ export default function AppTopActionBar({
         };
     }, [openMenu]);
 
-    async function refreshNotifications() {
+    async function refreshNotifications({
+        markPassiveAsViewed = false,
+    }: RefreshNotificationsOptions = {}) {
         setIsLoadingNotifications(true);
 
         const supabase = createClient();
@@ -134,6 +148,7 @@ export default function AppTopActionBar({
 
         if (!user) {
             setVisibleNotifications([]);
+            setHasSyncedNotifications(true);
             setIsLoadingNotifications(false);
             return;
         }
@@ -150,10 +165,16 @@ export default function AppTopActionBar({
                 details: error.details,
                 hint: error.hint,
             });
+            setVisibleNotifications([]);
+            setHasSyncedNotifications(true);
         } else {
             const dropdownNotifications = data || [];
             setVisibleNotifications(dropdownNotifications);
-            void markViewedPassiveNotifications(dropdownNotifications);
+            setHasSyncedNotifications(true);
+
+            if (markPassiveAsViewed) {
+                void markViewedPassiveNotifications(dropdownNotifications);
+            }
         }
 
         setIsLoadingNotifications(false);
@@ -164,7 +185,7 @@ export default function AppTopActionBar({
             const nextMenu = current === menu ? null : menu;
 
             if (nextMenu === "notifications") {
-                void refreshNotifications();
+                void refreshNotifications({ markPassiveAsViewed: true });
             }
 
             return nextMenu;
