@@ -4476,24 +4476,43 @@ export default function AccountMenu({
                                 </p>
                             </div>
                         </div>
-                        <ScratchMap
-                            userId={userId}
-                            visitedCountryCodes={scratchMapCountryCodes}
-                            visitedCountryYears={scratchMapCountryYears}
-                            scratchedCountryCodes={manualScratchMapCountryCodes}
-                            settingsHref="/profile"
-                            onScratchMapChange={(countryCodes) => {
-                                setProfileStats((current) => ({
-                                    ...current,
-                                    scratchMapCountries: countryCodes.map(
-                                        (countryCode) => ({
-                                            id: countryCode,
-                                            countryCode,
-                                        })
-                                    ),
-                                }));
-                            }}
-                        />
+                        <div className="md:hidden">
+                            <Link
+                                href="/scratch-map"
+                                className="flex min-h-24 items-center justify-between gap-4 rounded-[1.25rem] border border-lime-300/25 bg-lime-300/10 p-4 text-left text-lime-100 shadow-xl shadow-black/20 transition hover:bg-lime-300 hover:text-slate-950"
+                                prefetch
+                            >
+                                <span>
+                                    <span className="block text-sm font-black">
+                                        Open full-screen scratch map
+                                    </span>
+                                    <span className="mt-1 block text-xs font-semibold opacity-75">
+                                        Zoom, pan, and scratch countries with more room.
+                                    </span>
+                                </span>
+                                <MapPinned className="h-6 w-6 shrink-0" aria-hidden="true" />
+                            </Link>
+                        </div>
+                        <div className="hidden md:block">
+                            <ScratchMap
+                                userId={userId}
+                                visitedCountryCodes={scratchMapCountryCodes}
+                                visitedCountryYears={scratchMapCountryYears}
+                                scratchedCountryCodes={manualScratchMapCountryCodes}
+                                settingsHref="/profile"
+                                onScratchMapChange={(countryCodes) => {
+                                    setProfileStats((current) => ({
+                                        ...current,
+                                        scratchMapCountries: countryCodes.map(
+                                            (countryCode) => ({
+                                                id: countryCode,
+                                                countryCode,
+                                            })
+                                        ),
+                                    }));
+                                }}
+                            />
+                        </div>
                     </section>
 
                     {errorMessage ? (

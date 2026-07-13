@@ -28,6 +28,8 @@ type ScratchMapProps = {
     visitedCountryYears?: Record<string, number[]>;
     scratchedCountryCodes?: string[];
     className?: string;
+    statsClassName?: string;
+    mapViewportClassName?: string;
     settingsHref?: string;
     onScratchMapChange?: (countryCodes: string[]) => void;
 };
@@ -183,6 +185,8 @@ export default function ScratchMap({
     visitedCountryYears = {},
     scratchedCountryCodes = [],
     className = "",
+    statsClassName,
+    mapViewportClassName,
     settingsHref = "/profile",
     onScratchMapChange,
 }: ScratchMapProps) {
@@ -470,7 +474,7 @@ export default function ScratchMap({
 
     return (
         <section className={`space-y-5 ${className}`}>
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className={statsClassName || "grid gap-3 md:grid-cols-3"}>
                 <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20">
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                         Countries visited
@@ -584,7 +588,7 @@ export default function ScratchMap({
                     </button>
                 </div>
 
-                <div className="relative aspect-[2/1] w-full">
+                <div className={mapViewportClassName || "relative aspect-[2/1] w-full"}>
                     <ComposableMap
                         projection="geoEqualEarth"
                         className="h-full w-full"
