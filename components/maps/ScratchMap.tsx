@@ -30,6 +30,7 @@ type ScratchMapProps = {
     className?: string;
     statsClassName?: string;
     mapViewportClassName?: string;
+    readOnly?: boolean;
     settingsHref?: string;
     onScratchMapChange?: (countryCodes: string[]) => void;
 };
@@ -187,6 +188,7 @@ export default function ScratchMap({
     className = "",
     statsClassName,
     mapViewportClassName,
+    readOnly = false,
     settingsHref = "/profile",
     onScratchMapChange,
 }: ScratchMapProps) {
@@ -248,6 +250,13 @@ export default function ScratchMap({
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
     const scratchAudioRef = useRef<HTMLAudioElement | null>(null);
     const scratchAudioStopTimerRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        if (readOnly && mapMode !== "view") {
+            setMapMode("view");
+            setShowScratchHint(false);
+        }
+    }, [mapMode, readOnly]);
 
     const visitedCount = highlightedSet.size;
     const selectableCountryCount = COUNTRY_OPTIONS.length;
@@ -524,26 +533,27 @@ export default function ScratchMap({
                 <div className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.18)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.18)_1px,transparent_1px)] [background-size:32px_32px]" />
                 <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,transparent_0,rgba(0,0,0,0.42)_72%)]" />
 
-                <div className="absolute left-4 top-4 z-20 flex rounded-full border border-white/10 bg-slate-950/80 p-1 shadow-xl shadow-black/30 backdrop-blur-xl">
-                    {(["view", "scratch"] as const).map((mode) => (
-                        <button
-                            key={mode}
-                            type="button"
-                            onClick={() => {
-                                setMapMode(mode);
-                                setShowScratchHint(false);
-                            }}
-                            className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
-                                mapMode === mode
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
-                            }`}
-                            aria-pressed={mapMode === mode}
-                        >
-                            {mode === "view" ? "View mode" : "Scratch mode"}
-                        </button>
-                    ))}
-                    {showScratchHint ? (
+                {!readOnly ? (
+                    <div className="absolute left-4 top-4 z-20 flex rounded-full border border-white/10 bg-slate-950/80 p-1 shadow-xl shadow-black/30 backdrop-blur-xl">
+                        {(["view", "scratch"] as const).map((mode) => (
+                            <button
+                                key={mode}
+                                type="button"
+                                onClick={() => {
+                                    setMapMode(mode);
+                                    setShowScratchHint(false);
+                                }}
+                                className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-[0.14em] transition ${
+                                    mapMode === mode
+                                        ? "bg-lime-300 text-slate-950"
+                                        : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
+                                }`}
+                                aria-pressed={mapMode === mode}
+                            >
+                                {mode === "view" ? "View mode" : "Scratch mode"}
+                            </button>
+                        ))}
+                        {showScratchHint ? (
                         <div className="absolute left-0 top-[calc(100%+0.75rem)] w-64 rounded-2xl border border-lime-300/25 bg-slate-950/95 p-4 text-sm font-bold leading-6 text-white shadow-2xl shadow-black/50">
                             <button
                                 type="button"
@@ -558,8 +568,9 @@ export default function ScratchMap({
                                 Activate scratch mode to scratch off countries you have visited.
                             </p>
                         </div>
-                    ) : null}
-                </div>
+                        ) : null}
+                    </div>
+                ) : null}
 
                 <div className="absolute right-4 top-4 z-20 flex gap-2">
                     <button

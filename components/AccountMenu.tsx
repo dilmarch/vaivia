@@ -11,6 +11,7 @@ import {
     ListChecks,
     LogOut,
     MapPinned,
+    MoreHorizontal,
     Pencil,
     Plus,
     Settings,
@@ -1026,6 +1027,7 @@ export default function AccountMenu({
     const [selectedFriendSnapshot, setSelectedFriendSnapshot] =
         useState<FriendProfileSnapshot | null>(null);
     const [isLoadingFriendSnapshot, setIsLoadingFriendSnapshot] = useState(false);
+    const [isFriendOptionsOpen, setIsFriendOptionsOpen] = useState(false);
     const [friendsHeaderPhraseIndex, setFriendsHeaderPhraseIndex] = useState(0);
 
     const displayName = useMemo(() => {
@@ -3660,6 +3662,8 @@ export default function AccountMenu({
                 };
             });
             setSelectedFriend(null);
+            setSelectedFriendSnapshot(null);
+            setIsFriendOptionsOpen(false);
             setStatusMessage(`${getFriendDisplayName(friend)} has been blocked.`);
             router.refresh();
         } catch (error) {
@@ -3824,6 +3828,7 @@ export default function AccountMenu({
         const supabase = createClient();
         setSelectedFriend(friend);
         setSelectedFriendSnapshot(null);
+        setIsFriendOptionsOpen(false);
         setIsLoadingFriendSnapshot(true);
         setErrorMessage(null);
 
@@ -3877,6 +3882,7 @@ export default function AccountMenu({
             });
             setSelectedFriend(null);
             setSelectedFriendSnapshot(null);
+            setIsFriendOptionsOpen(false);
             setStatusMessage(`${getFriendDisplayName(friend)} has been removed.`);
             router.refresh();
         } catch (error) {
@@ -4667,14 +4673,63 @@ export default function AccountMenu({
                                 </p>
                             </div>
                         </div>
-                        <button
-                            type="button"
-                            onClick={requestClose}
-                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
-                            aria-label="Close friend profile"
-                        >
-                            <X className="h-5 w-5" aria-hidden="true" />
-                        </button>
+                        <div className="relative flex shrink-0 items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setIsFriendOptionsOpen((current) => !current)
+                                }
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
+                                aria-label="Friend options"
+                                aria-haspopup="menu"
+                                aria-expanded={isFriendOptionsOpen}
+                            >
+                                <MoreHorizontal
+                                    className="h-5 w-5"
+                                    aria-hidden="true"
+                                />
+                            </button>
+                            {isFriendOptionsOpen ? (
+                                <div
+                                    role="menu"
+                                    className="absolute right-14 top-0 z-30 min-w-44 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 p-1 text-sm font-black shadow-2xl shadow-black/50 backdrop-blur-xl"
+                                >
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setIsFriendOptionsOpen(false);
+                                            void handleDeleteFriend(friend);
+                                        }}
+                                        className="block w-full rounded-xl px-3 py-2 text-left text-slate-100 transition hover:bg-white/[0.08]"
+                                    >
+                                        Delete friend
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                            setIsFriendOptionsOpen(false);
+                                            void handleBlockFriend(friend);
+                                        }}
+                                        className="block w-full rounded-xl px-3 py-2 text-left text-red-100 transition hover:bg-red-400/15"
+                                    >
+                                        Block friend
+                                    </button>
+                                </div>
+                            ) : null}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsFriendOptionsOpen(false);
+                                    requestClose();
+                                }}
+                                className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
+                                aria-label="Close friend profile"
+                            >
+                                <X className="h-5 w-5" aria-hidden="true" />
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -4685,11 +4740,6 @@ export default function AccountMenu({
                         </p>
                     ) : (
                         <>
-                            <p className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm font-semibold text-slate-300">
-                                This is a read-only friend view. Private account
-                                controls and edit actions are hidden.
-                            </p>
-
                             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 {[
                                     {
@@ -4860,28 +4910,12 @@ export default function AccountMenu({
                                         scratchedCountryCodes={
                                             friendManualScratchCodes
                                         }
+                                        readOnly
                                     />
                                 </div>
                             </section>
                         </>
                     )}
-
-                    <div className="flex flex-wrap justify-end gap-3 border-t border-white/10 pt-5">
-                        <button
-                            type="button"
-                            onClick={() => void handleDeleteFriend(friend)}
-                            className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.12]"
-                        >
-                            Delete friend
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => void handleBlockFriend(friend)}
-                            className="rounded-full border border-red-300/30 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20"
-                        >
-                            Block friend
-                        </button>
-                    </div>
                 </div>
             </div>
         );
@@ -5380,6 +5414,7 @@ export default function AccountMenu({
                         onClose={() => {
                             setSelectedFriend(null);
                             setSelectedFriendSnapshot(null);
+                            setIsFriendOptionsOpen(false);
                         }}
                         panelClassName="max-w-5xl overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/50"
                         labelledBy="friendProfileTitle"
