@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Loader2, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
 import Portal from "@/components/Portal";
 import ShareTripModal from "@/components/ShareTripModal";
+import { createClient } from "@/lib/supabase/client";
 
 export type TripHeaderMember = {
     user_id: string;
     first_name?: string | null;
     last_name?: string | null;
     username?: string | null;
+    email?: string | null;
     avatar_url?: string | null;
     joined_at?: string | null;
     role?: string | null;
@@ -47,12 +49,26 @@ type TripMembersPanelProps = {
     removeFamilyMemberAction?: (formData: FormData) => Promise<void>;
 };
 
+type FriendshipStatus = "pending" | "accepted" | "cancelled" | "declined" | "blocked";
+
+type FriendshipRow = {
+    id: string;
+    requester_user_id: string;
+    addressee_user_id: string | null;
+    status: FriendshipStatus;
+    blocked_by_user_id?: string | null;
+};
+
 function getDisplayName(member: TripHeaderMember) {
     return (
         [member.first_name, member.last_name].filter(Boolean).join(" ").trim() ||
         member.username ||
         "Trip member"
     );
+}
+
+function getFriendIdentifier(member: TripHeaderMember) {
+    return member.username || member.email || "";
 }
 
 function getInitials(member: TripHeaderMember) {
@@ -132,8 +148,75 @@ export default function TripMembersPanel({
     );
     const [selectedFamilyMember, setSelectedFamilyMember] =
         useState<TripHeaderFamilyMember | null>(null);
+    const [friendshipsByUserId, setFriendshipsByUserId] = useState<
+        Record<string, FriendshipRow>
+    >({});
+    const [confirmingFriend, setConfirmingFriend] =
+        useState<TripHeaderMember | null>(null);
+    const [friendActionError, setFriendActionError] = useState("");
+    const [savingFriendUserId, setSavingFriendUserId] = useState<string | null>(null);
     const [confirmingDelete, setConfirmingDelete] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+    const friendCandidateIds = useMemo(
+        () =>
+            members
+                .map((member) => member.user_id)
+                .filter((memberUserId) => memberUserId !== currentUserId),
+        [currentUserId, members]
+    );
+
+    useEffect(() => {
+        let isActive = true;
+
+        async function loadFriendships() {
+            if (friendCandidateIds.length === 0) {
+                setFriendshipsByUserId({});
+                return;
+            }
+
+            const supabase = createClient();
+            const { data, error } = await (supabase.from as any)(
+                "user_friendships"
+            )
+                .select(
+                    "id,requester_user_id,addressee_user_id,status,blocked_by_user_id"
+                )
+                .or(
+                    `requester_user_id.eq.${currentUserId},addressee_user_id.eq.${currentUserId}`
+                );
+
+            if (!isActive) return;
+
+            if (error) {
+                console.warn("Could not load trip-member friend statuses:", error);
+                setFriendshipsByUserId({});
+                return;
+            }
+
+            const candidateSet = new Set(friendCandidateIds);
+            const next: Record<string, FriendshipRow> = {};
+
+            ((data || []) as FriendshipRow[]).forEach((friendship) => {
+                const otherUserId =
+                    friendship.requester_user_id === currentUserId
+                        ? friendship.addressee_user_id
+                        : friendship.requester_user_id;
+
+                if (!otherUserId || !candidateSet.has(otherUserId)) return;
+
+                next[otherUserId] = friendship;
+            });
+
+            setFriendshipsByUserId(next);
+        }
+
+        loadFriendships();
+
+        return () => {
+            isActive = false;
+        };
+    }, [currentUserId, friendCandidateIds]);
 
     if (
         members.length === 0 &&
@@ -148,6 +231,77 @@ export default function TripMembersPanel({
         currentUserId === tripOwnerId &&
         selectedMember?.user_id !== currentUserId &&
         selectedMember?.user_id !== tripOwnerId;
+
+    async function sendFriendInvite(member: TripHeaderMember) {
+        const identifier = getFriendIdentifier(member);
+
+        if (!identifier) {
+            setFriendActionError(
+                "This trip member does not have a username available for friend invites."
+            );
+            return;
+        }
+
+        setSavingFriendUserId(member.user_id);
+        setFriendActionError("");
+
+        const supabase = createClient();
+        const { data, error } = await supabase.rpc("create_friend_invitation", {
+            invitee_identifier: identifier,
+        });
+
+        setSavingFriendUserId(null);
+
+        if (error) {
+            setFriendActionError(
+                error.message || "Could not send this friend invite."
+            );
+            return;
+        }
+
+        if (data) {
+            setFriendshipsByUserId((current) => ({
+                ...current,
+                [member.user_id]: {
+                    id: String(data),
+                    requester_user_id: currentUserId,
+                    addressee_user_id: member.user_id,
+                    status: "pending",
+                },
+            }));
+        }
+
+        setConfirmingFriend(null);
+    }
+
+    async function rescindFriendInvite(member: TripHeaderMember) {
+        const friendship = friendshipsByUserId[member.user_id];
+        if (!friendship?.id || friendship.requester_user_id !== currentUserId) return;
+
+        setSavingFriendUserId(member.user_id);
+        setFriendActionError("");
+
+        const supabase = createClient();
+        const { error } = await supabase.rpc("respond_to_friend_invitation", {
+            friendship_id: friendship.id,
+            next_status: "cancelled",
+        });
+
+        setSavingFriendUserId(null);
+
+        if (error) {
+            setFriendActionError(
+                error.message || "Could not rescind this friend invite."
+            );
+            return;
+        }
+
+        setFriendshipsByUserId((current) => {
+            const next = { ...current };
+            delete next[member.user_id];
+            return next;
+        });
+    }
 
     return (
         <>
@@ -189,37 +343,99 @@ export default function TripMembersPanel({
                         Going
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                        {members.map((member) => (
-                            <button
-                                key={member.user_id}
-                                type="button"
-                                onClick={() => {
-                                    setSelectedMember(member);
-                                    setConfirmingDelete(false);
-                                }}
-                                className="group/member flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-1.5 pr-3 text-left text-white shadow-xl shadow-black/10 transition hover:border-lime-300/30 hover:bg-white/[0.1]"
-                            >
-                                <span className="relative">
-                                    <MemberAvatar member={member} />
-                                    <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-950/70 opacity-0 transition group-hover/member:opacity-100">
-                                        <Pencil
-                                            className="h-4 w-4 text-lime-200"
-                                            aria-hidden="true"
-                                        />
-                                    </span>
-                                </span>
-                                <span className="min-w-0">
-                                    <span className="block max-w-28 truncate text-sm font-black">
-                                        {getDisplayName(member)}
-                                    </span>
-                                    {member.username ? (
-                                        <span className="block max-w-28 truncate text-xs font-semibold text-slate-400">
-                                            @{member.username}
+                        {members.map((member) => {
+                            const friendship = friendshipsByUserId[member.user_id];
+                            const isCurrentUser = member.user_id === currentUserId;
+                            const isAcceptedFriend =
+                                friendship?.status === "accepted";
+                            const isBlockedFriendship =
+                                friendship?.status === "blocked";
+                            const isOutgoingPending =
+                                friendship?.requester_user_id === currentUserId &&
+                                (friendship.status === "pending" ||
+                                    friendship.status === "declined");
+                            const isIncomingPending =
+                                friendship?.addressee_user_id === currentUserId &&
+                                friendship.status === "pending";
+                            const showAddFriend =
+                                !isCurrentUser &&
+                                !isAcceptedFriend &&
+                                !isBlockedFriendship &&
+                                !isOutgoingPending &&
+                                !isIncomingPending;
+                            const showPending = isOutgoingPending || isIncomingPending;
+                            const isSavingFriend =
+                                savingFriendUserId === member.user_id;
+
+                            return (
+                                <span
+                                    key={member.user_id}
+                                    className="group/member relative inline-flex min-w-0"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedMember(member);
+                                            setConfirmingDelete(false);
+                                        }}
+                                        className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-1.5 pr-3 text-left text-white shadow-xl shadow-black/10 transition hover:border-lime-300/30 hover:bg-white/[0.1]"
+                                    >
+                                        <span className="relative pb-4">
+                                            <MemberAvatar member={member} />
+                                            <span className="absolute inset-x-0 top-0 flex h-11 items-center justify-center rounded-full bg-slate-950/70 opacity-0 transition group-hover/member:opacity-100">
+                                                <Pencil
+                                                    className="h-4 w-4 text-lime-200"
+                                                    aria-hidden="true"
+                                                />
+                                            </span>
+                                            {showPending ? (
+                                                <span className="absolute -bottom-0.5 left-1/2 z-20 -translate-x-1/2 rounded-full border border-lime-300/25 bg-slate-950 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-lime-200 shadow-xl shadow-black/30">
+                                                    Pending
+                                                </span>
+                                            ) : null}
                                         </span>
+                                        <span className="min-w-0">
+                                            <span className="block max-w-28 truncate text-sm font-black">
+                                                {getDisplayName(member)}
+                                            </span>
+                                            {member.username ? (
+                                                <span className="block max-w-28 truncate text-xs font-semibold text-slate-400">
+                                                    @{member.username}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                    </button>
+
+                                    {showAddFriend ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setFriendActionError("");
+                                                setConfirmingFriend(member);
+                                            }}
+                                            className="absolute bottom-3 left-8 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-slate-950 bg-lime-300 text-slate-950 shadow-xl shadow-black/40 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200"
+                                            aria-label={`Add ${getDisplayName(member)} as a friend`}
+                                            title={`Add ${getDisplayName(member)} as a friend`}
+                                        >
+                                            <Plus className="h-3 w-3" aria-hidden="true" />
+                                        </button>
+                                    ) : null}
+
+                                    {isOutgoingPending ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => rescindFriendInvite(member)}
+                                            disabled={isSavingFriend}
+                                            className="absolute -bottom-5 left-1 z-30 rounded-full border border-white/10 bg-slate-950/95 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-lime-200 opacity-0 shadow-xl shadow-black/35 transition hover:border-red-300/40 hover:text-red-100 group-hover/member:opacity-100 focus:opacity-100"
+                                            aria-label={`Rescind friend invite to ${getDisplayName(member)}`}
+                                            title="Rescind invite"
+                                        >
+                                            {isSavingFriend ? "..." : "X"}
+                                        </button>
                                     ) : null}
                                 </span>
-                            </button>
-                        ))}
+                            );
+                        })}
                         {familyMembers.map((member) => (
                             <button
                                 key={member.family_member_id}
@@ -261,6 +477,94 @@ export default function TripMembersPanel({
                 availableFamilyMembers={availableFamilyMembers}
                 addFamilyMemberAction={addFamilyMemberAction}
             />
+
+            {confirmingFriend ? (
+                <Portal>
+                    <div
+                        className="vaivia-modal-backdrop"
+                        onClick={() => {
+                            if (!savingFriendUserId) setConfirmingFriend(null);
+                        }}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="friend-add-title"
+                            className="vaivia-modal-panel max-w-md"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <MemberAvatar member={confirmingFriend} />
+                                    <div>
+                                        <p className="vaivia-modal-eyebrow">
+                                            Add friend
+                                        </p>
+                                        <h2
+                                            id="friend-add-title"
+                                            className="vaivia-modal-title"
+                                        >
+                                            Add {getDisplayName(confirmingFriend)}?
+                                        </h2>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setConfirmingFriend(null)}
+                                    disabled={Boolean(savingFriendUserId)}
+                                    className="vaivia-modal-close"
+                                    aria-label="Close friend invite confirmation"
+                                >
+                                    <X className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <div className="vaivia-modal-body space-y-4">
+                                <p className="text-sm font-semibold leading-6 text-slate-700">
+                                    VAIVIA will send them a friend request. They can
+                                    accept or decline before either of you can see each
+                                    other’s friend-only profile details.
+                                </p>
+
+                                {friendActionError ? (
+                                    <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+                                        {friendActionError}
+                                    </p>
+                                ) : null}
+
+                                <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfirmingFriend(null)}
+                                        disabled={Boolean(savingFriendUserId)}
+                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => sendFriendInvite(confirmingFriend)}
+                                        disabled={Boolean(savingFriendUserId)}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {savingFriendUserId ? (
+                                            <Loader2
+                                                className="h-4 w-4 animate-spin"
+                                                aria-hidden="true"
+                                            />
+                                        ) : (
+                                            <UserPlus
+                                                className="h-4 w-4"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                        Send invite
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            ) : null}
 
             {selectedMember ? (
                 <Portal>

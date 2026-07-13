@@ -9,6 +9,7 @@ import {
     loadTripExpenseData,
 } from "@/lib/budgetServer";
 import { createClient } from "@/lib/supabase/server";
+import { getTripHref, resolveTripRouteParam } from "@/lib/tripRoutes";
 
 type PageProps = {
     params: Promise<{ tripId: string }>;
@@ -52,7 +53,7 @@ function CurrencyHeroSummary({ currency }: { currency: string }) {
     );
 }
 
-async function loadBudgetPageData(tripId: string) {
+async function loadBudgetPageData(tripRouteParam: string) {
     const supabase = await createClient();
     const {
         data: { user },
@@ -60,21 +61,26 @@ async function loadBudgetPageData(tripId: string) {
 
     if (!user) redirect("/auth/login");
 
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id,title,destination")
-        .eq("id", tripId)
-        .maybeSingle();
+    const resolvedTrip = await resolveTripRouteParam<{
+        id: string;
+        slug?: string | null;
+        title?: string | null;
+        destination?: string | null;
+    }>(supabase, tripRouteParam, "id,slug,title,destination");
 
-    if (tripError) {
+    if (resolvedTrip.error) {
         console.warn("Could not load trip for budget page:", {
-            message: tripError.message,
-            code: tripError.code,
-            details: tripError.details,
+            message: resolvedTrip.error.message,
+            code: resolvedTrip.error.code,
+            details: resolvedTrip.error.details,
         });
     }
 
+    const trip = resolvedTrip.trip;
     if (!trip) notFound();
+    if (resolvedTrip.shouldRedirect) redirect(getTripHref(trip, "/budget"));
+
+    const tripId = resolvedTrip.tripId;
 
     const db = asUntypedSupabase(supabase);
     const { data: financeSettings } = await db
@@ -94,7 +100,9 @@ async function loadBudgetPageData(tripId: string) {
     ]);
 
     return {
+        tripId,
         tripTitle: trip.title || trip.destination || "Trip",
+        tripRouteSegment: resolvedTrip.routeSegment,
         defaultCurrency,
         participants,
         budget: budgetData.budget,
@@ -105,15 +113,15 @@ async function loadBudgetPageData(tripId: string) {
 }
 
 export default async function TripBudgetPage({ params }: PageProps) {
-    const { tripId } = await params;
-    const data = await loadBudgetPageData(tripId);
+    const { tripId: tripRouteParam } = await params;
+    const data = await loadBudgetPageData(tripRouteParam);
 
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0 text-white">
             <TripPageHero
-                tripId={tripId}
+                tripId={data.tripId}
                 pageLabel="Budget"
-                revalidatePathname={`/trips/${tripId}/budget`}
+                revalidatePathname={`/trips/${data.tripRouteSegment}/budget`}
                 summaryContent={
                     <CurrencyHeroSummary
                         currency={
@@ -123,9 +131,10 @@ export default async function TripBudgetPage({ params }: PageProps) {
                 }
             />
             <BudgetFeatureClient
-                tripId={tripId}
-                mode="budget"
                 {...data}
+                tripId={data.tripId}
+                tripRouteSegment={data.tripRouteSegment}
+                mode="budget"
             />
         </main>
     );

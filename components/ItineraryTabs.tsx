@@ -38,10 +38,12 @@ type ItineraryTabsProps = {
     travelerOptions?: TransportationTravelerOptions;
     audienceOptions?: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
+    initialQuickAddAction?: QuickAddInitialAction | null;
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
 type CalendarView = "list" | "day" | "week";
+type QuickAddInitialAction = "transportation" | "scheduled" | "idea";
 
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
@@ -80,6 +82,7 @@ export default function ItineraryTabs({
     travelerOptions = { users: [], familyMembers: [] },
     audienceOptions = [],
     currentUserTripMemberId = null,
+    initialQuickAddAction = null,
 }: ItineraryTabsProps) {
     const activeTab = initialTab;
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -203,6 +206,7 @@ export default function ItineraryTabs({
                 travelerOptions={travelerOptions}
                 audienceOptions={audienceOptions}
                 currentUserTripMemberId={currentUserTripMemberId}
+                initialAction={initialQuickAddAction}
             />
         </section>
     );

@@ -77,7 +77,13 @@ function getMixedCountdownParts(differenceMs: number) {
         { value: hours, unit: hours === 1 ? "hour" : "hours" },
         { value: minutes, unit: minutes === 1 ? "minute" : "minutes" },
         { value: seconds, unit: seconds === 1 ? "second" : "seconds" },
-    ].filter((part, index, parts) => part.value > 0 || index === parts.length - 1);
+    ].filter(
+        (part, index, parts) =>
+            part.value > 0 ||
+            part.unit === "hour" ||
+            part.unit === "hours" ||
+            index === parts.length - 1
+    );
 }
 
 export function getCountdownDisplay(

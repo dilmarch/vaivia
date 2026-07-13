@@ -138,9 +138,10 @@ export default function TripInviteReviewModal({
 
         if (error) {
             setErrorMessage(
-                action === "accept"
-                    ? "Could not accept this invite. Please try again."
-                    : "Could not decline this invite. Please try again."
+                error.message ||
+                    (action === "accept"
+                        ? "Could not accept this invite. Please try again."
+                        : "Could not decline this invite. Please try again.")
             );
         } else {
             await supabase.rpc("mark_app_alert_read", {

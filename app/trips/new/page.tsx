@@ -3,17 +3,29 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import TripDestinationPicker from "@/components/TripDestinationPicker";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
+import NewTripForm, { type CreateTripFormState } from "@/components/NewTripForm";
+import {
+    buildTripCoverPayloadFromForm,
+    cleanupReplacedTripCover,
+    deleteOwnedTripCoverObject,
+} from "@/lib/tripCovers";
+import { slugifyTripTitle } from "@/lib/tripRoutes";
 
 type TripPayload = {
     user_id: string;
     title: string;
+    slug: string;
     destination: string;
     start_date: string | null;
     end_date: string | null;
     notes: string;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
+    cover_image_unsplash_id?: string | null;
+    cover_image_photographer_name?: string | null;
+    cover_image_photographer_url?: string | null;
 };
 
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
@@ -24,19 +36,39 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
         error.code === "PGRST204" ||
         (message.includes("column") &&
             (message.includes("cover_image_url") ||
+                message.includes("cover_image_source") ||
+                message.includes("cover_image_storage_path") ||
+                message.includes("cover_image_unsplash_id") ||
+                message.includes("cover_image_photographer") ||
                 message.includes("schema cache")))
     );
 }
 
 function removeTripCoverColumn(payload: TripPayload) {
-    const { cover_image_url, ...fallbackPayload } = payload;
+    const {
+        cover_image_url,
+        cover_image_source,
+        cover_image_storage_path,
+        cover_image_unsplash_id,
+        cover_image_photographer_name,
+        cover_image_photographer_url,
+        ...fallbackPayload
+    } = payload;
 
     void cover_image_url;
+    void cover_image_source;
+    void cover_image_storage_path;
+    void cover_image_unsplash_id;
+    void cover_image_photographer_name;
+    void cover_image_photographer_url;
 
     return fallbackPayload;
 }
 
-async function createTrip(formData: FormData) {
+async function createTrip(
+    _state: CreateTripFormState,
+    formData: FormData
+): Promise<CreateTripFormState> {
     "use server";
 
     const supabase = await createClient();
@@ -49,36 +81,169 @@ async function createTrip(formData: FormData) {
         redirect("/auth/login");
     }
 
-    const title = formData.get("title") as string;
+    const title = String(formData.get("title") || "").trim();
+    const { count: existingTripCount, error: tripCountError } = await supabase
+        .from("trips")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
+    const nextTripNumber = (existingTripCount ?? 0) + 1;
+    const requestedSlug = slugifyTripTitle(
+        String(formData.get("slug") || title),
+        nextTripNumber
+    );
+    const slugWasManual = String(formData.get("slug_was_manual") || "") === "true";
     const destination = formData.get("destination") as string;
     const startDate = formData.get("start_date") as string;
     const endDate = formData.get("end_date") as string;
-    const tripCoverImageUrl = String(formData.get("cover_image_url") || "").trim();
     const notes = formData.get("notes") as string;
+
+    if (!title) {
+        return {
+            fieldErrors: {
+                title: "Add a trip title.",
+            },
+            values: {
+                title,
+                slug: requestedSlug,
+            },
+        };
+    }
+
+    if (tripCountError) {
+        console.error("Error checking trip count:", tripCountError);
+        return {
+            error: "Could not prepare a trip link for this trip.",
+            values: {
+                title,
+                slug: requestedSlug,
+            },
+        };
+    }
+
+    const { data: availableSlug, error: slugError } = await supabase.rpc(
+        "get_available_trip_slug",
+        {
+            base_slug: requestedSlug,
+            excluded_trip_id: null,
+        }
+    );
+
+    if (slugError) {
+        console.error("Error checking trip slug:", slugError);
+        return {
+            error: "Could not check whether that trip link is available.",
+            values: {
+                title,
+                slug: requestedSlug,
+            },
+        };
+    }
+
+    const finalSlug =
+        typeof availableSlug === "string" && availableSlug
+            ? availableSlug
+            : requestedSlug;
+
+    if (slugWasManual && finalSlug !== requestedSlug) {
+        return {
+            fieldErrors: {
+                slug: "That trip link is already in use. Choose a unique slug.",
+            },
+            values: {
+                title,
+                slug: requestedSlug,
+            },
+        };
+    }
 
     const payload: TripPayload = {
         user_id: user.id,
         title,
+        slug: finalSlug,
         destination,
         start_date: startDate || null,
         end_date: endDate || null,
-        cover_image_url: tripCoverImageUrl || null,
         notes,
     };
 
-    let { error } = await supabase.from("trips").insert(payload);
+    let { data: createdTrip, error } = await supabase
+        .from("trips")
+        .insert(payload)
+        .select("id,cover_image_source,cover_image_storage_path")
+        .single();
 
     if (error && isMissingTripCoverColumnError(error)) {
         console.warn(
             "Optional trip cover column is missing. Falling back to legacy trip fields.",
             error
         );
-        ({ error } = await supabase.from("trips").insert(removeTripCoverColumn(payload)));
+        const fallbackResult = await supabase
+            .from("trips")
+            .insert(removeTripCoverColumn(payload))
+            .select("id,cover_image_source,cover_image_storage_path")
+            .single();
+        createdTrip = fallbackResult.data;
+        error = fallbackResult.error;
     }
 
     if (error) {
         console.error("Error creating trip:", error);
-        throw new Error("Could not create trip");
+        return {
+            error:
+                error.code === "23505"
+                    ? "That trip link is already in use. Choose a unique slug."
+                    : "Could not create trip.",
+            values: {
+                title,
+                slug: requestedSlug,
+            },
+        };
+    }
+
+    if (createdTrip?.id) {
+        let uploadedStoragePath: string | null | undefined = null;
+        try {
+            const coverResult = await buildTripCoverPayloadFromForm({
+                supabase,
+                userId: user.id,
+                tripId: createdTrip.id,
+                formData,
+            });
+            uploadedStoragePath = coverResult.uploadedStoragePath;
+
+            if (Object.keys(coverResult.payload).length > 0) {
+                const { error: coverError } = await supabase
+                    .from("trips")
+                    .update(coverResult.payload)
+                    .eq("id", createdTrip.id);
+
+                if (coverError) throw coverError;
+
+                await cleanupReplacedTripCover({
+                    supabase,
+                    userId: user.id,
+                    oldCover: createdTrip,
+                    nextPayload: coverResult.payload,
+                });
+            }
+        } catch (coverError) {
+            await deleteOwnedTripCoverObject({
+                supabase,
+                userId: user.id,
+                storagePath: uploadedStoragePath,
+            });
+            console.error("Error saving trip cover:", coverError);
+            return {
+                error:
+                    coverError instanceof Error
+                        ? coverError.message
+                        : "Could not save trip cover.",
+                values: {
+                    title,
+                    slug: requestedSlug,
+                },
+            };
+        }
     }
 
     redirect("/");
@@ -96,6 +261,12 @@ async function NewTripContent() {
     if (!user) {
         redirect("/auth/login");
     }
+
+    const { count: existingTripCount } = await supabase
+        .from("trips")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
+    const nextTripNumber = (existingTripCount ?? 0) + 1;
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-6 py-10">
@@ -116,94 +287,10 @@ async function NewTripContent() {
                     </p>
                 </header>
 
-                <form
+                <NewTripForm
                     action={createTrip}
-                    className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-                >
-                    <div className="space-y-5">
-                        <div>
-                            <label
-                                htmlFor="title"
-                                className="block text-sm font-medium text-slate-700"
-                            >
-                                Trip title
-                            </label>
-                            <input
-                                id="title"
-                                name="title"
-                                type="text"
-                                required
-                                placeholder="Berlin & Asia 2026"
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                            />
-                        </div>
-
-                        <TripDestinationPicker inputId="tripCreateDestination" />
-
-                        <div className="grid gap-5 md:grid-cols-2">
-                            <div>
-                                <label
-                                    htmlFor="start_date"
-                                    className="block text-sm font-medium text-slate-700"
-                                >
-                                    Start date
-                                </label>
-                                <input
-                                    id="start_date"
-                                    name="start_date"
-                                    type="date"
-                                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                />
-                            </div>
-
-                            <div>
-                                <label
-                                    htmlFor="end_date"
-                                    className="block text-sm font-medium text-slate-700"
-                                >
-                                    End date
-                                </label>
-                                <input
-                                    id="end_date"
-                                    name="end_date"
-                                    type="date"
-                                    className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label
-                                htmlFor="notes"
-                                className="block text-sm font-medium text-slate-700"
-                            >
-                                Notes
-                            </label>
-                            <textarea
-                                id="notes"
-                                name="notes"
-                                rows={4}
-                                placeholder="Anything important about this trip..."
-                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                            />
-                        </div>
-                    </div>
-
-                    <div className="mt-8 flex items-center justify-end gap-3">
-                        <Link
-                            href="/"
-                            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
-                        >
-                            Cancel
-                        </Link>
-                        <button
-                            type="submit"
-                            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
-                        >
-                            Save trip
-                        </button>
-                    </div>
-                </form>
+                    nextTripNumber={nextTripNumber}
+                />
             </div>
         </main>
     );

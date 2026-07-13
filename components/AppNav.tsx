@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import type { UserPreferences, UserProfile } from "@/components/AccountMenu";
+import AccountThemeSync from "@/components/AccountThemeSync";
+import AuthenticatedActivityRecorder from "@/components/AuthenticatedActivityRecorder";
 import AppSidebarNav from "@/components/AppSidebarNav";
 import AppTopActionBar, { type AppNotification } from "@/components/AppTopActionBar";
 import GlobalQuickAdd from "@/components/GlobalQuickAdd";
+import { loadActiveDropdownNotifications } from "@/lib/notifications/dropdown";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
 import {
@@ -13,6 +16,7 @@ import {
 
 type NavTrip = {
     id: string;
+    slug?: string | null;
     title: string | null;
     destination: string | null;
     start_date: string | null;
@@ -87,16 +91,10 @@ export default async function AppNav() {
             upcomingTrips = getUpcomingTrips((trips || []) as SharedTrip[]);
         }
 
-        const { data: notificationRows, error: notificationsError } = await supabase
-            .from("notifications")
-            .select(
-                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id,archived_at"
-            )
-            .eq("user_id", user.id)
-            .is("archived_at", null)
-            .or("read_at.is.null,type.eq.trip_invite_received")
-            .order("created_at", { ascending: false })
-            .limit(10);
+        const {
+            data: dropdownNotifications,
+            error: notificationsError,
+        } = await loadActiveDropdownNotifications(supabase, user.id);
 
         if (notificationsError) {
             console.warn("Could not load notifications:", {
@@ -105,7 +103,7 @@ export default async function AppNav() {
                 details: notificationsError.details,
             });
         } else {
-            notifications = (notificationRows || []) as AppNotification[];
+            notifications = (dropdownNotifications || []) as AppNotification[];
         }
 
         const { data: profileData, error: profileError } = await supabase
@@ -148,6 +146,11 @@ export default async function AppNav() {
 
     return (
         <>
+            {user ? <AuthenticatedActivityRecorder /> : null}
+            <AccountThemeSync
+                userId={user?.id || null}
+                themeMode={preferences?.theme_mode || null}
+            />
             <AppSidebarNav
                 userId={user?.id}
                 email={user?.email}

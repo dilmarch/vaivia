@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Minus, Plus, X } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createAccommodation } from "@/app/actions/accommodations";
 import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
@@ -24,7 +25,10 @@ type ItineraryQuickAddProps = {
     travelerOptions?: TransportationTravelerOptions;
     audienceOptions?: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
+    initialAction?: QuickAddInitialAction | null;
 };
+
+type QuickAddInitialAction = "transportation" | "scheduled" | "idea";
 
 export default function ItineraryQuickAdd({
     tripId,
@@ -36,7 +40,11 @@ export default function ItineraryQuickAdd({
     travelerOptions = { users: [], familyMembers: [] },
     audienceOptions = [],
     currentUserTripMemberId = null,
+    initialAction = null,
 }: ItineraryQuickAddProps) {
+    const pathname = usePathname();
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [isOpen, setIsOpen] = useState(false);
     const [itemOpenSignal, setItemOpenSignal] = useState(0);
     const [itemSubmitLabel, setItemSubmitLabel] = useState(
@@ -47,6 +55,7 @@ export default function ItineraryQuickAdd({
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
+    const handledInitialActionRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -71,6 +80,28 @@ export default function ItineraryQuickAdd({
         setItemOpenSignal((signal) => signal + 1);
         setIsOpen(false);
     }
+
+    useEffect(() => {
+        if (!initialAction) return;
+        const actionKey = `${pathname || ""}:${initialAction}:${searchParams.toString()}`;
+        if (handledInitialActionRef.current === actionKey) return;
+        handledInitialActionRef.current = actionKey;
+
+        if (initialAction === "transportation") {
+            setIsTransportationOpen(true);
+        } else if (initialAction === "idea") {
+            if (createIdeaAction) setIsIdeaOpen(true);
+        } else {
+            openItineraryForm("Add scheduled activity/event");
+        }
+
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.delete("add");
+        const nextQuery = nextParams.toString();
+        router.replace(`${pathname || ""}${nextQuery ? `?${nextQuery}` : ""}`, {
+            scroll: false,
+        });
+    }, [createIdeaAction, initialAction, pathname, router, searchParams]);
 
     return (
         <>
@@ -232,29 +263,39 @@ export default function ItineraryQuickAdd({
                     </div>
                 )}
 
-                <button
-                    type="button"
-                    onClick={() => setIsOpen((current) => !current)}
-                    className="flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
-                    aria-label={
-                        isOpen
-                            ? "Close itinerary quick add menu"
-                            : "Open itinerary quick add menu"
-                    }
-                    aria-expanded={isOpen}
-                >
+                <div className="relative grid place-items-center">
                     <span
-                        className={`grid place-items-center transition-transform duration-300 ${
-                            isOpen ? "-rotate-180" : "rotate-0"
-                        }`}
+                        className="pointer-events-none absolute -inset-4 z-0 rounded-full bg-slate-500/60 blur-2xl"
+                        aria-hidden="true"
+                    />
+                    <span
+                        className="pointer-events-none absolute -inset-2 z-0 rounded-full bg-slate-700/45 blur-xl"
+                        aria-hidden="true"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setIsOpen((current) => !current)}
+                        className="vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                        aria-label={
+                            isOpen
+                                ? "Close itinerary quick add menu"
+                                : "Open itinerary quick add menu"
+                        }
+                        aria-expanded={isOpen}
                     >
-                        {isOpen ? (
-                            <Minus className="h-6 w-6" aria-hidden="true" />
-                        ) : (
-                            <Plus className="h-6 w-6" aria-hidden="true" />
-                        )}
-                    </span>
-                </button>
+                        <span
+                            className={`grid place-items-center transition-transform duration-300 ${
+                                isOpen ? "-rotate-180" : "rotate-0"
+                            }`}
+                        >
+                            {isOpen ? (
+                                <Minus className="h-6 w-6" aria-hidden="true" />
+                            ) : (
+                                <Plus className="h-6 w-6" aria-hidden="true" />
+                            )}
+                        </span>
+                    </button>
+                </div>
             </div>
         </>
     );

@@ -10,6 +10,7 @@ import {
     DashboardTripCard,
     type DashboardTrip,
 } from "@/components/TripDashboardClient";
+import { sanitizeTripSlugInput, slugifyTripTitle } from "@/lib/tripRoutes";
 
 type TripsIndexClientProps = {
     trips: DashboardTrip[];
@@ -290,6 +291,40 @@ export default function TripsIndexClient({
                                 />
                             </div>
 
+                            <div>
+                                <label
+                                    htmlFor="tripsIndexEditSlug"
+                                    className="block text-sm font-bold text-slate-700"
+                                >
+                                    Trip link
+                                </label>
+                                <div className="mt-2 flex rounded-xl border border-slate-300 bg-slate-50 focus-within:border-slate-500">
+                                    <span className="shrink-0 rounded-l-xl border-r border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
+                                        trips/
+                                    </span>
+                                    <input
+                                        id="tripsIndexEditSlug"
+                                        name="slug"
+                                        type="text"
+                                        required
+                                        defaultValue={
+                                            selectedTrip.slug ||
+                                            slugifyTripTitle(selectedTrip.title)
+                                        }
+                                        onChange={(event) => {
+                                            event.currentTarget.value = sanitizeTripSlugInput(
+                                                event.currentTarget.value
+                                            );
+                                        }}
+                                        className="min-w-0 flex-1 rounded-r-xl bg-white px-4 py-2 text-slate-900 outline-none"
+                                        {...travelInputProps()}
+                                    />
+                                </div>
+                                <p className="mt-2 text-xs font-semibold text-slate-500">
+                                    Changing this updates the URL for everyone on this trip.
+                                </p>
+                            </div>
+
                             <TripDestinationPicker
                                 inputId="tripsIndexEditDestination"
                                 tripId={selectedTrip.id}
@@ -297,6 +332,15 @@ export default function TripsIndexClient({
                                 initialCoverImageUrl={
                                     selectedTrip.cover_image_url ||
                                     selectedTrip.trip_cover_image_url
+                                }
+                                initialCoverImageSource={
+                                    selectedTrip.cover_image_source || null
+                                }
+                                initialCoverImageStoragePath={
+                                    selectedTrip.cover_image_storage_path || null
+                                }
+                                initialCoverImageUnsplashId={
+                                    selectedTrip.cover_image_unsplash_id || null
                                 }
                                 onChange={() => setHasUnsavedChanges(true)}
                             />

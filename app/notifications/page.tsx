@@ -2,6 +2,7 @@ import { Archive, Bell, CheckCircle2, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { mergeNotificationPreferences } from "@/lib/notificationTypes";
 import { createClient } from "@/lib/supabase/server";
 
 type NotificationRow = {
@@ -17,7 +18,12 @@ type NotificationRow = {
 };
 
 function isActionRequired(notification: NotificationRow) {
-    return notification.type === "trip_invite_received" && !notification.read_at;
+    return (
+        (notification.type === "trip_invite_received" ||
+            notification.type === "friend_request_received" ||
+            notification.type === "passport_stamp_share_received") &&
+        !notification.read_at
+    );
 }
 
 function formatNotificationDate(value?: string | null) {
@@ -136,13 +142,23 @@ export default async function NotificationsPage() {
 
     if (!user) redirect("/auth/login");
 
-    const { data, error } = await supabase
-        .from("notifications")
-        .select(
-            "id,type,title,body,read_at,archived_at,created_at,trip_id,invitation_id"
-        )
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false });
+    const [
+        { data, error },
+        { data: notificationPreferenceRows },
+    ] = await Promise.all([
+        supabase
+            .from("notifications")
+            .select(
+                "id,type,title,body,read_at,archived_at,created_at,trip_id,invitation_id"
+            )
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false }),
+        (supabase.from as any)("user_notification_preferences")
+            .select(
+                "notification_type,in_app_enabled,push_enabled,email_enabled"
+            )
+            .eq("user_id", user.id),
+    ]);
 
     if (error) {
         console.error("Error loading notifications page:", {
@@ -154,7 +170,21 @@ export default async function NotificationsPage() {
         throw new Error("Could not load notifications");
     }
 
-    const notifications = (data || []) as NotificationRow[];
+    const preferencesByType = new Map<string, { inAppEnabled: boolean }>(
+        mergeNotificationPreferences(
+            (notificationPreferenceRows || []) as Array<{
+                notification_type?: string | null;
+                in_app_enabled?: boolean | null;
+                push_enabled?: boolean | null;
+                email_enabled?: boolean | null;
+            }>
+        ).map((preference) => [preference.notificationType, preference])
+    );
+    const notifications = ((data || []) as NotificationRow[]).filter(
+        (notification) =>
+            !notification.type ||
+            (preferencesByType.get(notification.type)?.inAppEnabled ?? true)
+    );
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-4 py-8 text-white md:pl-28">

@@ -11,6 +11,7 @@ import {
     useTripCoverImage,
     type TripCoverTrip,
 } from "@/components/TripCoverImage";
+import { sanitizeTripSlugInput, slugifyTripTitle } from "@/lib/tripRoutes";
 
 type TripHeaderCoverProps = {
     trip: TripCoverTrip;
@@ -84,6 +85,33 @@ export default function TripHeaderCover({
                             {coverLoadError}
                         </div>
                     )}
+                    {trip.cover_image_source === "unsplash" &&
+                    trip.cover_image_photographer_name ? (
+                        <div className="absolute left-4 top-4 rounded-full bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-white shadow-xl shadow-black/30 backdrop-blur">
+                            Photo by{" "}
+                            {trip.cover_image_photographer_url ? (
+                                <a
+                                    href={trip.cover_image_photographer_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline decoration-white/40 underline-offset-2 hover:text-lime-100"
+                                >
+                                    {trip.cover_image_photographer_name}
+                                </a>
+                            ) : (
+                                trip.cover_image_photographer_name
+                            )}{" "}
+                            on{" "}
+                            <a
+                                href="https://unsplash.com/?utm_source=vaivia&utm_medium=referral"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline decoration-white/40 underline-offset-2 hover:text-lime-100"
+                            >
+                                Unsplash
+                            </a>
+                        </div>
+                    ) : null}
                     <button
                         type="button"
                         onClick={() => setIsModalOpen(true)}
@@ -205,12 +233,55 @@ export default function TripHeaderCover({
                                 />
                             </div>
 
+                            <div>
+                                <label
+                                    htmlFor="tripHeaderEditSlug"
+                                    className="block text-sm font-medium text-slate-700"
+                                >
+                                    Trip link
+                                </label>
+                                <div className="mt-2 flex rounded-xl border border-slate-300 bg-slate-50 focus-within:border-slate-500">
+                                    <span className="shrink-0 rounded-l-xl border-r border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
+                                        trips/
+                                    </span>
+                                    <input
+                                        id="tripHeaderEditSlug"
+                                        name="slug"
+                                        type="text"
+                                        required
+                                        defaultValue={trip.slug || slugifyTripTitle(trip.title)}
+                                        onChange={(event) => {
+                                            event.currentTarget.value = sanitizeTripSlugInput(
+                                                event.currentTarget.value
+                                            );
+                                        }}
+                                        className="min-w-0 flex-1 rounded-r-xl bg-white px-4 py-2 text-slate-900 outline-none"
+                                        autoComplete="off"
+                                        data-form-type="other"
+                                        data-lpignore="true"
+                                        data-1p-ignore="true"
+                                    />
+                                </div>
+                                <p className="mt-2 text-xs font-semibold text-slate-500">
+                                    Changing this updates the URL for everyone on this trip.
+                                </p>
+                            </div>
+
                             <TripDestinationPicker
                                 inputId="tripHeaderEditDestination"
                                 tripId={trip.id}
                                 initialDestination={trip.destination || ""}
                                 initialCoverImageUrl={
-                                    trip.cover_image_url || trip.trip_cover_image_url
+                                    coverImageUrl ||
+                                    trip.cover_image_url ||
+                                    trip.trip_cover_image_url
+                                }
+                                initialCoverImageSource={trip.cover_image_source || null}
+                                initialCoverImageStoragePath={
+                                    trip.cover_image_storage_path || null
+                                }
+                                initialCoverImageUnsplashId={
+                                    trip.cover_image_unsplash_id || null
                                 }
                                 onChange={() => setHasUnsavedChanges(true)}
                             />

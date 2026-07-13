@@ -3,12 +3,15 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import CountdownUnitToggle from "@/components/CountdownUnitToggle";
 import PinkModeToggle from "@/components/PinkModeToggle";
+import type { VaiviaThemeMode } from "@/components/PinkModeProvider";
 import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
 import SettingsFamilyMembersClient from "@/components/SettingsFamilyMembersClient";
 import SettingsFinancialClient from "@/components/SettingsFinancialClient";
+import SettingsNotificationsClient from "@/components/SettingsNotificationsClient";
 import SettingsSecurityClient from "@/components/SettingsSecurityClient";
 import { ALL_CURRENCY_OPTIONS, normalizeCurrencyCode } from "@/lib/currency";
 import { isCountdownUnit, type CountdownUnit } from "@/lib/countdownDisplay";
+import { mergeNotificationPreferences } from "@/lib/notificationTypes";
 import { createClient } from "@/lib/supabase/server";
 import {
     sortCategoriesByName,
@@ -54,6 +57,25 @@ function getAuthProviderLabel(provider?: string | null) {
     if (provider === "google") return "Google";
     if (provider === "email") return "Email/password";
     return provider || "Unknown";
+}
+
+const THEME_MODES = new Set<VaiviaThemeMode>([
+    "dark",
+    "pink",
+    "greyscale",
+    "brat",
+    "pride",
+    "light",
+]);
+
+function normalizeThemeMode(value: unknown): VaiviaThemeMode {
+    return typeof value === "string" && THEME_MODES.has(value as VaiviaThemeMode)
+        ? (value as VaiviaThemeMode)
+        : "dark";
+}
+
+function normalizeNewsFeedMode(value: unknown): "integrated" | "widget" {
+    return value === "widget" ? "widget" : "integrated";
 }
 
 async function addFamilyMember(formData: FormData) {
@@ -360,6 +382,66 @@ async function updateCountdownDisplayMode(formData: FormData) {
     revalidatePath("/");
 }
 
+async function updateNewsFeedMode(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const newsFeedMode = normalizeNewsFeedMode(formData.get("news_feed_mode"));
+    const { data: existingPreferences } = await supabase
+        .from("user_preferences")
+        .select(
+            "clock_format,default_time_zone,itinerary_default_view,countdown_display_mode,theme_mode"
+        )
+        .eq("user_id", user.id)
+        .maybeSingle();
+    const rawCountdownDisplayMode =
+        typeof existingPreferences?.countdown_display_mode === "string"
+            ? existingPreferences.countdown_display_mode
+            : null;
+    const payload = {
+        user_id: user.id,
+        clock_format:
+            existingPreferences?.clock_format === "24h" ? "24h" : "12h",
+        default_time_zone: existingPreferences?.default_time_zone || null,
+        itinerary_default_view:
+            existingPreferences?.itinerary_default_view === "day" ||
+            existingPreferences?.itinerary_default_view === "week"
+                ? existingPreferences.itinerary_default_view
+                : "list",
+        countdown_display_mode: isCountdownUnit(rawCountdownDisplayMode)
+            ? rawCountdownDisplayMode
+            : "days",
+        theme_mode: normalizeThemeMode(existingPreferences?.theme_mode),
+        news_feed_mode: newsFeedMode,
+        updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase
+        .from("user_preferences")
+        .upsert(payload, { onConflict: "user_id" });
+
+    if (error) {
+        console.error("Error updating news feed mode:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            payload,
+        });
+        throw new Error(`Could not update news feed mode: ${error.message}`);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/news-feed");
+    redirect("/settings");
+}
+
 async function updateTimeDatePreferences(formData: FormData) {
     "use server";
 
@@ -474,7 +556,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   ? "time-date"
                   : params.section === "security"
                     ? "security"
-              : "general";
+                    : params.section === "notifications"
+                      ? "notifications"
+                      : "general";
     const supabase = await createClient();
     const {
         data: { user },
@@ -489,6 +573,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         { data: financeSettings },
         { data: userPreferences },
         { data: userProfile },
+        { data: notificationPreferenceRows },
     ] =
         await Promise.all([
         supabase
@@ -512,7 +597,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         supabase
             .from("user_preferences")
             .select(
-                "clock_format,default_time_zone,itinerary_default_view,countdown_display_mode"
+                "clock_format,default_time_zone,itinerary_default_view,countdown_display_mode,theme_mode,news_feed_mode"
             )
             .eq("user_id", user.id)
             .maybeSingle(),
@@ -521,6 +606,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             .select("biometric_login_enabled")
             .eq("id", user.id)
             .maybeSingle(),
+        (supabase.from as any)("user_notification_preferences")
+            .select(
+                "notification_type,in_app_enabled,push_enabled,email_enabled"
+            )
+            .eq("user_id", user.id),
     ]);
 
     const categories = sortCategoriesByName((categoryRows || []) as UserCategory[]);
@@ -543,6 +633,18 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     )
         ? rawCountdownDisplayMode
         : "days";
+    const themeMode = normalizeThemeMode(userPreferences?.theme_mode);
+    const newsFeedMode = normalizeNewsFeedMode(
+        (userPreferences as { news_feed_mode?: unknown } | null)?.news_feed_mode
+    );
+    const notificationPreferences = mergeNotificationPreferences(
+        (notificationPreferenceRows || []) as Array<{
+            notification_type?: string | null;
+            in_app_enabled?: boolean | null;
+            push_enabled?: boolean | null;
+            email_enabled?: boolean | null;
+        }>
+    );
     const currencyOptions = ALL_CURRENCY_OPTIONS.map((currency) => ({
         code: currency.code,
         name: currency.name,
@@ -607,6 +709,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             Password & Security
                         </Link>
                         <Link
+                            href="/settings?section=notifications"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "notifications"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Notifications
+                        </Link>
+                        <Link
                             href="/settings?section=categories"
                             className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
                                 activeSection === "categories"
@@ -654,7 +766,63 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                     a site-wide theme.
                                 </p>
                             </div>
-                            <PinkModeToggle />
+                            <PinkModeToggle
+                                initialThemeMode={themeMode}
+                            />
+                            <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-5">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200/80">
+                                        News Feed
+                                    </p>
+                                    <h2 className="mt-2 text-2xl font-black text-white">
+                                        Feed layout
+                                    </h2>
+                                    <p className="mt-1 text-sm font-semibold leading-6 text-slate-400">
+                                        Choose a single integrated feed or four dashboard-style widgets.
+                                    </p>
+                                </div>
+                                <form
+                                    action={updateNewsFeedMode}
+                                    className="mt-5 grid gap-3 sm:grid-cols-2"
+                                >
+                                    {(["integrated", "widget"] as const).map((mode) => {
+                                        const isSelected =
+                                            newsFeedMode === mode;
+
+                                        return (
+                                            <button
+                                                key={mode}
+                                                type="submit"
+                                                name="news_feed_mode"
+                                                value={mode}
+                                                aria-pressed={isSelected}
+                                                className={`min-h-20 rounded-[1.25rem] border p-4 text-left transition ${
+                                                    isSelected
+                                                        ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                                                        : "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.08]"
+                                                }`}
+                                            >
+                                                <span className="block text-sm font-black">
+                                                    {mode === "integrated"
+                                                        ? "Integrated"
+                                                        : "Widget"}
+                                                </span>
+                                                <span
+                                                    className={`mt-1 block text-xs font-semibold leading-5 ${
+                                                        isSelected
+                                                            ? "text-slate-950/70"
+                                                            : "text-slate-400"
+                                                    }`}
+                                                >
+                                                    {mode === "integrated"
+                                                        ? "One scrollable feed with post-type borders."
+                                                        : "Four quadrants for friends, weather, advisories, and local news."}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </form>
+                            </section>
                         </div>
                     ) : activeSection === "time-date" ? (
                         <div className="space-y-6">
@@ -760,6 +928,27 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                     userProfile?.biometric_login_enabled
                                 )}
                                 updateBiometricAction={updateSecuritySettings}
+                            />
+                        </div>
+                    ) : activeSection === "notifications" ? (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Notifications
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Notification settings
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Choose which VAIVIA notifications appear in-app,
+                                    by push, or by email.
+                                </p>
+                            </div>
+                            <SettingsNotificationsClient
+                                preferences={notificationPreferences}
+                                vapidPublicKey={
+                                    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null
+                                }
                             />
                         </div>
                     ) : activeSection === "categories" ? (

@@ -14,6 +14,16 @@ import TripMembersPanel, {
     type TripHeaderMember,
 } from "@/components/TripMembersPanel";
 import { createClient } from "@/lib/supabase/server";
+import {
+    buildTripCoverPayloadFromForm,
+    cleanupReplacedTripCover,
+    deleteOwnedTripCoverObject,
+} from "@/lib/tripCovers";
+import {
+    addValidatedTripSlugToPayload,
+    getTripSlugErrorMessage,
+    isTripSlugConflictError,
+} from "@/lib/tripSlugUpdate";
 
 type TripPageHeroProps = {
     tripId: string;
@@ -24,10 +34,16 @@ type TripPageHeroProps = {
 
 type TripUpdatePayload = {
     title: string;
+    slug?: string;
     destination: string;
     start_date: string | null;
     end_date: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
+    cover_image_unsplash_id?: string | null;
+    cover_image_photographer_name?: string | null;
+    cover_image_photographer_url?: string | null;
     notes: string;
 };
 
@@ -156,13 +172,33 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
         error.code === "PGRST204" ||
         (message.includes("column") &&
             (message.includes("cover_image_url") ||
+                message.includes("cover_image_source") ||
+                message.includes("cover_image_storage_path") ||
+                message.includes("cover_image_unsplash_id") ||
+                message.includes("cover_image_photographer_name") ||
+                message.includes("cover_image_photographer_url") ||
                 message.includes("schema cache")))
     );
 }
 
 function removeTripCoverColumn(payload: TripUpdatePayload) {
-    const { cover_image_url: _coverImageUrl, ...fallbackPayload } = payload;
-    void _coverImageUrl;
+    const {
+        cover_image_url,
+        cover_image_source,
+        cover_image_storage_path,
+        cover_image_unsplash_id,
+        cover_image_photographer_name,
+        cover_image_photographer_url,
+        ...fallbackPayload
+    } = payload;
+
+    void cover_image_url;
+    void cover_image_source;
+    void cover_image_storage_path;
+    void cover_image_unsplash_id;
+    void cover_image_photographer_name;
+    void cover_image_photographer_url;
+
     return fallbackPayload;
 }
 
@@ -178,15 +214,48 @@ async function updateTrip(formData: FormData) {
 
     const tripId = String(formData.get("trip_id") || "");
     const revalidatePathname = String(formData.get("revalidate_path") || "");
-    const coverImageUrl = String(formData.get("cover_image_url") || "").trim();
+    const title = String(formData.get("title") || "");
+    const slug = String(formData.get("slug") || "");
+    const { data: existingTripCover, error: existingTripCoverError } = await supabase
+        .from("trips")
+        .select("id,cover_image_source,cover_image_storage_path")
+        .eq("id", tripId)
+        .maybeSingle();
+
+    if (existingTripCoverError || !existingTripCover) {
+        console.error("Error loading existing trip cover:", existingTripCoverError);
+        throw new Error("Could not update trip");
+    }
+
+    let coverPayload: Partial<TripUpdatePayload> = {};
+    let uploadedStoragePath: string | null | undefined = null;
+    try {
+        const coverResult = await buildTripCoverPayloadFromForm({
+            supabase,
+            userId: user.id,
+            tripId,
+            formData,
+        });
+        coverPayload = coverResult.payload;
+        uploadedStoragePath = coverResult.uploadedStoragePath;
+    } catch (error) {
+        console.error("Error preparing trip cover:", error);
+        throw error;
+    }
+
     const payload: TripUpdatePayload = {
-        title: String(formData.get("title") || ""),
+        title,
         destination: String(formData.get("destination") || ""),
         start_date: String(formData.get("start_date") || "") || null,
         end_date: String(formData.get("end_date") || "") || null,
-        cover_image_url: coverImageUrl || null,
         notes: String(formData.get("notes") || ""),
+        ...coverPayload,
     };
+    await addValidatedTripSlugToPayload(supabase, payload, {
+        tripId,
+        submittedSlug: slug,
+        fallbackTitle: title,
+    });
 
     let { error } = await supabase.from("trips").update(payload).eq("id", tripId);
 
@@ -198,6 +267,11 @@ async function updateTrip(formData: FormData) {
     }
 
     if (error) {
+        await deleteOwnedTripCoverObject({
+            supabase,
+            userId: user.id,
+            storagePath: uploadedStoragePath,
+        });
         console.error("Error updating trip from shared trip hero:", {
             message: error.message,
             code: error.code,
@@ -205,8 +279,18 @@ async function updateTrip(formData: FormData) {
             hint: error.hint,
             tripId,
         });
+        if (isTripSlugConflictError(error)) {
+            throw new Error(getTripSlugErrorMessage(error));
+        }
         throw new Error("Could not update trip");
     }
+
+    await cleanupReplacedTripCover({
+        supabase,
+        userId: user.id,
+        oldCover: existingTripCover,
+        nextPayload: coverPayload,
+    });
 
     revalidatePath(revalidatePathname || `/trips/${tripId}`);
 }
@@ -564,7 +648,7 @@ export default async function TripPageHero({
     if (tripMemberUserIds.length > 0) {
         const { data: profileRows } = await supabase
             .from("user_profiles")
-            .select("id,first_name,last_name,username,avatar_url")
+            .select("id,first_name,last_name,username,email,avatar_url")
             .in("id", tripMemberUserIds);
 
         const profilesById = new Map(
@@ -573,6 +657,7 @@ export default async function TripPageHero({
                 first_name?: string | null;
                 last_name?: string | null;
                 username?: string | null;
+                email?: string | null;
                 avatar_url?: string | null;
             }>).map((profile) => [profile.id, profile])
         );
@@ -586,6 +671,7 @@ export default async function TripPageHero({
                 first_name: profile?.first_name || null,
                 last_name: profile?.last_name || null,
                 username: profile?.username || null,
+                email: profile?.email || null,
                 avatar_url: profile?.avatar_url || null,
                 joined_at:
                     membership?.created_at ||

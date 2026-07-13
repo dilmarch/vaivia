@@ -475,7 +475,7 @@ export function SignUpForm({
               </button>
               <button
                 type="button"
-                onClick={() => goTo("/?profile=passport")}
+                onClick={() => goTo("/profile")}
                 className="flex w-full items-center gap-4 rounded-[1.35rem] border border-white/10 bg-white/[0.08] p-4 text-left text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
               >
                 <Stamp className="h-6 w-6 shrink-0 text-lime-200" aria-hidden="true" />

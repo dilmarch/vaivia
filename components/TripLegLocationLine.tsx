@@ -83,7 +83,7 @@ function LocationTile({
         >
             <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl bg-slate-950/70 text-2xl ring-1 ring-lime-300/25 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.16)] sm:h-12 sm:w-12 sm:text-3xl">
                 <span
-                    className="transition duration-200 group-hover/leg:scale-110 group-hover/leg:blur-[1.5px] group-hover/leg:opacity-35 group-focus-visible/leg:scale-110 group-focus-visible/leg:blur-[1.5px] group-focus-visible/leg:opacity-35"
+                    className="vaivia-flag-emoji transition duration-200 group-hover/leg:scale-110 group-hover/leg:blur-[1.5px] group-hover/leg:opacity-35 group-focus-visible/leg:scale-110 group-focus-visible/leg:blur-[1.5px] group-focus-visible/leg:opacity-35"
                     aria-hidden="true"
                 >
                     {icon}

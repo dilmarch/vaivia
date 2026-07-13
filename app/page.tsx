@@ -13,6 +13,16 @@ import {
 } from "@/lib/countdownDisplay";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
+import {
+  buildTripCoverPayloadFromForm,
+  cleanupReplacedTripCover,
+  deleteOwnedTripCoverObject,
+} from "@/lib/tripCovers";
+import {
+  addValidatedTripSlugToPayload,
+  getTripSlugErrorMessage,
+  isTripSlugConflictError,
+} from "@/lib/tripSlugUpdate";
 import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
 
 export const metadata: Metadata = {
@@ -21,11 +31,17 @@ export const metadata: Metadata = {
 
 type TripUpdatePayload = {
   title: string;
+  slug?: string;
   destination: string;
   start_date: string | null;
   end_date: string | null;
   notes: string;
   cover_image_url?: string | null;
+  cover_image_source?: string | null;
+  cover_image_storage_path?: string | null;
+  cover_image_unsplash_id?: string | null;
+  cover_image_photographer_name?: string | null;
+  cover_image_photographer_url?: string | null;
 };
 
 type DashboardPlanning = NonNullable<DashboardTrip["planning"]>;
@@ -282,14 +298,31 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
     error.code === "PGRST204" ||
     (message.includes("column") &&
       (message.includes("cover_image_url") ||
+        message.includes("cover_image_source") ||
+        message.includes("cover_image_storage_path") ||
+        message.includes("cover_image_unsplash_id") ||
+        message.includes("cover_image_photographer") ||
         message.includes("schema cache")))
   );
 }
 
 function removeTripCoverColumn(payload: TripUpdatePayload) {
-  const { cover_image_url, ...fallbackPayload } = payload;
+  const {
+    cover_image_url,
+    cover_image_source,
+    cover_image_storage_path,
+    cover_image_unsplash_id,
+    cover_image_photographer_name,
+    cover_image_photographer_url,
+    ...fallbackPayload
+  } = payload;
 
   void cover_image_url;
+  void cover_image_source;
+  void cover_image_storage_path;
+  void cover_image_unsplash_id;
+  void cover_image_photographer_name;
+  void cover_image_photographer_url;
 
   return fallbackPayload;
 }
@@ -309,20 +342,51 @@ async function updateTrip(formData: FormData) {
 
   const tripId = formData.get("trip_id") as string;
   const title = formData.get("title") as string;
+  const slug = String(formData.get("slug") || "");
   const destination = formData.get("destination") as string;
   const startDate = formData.get("start_date") as string;
   const endDate = formData.get("end_date") as string;
-  const tripCoverImageUrl = String(formData.get("cover_image_url") || "").trim();
   const notes = formData.get("notes") as string;
+  const { data: existingTripCover, error: existingTripCoverError } = await supabase
+    .from("trips")
+    .select("id,cover_image_source,cover_image_storage_path")
+    .eq("id", tripId)
+    .maybeSingle();
+
+  if (existingTripCoverError || !existingTripCover) {
+    console.error("Error loading existing trip cover:", existingTripCoverError);
+    throw new Error("Could not update trip");
+  }
+
+  let coverPayload: Partial<TripUpdatePayload> = {};
+  let uploadedStoragePath: string | null | undefined = null;
+  try {
+    const coverResult = await buildTripCoverPayloadFromForm({
+      supabase,
+      userId: user.id,
+      tripId,
+      formData,
+    });
+    coverPayload = coverResult.payload;
+    uploadedStoragePath = coverResult.uploadedStoragePath;
+  } catch (error) {
+    console.error("Error preparing trip cover:", error);
+    throw error;
+  }
 
   const payload: TripUpdatePayload = {
     title,
     destination,
     start_date: startDate || null,
     end_date: endDate || null,
-    cover_image_url: tripCoverImageUrl || null,
     notes,
+    ...coverPayload,
   };
+  await addValidatedTripSlugToPayload(supabase, payload, {
+    tripId,
+    submittedSlug: slug,
+    fallbackTitle: title,
+  });
 
   let { error } = await supabase
     .from("trips")
@@ -341,9 +405,24 @@ async function updateTrip(formData: FormData) {
   }
 
   if (error) {
+    await deleteOwnedTripCoverObject({
+      supabase,
+      userId: user.id,
+      storagePath: uploadedStoragePath,
+    });
     console.error("Error updating trip:", error);
+    if (isTripSlugConflictError(error)) {
+      throw new Error(getTripSlugErrorMessage(error));
+    }
     throw new Error("Could not update trip");
   }
+
+  await cleanupReplacedTripCover({
+    supabase,
+    userId: user.id,
+    oldCover: existingTripCover,
+    nextPayload: coverPayload,
+  });
 
   await supabase.rpc("notify_trip_members", {
     target_trip_id: tripId,

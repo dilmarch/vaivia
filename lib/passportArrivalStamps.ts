@@ -1,8 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { zonedDateTimeToUtc } from "@/lib/timezoneDuration";
 
-type SupabaseLike = {
-    from: (table: string) => any;
-};
+type SupabaseLike = Pick<SupabaseClient, "from">;
 
 type TransportationArrivalStampInput = {
     supabase: SupabaseLike;
@@ -72,6 +71,130 @@ function getArrivalInstant({
         return zonedDateTimeToUtc(arrivalDate, arrivalTime, arrivalTimezone);
     } catch {
         return null;
+    }
+}
+
+function normalizeBucketMatchText(value?: string | null) {
+    return String(value || "")
+        .normalize("NFD")
+        .replace(/\p{Diacritic}/gu, "")
+        .trim()
+        .toLowerCase();
+}
+
+function bucketItemMatchesArrival(
+    item: {
+        city?: string | null;
+        region?: string | null;
+        place_label?: string | null;
+    },
+    arrivalText: string
+) {
+    const city = normalizeBucketMatchText(item.city);
+    const region = normalizeBucketMatchText(item.region);
+    const label = normalizeBucketMatchText(item.place_label);
+
+    if (city) return arrivalText.includes(city);
+    if (region) return arrivalText.includes(region);
+    if (label) return arrivalText.includes(label);
+    return true;
+}
+
+async function getTripDestinationText(supabase: SupabaseLike, tripId: string) {
+    const { data, error } = await supabase
+        .from("trips")
+        .select("title,destination")
+        .eq("id", tripId)
+        .maybeSingle();
+
+    if (error) return "";
+    return [data?.title, data?.destination].filter(Boolean).join(" ");
+}
+
+async function maybeCompleteTravelBucketListItems({
+    supabase,
+    userId,
+    tripId,
+    transportationItemId,
+    arrivalCountry,
+    arrivalLocation,
+    completedAt,
+}: {
+    supabase: SupabaseLike;
+    userId: string;
+    tripId: string;
+    transportationItemId: string;
+    arrivalCountry: CountrySnapshot;
+    arrivalLocation?: string | null;
+    completedAt: string;
+}) {
+    const { data, error } = await (supabase.from as any)("user_travel_bucket_list")
+        .select("id,city,region,country_code,place_label")
+        .eq("user_id", userId)
+        .eq("status", "in_progress")
+        .eq("country_code", arrivalCountry.code);
+
+    if (error) {
+        if (error.code !== "42P01" && error.code !== "PGRST205") {
+            console.warn("Could not load travel bucket list for completion:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+                tripId,
+                transportationItemId,
+                userId,
+            });
+        }
+        return;
+    }
+
+    const tripDestinationText = await getTripDestinationText(supabase, tripId);
+    const arrivalText = normalizeBucketMatchText(
+        [
+            arrivalLocation,
+            arrivalCountry.name,
+            arrivalCountry.code,
+            tripDestinationText,
+        ]
+            .filter(Boolean)
+            .join(" ")
+    );
+    const matchingIds = ((data || []) as Array<{
+        id?: string | null;
+        city?: string | null;
+        region?: string | null;
+        country_code?: string | null;
+        place_label?: string | null;
+    }>)
+        .filter((item) => bucketItemMatchesArrival(item, arrivalText))
+        .map((item) => item.id)
+        .filter((id): id is string => Boolean(id));
+
+    if (matchingIds.length === 0) return;
+
+    const { error: updateError } = await (supabase.from as any)(
+        "user_travel_bucket_list"
+    )
+        .update({
+            status: "completed",
+            completed_at: completedAt,
+            completed_trip_id: tripId,
+            completed_transportation_item_id: transportationItemId,
+            updated_at: completedAt,
+        })
+        .eq("user_id", userId)
+        .in("id", matchingIds);
+
+    if (updateError) {
+        console.warn("Could not complete travel bucket list items:", {
+            message: updateError.message,
+            code: updateError.code,
+            details: updateError.details,
+            tripId,
+            transportationItemId,
+            userId,
+            matchingIds,
+        });
     }
 }
 
@@ -210,22 +333,38 @@ export async function maybeCreatePassportStampForTransportationArrival({
     if (!departureCountry || !arrivalCountry) return;
     if (departureCountry.code === arrivalCountry.code) return;
 
-    const { data: existingStamp } = await supabase
-        .from("user_passport_stamps")
-        .select("id")
-        .eq("user_id", userId)
-        .eq("country_code", arrivalCountry.code)
-        .maybeSingle();
-
-    if (existingStamp?.id) return;
-
     const arrivalInstant = getArrivalInstant({
         arrivalDate,
         arrivalTime,
         arrivalTimezone,
     });
-    const firstVisitedOn = arrivalDate || null;
     const now = new Date().toISOString();
+    const completedAt = arrivalInstant?.toISOString() || now;
+    const hasArrived =
+        !arrivalInstant || arrivalInstant.getTime() <= new Date().getTime();
+
+    if (hasArrived) {
+        await maybeCompleteTravelBucketListItems({
+            supabase,
+            userId,
+            tripId,
+            transportationItemId,
+            arrivalCountry,
+            arrivalLocation,
+            completedAt,
+        });
+    }
+
+    const { data: existingStamp } = await supabase
+        .from("user_passport_stamps")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("source_transportation_item_id", transportationItemId)
+        .maybeSingle();
+
+    if (existingStamp?.id) return;
+
+    const firstVisitedOn = arrivalDate || null;
 
     let stampPayload: Record<string, unknown> = {
         user_id: userId,
@@ -234,7 +373,7 @@ export async function maybeCreatePassportStampForTransportationArrival({
         flag_emoji: arrivalCountry.flag,
         source: "auto",
         first_visited_on: firstVisitedOn,
-        stamped_at: arrivalInstant?.toISOString() || now,
+        stamped_at: completedAt,
         source_trip_id: tripId,
         source_transportation_item_id: transportationItemId,
         source_arrival_at: arrivalInstant?.toISOString() || null,

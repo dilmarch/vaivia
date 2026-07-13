@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 export const PINK_MODE_STORAGE_KEY = "vaivia:pink-mode";
 export const VAIVIA_THEME_STORAGE_KEY = "vaivia:theme-mode";
+export const VAIVIA_THEME_USER_STORAGE_PREFIX = "vaivia:theme-mode:";
 export type VaiviaThemeMode =
     | "dark"
     | "pink"
@@ -33,15 +34,31 @@ export function getStoredPinkMode() {
     return getStoredVaiviaThemeMode() === "pink";
 }
 
-export function setVaiviaThemeMode(mode: VaiviaThemeMode) {
+type SetVaiviaThemeModeOptions = {
+    source?: "sync" | "user";
+    userId?: string | null;
+};
+
+function getThemeStorageKey(userId?: string | null) {
+    return userId ? `${VAIVIA_THEME_USER_STORAGE_PREFIX}${userId}` : null;
+}
+
+export function setVaiviaThemeMode(
+    mode: VaiviaThemeMode,
+    options: SetVaiviaThemeModeOptions = {}
+) {
     if (typeof document === "undefined") return;
 
     document.documentElement.dataset.vaiviaTheme = mode;
     document.documentElement.dataset.pinkMode = mode === "pink" ? "true" : "false";
+    const userStorageKey = getThemeStorageKey(options.userId);
+    if (userStorageKey) window.localStorage.setItem(userStorageKey, mode);
     window.localStorage.setItem(VAIVIA_THEME_STORAGE_KEY, mode);
     window.localStorage.setItem(PINK_MODE_STORAGE_KEY, mode === "pink" ? "true" : "false");
     window.dispatchEvent(
-        new CustomEvent("vaivia:theme-mode-change", { detail: { mode } })
+        new CustomEvent("vaivia:theme-mode-change", {
+            detail: { mode, source: options.source || "user" },
+        })
     );
     window.dispatchEvent(
         new CustomEvent("vaivia:pink-mode-change", {
@@ -50,8 +67,22 @@ export function setVaiviaThemeMode(mode: VaiviaThemeMode) {
     );
 }
 
-export function getStoredVaiviaThemeMode(): VaiviaThemeMode {
+export function syncVaiviaThemeMode(
+    mode?: VaiviaThemeMode | null,
+    userId?: string | null
+) {
+    if (!isVaiviaThemeMode(mode)) return;
+    setVaiviaThemeMode(mode, { source: "sync", userId });
+}
+
+export function getStoredVaiviaThemeMode(userId?: string | null): VaiviaThemeMode {
     if (typeof window === "undefined") return "dark";
+
+    const userStorageKey = getThemeStorageKey(userId);
+    const storedUserMode = userStorageKey
+        ? window.localStorage.getItem(userStorageKey)
+        : null;
+    if (isVaiviaThemeMode(storedUserMode)) return storedUserMode;
 
     const storedMode = window.localStorage.getItem(VAIVIA_THEME_STORAGE_KEY);
     if (isVaiviaThemeMode(storedMode)) return storedMode;
@@ -63,9 +94,7 @@ export function getStoredVaiviaThemeMode(): VaiviaThemeMode {
 
 export default function PinkModeProvider() {
     useEffect(() => {
-        const mode = getStoredVaiviaThemeMode();
-        document.documentElement.dataset.vaiviaTheme = mode;
-        document.documentElement.dataset.pinkMode = mode === "pink" ? "true" : "false";
+        setVaiviaThemeMode(getStoredVaiviaThemeMode(), { source: "sync" });
     }, []);
 
     return null;

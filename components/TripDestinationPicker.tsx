@@ -1,13 +1,15 @@
 "use client";
 
-import { ImagePlus, Link as LinkIcon, X } from "lucide-react";
+import { ImagePlus, Search, UploadCloud, X } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 type TripDestinationPickerProps = {
     initialDestination?: string | null;
     initialCoverImageUrl?: string | null;
+    initialCoverImageSource?: string | null;
+    initialCoverImageStoragePath?: string | null;
+    initialCoverImageUnsplashId?: string | null;
     tripId?: string | null;
     inputId: string;
     onChange?: () => void;
@@ -16,6 +18,19 @@ type TripDestinationPickerProps = {
 type DestinationOption = {
     label: string;
     coverImageUrl: string;
+};
+
+type UnsplashResult = {
+    id: string;
+    altDescription?: string | null;
+    urls: {
+        small?: string | null;
+        regular?: string | null;
+    };
+    user: {
+        name?: string | null;
+        html?: string | null;
+    };
 };
 
 function getFlagEmoji(countryCode: string) {
@@ -50,23 +65,20 @@ function parseDestinations(destination?: string | null) {
         .map((label) => ({ label, coverImageUrl: "" }));
 }
 
-function getImageExtension(file: File) {
-    const mimeExtension = file.type.split("/")[1];
-    const nameExtension = file.name.split(".").pop();
-    return (mimeExtension || nameExtension || "jpg")
-        .replace("jpeg", "jpg")
-        .replace(/[^a-zA-Z0-9]/g, "")
-        .toLowerCase();
+function stripFlag(destination: string) {
+    return destination.replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "");
 }
 
-function isSupportedImageUrl(url: string) {
-    if (!url.trim()) return true;
-    return /\.(jpe?g|png|webp|gif|avif|svg)(\?.*)?$/i.test(url.trim());
+function isSupportedUpload(file: File) {
+    return ["image/jpeg", "image/png", "image/webp"].includes(file.type);
 }
 
 export default function TripDestinationPicker({
     initialDestination,
     initialCoverImageUrl,
+    initialCoverImageSource,
+    initialCoverImageStoragePath,
+    initialCoverImageUnsplashId,
     tripId,
     inputId,
     onChange,
@@ -74,12 +86,21 @@ export default function TripDestinationPicker({
     const inputRef = useRef<HTMLInputElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
-    const [customCoverImageUrl, setCustomCoverImageUrl] = useState(
-        initialCoverImageUrl || ""
+    const [coverMode, setCoverMode] = useState<"upload" | "unsplash">("upload");
+    const [selectedCoverSource, setSelectedCoverSource] = useState(
+        initialCoverImageSource || (initialCoverImageUrl ? "external" : "")
     );
-    const [coverUrlError, setCoverUrlError] = useState("");
+    const [selectedUnsplashId, setSelectedUnsplashId] = useState(
+        initialCoverImageUnsplashId || ""
+    );
+    const [coverPreviewUrl, setCoverPreviewUrl] = useState(initialCoverImageUrl || "");
+    const [coverRemoveRequested, setCoverRemoveRequested] = useState(false);
     const [uploadError, setUploadError] = useState("");
-    const [isUploadingCover, setIsUploadingCover] = useState(false);
+    const [unsplashQuery, setUnsplashQuery] = useState("");
+    const [unsplashPage, setUnsplashPage] = useState(1);
+    const [unsplashResults, setUnsplashResults] = useState<UnsplashResult[]>([]);
+    const [isSearchingUnsplash, setIsSearchingUnsplash] = useState(false);
+    const [unsplashError, setUnsplashError] = useState("");
     const [destinations, setDestinations] = useState<DestinationOption[]>(() => {
         const parsedDestinations = parseDestinations(initialDestination);
 
@@ -101,7 +122,7 @@ export default function TripDestinationPicker({
             ? destinations.find((destination) => destination.coverImageUrl)?.coverImageUrl ||
               ""
             : "";
-    const coverImageUrl = customCoverImageUrl || automaticCoverImageUrl;
+    const coverImageUrl = coverPreviewUrl || automaticCoverImageUrl;
 
     useEffect(() => {
         const parsedDestinations = parseDestinations(initialDestination);
@@ -114,8 +135,28 @@ export default function TripDestinationPicker({
         }
 
         setDestinations(parsedDestinations);
-        setCustomCoverImageUrl(initialCoverImageUrl || "");
-    }, [initialCoverImageUrl, initialDestination]);
+        setCoverPreviewUrl(initialCoverImageUrl || "");
+        setSelectedCoverSource(
+            initialCoverImageSource || (initialCoverImageUrl ? "external" : "")
+        );
+        setSelectedUnsplashId(initialCoverImageUnsplashId || "");
+        setCoverRemoveRequested(false);
+    }, [
+        initialCoverImageSource,
+        initialCoverImageUnsplashId,
+        initialCoverImageUrl,
+        initialDestination,
+    ]);
+
+    useEffect(() => {
+        if (unsplashQuery || !destinationValue && !initialDestination) return;
+        setUnsplashQuery(
+            stripFlag(
+                parseDestinations(destinationValue || initialDestination)[0]?.label || ""
+            ) ||
+                "travel"
+        );
+    }, [destinationValue, initialDestination, unsplashQuery]);
 
     useEffect(() => {
         if (!isGoogleReady) return;
@@ -200,63 +241,71 @@ export default function TripDestinationPicker({
         onChange?.();
     }
 
-    function updateCoverImageUrl(value: string) {
-        setCustomCoverImageUrl(value);
-        setCoverUrlError(
-            isSupportedImageUrl(value)
-                ? ""
-                : "Use a direct image URL ending in .jpg, .jpeg, .png, .webp, .gif, .avif, or .svg."
-        );
+    function clearCover() {
+        setCoverPreviewUrl("");
+        setSelectedCoverSource("");
+        setSelectedUnsplashId("");
+        setCoverRemoveRequested(true);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         onChange?.();
     }
 
-    async function handleCoverUpload(file: File | null) {
+    function handleCoverUpload(file: File | null) {
         setUploadError("");
         if (!file) return;
 
-        if (!tripId) {
-            setUploadError("Save the trip first, then upload a custom cover photo.");
+        if (!isSupportedUpload(file)) {
+            setUploadError("Upload a JPEG, PNG, or WebP image.");
             return;
         }
 
-        if (!file.type.startsWith("image/")) {
-            setUploadError("Please choose an image file.");
+        if (file.size > 10 * 1024 * 1024) {
+            setUploadError("Cover photos must be 10 MB or smaller.");
             return;
         }
 
-        setIsUploadingCover(true);
+        setCoverPreviewUrl(URL.createObjectURL(file));
+        setSelectedCoverSource("upload");
+        setSelectedUnsplashId("");
+        setCoverRemoveRequested(false);
+        onChange?.();
+    }
+
+    async function searchUnsplash(page = 1, append = false) {
+        const query = unsplashQuery.trim() || "travel";
+        setIsSearchingUnsplash(true);
+        setUnsplashError("");
 
         try {
-            const supabase = createClient();
-            const extension = getImageExtension(file);
-            const path = `${tripId}/cover.${extension}`;
-            const { error } = await supabase.storage
-                .from("trip-covers")
-                .upload(path, file, {
-                    cacheControl: "3600",
-                    contentType: file.type || undefined,
-                    upsert: true,
-                });
-
-            if (error) {
-                console.error("Error uploading trip cover photo:", {
-                    message: error.message,
-                    bucket: "trip-covers",
-                    path,
-                    fileType: file.type,
-                    fileSize: file.size,
-                });
-                setUploadError(
-                    "Could not upload the photo. Make sure the trip-covers storage bucket exists and allows uploads."
-                );
-                return;
-            }
-
-            const { data } = supabase.storage.from("trip-covers").getPublicUrl(path);
-            updateCoverImageUrl(data.publicUrl || "");
+            const response = await fetch(
+                `/api/unsplash/search?query=${encodeURIComponent(query)}&page=${page}`,
+                { cache: "no-store" }
+            );
+            const payload = (await response.json()) as {
+                error?: string;
+                results?: UnsplashResult[];
+            };
+            if (!response.ok) throw new Error(payload.error || "Search failed.");
+            setUnsplashResults((current) =>
+                append ? [...current, ...(payload.results || [])] : payload.results || []
+            );
+            setUnsplashPage(page);
+        } catch (error) {
+            setUnsplashError(
+                error instanceof Error ? error.message : "Could not search Unsplash."
+            );
         } finally {
-            setIsUploadingCover(false);
+            setIsSearchingUnsplash(false);
         }
+    }
+
+    function selectUnsplashPhoto(photo: UnsplashResult) {
+        setCoverPreviewUrl(photo.urls.regular || photo.urls.small || "");
+        setSelectedCoverSource("unsplash");
+        setSelectedUnsplashId(photo.id);
+        setCoverRemoveRequested(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        onChange?.();
     }
 
     return (
@@ -269,10 +318,21 @@ export default function TripDestinationPicker({
             />
 
             <input type="hidden" name="destination" value={destinationValue} />
+            <input type="hidden" name="cover_image_source" value={selectedCoverSource} />
             <input
                 type="hidden"
-                name="cover_image_url"
-                value={coverImageUrl}
+                name="cover_image_unsplash_id"
+                value={selectedUnsplashId}
+            />
+            <input
+                type="hidden"
+                name="cover_remove"
+                value={coverRemoveRequested ? "true" : "false"}
+            />
+            <input
+                type="hidden"
+                name="existing_cover_image_storage_path"
+                value={initialCoverImageStoragePath || ""}
             />
 
             <label
@@ -319,64 +379,163 @@ export default function TripDestinationPicker({
                     <ImagePlus className="h-4 w-4" aria-hidden="true" />
                     Cover photo
                 </div>
-                <label
-                    htmlFor={`${inputId}-cover-url`}
-                    className="mt-3 block text-xs font-bold uppercase tracking-wide text-slate-500"
-                >
-                    Image link
-                </label>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                    <div className="relative min-w-0 flex-1">
-                        <LinkIcon
-                            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
-                            aria-hidden="true"
-                        />
-                        <input
-                            id={`${inputId}-cover-url`}
-                            type="url"
-                            value={customCoverImageUrl}
-                            onChange={(event) =>
-                                updateCoverImageUrl(event.target.value)
-                            }
-                            placeholder="https://example.com/photo.jpg"
-                            autoComplete="off"
-                            data-form-type="other"
-                            data-lpignore="true"
-                            data-1p-ignore="true"
-                            className="w-full rounded-xl border border-slate-300 py-2 pl-9 pr-4 text-slate-900"
+                {coverImageUrl ? (
+                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-900">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                            src={coverImageUrl}
+                            alt=""
+                            className="aspect-video w-full object-cover"
                         />
                     </div>
+                ) : (
+                    <div className="mt-3 flex aspect-video items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-sm font-semibold text-slate-500">
+                        No cover selected
+                    </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap gap-2">
                     <button
                         type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploadingCover}
-                        className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                        onClick={() => setCoverMode("upload")}
+                        className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition ${
+                            coverMode === "upload"
+                                ? "bg-slate-900 text-white"
+                                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        }`}
                     >
-                        {isUploadingCover ? "Uploading..." : "Upload photo"}
+                        <UploadCloud className="h-4 w-4" aria-hidden="true" />
+                        Upload
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setCoverMode("unsplash");
+                            if (unsplashResults.length === 0) void searchUnsplash(1);
+                        }}
+                        className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition ${
+                            coverMode === "unsplash"
+                                ? "bg-slate-900 text-white"
+                                : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        }`}
+                    >
+                        <Search className="h-4 w-4" aria-hidden="true" />
+                        Browse Unsplash
+                    </button>
+                    {coverImageUrl ? (
+                        <button
+                            type="button"
+                            onClick={clearCover}
+                            className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-black text-red-700 transition hover:bg-red-50"
+                        >
+                            Remove photo
+                        </button>
+                    ) : null}
+                </div>
+
+                {coverMode === "upload" ? (
+                    <div className="mt-3">
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-700"
+                        >
+                            {coverImageUrl ? "Change photo" : "Upload photo"}
+                        </button>
+                        <p className="mt-2 text-xs text-slate-500">
+                            JPEG, PNG, or WebP. Maximum 10 MB. Uploaded covers are private to you.
+                        </p>
+                    </div>
+                ) : null}
+
+                {coverMode === "unsplash" ? (
+                    <div className="mt-3 space-y-3">
+                        <div className="flex gap-2">
+                            <input
+                                value={unsplashQuery}
+                                onChange={(event) =>
+                                    setUnsplashQuery(event.target.value)
+                                }
+                                placeholder="Search Berlin, Tokyo, beaches..."
+                                className="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-900"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => searchUnsplash(1)}
+                                disabled={isSearchingUnsplash}
+                                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-700 disabled:opacity-50"
+                            >
+                                Search
+                            </button>
+                        </div>
+                        {unsplashError ? (
+                            <p className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
+                                {unsplashError}
+                            </p>
+                        ) : null}
+                        <div className="grid max-h-80 gap-3 overflow-y-auto sm:grid-cols-2">
+                            {isSearchingUnsplash && unsplashResults.length === 0
+                                ? Array.from({ length: 4 }).map((_, index) => (
+                                      <div
+                                          key={index}
+                                          className="aspect-video animate-pulse rounded-xl bg-slate-200"
+                                      />
+                                  ))
+                                : unsplashResults.map((photo) => (
+                                      <button
+                                          key={photo.id}
+                                          type="button"
+                                          onClick={() => selectUnsplashPhoto(photo)}
+                                          className={`overflow-hidden rounded-xl border bg-white text-left transition hover:-translate-y-0.5 ${
+                                              selectedUnsplashId === photo.id
+                                                  ? "border-lime-400 ring-2 ring-lime-300"
+                                                  : "border-slate-200"
+                                          }`}
+                                      >
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                              src={
+                                                  photo.urls.small ||
+                                                  photo.urls.regular ||
+                                                  ""
+                                              }
+                                              alt={photo.altDescription || ""}
+                                              className="aspect-video w-full object-cover"
+                                          />
+                                          <span className="block truncate px-3 py-2 text-xs font-semibold text-slate-600">
+                                              Photo by {photo.user.name || "Unsplash"}
+                                          </span>
+                                      </button>
+                                  ))}
+                        </div>
+                        {unsplashResults.length > 0 ? (
+                            <button
+                                type="button"
+                                onClick={() => searchUnsplash(unsplashPage + 1, true)}
+                                disabled={isSearchingUnsplash}
+                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+                            >
+                                Load more
+                            </button>
+                        ) : null}
+                    </div>
+                ) : null}
+
                     <input
                         ref={fileInputRef}
+                        name="cover_upload_file"
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp"
                         className="sr-only"
                         onChange={(event) =>
-                            void handleCoverUpload(event.target.files?.[0] || null)
+                            handleCoverUpload(event.target.files?.[0] || null)
                         }
                     />
-                </div>
-                {coverUrlError ? (
-                    <p className="mt-2 text-xs font-medium text-red-700">
-                        {coverUrlError}
-                    </p>
-                ) : null}
                 {uploadError ? (
                     <p className="mt-2 text-xs font-medium text-red-700">
                         {uploadError}
                     </p>
                 ) : null}
-                <p className="mt-2 text-xs text-slate-500">
-                    Paste a direct image URL or upload a photo to use as this trip&apos;s cover.
-                </p>
             </div>
         </div>
     );

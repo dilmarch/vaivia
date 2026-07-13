@@ -19,6 +19,7 @@ import type { MoveTargetTrip } from "@/lib/tripMove";
 
 type FoodPageClientProps = {
     tripId: string;
+    tripRouteSegment?: string;
     initialTab: FoodItemType;
     items: TripFoodItem[];
     createFoodAction: (formData: FormData) => Promise<void>;
@@ -38,8 +39,8 @@ type SerializedOpeningHours = {
     periods?: unknown[];
 };
 
-function getTabHref(tripId: string, tab: FoodItemType) {
-    return `/trips/${tripId}/food?tab=${tab === "place" ? "places" : "foods"}`;
+function getTabHref(tripRouteSegment: string, tab: FoodItemType) {
+    return `/trips/${tripRouteSegment}/food?tab=${tab === "place" ? "places" : "foods"}`;
 }
 
 function normalizeUrl(value: string) {
@@ -1035,7 +1036,7 @@ function FoodEditModal({
                             </label>
                         </div>
 
-                        <div className="sticky bottom-0 -mx-6 mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#03030a]/95 px-6 py-4 backdrop-blur-xl">
+                        <div className="vaivia-modal-footer sticky bottom-0 -mx-6 mt-6 flex flex-wrap items-center justify-between gap-3">
                             <div className="flex flex-wrap gap-2">
                                 <MoveTripItemButton
                                     itemType="food"
@@ -1048,7 +1049,7 @@ function FoodEditModal({
                                 />
                                 <button
                                     type="submit"
-                                    className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200"
+                                    className="vaivia-modal-button-primary uppercase tracking-[0.16em]"
                                 >
                                     Save changes
                                 </button>
@@ -1056,7 +1057,7 @@ function FoodEditModal({
                             <button
                                 type="submit"
                                 form={`delete-food-${item.id}`}
-                                className="inline-flex items-center gap-2 rounded-full border border-red-300/20 bg-red-300/10 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-red-100 transition hover:bg-red-300/20"
+                                className="vaivia-modal-button-danger text-xs uppercase tracking-[0.14em]"
                             >
                                 <Trash2 className="h-4 w-4" aria-hidden="true" />
                                 Delete
@@ -1271,6 +1272,7 @@ function FoodCard({
 
 export default function FoodPageClient({
     tripId,
+    tripRouteSegment,
     initialTab,
     items,
     createFoodAction,
@@ -1281,6 +1283,7 @@ export default function FoodPageClient({
     toggleReactionAction,
     toggleTriedAction,
 }: FoodPageClientProps) {
+    const routeSegment = tripRouteSegment || tripId;
     const searchParams = useSearchParams();
     const [modalStep, setModalStep] = useState<ModalStep | null>(null);
     const selectedItems = useMemo(
@@ -1329,7 +1332,7 @@ export default function FoodPageClient({
 
             <div className="inline-flex rounded-full border border-white/10 bg-[#03030a] p-1 shadow-2xl shadow-black/20">
                 <Link
-                    href={getTabHref(tripId, "place")}
+                    href={getTabHref(routeSegment, "place")}
                     className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
                         initialTab === "place"
                             ? "bg-lime-300 text-slate-950"
@@ -1339,7 +1342,7 @@ export default function FoodPageClient({
                     Places to Eat
                 </Link>
                 <Link
-                    href={getTabHref(tripId, "food")}
+                    href={getTabHref(routeSegment, "food")}
                     className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
                         initialTab === "food"
                             ? "bg-lime-300 text-slate-950"

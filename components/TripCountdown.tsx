@@ -516,18 +516,18 @@ export default function TripCountdown({
                                     </div>
                                 </section>
 
-                                <div className="sticky bottom-0 z-10 -mx-5 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-5 py-4 shadow-[0_-18px_35px_rgba(15,23,42,0.08)] backdrop-blur sm:-mx-6 sm:px-6">
+                                <div className="vaivia-modal-footer sticky bottom-0 z-10 -mx-6 vaivia-modal-actions">
                                     <button
                                         type="button"
                                         onClick={requestClose}
-                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                        className="vaivia-modal-button-secondary"
                                     >
                                         Cancel
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={isPending}
-                                        className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                        className="vaivia-modal-button-primary"
                                     >
                                         {isPending ? "Saving..." : "Save"}
                                     </button>

@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Send, X } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
 import Portal from "@/components/Portal";
 import { createClient } from "@/lib/supabase/client";
 import type { TripHeaderFamilyMember } from "@/components/TripMembersPanel";
+
+type QuickAddFriend = {
+    id: string;
+    name: string;
+    username?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+};
 
 type ShareTripModalProps = {
     tripId: string;
@@ -22,11 +30,24 @@ type ShareTripModalProps = {
 function getInviteErrorMessage(error: { message?: string } | null) {
     const message = error?.message?.toLowerCase() || "";
 
+    if (message.includes("blocked") || message.includes("create a trip from your account")) {
+        return error?.message || "You can't invite this person to this trip.";
+    }
+
     if (message.includes("duplicate") || message.includes("already")) {
         return "An invitation is already pending for this user.";
     }
 
     return "Could not send invite. Please try again.";
+}
+
+function getFriendInitials(friend: QuickAddFriend) {
+    return friend.name
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
 }
 
 export default function ShareTripModal({
@@ -47,6 +68,8 @@ export default function ShareTripModal({
     const [isAddingFamily, setIsAddingFamily] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+    const [quickAddFriends, setQuickAddFriends] = useState<QuickAddFriend[]>([]);
+    const [isLoadingFriends, setIsLoadingFriends] = useState(false);
     const [selectedFamilyIds, setSelectedFamilyIds] = useState<Set<string>>(
         () => new Set()
     );
@@ -61,6 +84,106 @@ export default function ShareTripModal({
         Boolean(addFamilyMemberAction) &&
         selectedFamilyIds.size > 0 &&
         !isAddingFamily;
+
+    useEffect(() => {
+        if (!open) return;
+
+        let isCancelled = false;
+
+        async function loadFriends() {
+            const supabase = createClient();
+            setIsLoadingFriends(true);
+
+            try {
+                const {
+                    data: { user },
+                } = await supabase.auth.getUser();
+                if (!user) return;
+
+                const { data: friendships, error: friendshipsError } =
+                    await (supabase.from as any)("user_friendships")
+                        .select(
+                            "requester_user_id,addressee_user_id,status"
+                        )
+                        .or(
+                            `requester_user_id.eq.${user.id},addressee_user_id.eq.${user.id}`
+                        )
+                        .eq("status", "accepted");
+
+                if (friendshipsError) throw friendshipsError;
+
+                const friendIds = Array.from(
+                    new Set(
+                        ((friendships || []) as Array<{
+                            requester_user_id?: string | null;
+                            addressee_user_id?: string | null;
+                        }>)
+                            .map((friendship) =>
+                                friendship.requester_user_id === user.id
+                                    ? friendship.addressee_user_id
+                                    : friendship.requester_user_id
+                            )
+                            .filter((friendId): friendId is string =>
+                                Boolean(friendId && friendId !== user.id)
+                            )
+                    )
+                );
+
+                const { data: profiles, error: profilesError } =
+                    friendIds.length > 0
+                        ? await supabase
+                              .from("user_profiles")
+                              .select(
+                                  "id,first_name,last_name,username,email,avatar_url"
+                              )
+                              .in("id", friendIds)
+                        : { data: [], error: null };
+
+                if (profilesError) throw profilesError;
+
+                if (!isCancelled) {
+                    setQuickAddFriends(
+                        ((profiles || []) as Array<{
+                            id: string;
+                            first_name?: string | null;
+                            last_name?: string | null;
+                            username?: string | null;
+                            email?: string | null;
+                            avatar_url?: string | null;
+                        }>).map((friend) => {
+                            const name =
+                                [friend.first_name, friend.last_name]
+                                    .filter(Boolean)
+                                    .join(" ")
+                                    .trim() ||
+                                friend.username ||
+                                friend.email ||
+                                "VAIVIA friend";
+
+                            return {
+                                id: friend.id,
+                                name,
+                                username: friend.username || null,
+                                email: friend.email || null,
+                                avatarUrl: friend.avatar_url || null,
+                            };
+                        })
+                    );
+                }
+            } catch (error) {
+                console.warn("Could not load friends for quick add:", error);
+                if (!isCancelled) setQuickAddFriends([]);
+            } finally {
+                if (!isCancelled) setIsLoadingFriends(false);
+            }
+        }
+
+        loadFriends();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [open]);
 
     if (!open) return null;
 
@@ -213,6 +336,62 @@ export default function ShareTripModal({
                                         data-lpignore="true"
                                         data-1p-ignore="true"
                                     />
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                                        Quick add friends
+                                    </p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {isLoadingFriends ? (
+                                            <p className="text-sm font-semibold text-slate-500">
+                                                Loading friends...
+                                            </p>
+                                        ) : quickAddFriends.length > 0 ? (
+                                            quickAddFriends.map((friend) => (
+                                                <button
+                                                    key={friend.id}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setInvitee(
+                                                            friend.username ||
+                                                                friend.email ||
+                                                                ""
+                                                        );
+                                                        setConsentChecked(true);
+                                                    }}
+                                                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-left text-slate-900 shadow-sm transition hover:border-lime-300 hover:bg-lime-50"
+                                                >
+                                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-xs font-black uppercase text-lime-200">
+                                                        {friend.avatarUrl ? (
+                                                            // eslint-disable-next-line @next/next/no-img-element
+                                                            <img
+                                                                src={friend.avatarUrl}
+                                                                alt=""
+                                                                className="h-full w-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            getFriendInitials(friend)
+                                                        )}
+                                                    </span>
+                                                    <span className="min-w-0">
+                                                        <span className="block max-w-32 truncate text-sm font-black">
+                                                            {friend.name}
+                                                        </span>
+                                                        {friend.username ? (
+                                                            <span className="block max-w-32 truncate text-xs font-semibold text-slate-500">
+                                                                @{friend.username}
+                                                            </span>
+                                                        ) : null}
+                                                    </span>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <p className="text-sm font-semibold text-slate-500">
+                                                Accepted friends will appear here.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
 
                                 <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">

@@ -15,7 +15,8 @@ import {
     Users,
     X,
 } from "lucide-react";
-import { useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
@@ -836,9 +837,13 @@ export default function AccommodationManager({
     audienceOptions = [],
     currentUserTripMemberId = null,
 }: AccommodationManagerProps) {
+    const pathname = usePathname();
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const [modalMode, setModalMode] = useState<ModalMode | null>(null);
     const [deleteTarget, setDeleteTarget] = useState<TripAccommodation | null>(null);
     const [isPending, startTransition] = useTransition();
+    const handledAddParamRef = useRef<string | null>(null);
     const sortedAccommodations = useMemo(
         () =>
             [...accommodations].sort((a, b) => {
@@ -848,6 +853,21 @@ export default function AccommodationManager({
             }),
         [accommodations]
     );
+
+    useEffect(() => {
+        if (searchParams.get("addAccommodation") !== "1") return;
+        const key = `${pathname || ""}:${searchParams.toString()}`;
+        if (handledAddParamRef.current === key) return;
+        handledAddParamRef.current = key;
+
+        setModalMode({ type: "add" });
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.delete("addAccommodation");
+        const nextQuery = nextParams.toString();
+        router.replace(`${pathname || ""}${nextQuery ? `?${nextQuery}` : ""}`, {
+            scroll: false,
+        });
+    }, [pathname, router, searchParams]);
 
     function confirmDelete() {
         if (!deleteTarget) return;

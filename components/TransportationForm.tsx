@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Lock, X } from "lucide-react";
+import { AlertTriangle, GripVertical, Lock, Plus, Trash2, X } from "lucide-react";
 import Script from "next/script";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -13,6 +13,7 @@ import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
+import Portal from "@/components/Portal";
 import { COMMON_CURRENCIES } from "@/lib/budget";
 
 type TransportationFormProps = {
@@ -51,6 +52,8 @@ export type TransportationFormInitialValues = {
     currency?: string | null;
     visaRequirements?: string | null;
     luggageRequirements?: string | null;
+    preferredRideProvider?: string | null;
+    routeStops?: Array<{ label: string }>;
     isPrivate?: boolean | null;
     audienceMode?: "everyone" | "custom" | "just_me" | null;
     audienceSelectedOptions?: TripAudienceOption[];
@@ -62,7 +65,9 @@ const MODES = [
     { value: "train", label: "Train", emoji: "🚆", disabled: false },
     { value: "bus", label: "Bus", emoji: "🚌", disabled: false },
     { value: "tram", label: "Tram", emoji: "🚊", disabled: false },
-    { value: "taxi", label: "Taxi", emoji: "🚕", disabled: true },
+    { value: "ferry", label: "Ferry", emoji: "⛴️", disabled: false },
+    { value: "taxi", label: "Taxi", emoji: "🚕", disabled: false },
+    { value: "car", label: "Car", emoji: "🚗", disabled: false },
     { value: "bicycle", label: "Bicycle", emoji: "🚲", disabled: true },
 ];
 
@@ -112,6 +117,31 @@ function normalizeInitialLegs(
         departureDate: leg.departureDate || defaultDate,
         arrivalDate: leg.arrivalDate || leg.departureDate || defaultDate,
     }));
+}
+
+function normalizeInitialRouteStops(
+    initialItem: TransportationFormInitialValues | null | undefined
+) {
+    const savedStops = initialItem?.routeStops
+        ?.map((stop) => stop.label.trim())
+        .filter(Boolean);
+
+    if (savedStops?.length) {
+        return savedStops.map((label) => ({ label }));
+    }
+
+    const fallbackStops = [
+        initialItem?.flightLegs?.[0]?.departureLocation,
+        initialItem?.flightLegs?.at(-1)?.arrivalLocation,
+    ]
+        .map((label) => label?.trim() || "")
+        .filter(Boolean);
+
+    if (fallbackStops.length >= 2) {
+        return fallbackStops.map((label) => ({ label }));
+    }
+
+    return [{ label: "" }, { label: "" }];
 }
 
 function getInitialMode(initialItem?: TransportationFormInitialValues | null) {
@@ -243,9 +273,13 @@ export default function TransportationForm({
     const [flightLegs, setFlightLegs] = useState<FlightLeg[]>(() =>
         normalizeInitialLegs(initialItem, defaultDate)
     );
+    const [routeStops, setRouteStops] = useState(() =>
+        normalizeInitialRouteStops(initialItem)
+    );
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const departureRefs = useRef<Array<HTMLInputElement | null>>([]);
     const arrivalRefs = useRef<Array<HTMLInputElement | null>>([]);
+    const routeStopRefs = useRef<Array<HTMLInputElement | null>>([]);
     const flightLegsRef = useRef(flightLegs);
     const previousIsOpenRef = useRef(isOpen);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -279,6 +313,17 @@ export default function TransportationForm({
         mode === "airplane" && connectionCount !== null;
     const shouldShowDetails =
         hasSelectedMode && (mode !== "airplane" || hasSelectedFlightStructure);
+    const isTaxiOrCarMode = mode === "taxi" || mode === "car";
+    const visibleRouteStops =
+        routeStops.length >= 2 ? routeStops : [{ label: "" }, { label: "" }];
+    const firstRouteStop = visibleRouteStops[0]?.label || "";
+    const lastRouteStop = visibleRouteStops.at(-1)?.label || "";
+    const effectiveDepartureLocation = isTaxiOrCarMode
+        ? firstRouteStop
+        : firstLeg.departureLocation;
+    const effectiveArrivalLocation = isTaxiOrCarMode
+        ? lastRouteStop
+        : lastLeg.arrivalLocation;
 
     useEffect(() => {
         flightLegsRef.current = flightLegs;
@@ -295,6 +340,7 @@ export default function TransportationForm({
         setAudienceMode(initialItem?.audienceMode || "everyone");
         setConnectionCount(getInitialConnectionCount(initialItem, nextMode));
         setFlightLegs(normalizeInitialLegs(initialItem, defaultDate));
+        setRouteStops(normalizeInitialRouteStops(initialItem));
         airportCoordinateRefs.current = [];
         setHasUnsavedChanges(false);
         setIsClosing(false);
@@ -325,6 +371,34 @@ export default function TransportationForm({
         if (!window.google?.maps?.places?.Autocomplete) return;
 
         const listeners: google.maps.MapsEventListener[] = [];
+
+        if (isTaxiOrCarMode) {
+            routeStopRefs.current.forEach((element, index) => {
+                if (!element) return;
+
+                const autocomplete = new window.google.maps.places.Autocomplete(
+                    element,
+                    {
+                        fields: ["name", "formatted_address"],
+                        types: ["geocode", "establishment"],
+                    }
+                );
+
+                listeners.push(
+                    autocomplete.addListener("place_changed", () => {
+                        const place = autocomplete.getPlace();
+                        const placeName =
+                            place.name || place.formatted_address || element.value;
+                        updateRouteStop(index, placeName);
+                        setHasUnsavedChanges(true);
+                    })
+                );
+            });
+
+            return () => {
+                listeners.forEach((listener) => listener.remove());
+            };
+        }
 
         flightLegs.forEach((_, index) => {
             [
@@ -385,7 +459,15 @@ export default function TransportationForm({
         };
         // Keep Autocomplete listeners stable across field edits; live leg values come from refs.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [flightLegs.length, isGoogleReady, isOpen, mode, shouldShowDetails]);
+    }, [
+        flightLegs.length,
+        isGoogleReady,
+        isOpen,
+        isTaxiOrCarMode,
+        mode,
+        routeStops.length,
+        shouldShowDetails,
+    ]);
 
     function updateLeg(index: number, field: keyof FlightLeg, value: string) {
         setFlightLegs((currentLegs) =>
@@ -505,11 +587,52 @@ export default function TransportationForm({
         return MODES.find((option) => option.value === mode)?.label || "Transportation";
     }
 
+    const selectedMode = MODES.find((option) => option.value === mode);
+
     function selectMode(nextMode: string) {
         setMode(nextMode);
         setConnectionCount(null);
         setFlightLegs([createEmptyLeg(defaultDate)]);
+        setRouteStops((currentStops) =>
+            currentStops.length >= 2 ? currentStops : [{ label: "" }, { label: "" }]
+        );
         airportCoordinateRefs.current = [];
+        setHasUnsavedChanges(true);
+    }
+
+    function updateRouteStop(index: number, label: string) {
+        setRouteStops((currentStops) =>
+            currentStops.map((stop, stopIndex) =>
+                stopIndex === index ? { ...stop, label } : stop
+            )
+        );
+    }
+
+    function addRouteStop() {
+        setRouteStops((currentStops) => {
+            const nextStops = [...currentStops];
+            nextStops.splice(Math.max(1, nextStops.length - 1), 0, { label: "" });
+            return nextStops;
+        });
+        setHasUnsavedChanges(true);
+    }
+
+    function removeRouteStop(index: number) {
+        setRouteStops((currentStops) => {
+            if (currentStops.length <= 2) return currentStops;
+            return currentStops.filter((_, stopIndex) => stopIndex !== index);
+        });
+        setHasUnsavedChanges(true);
+    }
+
+    function moveRouteStop(fromIndex: number, toIndex: number) {
+        setRouteStops((currentStops) => {
+            if (toIndex < 0 || toIndex >= currentStops.length) return currentStops;
+            const nextStops = [...currentStops];
+            const [movedStop] = nextStops.splice(fromIndex, 1);
+            nextStops.splice(toIndex, 0, movedStop);
+            return nextStops;
+        });
         setHasUnsavedChanges(true);
     }
 
@@ -521,6 +644,7 @@ export default function TransportationForm({
                 onLoad={() => setIsGoogleReady(true)}
                 onReady={() => setIsGoogleReady(true)}
             />
+            <Portal>
             <div
                 className="vaivia-modal-backdrop"
                 data-vaivia-modal-state={isClosing ? "closing" : "open"}
@@ -545,8 +669,10 @@ export default function TransportationForm({
                                         event.currentTarget.style.display = "none";
                                     }}
                                 />
+                            ) : selectedMode ? (
+                                <span aria-hidden="true">{selectedMode.emoji}</span>
                             ) : (
-                                MODES.find((option) => option.value === mode)?.emoji || "+"
+                                <span aria-hidden="true">🛵</span>
                             )}
                         </div>
                         <div className="flex-1">
@@ -588,12 +714,25 @@ export default function TransportationForm({
                         <input
                             type="hidden"
                             name="departure_location"
-                            value={firstLeg.departureLocation}
+                            value={effectiveDepartureLocation}
                         />
                         <input
                             type="hidden"
                             name="arrival_location"
-                            value={lastLeg.arrivalLocation}
+                            value={effectiveArrivalLocation}
+                        />
+                        {visibleRouteStops.map((stop, index) => (
+                            <input
+                                key={`route-stop-hidden-${index}`}
+                                type="hidden"
+                                name={`route_stop_${index}`}
+                                value={stop.label}
+                            />
+                        ))}
+                        <input
+                            type="hidden"
+                            name="route_stop_count"
+                            value={visibleRouteStops.length}
                         />
                         <input
                             type="hidden"
@@ -947,9 +1086,177 @@ export default function TransportationForm({
                             </div>
                         ) : null}
 
-                        {shouldShowDetails && mode !== "airplane" ? (
+                        {shouldShowDetails && isTaxiOrCarMode ? (
+                            <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
+                                <div>
+                                    <p className="text-sm font-black text-slate-900">
+                                        Route
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                                        Add your starting point, destination, and any
+                                        extra stops. Drag stops to reorder the route.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {visibleRouteStops.map((stop, index) => {
+                                        const isFirst = index === 0;
+                                        const isLast =
+                                            index === visibleRouteStops.length - 1;
+
+                                        return (
+                                            <div
+                                                key={index}
+                                                draggable
+                                                onDragStart={(event) => {
+                                                    event.dataTransfer.setData(
+                                                        "text/plain",
+                                                        String(index)
+                                                    );
+                                                    event.dataTransfer.effectAllowed =
+                                                        "move";
+                                                }}
+                                                onDragOver={(event) => {
+                                                    event.preventDefault();
+                                                    event.dataTransfer.dropEffect =
+                                                        "move";
+                                                }}
+                                                onDrop={(event) => {
+                                                    event.preventDefault();
+                                                    const fromIndex = Number(
+                                                        event.dataTransfer.getData(
+                                                            "text/plain"
+                                                        )
+                                                    );
+                                                    if (!Number.isNaN(fromIndex)) {
+                                                        moveRouteStop(fromIndex, index);
+                                                    }
+                                                }}
+                                                className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[auto_1fr_auto]"
+                                            >
+                                                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500">
+                                                    <GripVertical
+                                                        className="h-4 w-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                </span>
+                                                <label className="min-w-0">
+                                                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                                        {isFirst
+                                                            ? "Starting destination"
+                                                            : isLast
+                                                              ? "Arrival destination"
+                                                              : `Additional stop ${index}`}
+                                                    </span>
+                                                    <input
+                                                        ref={(element) => {
+                                                            routeStopRefs.current[index] =
+                                                                element;
+                                                        }}
+                                                        value={stop.label}
+                                                        onChange={(event) => {
+                                                            updateRouteStop(
+                                                                index,
+                                                                event.target.value
+                                                            );
+                                                            setHasUnsavedChanges(true);
+                                                        }}
+                                                        placeholder={
+                                                            isFirst
+                                                                ? "Where are you starting?"
+                                                                : isLast
+                                                                  ? "Where are you arriving?"
+                                                                  : "Additional stop"
+                                                        }
+                                                        className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                                        {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                    />
+                                                </label>
+                                                <div className="flex items-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            moveRouteStop(
+                                                                index,
+                                                                index - 1
+                                                            )
+                                                        }
+                                                        disabled={index === 0}
+                                                        className="h-10 rounded-xl border border-slate-300 px-3 text-xs font-black text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-35"
+                                                    >
+                                                        Up
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            moveRouteStop(
+                                                                index,
+                                                                index + 1
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            index ===
+                                                            visibleRouteStops.length - 1
+                                                        }
+                                                        className="h-10 rounded-xl border border-slate-300 px-3 text-xs font-black text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-35"
+                                                    >
+                                                        Down
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            removeRouteStop(index)
+                                                        }
+                                                        disabled={
+                                                            visibleRouteStops.length <= 2
+                                                        }
+                                                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-200 text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-35"
+                                                        aria-label="Remove stop"
+                                                    >
+                                                        <Trash2
+                                                            className="h-4 w-4"
+                                                            aria-hidden="true"
+                                                        />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={addRouteStop}
+                                    className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 px-4 text-sm font-black text-slate-800 transition hover:bg-slate-50"
+                                >
+                                    <Plus className="h-4 w-4" aria-hidden="true" />
+                                    Add stop
+                                </button>
+
+                                <label className="block">
+                                    <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                        Preferred taxi company or ride sharing app
+                                    </span>
+                                    <input
+                                        name="preferred_ride_provider"
+                                        defaultValue={
+                                            initialItem?.preferredRideProvider || ""
+                                        }
+                                        placeholder="e.g. Uber, Lyft, Bolt, local taxi company"
+                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                        {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                    />
+                                </label>
+                            </div>
+                        ) : null}
+
+                        {shouldShowDetails &&
+                        mode !== "airplane" &&
+                        !isTaxiOrCarMode ? (
                             <div className="rounded-md border border-slate-200 p-4 text-sm text-slate-600">
-                                Train, bus, and tram details can be added in the next pass.
+                                Add the departure and arrival fields above, then use the
+                                booking reference and notes fields below for anything
+                                else specific to this transportation.
                             </div>
                         ) : null}
 
@@ -1052,10 +1359,12 @@ export default function TransportationForm({
                     </form>
                 </aside>
             </div>
+            </Portal>
 
             {showCloseWarning && (
+                <Portal>
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
+                    className="fixed inset-0 z-[140] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowCloseWarning(false)}
                 >
                     <div
@@ -1096,6 +1405,7 @@ export default function TransportationForm({
                         </div>
                     </div>
                 </div>
+                </Portal>
             )}
         </>
     );

@@ -2,15 +2,22 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { getTripHref } from "@/lib/tripRoutes";
 
 export type TripCoverTrip = {
     id: string;
+    slug?: string | null;
     title: string;
     destination?: string | null;
     start_date?: string | null;
     end_date?: string | null;
     notes?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
+    cover_image_unsplash_id?: string | null;
+    cover_image_photographer_name?: string | null;
+    cover_image_photographer_url?: string | null;
     trip_cover_image_url?: string | null;
 };
 
@@ -32,6 +39,8 @@ export function getLocalTripCoverImageKey(tripId: string) {
 }
 
 export function getPersistedTripCoverImageUrl(trip: TripCoverTrip) {
+    if (trip.cover_image_source === "upload") return "";
+
     return (
         trip.cover_image_url?.trim() ||
         trip.trip_cover_image_url?.trim() ||
@@ -46,12 +55,49 @@ export function useTripCoverImage(
 ) {
     const firstDestination = stripFlag(parseDestinationList(trip.destination)[0] || "");
     const [fallbackCoverImageUrl, setFallbackCoverImageUrl] = useState("");
+    const [privateCoverImageUrl, setPrivateCoverImageUrl] = useState("");
     const persistedCoverImageUrl = getPersistedTripCoverImageUrl(trip);
-    const coverImageUrl = persistedCoverImageUrl || fallbackCoverImageUrl;
+    const coverImageUrl =
+        privateCoverImageUrl || persistedCoverImageUrl || fallbackCoverImageUrl;
+
+    useEffect(() => {
+        setPrivateCoverImageUrl("");
+
+        if (
+            trip.cover_image_source !== "upload" ||
+            !trip.cover_image_storage_path ||
+            !trip.id
+        ) {
+            return;
+        }
+
+        let isMounted = true;
+        fetch(`/api/trips/${trip.id}/cover`, {
+            credentials: "same-origin",
+            cache: "no-store",
+        })
+            .then(async (response) => {
+                if (!response.ok) throw new Error("Cover unavailable");
+                return (await response.json()) as { signedUrl?: string };
+            })
+            .then((payload) => {
+                if (isMounted && payload.signedUrl) {
+                    setPrivateCoverImageUrl(payload.signedUrl);
+                }
+            })
+            .catch(() => {
+                if (isMounted) setPrivateCoverImageUrl("");
+            });
+
+        return () => {
+            isMounted = false;
+            setPrivateCoverImageUrl("");
+        };
+    }, [trip.cover_image_source, trip.cover_image_storage_path, trip.id]);
 
     useEffect(() => {
         if (!fallbackEnabled) return;
-        if (persistedCoverImageUrl) return;
+        if (privateCoverImageUrl || persistedCoverImageUrl) return;
         if (!firstDestination) return;
         if (!isGoogleReady) return;
         if (!window.google?.maps?.places?.PlacesService) return;
@@ -92,6 +138,7 @@ export function useTripCoverImage(
         firstDestination,
         isGoogleReady,
         persistedCoverImageUrl,
+        privateCoverImageUrl,
     ]);
 
     return coverImageUrl;
@@ -130,7 +177,7 @@ export default function TripCoverImage({
     if (!clickable) return image;
 
     return (
-        <Link href={`/trips/${trip.id}`} aria-label={`Open ${trip.title}`}>
+        <Link href={getTripHref(trip)} aria-label={`Open ${trip.title}`}>
             {image}
         </Link>
     );

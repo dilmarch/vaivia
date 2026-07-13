@@ -19,13 +19,24 @@ import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import { useTripCoverImage } from "@/components/TripCoverImage";
+import {
+    getTripHref,
+    sanitizeTripSlugInput,
+    slugifyTripTitle,
+} from "@/lib/tripRoutes";
 
 export type DashboardTrip = {
     id: string;
+    slug?: string | null;
     user_id?: string | null;
     title: string;
     destination?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
+    cover_image_unsplash_id?: string | null;
+    cover_image_photographer_name?: string | null;
+    cover_image_photographer_url?: string | null;
     trip_cover_image_url?: string | null;
     countdown_target_type?: string | null;
     countdown_target_id?: string | null;
@@ -508,7 +519,7 @@ export function DashboardTripCard({
 
     return (
         <Link
-            href={`/trips/${trip.id}`}
+            href={getTripHref(trip)}
             data-image-tone={imageTone}
             className={`vaivia-trip-card group relative block h-[500px] min-w-[300px] snap-start transition-all duration-500 ease-out md:h-[535px] md:min-w-[330px] lg:h-[560px] lg:min-w-[355px] ${
                 disableHoverTransform ? "" : "hover:-translate-y-3 hover:scale-110"
@@ -518,7 +529,7 @@ export function DashboardTripCard({
             }}
         >
             <div
-                className="pointer-events-none absolute inset-0 opacity-90"
+                className="vaivia-trip-card-accent pointer-events-none absolute inset-0 opacity-90"
                 style={{
                     backgroundColor: accent,
                     boxShadow: `0 28px 90px ${accent}2E, inset 0 0 0 1.4px ${accent}88`,
@@ -532,12 +543,12 @@ export function DashboardTripCard({
                     <img
                         src={coverImageUrl}
                         alt=""
-                        className="absolute inset-0 h-full w-full object-cover brightness-[0.88] contrast-[1.25] saturate-[1.45] transition duration-700 group-hover:scale-110 group-hover:brightness-100 group-hover:saturate-[1.65]"
+                        className="vaivia-trip-card-image absolute inset-0 h-full w-full object-cover brightness-[0.88] contrast-[1.25] saturate-[1.45] transition duration-700 group-hover:scale-110 group-hover:brightness-100 group-hover:saturate-[1.65]"
                         onError={() => setHasImageLoadError(true)}
                     />
                 ) : (
                     <div
-                        className="absolute inset-0"
+                        className="vaivia-trip-card-fallback-bg absolute inset-0"
                         style={{
                             background: `radial-gradient(circle at 30% 20%, ${accent}66, transparent 36%), linear-gradient(145deg, #17051f, #05050c 58%, #0c0115)`,
                         }}
@@ -552,7 +563,7 @@ export function DashboardTripCard({
                     }}
                 />
                 <div
-                    className="absolute inset-0 opacity-55"
+                    className="vaivia-trip-card-color-wash absolute inset-0 opacity-55"
                     style={{
                         background: `radial-gradient(circle at 24% 12%, ${accent}66, transparent 30%), linear-gradient(135deg, ${accent}2F, transparent 52%)`,
                         mixBlendMode: "overlay",
@@ -562,14 +573,15 @@ export function DashboardTripCard({
             </div>
 
             <div
-                className={`absolute z-20 flex h-16 w-16 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 ${variant.daysCircleClass}`}
+                className={`absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
                 style={{ backgroundColor: accent }}
             >
                 <span className="text-xl font-black leading-none">
                     {days || "-"}
                 </span>
-                <span className="mt-0.5 text-[9px] font-black uppercase leading-none tracking-[0.08em]">
-                    Days Total
+                <span className="mt-1 flex flex-col items-center text-[9px] font-black uppercase leading-[0.92] tracking-[0.08em] sm:mt-0.5 sm:text-[8px]">
+                    <span>Day</span>
+                    <span>Duration</span>
                 </span>
             </div>
 
@@ -874,7 +886,7 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
                                     return (
                                         <Link
                                             key={`${segment.trip.id}-${weekIndex}`}
-                                            href={`/trips/${segment.trip.id}`}
+                                            href={getTripHref(segment.trip)}
                                             className="absolute z-10 flex h-5 items-center truncate px-2 text-[10px] font-black uppercase leading-none text-slate-950 shadow-[0_0_16px_rgba(0,0,0,0.20)] transition hover:brightness-110"
                                             style={{
                                                 left: `${leftPercent}%`,
@@ -1048,7 +1060,7 @@ function getDashboardTasks(trips: DashboardTrip[]) {
                               accommodationGap.start,
                               accommodationGap.end
                           )}.`,
-                href: `/trips/${trip.id}/accommodations`,
+                href: getTripHref(trip, "/accommodations"),
             });
         }
 
@@ -1062,7 +1074,7 @@ function getDashboardTasks(trips: DashboardTrip[]) {
                     type: "transportation",
                     title: `No transportation booked to ${destination}`,
                     detail: `Add flight, train, car, or transfer details for ${tripTitle}.`,
-                    href: `/trips/${trip.id}?tab=journey`,
+                    href: getTripHref(trip, "?tab=journey"),
                 });
             });
     });
@@ -1277,6 +1289,40 @@ export default function TripDashboardClient({
                                 />
                             </div>
 
+                            <div>
+                                <label
+                                    htmlFor="tripEditSlug"
+                                    className="block text-sm font-medium text-slate-700"
+                                >
+                                    Trip link
+                                </label>
+                                <div className="mt-2 flex rounded-xl border border-slate-300 bg-slate-50 focus-within:border-slate-500">
+                                    <span className="shrink-0 rounded-l-xl border-r border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
+                                        trips/
+                                    </span>
+                                    <input
+                                        id="tripEditSlug"
+                                        name="slug"
+                                        type="text"
+                                        required
+                                        defaultValue={
+                                            selectedTrip.slug ||
+                                            slugifyTripTitle(selectedTrip.title)
+                                        }
+                                        onChange={(event) => {
+                                            event.currentTarget.value = sanitizeTripSlugInput(
+                                                event.currentTarget.value
+                                            );
+                                        }}
+                                        className="min-w-0 flex-1 rounded-r-xl bg-white px-4 py-2 text-slate-900 outline-none"
+                                        {...travelInputProps()}
+                                    />
+                                </div>
+                                <p className="mt-2 text-xs font-semibold text-slate-500">
+                                    Changing this updates the URL for everyone on this trip.
+                                </p>
+                            </div>
+
                             <TripDestinationPicker
                                 inputId="tripEditDestination"
                                 tripId={selectedTrip.id}
@@ -1284,6 +1330,15 @@ export default function TripDashboardClient({
                                 initialCoverImageUrl={
                                     selectedTrip.cover_image_url ||
                                     selectedTrip.trip_cover_image_url
+                                }
+                                initialCoverImageSource={
+                                    selectedTrip.cover_image_source || null
+                                }
+                                initialCoverImageStoragePath={
+                                    selectedTrip.cover_image_storage_path || null
+                                }
+                                initialCoverImageUnsplashId={
+                                    selectedTrip.cover_image_unsplash_id || null
                                 }
                                 onChange={() => setHasUnsavedChanges(true)}
                             />

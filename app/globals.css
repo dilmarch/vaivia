@@ -577,8 +577,26 @@
     filter: grayscale(1) contrast(1.05) !important;
   }
 
-  :root[data-vaivia-theme="greyscale"] body {
-    filter: grayscale(1);
+  :root[data-vaivia-theme="greyscale"] .vaivia-dashboard-hero-bg,
+  :root[data-vaivia-theme="greyscale"] .vaivia-flag-emoji {
+    filter: grayscale(1) contrast(1.08) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-dashboard-hero-content > p:first-child {
+    color: #cbd5e1 !important;
+    -webkit-text-fill-color: #cbd5e1 !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip,
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip * {
+    border-color: rgb(203 213 225 / 0.42) !important;
+    color: #cbd5e1 !important;
+    stroke: currentColor !important;
+    box-shadow: 0 0 24px rgb(148 163 184 / 0.18) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip {
+    background-color: rgb(15 23 42 / 0.72) !important;
   }
 
   :root[data-vaivia-theme="brat"],
@@ -1008,7 +1026,7 @@
   :root[data-vaivia-theme="light"] .bg-\[\#05030b\],
   :root[data-vaivia-theme="light"] .bg-\[\#090713\],
   :root[data-vaivia-theme="light"] .bg-\[\#12051c\] {
-    background-color: #f8fafc !important;
+    background-color: #f1f5f9 !important;
   }
 
   :root[data-vaivia-theme="light"] .bg-slate-950,
@@ -1020,7 +1038,7 @@
   :root[data-vaivia-theme="light"] .bg-slate-900\/50,
   :root[data-vaivia-theme="light"] .bg-slate-900\/70,
   :root[data-vaivia-theme="light"] .bg-slate-900\/90 {
-    background-color: rgb(255 255 255 / 0.92) !important;
+    background-color: rgb(226 232 240 / 0.92) !important;
   }
 
   :root[data-vaivia-theme="light"] .text-white,
@@ -1048,6 +1066,236 @@
   :root[data-vaivia-theme="light"] .bg-white\/10,
   :root[data-vaivia-theme="light"] .bg-white\/15 {
     background-color: rgb(255 255 255 / 0.82) !important;
+  }
+
+  :root[data-vaivia-theme="light"] .vaivia-loading-screen {
+    background: #f8fafc !important;
+    color: #0f172a !important;
+  }
+
+  :root[data-vaivia-theme="light"] .vaivia-loading-screen > .absolute {
+    background: linear-gradient(180deg, #ffffff 0%, #f1f5f9 55%, #e2e8f0 100%) !important;
+    opacity: 1 !important;
+    mix-blend-mode: normal !important;
+    backdrop-filter: none !important;
+  }
+
+  :root[data-vaivia-theme="light"] .vaivia-loading-card {
+    background: rgb(255 255 255 / 0.92) !important;
+    border-color: rgb(15 23 42 / 0.12) !important;
+    box-shadow: 0 24px 70px rgb(15 23 42 / 0.16) !important;
+  }
+
+  :root[data-vaivia-theme="light"] .vaivia-loading-card *,
+  :root[data-vaivia-theme="light"] .vaivia-loading-title {
+    color: #0f172a !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  :root[data-vaivia-theme="light"] .vaivia-trip-hero-title,
+  :root[data-vaivia-theme="light"] .vaivia-dashboard-hero-content,
+  :root[data-vaivia-theme="light"] .vaivia-dashboard-hero-content > p,
+  :root[data-vaivia-theme="light"] .vaivia-dashboard-hero-content h1,
+  :root[data-vaivia-theme="light"] .vaivia-dashboard-hero-content h1 span {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+    text-shadow: 0 2px 20px rgb(0 0 0 / 0.72) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector {
+    background: rgb(5 7 18 / 0.74) !important;
+    border-color: rgb(255 255 255 / 0.1) !important;
+    color: #ffffff !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector :is(p, h2) {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button {
+    border-color: rgb(255 255 255 / 0.1) !important;
+    background: rgb(2 6 23 / 0.72) !important;
+    color: #ffffff !important;
+    text-transform: none !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button:hover {
+    border-color: rgb(190 242 100 / 0.36) !important;
+    background: rgb(15 23 42 / 0.78) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-label {
+    color: inherit !important;
+    -webkit-text-fill-color: currentColor !important;
+    text-transform: none !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"][data-theme-mode="dark"] {
+    border-color: rgb(190 242 100 / 0.5) !important;
+    background: #bef264 !important;
+    color: #0f172a !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"][data-theme-mode="pink"] {
+    border-color: rgb(249 168 212 / 0.65) !important;
+    background: #f472b6 !important;
+    color: #ffffff !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"][data-theme-mode="greyscale"] {
+    border-color: rgb(226 232 240 / 0.72) !important;
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"][data-theme-mode="brat"] {
+    border-color: #000000 !important;
+    background: #000000 !important;
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"][data-theme-mode="pride"] {
+    border-color: rgb(255 255 255 / 0.38) !important;
+    background: linear-gradient(135deg,#e40303,#ff8c00,#ffed00,#008026,#24408e,#732982) !important;
+    color: #ffffff !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"][data-theme-mode="light"] {
+    border-color: #cbd5e1 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[data-theme-mode="dark"] > span:first-child {
+    background: #000000 !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[data-theme-mode="pink"] > span:first-child {
+    background: #f472b6 !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[data-theme-mode="greyscale"] > span:first-child {
+    background: linear-gradient(135deg,#ffffff,#94a3b8,#020617) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[data-theme-mode="brat"] > span:first-child {
+    background: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[data-theme-mode="pride"] > span:first-child {
+    background: linear-gradient(135deg,#e40303,#ff8c00,#ffed00,#008026,#24408e,#732982) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-theme-selector .vaivia-theme-mode-button[data-theme-mode="light"] > span:first-child {
+    background: #ffffff !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-dashboard-hero-bg,
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-backdrop-image {
+    filter: grayscale(1) saturate(0) contrast(1.08) brightness(0.82) !important;
+    mix-blend-mode: luminosity !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-dashboard-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(
+      135deg,
+      rgb(2 6 23 / 0.28),
+      rgb(148 163 184 / 0.14)
+    );
+    mix-blend-mode: saturation;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-dashboard-greeting,
+  :root[data-vaivia-theme="greyscale"] .vaivia-dashboard-hero-content > p:first-child {
+    color: #cbd5e1 !important;
+    -webkit-text-fill-color: #cbd5e1 !important;
+    text-shadow: 0 2px 18px rgb(0 0 0 / 0.45) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-flag-emoji,
+  :root[data-vaivia-theme="greyscale"] .vaivia-flag-emoji *,
+  :root[data-vaivia-theme="greyscale"] [aria-hidden="true"].vaivia-flag-emoji {
+    filter: grayscale(1) saturate(0) contrast(1.12) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card {
+    filter: drop-shadow(0 28px 70px rgb(148 163 184 / 0.16)) grayscale(1) saturate(0) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card-accent {
+    background: #94a3b8 !important;
+    background-color: #94a3b8 !important;
+    box-shadow:
+      0 28px 90px rgb(148 163 184 / 0.2),
+      inset 0 0 0 1.4px rgb(226 232 240 / 0.42) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card-image {
+    filter: grayscale(1) saturate(0) brightness(0.86) contrast(1.16) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card-fallback-bg {
+    background:
+      radial-gradient(circle at 30% 20%, rgb(148 163 184 / 0.42), transparent 36%),
+      linear-gradient(145deg, #1f2937, #030712 58%, #0f172a) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card-color-wash {
+    background:
+      radial-gradient(circle at 24% 12%, rgb(203 213 225 / 0.28), transparent 30%),
+      linear-gradient(135deg, rgb(148 163 184 / 0.22), transparent 52%) !important;
+    mix-blend-mode: overlay !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card [style*="background-color"] {
+    background-color: #cbd5e1 !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-trip-card-title {
+    color: #e2e8f0 !important;
+    -webkit-text-fill-color: #e2e8f0 !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip,
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip *,
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip svg {
+    border-color: rgb(203 213 225 / 0.42) !important;
+    color: #cbd5e1 !important;
+    stroke: currentColor !important;
+    box-shadow: 0 0 24px rgb(148 163 184 / 0.2) !important;
+  }
+
+  :root[data-vaivia-theme="greyscale"] .vaivia-loading-chip {
+    background: rgb(15 23 42 / 0.76) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button,
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button *,
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-label {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button {
+    background: #000000 !important;
+    border-color: rgb(255 255 255 / 0.22) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button:hover,
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"] {
+    background: #111111 !important;
+    border-color: rgb(255 255 255 / 0.44) !important;
+    color: #ffffff !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button > span:first-child {
+    -webkit-text-fill-color: initial !important;
   }
 
   .vaivia-page-bg {
@@ -1083,7 +1331,16 @@
   }
 
   .vaivia-modal-backdrop {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-[#0c0115]/75 px-4 py-6 backdrop-blur-sm;
+    @apply fixed inset-0 z-[120] flex items-center justify-center bg-[#0c0115]/75 px-4 py-6 backdrop-blur-sm;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    isolation: isolate;
     padding-left: max(1rem, var(--safe-area-left));
     padding-right: max(1rem, var(--safe-area-right));
   }
@@ -1115,7 +1372,7 @@
   }
 
   .vaivia-modal-header {
-    @apply border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(var(--vaivia-neon-rgb),0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6;
+    @apply border-b border-white/10 bg-[radial-gradient(circle_at_10%_0%,rgba(var(--vaivia-neon-rgb),0.14),transparent_30%),linear-gradient(135deg,rgba(124,60,255,0.16),transparent_58%)] p-6 text-white;
   }
 
   .vaivia-modal-eyebrow {
@@ -1131,11 +1388,62 @@
   }
 
   .vaivia-modal-body {
-    @apply bg-white p-6 text-slate-950;
+    @apply bg-[#05050c] p-6 text-white;
   }
 
   .vaivia-modal-confirm {
-    @apply w-full max-w-md rounded-[24px] border border-white/10 bg-white p-5 text-slate-950 shadow-2xl;
+    @apply w-full max-w-md rounded-[24px] border border-white/10 bg-[#080511] p-5 text-white shadow-2xl shadow-black/60;
+  }
+
+  .vaivia-modal-footer {
+    @apply border-t border-white/10 bg-[#06050d]/95 p-5 shadow-[0_-18px_45px_rgba(0,0,0,0.24)] backdrop-blur-xl;
+  }
+
+  .vaivia-modal-actions {
+    @apply flex flex-wrap items-center justify-end gap-3;
+  }
+
+  .vaivia-modal-button-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .vaivia-modal-button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/15 bg-white/[0.07] px-5 py-2.5 text-sm font-black text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.12] hover:text-white disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .vaivia-modal-button-danger {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-red-300/35 bg-red-400/15 px-5 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/25 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .vaivia-modal-panel :where(input, select, textarea),
+  .vaivia-modal-confirm :where(input, select, textarea) {
+    @apply border-white/15 bg-slate-950/90 text-white shadow-inner shadow-black/25 placeholder:text-slate-400/80 focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/15;
+  }
+
+  .vaivia-modal-panel :where(select option),
+  .vaivia-modal-confirm :where(select option) {
+    @apply bg-slate-950 text-white;
+  }
+
+  .vaivia-modal-panel :where(label, dt) {
+    @apply text-slate-200;
+  }
+
+  .vaivia-modal-panel :where(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500) {
+    @apply text-slate-200;
+  }
+
+  .vaivia-modal-panel :where(.bg-white, .bg-slate-50, .bg-slate-100) {
+    @apply border-white/10 bg-white/[0.06];
+  }
+
+  .vaivia-modal-panel :where(.bg-lime-300, .hover\:bg-lime-200:hover) {
+    color: rgb(2 6 23);
+  }
+
+  .vaivia-modal-panel :where(.text-slate-950).bg-lime-300,
+  .vaivia-modal-panel .bg-lime-300 :where(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500) {
+    color: rgb(2 6 23);
   }
 
   @keyframes vaivia-modal-backdrop-in {
@@ -1262,29 +1570,76 @@
 
   .pac-container {
     z-index: 10000 !important;
-    border: 1px solid rgb(255 255 255 / 0.1) !important;
-    border-radius: 18px !important;
-    background: #080511 !important;
+    margin-top: 0.5rem !important;
+    border: 1px solid rgb(190 242 100 / 0.24) !important;
+    border-radius: 22px !important;
+    background:
+      linear-gradient(180deg, rgb(8 5 17 / 0.98), rgb(3 7 18 / 0.98)) !important;
     color: white !important;
     overflow: hidden;
-    box-shadow: 0 24px 70px rgb(0 0 0 / 0.45) !important;
+    font-family: inherit !important;
+    padding: 0.4rem !important;
+    box-shadow:
+      0 28px 80px rgb(0 0 0 / 0.58),
+      0 0 34px rgba(var(--vaivia-neon-rgb), 0.14) !important;
+    backdrop-filter: blur(18px);
   }
 
   .pac-item {
-    border-top: 1px solid rgb(255 255 255 / 0.08) !important;
+    min-height: 48px;
+    border-top: 0 !important;
+    border-radius: 16px !important;
     color: rgb(203 213 225) !important;
-    padding: 0.65rem 0.9rem !important;
+    font-family: inherit !important;
+    font-size: 0.9rem !important;
+    line-height: 1.35 !important;
+    margin: 0.1rem 0 !important;
+    padding: 0.85rem 1rem !important;
     cursor: pointer;
+    transition:
+      background-color 160ms ease,
+      color 160ms ease,
+      transform 160ms ease;
   }
 
   .pac-item:hover,
   .pac-item-selected {
-    background: rgb(255 255 255 / 0.08) !important;
+    background: rgb(190 242 100 / 0.92) !important;
+    color: rgb(2 6 23) !important;
+    transform: translateY(-1px);
   }
 
   .pac-item-query {
     color: white !important;
     font-weight: 800;
+  }
+
+  .pac-item:hover .pac-item-query,
+  .pac-item-selected .pac-item-query,
+  .pac-item:hover .pac-matched,
+  .pac-item-selected .pac-matched {
+    color: rgb(2 6 23) !important;
+  }
+
+  .pac-matched {
+    color: rgb(190 242 100) !important;
+    font-weight: 900 !important;
+  }
+
+  .pac-icon {
+    margin-top: 0.15rem !important;
+    filter: invert(1) opacity(0.75);
+  }
+
+  .pac-item:hover .pac-icon,
+  .pac-item-selected .pac-icon {
+    filter: invert(0) opacity(0.85);
+  }
+
+  .pac-logo::after {
+    margin: 0.35rem 0.7rem 0.2rem !important;
+    filter: brightness(1.2) contrast(0.9);
+    opacity: 0.78;
   }
 
   @keyframes vaivia-add-fan-out {
@@ -1357,6 +1712,36 @@
       inset 0 1px 0 rgb(255 255 255 / 0.42);
   }
 
+  .vaivia-mobile-quick-add-button {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .vaivia-mobile-quick-add-button::before {
+    content: none;
+  }
+
+  @media (max-width: 767px) {
+    .vaivia-mobile-quick-add-button {
+      box-shadow:
+        0 0 0 11px rgb(100 116 139 / 0.34),
+        0 0 30px 20px rgb(100 116 139 / 0.48),
+        0 20px 46px rgb(15 23 42 / 0.68),
+        0 0 34px rgb(var(--vaivia-neon-rgb) / 0.28),
+        inset 0 1px 0 rgb(255 255 255 / 0.42) !important;
+    }
+
+    .vaivia-mobile-quick-add-button:hover,
+    .vaivia-mobile-quick-add-button:focus-visible {
+      box-shadow:
+        0 0 0 12px rgb(100 116 139 / 0.40),
+        0 0 34px 23px rgb(100 116 139 / 0.54),
+        0 22px 52px rgb(15 23 42 / 0.72),
+        0 0 40px rgb(var(--vaivia-neon-rgb) / 0.34),
+        inset 0 1px 0 rgb(255 255 255 / 0.48) !important;
+    }
+  }
+
   @keyframes vaivia-loading-bar {
     0% {
       width: 18%;
@@ -1371,6 +1756,117 @@
 
   .animate-vaivia-loading-bar {
     animation: vaivia-loading-bar 2.4s ease-in-out infinite alternate;
+  }
+
+  @keyframes vaivia-map-scratch-cover {
+    0% {
+      opacity: 1;
+      clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%);
+      filter: brightness(1.08) contrast(1.18);
+    }
+    12% {
+      opacity: 1;
+      clip-path: polygon(8% 0, 100% 0, 100% 100%, 2% 100%, 9% 82%, 4% 66%, 12% 49%, 5% 31%);
+      filter: brightness(1.14) contrast(1.28);
+    }
+    25% {
+      opacity: 1;
+      clip-path: polygon(22% 0, 100% 0, 100% 100%, 16% 100%, 25% 83%, 18% 70%, 29% 54%, 20% 38%, 31% 17%);
+      filter: brightness(1.2) contrast(1.34);
+    }
+    40% {
+      opacity: 1;
+      clip-path: polygon(40% 0, 100% 0, 100% 100%, 34% 100%, 45% 86%, 36% 70%, 48% 56%, 37% 41%, 50% 23%);
+      filter: brightness(1.24) contrast(1.38);
+    }
+    58% {
+      opacity: 1;
+      clip-path: polygon(58% 0, 100% 0, 100% 100%, 52% 100%, 63% 82%, 54% 66%, 66% 51%, 55% 34%, 69% 15%);
+      filter: brightness(1.28) contrast(1.42);
+    }
+    76% {
+      opacity: 1;
+      clip-path: polygon(77% 0, 100% 0, 100% 100%, 72% 100%, 82% 81%, 74% 65%, 86% 50%, 75% 32%, 90% 14%);
+      filter: brightness(1.32) contrast(1.44);
+    }
+    92% {
+      opacity: 1;
+      clip-path: polygon(96% 0, 100% 0, 100% 100%, 94% 100%, 99% 82%, 95% 66%, 100% 50%, 95% 31%);
+      filter: brightness(1.34) contrast(1.4);
+    }
+    100% {
+      opacity: 0;
+      clip-path: polygon(100% 0, 100% 0, 100% 100%, 100% 100%);
+      filter: brightness(1.34) contrast(1.28);
+    }
+  }
+
+  @keyframes vaivia-map-scratch-scrub {
+    0% {
+      opacity: 0;
+      clip-path: polygon(-28% 0, -10% 0, -4% 100%, -22% 100%);
+      transform: translateX(-3%) translateY(0) skewX(-9deg);
+    }
+    8% {
+      opacity: 0.72;
+      clip-path: polygon(-10% 0, 9% 0, 15% 100%, -4% 100%);
+      transform: translateX(2%) translateY(1.5%) skewX(-9deg);
+    }
+    18% {
+      opacity: 0.64;
+      clip-path: polygon(7% 0, 28% 0, 20% 100%, 0% 100%);
+      transform: translateX(-1%) translateY(-1.5%) skewX(8deg);
+    }
+    31% {
+      opacity: 0.74;
+      clip-path: polygon(22% 0, 45% 0, 52% 100%, 29% 100%);
+      transform: translateX(3%) translateY(1%) skewX(-10deg);
+    }
+    46% {
+      opacity: 0.58;
+      clip-path: polygon(43% 0, 63% 0, 56% 100%, 36% 100%);
+      transform: translateX(-2%) translateY(-1%) skewX(9deg);
+    }
+    62% {
+      opacity: 0.7;
+      clip-path: polygon(58% 0, 82% 0, 88% 100%, 64% 100%);
+      transform: translateX(2%) translateY(1.4%) skewX(-8deg);
+    }
+    80% {
+      opacity: 0.58;
+      clip-path: polygon(78% 0, 101% 0, 94% 100%, 71% 100%);
+      transform: translateX(-1%) translateY(-1.2%) skewX(7deg);
+    }
+    96% {
+      opacity: 0.36;
+      clip-path: polygon(94% 0, 118% 0, 122% 100%, 98% 100%);
+      transform: translateX(2%) translateY(0.5%) skewX(-8deg);
+    }
+    100% {
+      opacity: 0;
+      clip-path: polygon(110% 0, 130% 0, 130% 100%, 110% 100%);
+      transform: translateX(0) translateY(0) skewX(0);
+    }
+  }
+
+  .vaivia-map-scratch-cover {
+    animation: vaivia-map-scratch-cover 3.6s steps(18, end) both;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  .vaivia-map-scratch-scrub {
+    animation: vaivia-map-scratch-scrub 3.15s cubic-bezier(0.16, 1, 0.3, 1) both;
+    mix-blend-mode: screen;
+    transform-box: fill-box;
+    transform-origin: center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vaivia-map-scratch-cover,
+    .vaivia-map-scratch-scrub {
+      animation-duration: 120ms;
+    }
   }
 
   .your-trips-scroll::-webkit-scrollbar {

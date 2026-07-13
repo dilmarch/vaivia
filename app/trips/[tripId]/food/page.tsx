@@ -6,6 +6,7 @@ import TripPageHero from "@/components/TripPageHero";
 import { getMoveTargetTrips } from "@/lib/tripMove";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
+import { getTripHref, resolveTripRouteParam } from "@/lib/tripRoutes";
 import {
     FOOD_REACTION_TYPES,
     FOOD_REACTION_VALUES,
@@ -466,7 +467,7 @@ async function toggleFoodTried(formData: FormData) {
 }
 
 export default async function TripFoodPage({ params, searchParams }: PageProps) {
-    const { tripId } = await params;
+    const { tripId: tripRouteParam } = await params;
     const { tab } = await searchParams;
     const initialTab = tab === "foods" ? "food" : "place";
     const supabase = await createClient();
@@ -476,13 +477,17 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
 
     if (!user) redirect("/auth/login");
 
-    const { data: trip } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", tripId)
-        .maybeSingle();
+    const resolvedTrip = await resolveTripRouteParam<{
+        id: string;
+        slug?: string | null;
+    }>(supabase, tripRouteParam, "id,slug");
 
-    if (!trip) notFound();
+    if (!resolvedTrip.trip) notFound();
+    if (resolvedTrip.shouldRedirect) {
+        redirect(getTripHref(resolvedTrip.trip, "/food"));
+    }
+
+    const tripId = resolvedTrip.tripId;
 
     const { trips: movableTrips } = await loadActiveMemberTrips(supabase, user.id);
     const moveTargetTrips = getMoveTargetTrips({
@@ -566,10 +571,11 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
             <TripPageHero
                 tripId={tripId}
                 pageLabel="Food"
-                revalidatePathname={`/trips/${tripId}/food`}
+                revalidatePathname={`/trips/${resolvedTrip.routeSegment}/food`}
             />
             <FoodPageClient
                 tripId={tripId}
+                tripRouteSegment={resolvedTrip.routeSegment}
                 initialTab={initialTab}
                 items={decoratedItems}
                 createFoodAction={createFoodItem}

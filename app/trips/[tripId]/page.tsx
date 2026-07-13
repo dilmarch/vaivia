@@ -1,7 +1,17 @@
+import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Suspense } from "react";
+import {
+    BedDouble,
+    CalendarCheck,
+    Map as MapIcon,
+    PiggyBank,
+    Sparkles,
+    Utensils,
+    type LucideIcon,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type {
     CalendarAccommodation,
@@ -10,6 +20,11 @@ import type {
 import ItineraryTabs from "@/components/ItineraryTabs";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripHeaderCover from "@/components/TripHeaderCover";
+import {
+    buildTripCoverPayloadFromForm,
+    cleanupReplacedTripCover,
+    deleteOwnedTripCoverObject,
+} from "@/lib/tripCovers";
 import TripLegLocationLine, {
     type TripLegLocation,
     type TripLegMemberOption,
@@ -51,14 +66,20 @@ import {
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { moveTripItem } from "@/app/actions/moveTripItem";
 import { deleteTripLeg, upsertTripLeg } from "@/app/actions/tripLegs";
-import { loadActiveMemberTrips } from "@/lib/sharedTrips";
+import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
 import { getMoveTargetTrips } from "@/lib/tripMove";
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
+import {
+    addValidatedTripSlugToPayload,
+    getTripSlugErrorMessage,
+    isTripSlugConflictError,
+} from "@/lib/tripSlugUpdate";
 import { maybeCreatePassportStampForTransportationArrival } from "@/lib/passportArrivalStamps";
 import {
     resolveTripLegIdForDate,
     resolveTripLegIdForLocation,
 } from "@/lib/tripLegs";
+import { getTripHref, resolveTripRouteParam } from "@/lib/tripRoutes";
 
 type PageProps = {
     params: Promise<{
@@ -66,7 +87,21 @@ type PageProps = {
     }>;
     searchParams?: Promise<{
         tab?: string;
+        add?: string;
     }>;
+};
+
+type TripRoutePageRecord = SharedTrip & {
+    id: string;
+    slug?: string | null;
+    title: string;
+};
+
+type MobileTripAppLink = {
+    label: string;
+    description: string;
+    href: string;
+    icon: LucideIcon;
 };
 
 type ItineraryItemPayload = {
@@ -101,7 +136,15 @@ type ItineraryItemPayload = {
     trip_leg_id?: string | null;
 };
 
-type TransportationItemPayload = Record<string, string | number | boolean | null>;
+type TransportationRouteStop = {
+    order: number;
+    label: string;
+};
+
+type TransportationItemPayload = Record<
+    string,
+    string | number | boolean | null | TransportationRouteStop[]
+>;
 
 type ParticipantDisplayQueryBuilder = {
     select: (columns: string) => ParticipantDisplayQueryBuilder;
@@ -126,10 +169,16 @@ type ParticipantDisplaySupabaseClient = {
 
 type TripUpdatePayload = {
     title: string;
+    slug?: string;
     destination: string;
     start_date: string | null;
     end_date: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
+    cover_image_unsplash_id?: string | null;
+    cover_image_photographer_name?: string | null;
+    cover_image_photographer_url?: string | null;
     countdown_target_itinerary_item_id?: string | null;
     notes: string;
 };
@@ -297,6 +346,10 @@ function isMissingTripCoverColumnError(error: { code?: string; message?: string 
         error.code === "PGRST204" ||
         (message.includes("column") &&
             (message.includes("cover_image_url") ||
+                message.includes("cover_image_source") ||
+                message.includes("cover_image_storage_path") ||
+                message.includes("cover_image_unsplash_id") ||
+                message.includes("cover_image_photographer") ||
                 message.includes("schema cache")))
     );
 }
@@ -318,8 +371,21 @@ function isMissingCountdownTargetColumnError(error: {
 }
 
 function removeTripCoverColumn(payload: TripUpdatePayload) {
-    const { cover_image_url, ...fallbackPayload } = payload;
+    const {
+        cover_image_url,
+        cover_image_source,
+        cover_image_storage_path,
+        cover_image_unsplash_id,
+        cover_image_photographer_name,
+        cover_image_photographer_url,
+        ...fallbackPayload
+    } = payload;
     void cover_image_url;
+    void cover_image_source;
+    void cover_image_storage_path;
+    void cover_image_unsplash_id;
+    void cover_image_photographer_name;
+    void cover_image_photographer_url;
 
     return fallbackPayload;
 }
@@ -577,6 +643,15 @@ function getMissingColumnName(error: { message?: string; details?: string }) {
         text.match(/column "([^"]+)"/)?.[1] ||
         ""
     );
+}
+
+function parseTransportationRouteStops(formData: FormData) {
+    const stopCount = Number(formData.get("route_stop_count") || 0);
+
+    return Array.from({ length: Math.max(0, stopCount) }, (_, index) => ({
+        order: index,
+        label: String(formData.get(`route_stop_${index}`) || "").trim(),
+    })).filter((stop) => stop.label);
 }
 
 async function insertTransportationPayloadWithFallback(
@@ -1182,6 +1257,10 @@ async function createTransportationItem(formData: FormData) {
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
     const reservationCode = String(formData.get("reservation_code") || "").trim();
+    const routeStops = parseTransportationRouteStops(formData);
+    const preferredRideProvider = String(
+        formData.get("preferred_ride_provider") || ""
+    ).trim();
     const transportationCost = formData.get("cost");
     const transportationCurrency = formData.get("currency");
     const duration = formData.get("duration") as string;
@@ -1276,6 +1355,7 @@ async function createTransportationItem(formData: FormData) {
         fallbackFlightNumber: firstLegFlightNumber,
     });
     const modeLabel = mode ? mode[0].toUpperCase() + mode.slice(1) : "Transportation";
+    const routeSummary = routeStops.map((stop) => stop.label).join(" → ");
     const title =
         mode === "airplane" && effectiveFlightNumber
             ? `${effectiveFlightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
@@ -1283,6 +1363,10 @@ async function createTransportationItem(formData: FormData) {
                   arrivalLocation || "Arrival"
               }`;
     const notes = [
+        routeStops.length > 2 ? `Stops:\n${routeSummary}` : "",
+        preferredRideProvider
+            ? `Preferred taxi company / ride sharing app: ${preferredRideProvider}`
+            : "",
         duration ? `Duration: ${duration}` : "",
         departureTerminal ? `Departure terminal/platform: ${departureTerminal}` : "",
         arrivalTerminal ? `Arrival terminal/platform: ${arrivalTerminal}` : "",
@@ -1315,7 +1399,9 @@ async function createTransportationItem(formData: FormData) {
         arrival_time: endTime || null,
         departure_location: departureLocation || null,
         arrival_location: arrivalLocation || null,
-        location: [departureLocation, arrivalLocation].filter(Boolean).join(" → "),
+        location: routeSummary || [departureLocation, arrivalLocation].filter(Boolean).join(" → "),
+        route_stops: routeStops,
+        preferred_ride_provider: preferredRideProvider || null,
         departure_timezone: departureTimezone || null,
         arrival_timezone: arrivalTimezone || null,
         timezone: departureTimezone || null,
@@ -1463,6 +1549,7 @@ async function updateTransportationItem(formData: FormData) {
     const tripId = formData.get("trip_id") as string;
     const rawItemId = formData.get("item_id") as string;
     const itemId = rawItemId.replace("transportation:", "");
+    const mode = formData.get("transportation_mode") as string;
     const departureLocation = formData.get("departure_location") as string;
     const arrivalLocation = formData.get("arrival_location") as string;
     const itemDate = formData.get("item_date") as string;
@@ -1475,6 +1562,10 @@ async function updateTransportationItem(formData: FormData) {
     const airlineCode = formData.get("airline_code") as string;
     const flightNumber = formData.get("flight_number") as string;
     const reservationCode = String(formData.get("reservation_code") || "").trim();
+    const routeStops = parseTransportationRouteStops(formData);
+    const preferredRideProvider = String(
+        formData.get("preferred_ride_provider") || ""
+    ).trim();
     const transportationCost = formData.get("cost");
     const transportationCurrency = formData.get("currency");
     const departureTerminal = formData.get("departure_terminal") as string;
@@ -1498,13 +1589,27 @@ async function updateTransportationItem(formData: FormData) {
         flightNumber,
         airlineCode: effectiveAirlineCode,
     });
-    const title = effectiveFlightNumber
+    const modeLabel = mode ? mode[0].toUpperCase() + mode.slice(1) : "Transportation";
+    const routeSummary = routeStops.map((stop) => stop.label).join(" → ");
+    const title = mode === "airplane" && effectiveFlightNumber
         ? `${effectiveFlightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
-        : `Airplane: ${departureLocation || "Departure"} to ${
+        : `${modeLabel}: ${departureLocation || "Departure"} to ${
               arrivalLocation || "Arrival"
           }`;
+    const mergedNotes = [
+        routeStops.length > 2 ? `Stops:\n${routeSummary}` : "",
+        preferredRideProvider
+            ? `Preferred taxi company / ride sharing app: ${preferredRideProvider}`
+            : "",
+        notes,
+    ]
+        .filter(Boolean)
+        .join("\n\n");
     const payload: TransportationItemPayload = {
         title,
+        transportation_mode: mode || null,
+        mode: mode || null,
+        type: mode || null,
         status: transportationStatus,
         item_date: itemDate || null,
         date: itemDate || null,
@@ -1517,7 +1622,9 @@ async function updateTransportationItem(formData: FormData) {
         arrival_time: endTime || null,
         departure_location: departureLocation || null,
         arrival_location: arrivalLocation || null,
-        location: [departureLocation, arrivalLocation].filter(Boolean).join(" → "),
+        location: routeSummary || [departureLocation, arrivalLocation].filter(Boolean).join(" → "),
+        route_stops: routeStops,
+        preferred_ride_provider: preferredRideProvider || null,
         departure_timezone: departureTimezone || null,
         arrival_timezone: arrivalTimezone || null,
         timezone: departureTimezone || null,
@@ -1535,7 +1642,7 @@ async function updateTransportationItem(formData: FormData) {
         is_private: isPrivate,
         audience_mode: audience.audienceMode,
         trip_leg_id: tripLegId,
-        notes,
+        notes: mergedNotes,
     };
 
     const error = await updateTransportationPayloadWithFallback(
@@ -1653,20 +1760,51 @@ async function updateTrip(formData: FormData) {
 
     const tripId = formData.get("trip_id") as string;
     const title = formData.get("title") as string;
+    const slug = String(formData.get("slug") || "");
     const destination = formData.get("destination") as string;
     const startDate = formData.get("start_date") as string;
     const endDate = formData.get("end_date") as string;
-    const coverImageUrl = String(formData.get("cover_image_url") || "").trim();
     const notes = formData.get("notes") as string;
+    const { data: existingTripCover, error: existingTripCoverError } = await supabase
+        .from("trips")
+        .select("id,cover_image_source,cover_image_storage_path")
+        .eq("id", tripId)
+        .maybeSingle();
+
+    if (existingTripCoverError || !existingTripCover) {
+        console.error("Error loading existing trip cover:", existingTripCoverError);
+        throw new Error("Could not update trip");
+    }
+
+    let coverPayload: Partial<TripUpdatePayload> = {};
+    let uploadedStoragePath: string | null | undefined = null;
+    try {
+        const coverResult = await buildTripCoverPayloadFromForm({
+            supabase,
+            userId: user.id,
+            tripId,
+            formData,
+        });
+        coverPayload = coverResult.payload;
+        uploadedStoragePath = coverResult.uploadedStoragePath;
+    } catch (error) {
+        console.error("Error preparing trip cover:", error);
+        throw error;
+    }
 
     const payload: TripUpdatePayload = {
         title,
         destination,
         start_date: startDate || null,
         end_date: endDate || null,
-        cover_image_url: coverImageUrl || null,
         notes,
+        ...coverPayload,
     };
+    await addValidatedTripSlugToPayload(supabase, payload, {
+        tripId,
+        submittedSlug: slug,
+        fallbackTitle: title,
+    });
 
     let { error } = await supabase
         .from("trips")
@@ -1685,9 +1823,26 @@ async function updateTrip(formData: FormData) {
     }
 
     if (error) {
+        await deleteOwnedTripCoverObject({
+            supabase,
+            userId: user.id,
+            storagePath: uploadedStoragePath,
+        });
         console.error("Error updating trip:", error);
-        throw new Error("Could not update trip");
+        if (isTripSlugConflictError(error)) {
+            throw new Error(getTripSlugErrorMessage(error));
+        }
+        throw new Error(
+            error.message ? `Could not update trip: ${error.message}` : "Could not update trip"
+        );
     }
+
+    await cleanupReplacedTripCover({
+        supabase,
+        userId: user.id,
+        oldCover: existingTripCover,
+        nextPayload: coverPayload,
+    });
 
     await supabase.rpc("notify_trip_members", {
         target_trip_id: tripId,
@@ -2418,7 +2573,7 @@ async function toggleTripIdeaReaction(formData: FormData) {
 async function TripDetailContent({ params, searchParams }: PageProps) {
     await connection();
 
-    const { tripId } = await params;
+    const { tripId: tripRouteParam } = await params;
     const resolvedSearchParams = searchParams ? await searchParams : {};
     const initialTab =
         resolvedSearchParams.tab === "ideas"
@@ -2428,7 +2583,14 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             : resolvedSearchParams.tab === "journey"
               ? "journey"
               : "itinerary";
+    const hasExplicitTripTab = typeof resolvedSearchParams.tab === "string";
     const hideHeaderDetailsOnMobile = initialTab !== "itinerary";
+    const initialQuickAddAction =
+        resolvedSearchParams.add === "transportation" ||
+        resolvedSearchParams.add === "scheduled" ||
+        resolvedSearchParams.add === "idea"
+            ? resolvedSearchParams.add
+            : null;
 
     const supabase = await createClient();
 
@@ -2439,6 +2601,31 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     if (!user) {
         redirect("/auth/login");
     }
+
+    const resolvedTrip = await resolveTripRouteParam<TripRoutePageRecord>(
+        supabase,
+        tripRouteParam
+    );
+
+    if (resolvedTrip.error || !resolvedTrip.trip) {
+        notFound();
+    }
+
+    if (resolvedTrip.shouldRedirect) {
+        const query = new URLSearchParams();
+        Object.entries(resolvedSearchParams).forEach(([key, value]) => {
+            if (typeof value === "string") query.set(key, value);
+        });
+        const queryString = query.toString();
+        redirect(
+            `/trips/${resolvedTrip.routeSegment}${
+                queryString ? `?${queryString}` : ""
+            }`
+        );
+    }
+
+    const tripId = resolvedTrip.tripId;
+    const trip = resolvedTrip.trip;
 
     const { data: userPreferences, error: userPreferencesError } = await supabase
         .from("user_preferences")
@@ -2463,16 +2650,6 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         trips: movableTrips,
         currentTripId: tripId,
     });
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("*")
-        .eq("id", tripId)
-        .single();
-
-    if (tripError || !trip) {
-        notFound();
-    }
 
     const tripRecord = trip as {
         id: string;
@@ -2515,7 +2692,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     if (tripMemberUserIds.length > 0) {
         const { data: profileRows, error: profileRowsError } = await supabase
             .from("user_profiles")
-            .select("id,first_name,last_name,username,avatar_url")
+            .select("id,first_name,last_name,username,email,avatar_url")
             .in("id", tripMemberUserIds);
 
         if (profileRowsError) {
@@ -2533,6 +2710,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     first_name?: string | null;
                     last_name?: string | null;
                     username?: string | null;
+                    email?: string | null;
                     avatar_url?: string | null;
                 }>).map((profile) => [profile.id, profile])
             );
@@ -2546,6 +2724,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     first_name: profile?.first_name || null,
                     last_name: profile?.last_name || null,
                     username: profile?.username || null,
+                    email: profile?.email || null,
                     avatar_url: profile?.avatar_url || null,
                     joined_at:
                         membership?.created_at ||
@@ -3402,6 +3581,46 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 "string"
               ? tripCountdownRecord.countdown_target_itinerary_item_id
               : null;
+    const mobileTripAppLinks: MobileTripAppLink[] = [
+        {
+            label: "Itinerary",
+            description: "Schedule events and transportation during your trip.",
+            href: getTripHref(trip, "?tab=itinerary"),
+            icon: CalendarCheck,
+        },
+        {
+            label: "Ideas",
+            description:
+                "Suggest activities to do while you're away without scheduling them.",
+            href: getTripHref(trip, "?tab=ideas"),
+            icon: Sparkles,
+        },
+        {
+            label: "Budget",
+            description: "Track expenses and plan a trip budget.",
+            href: getTripHref(trip, "/budget"),
+            icon: PiggyBank,
+        },
+        {
+            label: "Journey",
+            description:
+                "Plan plane, train, and other transportation from start to finish.",
+            href: getTripHref(trip, "?tab=journey"),
+            icon: MapIcon,
+        },
+        {
+            label: "Food",
+            description: "List foods to try and restaurants you want to visit.",
+            href: getTripHref(trip, "/food"),
+            icon: Utensils,
+        },
+        {
+            label: "Accommodations",
+            description: "Add hotels, home stays, or other trip accommodations.",
+            href: getTripHref(trip, "/accommodations"),
+            icon: BedDouble,
+        },
+    ];
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripDocumentTitle
@@ -3425,7 +3644,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     <div className={hideHeaderDetailsOnMobile ? "hidden sm:block" : ""}>
                         <TripLegLocationLine
                             tripId={trip.id}
-                            revalidatePathname={`/trips/${trip.id}`}
+                            revalidatePathname={getTripHref(trip)}
                             locations={heroLocations}
                             memberOptions={tripLegMemberOptions}
                             upsertLegAction={upsertTripLeg}
@@ -3491,7 +3710,54 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             </header>
 
             <div className="mx-auto max-w-7xl px-4 sm:px-6">
-                <section className="space-y-6">
+                {!hasExplicitTripTab ? (
+                    <section className="space-y-4 pb-8 sm:hidden">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
+                                Trip apps
+                            </p>
+                            <h2 className="mt-2 text-3xl font-black tracking-tight text-white">
+                                Choose where to go next
+                            </h2>
+                        </div>
+
+                        <div className="grid gap-3">
+                            {mobileTripAppLinks.map((appLink) => {
+                                const Icon = appLink.icon;
+
+                                return (
+                                    <Link
+                                        key={appLink.label}
+                                        href={appLink.href}
+                                        className="group flex items-center gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 text-left text-white shadow-2xl shadow-black/20 transition hover:border-lime-300/35 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45"
+                                        prefetch
+                                    >
+                                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/70 text-lime-200 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.14)] transition group-hover:border-lime-300/45 group-hover:bg-lime-300 group-hover:text-slate-950">
+                                            <Icon
+                                                className="h-5 w-5"
+                                                aria-hidden="true"
+                                            />
+                                        </span>
+                                        <span className="min-w-0">
+                                            <span className="block text-base font-black">
+                                                {appLink.label}
+                                            </span>
+                                            <span className="mt-1 block text-xs font-semibold leading-5 text-slate-400">
+                                                {appLink.description}
+                                            </span>
+                                        </span>
+                                    </Link>
+                                );
+                            })}
+                        </div>
+                    </section>
+                ) : null}
+
+                <section
+                    className={`space-y-6 ${
+                        hasExplicitTripTab ? "" : "hidden sm:block"
+                    }`}
+                >
                     <ItineraryTabs
                         tripId={trip.id}
                         items={calendarItems}
@@ -3517,6 +3783,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         travelerOptions={transportationTravelerOptions}
                         audienceOptions={audienceOptions}
                         currentUserTripMemberId={currentUserTripMemberId}
+                        initialQuickAddAction={initialQuickAddAction}
                     />
                 </section>
             </div>

@@ -680,6 +680,7 @@ function getTransportationEmoji(mode?: string | null) {
     if (mode === "train") return "🚆";
     if (mode === "bus") return "🚌";
     if (mode === "tram") return "🚊";
+    if (mode === "ferry") return "⛴️";
     if (mode === "taxi") return "🚕";
     if (mode === "bicycle") return "🚲";
     return null;

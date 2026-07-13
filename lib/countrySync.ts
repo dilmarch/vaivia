@@ -133,6 +133,7 @@ const WELCOME_LABEL_BY_COUNTRY: Record<string, string> = {
     PT: "BEM-VINDO",
     TH: "ยินดีต้อนรับ",
     TR: "HOŞ GELDİNİZ",
+    TW: "歡迎",
     US: "WELCOME",
     VN: "CHÀO MỪNG",
 };

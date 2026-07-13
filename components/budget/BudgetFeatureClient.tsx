@@ -44,6 +44,7 @@ import { getInitials } from "@/lib/travelers";
 
 type BudgetFeatureProps = {
     tripId: string;
+    tripRouteSegment?: string;
     tripTitle: string;
     budget: TripBudget | null;
     lineItems: TripBudgetLineItem[];
@@ -302,16 +303,19 @@ function calculateExpenseSettlements({
 
 function BudgetTabs({
     tripId,
+    tripRouteSegment,
     mode,
 }: {
     tripId: string;
+    tripRouteSegment?: string;
     mode: "budget" | "expenses";
 }) {
+    const routeSegment = tripRouteSegment || tripId;
     const tabs = [
-        { label: "Budget", href: `/trips/${tripId}/budget`, value: "budget" },
+        { label: "Budget", href: `/trips/${routeSegment}/budget`, value: "budget" },
         {
             label: "Expenses",
-            href: `/trips/${tripId}/budget/expenses`,
+            href: `/trips/${routeSegment}/budget/expenses`,
             value: "expenses",
         },
     ] as const;
@@ -355,7 +359,7 @@ function Field({
 const inputClass =
     "w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white outline-none transition [color-scheme:dark] placeholder:text-slate-500 focus:border-lime-300/40 focus:bg-white/[0.12]";
 const selectClass = inputClass;
-const budgetModalBodyClass = "space-y-5 bg-[#05050c] p-6 text-white";
+const budgetModalBodyClass = "vaivia-modal-body space-y-5";
 
 function CreateBudgetModal({
     tripId,
@@ -496,10 +500,10 @@ function CreateBudgetModal({
                             ))}
                         </div>
                     </div>
-                    <div className="sticky bottom-0 -mx-5 flex justify-end border-t border-white/10 bg-[#0c0115]/90 px-5 py-4 backdrop-blur-xl">
+                    <div className="vaivia-modal-footer sticky bottom-0 -mx-6 vaivia-modal-actions">
                         <button
                             type="submit"
-                            className="rounded-full bg-lime-300 px-6 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
+                            className="vaivia-modal-button-primary"
                         >
                             Save budget
                         </button>
@@ -835,10 +839,10 @@ function EditBudgetModal({
                                 </div>
                             ))}
                         </div>
-                        <div className="sticky bottom-0 -mx-5 flex justify-end border-t border-white/10 bg-[#0c0115]/90 px-5 py-4 backdrop-blur-xl">
+                        <div className="vaivia-modal-footer sticky bottom-0 -mx-6 vaivia-modal-actions">
                             <button
                                 type="submit"
-                                className="rounded-full bg-lime-300 px-6 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
+                                className="vaivia-modal-button-primary"
                             >
                                 Save budget
                             </button>
@@ -1273,10 +1277,10 @@ export function AddExpenseModal({
                             />
                         </Field>
                     </div>
-                    <div className="sticky bottom-0 -mx-5 flex justify-end border-t border-white/10 bg-[#0c0115]/90 px-5 py-4 backdrop-blur-xl">
+                    <div className="vaivia-modal-footer sticky bottom-0 -mx-6 vaivia-modal-actions">
                         <button
                             type="submit"
-                            className="rounded-full bg-lime-300 px-6 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
+                            className="vaivia-modal-button-primary"
                         >
                             {isEditing
                                 ? "Save changes"
@@ -1373,6 +1377,7 @@ function RunningTotalCard({
 
 function BudgetDashboard({
     tripId,
+    tripRouteSegment,
     tripTitle,
     budget,
     lineItems,
@@ -1437,7 +1442,11 @@ function BudgetDashboard({
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <BudgetTabs tripId={tripId} mode="budget" />
+                        <BudgetTabs
+                            tripId={tripId}
+                            tripRouteSegment={tripRouteSegment}
+                            mode="budget"
+                        />
                         {budget ? (
                             <button
                                 type="button"
@@ -1617,6 +1626,7 @@ function BudgetDashboard({
 
 function ExpensesDashboard({
     tripId,
+    tripRouteSegment,
     tripTitle,
     budget,
     lineItems,
@@ -1772,7 +1782,11 @@ function ExpensesDashboard({
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
-                        <BudgetTabs tripId={tripId} mode="expenses" />
+                        <BudgetTabs
+                            tripId={tripId}
+                            tripRouteSegment={tripRouteSegment}
+                            mode="expenses"
+                        />
                         <button
                             type="button"
                             onClick={() => setIsAddingExpense(true)}

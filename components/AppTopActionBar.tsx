@@ -1,14 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Briefcase, Home, Search } from "lucide-react";
+import { Bell, Briefcase, Home, Search, Stamp } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import FriendInviteReviewModal from "@/components/FriendInviteReviewModal";
+import PassportStampShareReviewModal from "@/components/PassportStampShareReviewModal";
 import TripInviteReviewModal from "@/components/TripInviteReviewModal";
+import {
+    isActionRequiredNotification,
+    loadActiveDropdownNotifications,
+    type DropdownNotification,
+} from "@/lib/notifications/dropdown";
 import { createClient } from "@/lib/supabase/client";
+import { getTripRouteSegment } from "@/lib/tripRoutes";
 
 type TopNavTrip = {
     id: string;
+    slug?: string | null;
     title: string | null;
 };
 
@@ -17,38 +26,22 @@ type AppTopActionBarProps = {
     notifications?: AppNotification[];
 };
 
-export type AppNotification = {
-    id: string;
-    type: string | null;
-    title: string | null;
-    body: string | null;
-    read_at: string | null;
-    created_at: string | null;
-    trip_id: string | null;
-    invitation_id: string | null;
-    metadata?: Record<string, unknown> | null;
-    actor_user_id: string | null;
-    archived_at?: string | null;
-};
-
-function isActionRequiredNotification(notification: AppNotification) {
-    return notification.type === "trip_invite_received";
-}
+export type AppNotification = DropdownNotification;
 
 function tripLabel(trip: TopNavTrip) {
     return trip.title?.trim() || "Untitled trip";
 }
 
 function getTripSwitchHref({
-    targetTripId,
+    targetTrip,
     pathname,
     searchParams,
 }: {
-    targetTripId: string;
+    targetTrip: TopNavTrip;
     pathname: string;
     searchParams: URLSearchParams;
 }) {
-    const baseHref = `/trips/${targetTripId}`;
+    const baseHref = `/trips/${getTripRouteSegment(targetTrip)}`;
     const match = pathname.match(/^\/trips\/([^/]+)(.*)$/);
 
     if (!match || match[1] === "new") return baseHref;
@@ -93,12 +86,12 @@ export default function AppTopActionBar({
     const [isLoadingNotifications, setIsLoadingNotifications] = useState(false);
     const [activeInviteNotification, setActiveInviteNotification] =
         useState<AppNotification | null>(null);
+    const [activeFriendNotification, setActiveFriendNotification] =
+        useState<AppNotification | null>(null);
+    const [activePassportStampNotification, setActivePassportStampNotification] =
+        useState<AppNotification | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
-    const unreadCount = visibleNotifications.filter(
-        (notification) =>
-            !notification.archived_at &&
-            (!notification.read_at || isActionRequiredNotification(notification))
-    ).length;
+    const dropdownNotificationCount = visibleNotifications.length;
 
     useEffect(() => {
         setVisibleNotifications(notifications);
@@ -145,16 +138,10 @@ export default function AppTopActionBar({
             return;
         }
 
-        const { data, error } = await supabase
-            .from("notifications")
-            .select(
-                "id,type,title,body,read_at,created_at,trip_id,invitation_id,metadata,actor_user_id,archived_at"
-            )
-            .eq("user_id", user.id)
-            .is("archived_at", null)
-            .or("read_at.is.null,type.eq.trip_invite_received")
-            .order("created_at", { ascending: false })
-            .limit(10);
+        const { data, error } = await loadActiveDropdownNotifications(
+            supabase,
+            user.id
+        );
 
         if (error) {
             console.warn("Could not refresh notifications:", {
@@ -164,9 +151,9 @@ export default function AppTopActionBar({
                 hint: error.hint,
             });
         } else {
-            const nextNotifications = (data || []) as AppNotification[];
-            setVisibleNotifications(nextNotifications);
-            void markViewedPassiveNotifications(nextNotifications);
+            const dropdownNotifications = data || [];
+            setVisibleNotifications(dropdownNotifications);
+            void markViewedPassiveNotifications(dropdownNotifications);
         }
 
         setIsLoadingNotifications(false);
@@ -198,6 +185,12 @@ export default function AppTopActionBar({
         if (passiveUnreadIds.length === 0) return;
 
         const readAt = new Date().toISOString();
+        setVisibleNotifications((current) =>
+            current.filter(
+                (notification) => !passiveUnreadIds.includes(notification.id)
+            )
+        );
+
         const supabase = createClient();
         const { error } = await supabase
             .from("notifications")
@@ -213,14 +206,6 @@ export default function AppTopActionBar({
             });
             return;
         }
-
-        setVisibleNotifications((current) =>
-            current.map((notification) =>
-                passiveUnreadIds.includes(notification.id)
-                    ? { ...notification, read_at: notification.read_at || readAt }
-                    : notification
-            )
-        );
     }
 
     async function markNotificationRead(notification: AppNotification) {
@@ -238,17 +223,20 @@ export default function AppTopActionBar({
             return;
         }
 
+        if (notification.type === "friend_request_received") {
+            setActiveFriendNotification(notification);
+            return;
+        }
+
+        if (notification.type === "passport_stamp_share_received") {
+            setActivePassportStampNotification(notification);
+            return;
+        }
+
         await markNotificationRead(notification);
         setVisibleNotifications((current) =>
-            current.map((currentNotification) =>
-                currentNotification.id === notification.id
-                    ? {
-                          ...currentNotification,
-                          read_at:
-                              currentNotification.read_at ||
-                              new Date().toISOString(),
-                      }
-                    : currentNotification
+            current.filter(
+                (currentNotification) => currentNotification.id !== notification.id
             )
         );
     }
@@ -300,7 +288,7 @@ export default function AppTopActionBar({
                                             <Link
                                                 key={trip.id}
                                                 href={getTripSwitchHref({
-                                                    targetTripId: trip.id,
+                                                    targetTrip: trip,
                                                     pathname,
                                                     searchParams,
                                                 })}
@@ -339,9 +327,11 @@ export default function AppTopActionBar({
                         aria-expanded={openMenu === "notifications"}
                     >
                         <Bell className="h-5 w-5" aria-hidden="true" />
-                        {unreadCount > 0 ? (
+                        {dropdownNotificationCount > 0 ? (
                             <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime-300 px-1 text-[10px] font-black text-slate-950 shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.9)]">
-                                {unreadCount}
+                                {dropdownNotificationCount > 99
+                                    ? "99+"
+                                    : dropdownNotificationCount}
                             </span>
                         ) : null}
                     </button>
@@ -374,6 +364,13 @@ export default function AppTopActionBar({
                                         <span className="flex items-start gap-2 text-sm font-semibold text-white">
                                             {!notification.read_at ? (
                                                 <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-lime-300" />
+                                            ) : null}
+                                            {notification.type ===
+                                            "passport_stamp_share_received" ? (
+                                                <Stamp
+                                                    className="mt-0.5 h-4 w-4 shrink-0 text-lime-200"
+                                                    aria-hidden="true"
+                                                />
                                             ) : null}
                                             <span className="block">
                                                 {notification.title || "Notification"}
@@ -429,6 +426,28 @@ export default function AppTopActionBar({
                 }}
                 onHandled={() => {
                     setActiveInviteNotification(null);
+                    void refreshNotifications();
+                }}
+            />
+            <FriendInviteReviewModal
+                notification={activeFriendNotification}
+                open={Boolean(activeFriendNotification)}
+                onOpenChange={(open) => {
+                    if (!open) setActiveFriendNotification(null);
+                }}
+                onHandled={() => {
+                    setActiveFriendNotification(null);
+                    void refreshNotifications();
+                }}
+            />
+            <PassportStampShareReviewModal
+                notification={activePassportStampNotification}
+                open={Boolean(activePassportStampNotification)}
+                onOpenChange={(open) => {
+                    if (!open) setActivePassportStampNotification(null);
+                }}
+                onHandled={() => {
+                    setActivePassportStampNotification(null);
                     void refreshNotifications();
                 }}
             />

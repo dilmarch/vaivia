@@ -22,6 +22,8 @@ export async function createFeatureSuggestion(formData: FormData) {
     const rawType = String(formData.get("suggestion_type") || "feature");
     const suggestionType = suggestionTypes.has(rawType) ? rawType : "feature";
     const message = String(formData.get("message") || "").trim();
+    const notifyWhenImplemented =
+        formData.get("notify_when_implemented") === "true";
 
     if (!message) {
         throw new Error("Tell us what you would like VAIVIA to improve.");
@@ -36,8 +38,10 @@ export async function createFeatureSuggestion(formData: FormData) {
         current_path: cleanOptional(formData.get("current_path")),
         contact_email: cleanOptional(formData.get("contact_email")) || user.email || null,
         user_agent: headerStore.get("user-agent"),
+        status: "open",
         metadata: {
             source: "global_quick_add",
+            notify_when_implemented: notifyWhenImplemented,
         },
         updated_at: new Date().toISOString(),
     };
@@ -58,4 +62,6 @@ export async function createFeatureSuggestion(formData: FormData) {
         });
         throw new Error("Could not send suggestion. Please try again.");
     }
+
+    return { ok: true };
 }

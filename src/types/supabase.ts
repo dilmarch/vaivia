@@ -473,6 +473,119 @@ export type Database = {
         }
         Relationships: []
       }
+      news_feed_posts: {
+        Row: {
+          actor_user_id: string | null
+          archived_at: string | null
+          audience_user_id: string | null
+          body: string
+          created_at: string
+          id: string
+          meta: string | null
+          metadata: Json
+          post_key: string
+          post_type: string
+          title: string
+          user_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          archived_at?: string | null
+          audience_user_id?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          meta?: string | null
+          metadata?: Json
+          post_key: string
+          post_type: string
+          title: string
+          user_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          archived_at?: string | null
+          audience_user_id?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          meta?: string | null
+          metadata?: Json
+          post_key?: string
+          post_type?: string
+          title?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      news_feed_reactions: {
+        Row: {
+          created_at: string
+          emoji: string
+          id: string
+          post_key: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emoji: string
+          id?: string
+          post_key: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emoji?: string
+          id?: string
+          post_key?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_push_outbox: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error: string | null
+          notification_id: string
+          notification_type: string
+          processed_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          notification_id: string
+          notification_type: string
+          processed_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          notification_id?: string
+          notification_type?: string
+          processed_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_push_outbox_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: true
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           actor_user_id: string | null
@@ -639,10 +752,12 @@ export type Database = {
           pickup_lat: number | null
           pickup_lng: number | null
           pickup_location: string | null
+          preferred_ride_provider: string | null
           provider_code: string | null
           provider_name: string | null
           provider_url: string | null
           reservation_code: string | null
+          route_stops: Json
           seat_number: string | null
           sort_order: number | null
           status: string | null
@@ -700,10 +815,12 @@ export type Database = {
           pickup_lat?: number | null
           pickup_lng?: number | null
           pickup_location?: string | null
+          preferred_ride_provider?: string | null
           provider_code?: string | null
           provider_name?: string | null
           provider_url?: string | null
           reservation_code?: string | null
+          route_stops?: Json
           seat_number?: string | null
           sort_order?: number | null
           status?: string | null
@@ -761,10 +878,12 @@ export type Database = {
           pickup_lat?: number | null
           pickup_lng?: number | null
           pickup_location?: string | null
+          preferred_ride_provider?: string | null
           provider_code?: string | null
           provider_name?: string | null
           provider_url?: string | null
           reservation_code?: string | null
+          route_stops?: Json
           seat_number?: string | null
           sort_order?: number | null
           status?: string | null
@@ -2197,12 +2316,18 @@ export type Database = {
           countdown_target_id: string | null
           countdown_target_itinerary_item_id: string | null
           countdown_target_type: string | null
+          cover_image_photographer_name: string | null
+          cover_image_photographer_url: string | null
+          cover_image_source: string | null
+          cover_image_storage_path: string | null
+          cover_image_unsplash_id: string | null
           cover_image_url: string | null
           created_at: string | null
           destination: string | null
           end_date: string | null
           id: string
           notes: string | null
+          slug: string
           start_date: string | null
           title: string
           updated_at: string | null
@@ -2214,12 +2339,18 @@ export type Database = {
           countdown_target_id?: string | null
           countdown_target_itinerary_item_id?: string | null
           countdown_target_type?: string | null
+          cover_image_photographer_name?: string | null
+          cover_image_photographer_url?: string | null
+          cover_image_source?: string | null
+          cover_image_storage_path?: string | null
+          cover_image_unsplash_id?: string | null
           cover_image_url?: string | null
           created_at?: string | null
           destination?: string | null
           end_date?: string | null
           id?: string
           notes?: string | null
+          slug: string
           start_date?: string | null
           title: string
           updated_at?: string | null
@@ -2231,12 +2362,18 @@ export type Database = {
           countdown_target_id?: string | null
           countdown_target_itinerary_item_id?: string | null
           countdown_target_type?: string | null
+          cover_image_photographer_name?: string | null
+          cover_image_photographer_url?: string | null
+          cover_image_source?: string | null
+          cover_image_storage_path?: string | null
+          cover_image_unsplash_id?: string | null
           cover_image_url?: string | null
           created_at?: string | null
           destination?: string | null
           end_date?: string | null
           id?: string
           notes?: string | null
+          slug?: string
           start_date?: string | null
           title?: string
           updated_at?: string | null
@@ -2251,6 +2388,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_activity_daily: {
+        Row: {
+          activity_date: string
+          first_active_at: string
+          last_active_at: string
+          user_id: string
+        }
+        Insert: {
+          activity_date?: string
+          first_active_at?: string
+          last_active_at?: string
+          user_id: string
+        }
+        Update: {
+          activity_date?: string
+          first_active_at?: string
+          last_active_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_categories: {
         Row: {
@@ -2347,6 +2505,123 @@ export type Database = {
         }
         Relationships: []
       }
+      user_friendships: {
+        Row: {
+          addressee_identifier: string
+          addressee_user_id: string | null
+          blocked_by_user_id: string | null
+          created_at: string
+          id: string
+          requester_user_id: string
+          responded_at: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          addressee_identifier: string
+          addressee_user_id?: string | null
+          blocked_by_user_id?: string | null
+          created_at?: string
+          id?: string
+          requester_user_id: string
+          responded_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          addressee_identifier?: string
+          addressee_user_id?: string | null
+          blocked_by_user_id?: string | null
+          created_at?: string
+          id?: string
+          requester_user_id?: string
+          responded_at?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_notification_preferences: {
+        Row: {
+          created_at: string
+          email_enabled: boolean
+          in_app_enabled: boolean
+          notification_type: string
+          push_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email_enabled?: boolean
+          in_app_enabled?: boolean
+          notification_type: string
+          push_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email_enabled?: boolean
+          in_app_enabled?: boolean
+          notification_type?: string
+          push_enabled?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_passport_stamp_shares: {
+        Row: {
+          accepted_stamp_id: string | null
+          created_at: string
+          id: string
+          recipient_user_id: string
+          responded_at: string | null
+          sender_user_id: string
+          source_stamp_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_stamp_id?: string | null
+          created_at?: string
+          id?: string
+          recipient_user_id: string
+          responded_at?: string | null
+          sender_user_id: string
+          source_stamp_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_stamp_id?: string | null
+          created_at?: string
+          id?: string
+          recipient_user_id?: string
+          responded_at?: string | null
+          sender_user_id?: string
+          source_stamp_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_passport_stamp_shares_accepted_stamp_id_fkey"
+            columns: ["accepted_stamp_id"]
+            isOneToOne: false
+            referencedRelation: "user_passport_stamps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_passport_stamp_shares_source_stamp_id_fkey"
+            columns: ["source_stamp_id"]
+            isOneToOne: false
+            referencedRelation: "user_passport_stamps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_passport_stamps: {
         Row: {
           arrival_label_snapshot: string | null
@@ -2363,13 +2638,21 @@ export type Database = {
           first_visited_on: string | null
           flag_emoji: string | null
           id: string
+          port_of_entry_name: string | null
+          port_of_entry_type: string | null
           source: string
           source_trip_id: string | null
           stamp_display_country_name: string | null
           stamp_display_flag: string | null
+          stamp_language_code: string | null
+          stamp_language_name: string | null
           stamped_at: string
           updated_at: string
           user_id: string
+          visit_city: string | null
+          visit_month: number | null
+          visit_region: string | null
+          visit_status: string
           welcome_label_snapshot: string | null
         }
         Insert: {
@@ -2387,13 +2670,21 @@ export type Database = {
           first_visited_on?: string | null
           flag_emoji?: string | null
           id?: string
+          port_of_entry_name?: string | null
+          port_of_entry_type?: string | null
           source?: string
           source_trip_id?: string | null
           stamp_display_country_name?: string | null
           stamp_display_flag?: string | null
+          stamp_language_code?: string | null
+          stamp_language_name?: string | null
           stamped_at?: string
           updated_at?: string
           user_id: string
+          visit_city?: string | null
+          visit_month?: number | null
+          visit_region?: string | null
+          visit_status?: string
           welcome_label_snapshot?: string | null
         }
         Update: {
@@ -2411,13 +2702,21 @@ export type Database = {
           first_visited_on?: string | null
           flag_emoji?: string | null
           id?: string
+          port_of_entry_name?: string | null
+          port_of_entry_type?: string | null
           source?: string
           source_trip_id?: string | null
           stamp_display_country_name?: string | null
           stamp_display_flag?: string | null
+          stamp_language_code?: string | null
+          stamp_language_name?: string | null
           stamped_at?: string
           updated_at?: string
           user_id?: string
+          visit_city?: string | null
+          visit_month?: number | null
+          visit_region?: string | null
+          visit_status?: string
           welcome_label_snapshot?: string | null
         }
         Relationships: [
@@ -2437,6 +2736,69 @@ export type Database = {
           },
         ]
       }
+      user_point_events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          points: number
+          source_id: string | null
+          source_table: string | null
+          unique_key: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          points: number
+          source_id?: string | null
+          source_table?: string | null
+          unique_key?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          metadata?: Json
+          occurred_at?: string
+          points?: number
+          source_id?: string | null
+          source_table?: string | null
+          unique_key?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_points: {
+        Row: {
+          level: number
+          level_name: string
+          points: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          level?: number
+          level_name?: string
+          points?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          level?: number
+          level_name?: string
+          points?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_preferences: {
         Row: {
           clock_format: string
@@ -2444,6 +2806,8 @@ export type Database = {
           created_at: string
           default_time_zone: string | null
           itinerary_default_view: string
+          news_feed_mode: string
+          theme_mode: string
           updated_at: string
           user_id: string
         }
@@ -2453,6 +2817,8 @@ export type Database = {
           created_at?: string
           default_time_zone?: string | null
           itinerary_default_view?: string
+          news_feed_mode?: string
+          theme_mode?: string
           updated_at?: string
           user_id: string
         }
@@ -2462,6 +2828,8 @@ export type Database = {
           created_at?: string
           default_time_zone?: string | null
           itinerary_default_view?: string
+          news_feed_mode?: string
+          theme_mode?: string
           updated_at?: string
           user_id?: string
         }
@@ -2481,6 +2849,7 @@ export type Database = {
           marketing_emails_consent: boolean
           marketing_emails_consented_at: string | null
           onboarding_completed_at: string | null
+          role: string
           terms_accepted_at: string | null
           updated_at: string
           username: string | null
@@ -2498,6 +2867,7 @@ export type Database = {
           marketing_emails_consent?: boolean
           marketing_emails_consented_at?: string | null
           onboarding_completed_at?: string | null
+          role?: string
           terms_accepted_at?: string | null
           updated_at?: string
           username?: string | null
@@ -2515,11 +2885,166 @@ export type Database = {
           marketing_emails_consent?: boolean
           marketing_emails_consented_at?: string | null
           onboarding_completed_at?: string | null
+          role?: string
           terms_accepted_at?: string | null
           updated_at?: string
           username?: string | null
         }
         Relationships: []
+      }
+      user_push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          platform: string | null
+          revoked_at: string | null
+          updated_at: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          platform?: string | null
+          revoked_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          platform?: string | null
+          revoked_at?: string | null
+          updated_at?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_scratch_map_countries: {
+        Row: {
+          country_code: string
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          country_code: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          country_code?: string
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_travel_bucket_list: {
+        Row: {
+          city: string | null
+          completed_at: string | null
+          completed_transportation_item_id: string | null
+          completed_trip_id: string | null
+          country_code: string
+          country_name: string | null
+          created_at: string
+          flag_emoji: string | null
+          google_formatted_address: string | null
+          google_place_id: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          passport_stamp_id: string | null
+          place_label: string
+          region: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          city?: string | null
+          completed_at?: string | null
+          completed_transportation_item_id?: string | null
+          completed_trip_id?: string | null
+          country_code: string
+          country_name?: string | null
+          created_at?: string
+          flag_emoji?: string | null
+          google_formatted_address?: string | null
+          google_place_id?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          passport_stamp_id?: string | null
+          place_label: string
+          region?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          city?: string | null
+          completed_at?: string | null
+          completed_transportation_item_id?: string | null
+          completed_trip_id?: string | null
+          country_code?: string
+          country_name?: string | null
+          created_at?: string
+          flag_emoji?: string | null
+          google_formatted_address?: string | null
+          google_place_id?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          passport_stamp_id?: string | null
+          place_label?: string
+          region?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_travel_bucket_list_completed_transportation_item_id_fkey"
+            columns: ["completed_transportation_item_id"]
+            isOneToOne: false
+            referencedRelation: "transportation_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_travel_bucket_list_completed_trip_id_fkey"
+            columns: ["completed_trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_travel_bucket_list_passport_stamp_id_fkey"
+            columns: ["passport_stamp_id"]
+            isOneToOne: false
+            referencedRelation: "user_passport_stamps"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -2588,9 +3113,30 @@ export type Database = {
         }
         Returns: string
       }
+      admin_get_stats: { Args: never; Returns: Json }
+      admin_update_user_profile: {
+        Args: {
+          target_email: string
+          target_first_name: string
+          target_last_name: string
+          target_role: string
+          target_user_id: string
+          target_username: string
+        }
+        Returns: undefined
+      }
+      approximate_latin_slug_input: {
+        Args: { input_value: string }
+        Returns: string
+      }
+      block_friend: { Args: { target_user_id: string }; Returns: undefined }
       can_access_trip_leg: {
         Args: { target_trip_id: string; target_trip_leg_id: string }
         Returns: boolean
+      }
+      create_friend_invitation: {
+        Args: { invitee_identifier: string }
+        Returns: string
       }
       create_trip_invitation: {
         Args: {
@@ -2604,6 +3150,63 @@ export type Database = {
         Args: { invitation_id: string }
         Returns: undefined
       }
+      friendship_block_exists: {
+        Args: { blocked_user_id: string; blocker_user_id: string }
+        Returns: boolean
+      }
+      get_admin_feature_suggestions: {
+        Args: { limit_count?: number }
+        Returns: {
+          contact_email: string
+          created_at: string
+          current_path: string
+          id: string
+          message: string
+          status: string
+          suggestion_type: string
+          title: string
+          user_id: string
+        }[]
+      }
+      get_admin_site_stats: {
+        Args: { range_end?: string; range_start?: string }
+        Returns: Json
+      }
+      get_admin_users: {
+        Args: never
+        Returns: {
+          auth_method: string
+          created_at: string
+          email: string
+          first_name: string
+          id: string
+          join_date: string
+          last_name: string
+          role: string
+          username: string
+        }[]
+      }
+      get_available_trip_slug: {
+        Args: { base_slug: string; excluded_trip_id?: string }
+        Returns: string
+      }
+      get_available_trip_slug_for_user: {
+        Args: {
+          base_slug: string
+          excluded_trip_id?: string
+          target_user_id: string
+        }
+        Returns: string
+      }
+      get_trip_slug_fallback_for_user: {
+        Args: { excluded_trip_id?: string; target_user_id: string }
+        Returns: string
+      }
+      get_user_display_name: {
+        Args: { target_user_id: string }
+        Returns: string
+      }
+      is_super_admin: { Args: never; Returns: boolean }
       is_trip_active_member: {
         Args: { target_trip_id: string }
         Returns: boolean
@@ -2622,6 +3225,7 @@ export type Database = {
       is_trip_owner: { Args: { target_trip_id: string }; Returns: boolean }
       leave_trip: { Args: { target_trip_id: string }; Returns: undefined }
       mark_app_alert_read: { Args: { alert_id: string }; Returns: undefined }
+      normalize_trip_slug: { Args: { input_value: string }; Returns: string }
       notify_trip_members: {
         Args: {
           notification_body?: string
@@ -2632,10 +3236,112 @@ export type Database = {
         }
         Returns: undefined
       }
+      recalculate_all_user_points: { Args: never; Returns: number }
+      record_user_activity: { Args: never; Returns: undefined }
+      record_user_point_event: {
+        Args: {
+          event_type: string
+          metadata?: Json
+          occurred_at?: string
+          point_delta: number
+          source_id?: string
+          source_table?: string
+          target_user_id: string
+          unique_key?: string
+        }
+        Returns: {
+          created_at: string
+          event_type: string
+          id: string
+          metadata: Json
+          occurred_at: string
+          points: number
+          source_id: string | null
+          source_table: string | null
+          unique_key: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_point_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      refresh_user_points: {
+        Args: { target_user_id: string }
+        Returns: {
+          level: number
+          level_name: string
+          points: number
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_points"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      respond_to_friend_invitation: {
+        Args: { friendship_id: string; next_status: string }
+        Returns: undefined
+      }
+      respond_to_passport_stamp_share: {
+        Args: { next_status: string; share_id: string; stamp_patch?: Json }
+        Returns: {
+          accepted_stamp_id: string | null
+          created_at: string
+          id: string
+          recipient_user_id: string
+          responded_at: string | null
+          sender_user_id: string
+          source_stamp_id: string
+          status: string
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_passport_stamp_shares"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       seed_default_user_categories: {
         Args: { target_user_id: string }
         Returns: undefined
       }
+      send_passport_stamp_share: {
+        Args: { recipient_user_ids: string[]; source_stamp_id: string }
+        Returns: {
+          accepted_stamp_id: string | null
+          created_at: string
+          id: string
+          recipient_user_id: string
+          responded_at: string | null
+          sender_user_id: string
+          source_stamp_id: string
+          status: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "user_passport_stamp_shares"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      trip_slug_conflicts_for_user: {
+        Args: {
+          excluded_trip_id?: string
+          target_slug: string
+          target_user_id: string
+        }
+        Returns: boolean
+      }
+      vaivia_level_for_points: { Args: { raw_points: number }; Returns: Json }
+      vaivia_trip_owner: { Args: { trip_id: string }; Returns: string }
       visible_trip_member_ids: {
         Args: { target_trip_id: string }
         Returns: {

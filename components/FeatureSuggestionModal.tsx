@@ -144,13 +144,31 @@ export default function FeatureSuggestionModal({
                             />
                         </label>
 
+                        <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.06] p-4">
+                            <input
+                                type="checkbox"
+                                name="notify_when_implemented"
+                                value="true"
+                                defaultChecked
+                                className="mt-1 h-5 w-5 rounded border-white/20 bg-slate-950 accent-lime-300"
+                            />
+                            <span>
+                                <span className="block text-sm font-black text-white">
+                                    Notify me if this gets implemented
+                                </span>
+                                <span className="mt-1 block text-xs font-semibold leading-5 text-slate-400">
+                                    VAIVIA will send an in-app notification when this request is marked implemented.
+                                </span>
+                            </span>
+                        </label>
+
                         {errorMessage ? (
                             <p className="rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100">
                                 {errorMessage}
                             </p>
                         ) : null}
                     </div>
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[#06050d] p-6 shadow-[0_-18px_45px_rgba(0,0,0,0.24)]">
+                    <div className="vaivia-modal-footer flex flex-wrap items-center justify-between gap-3">
                         <p className="text-xs font-semibold text-slate-300">
                             <Lightbulb
                                 className="mr-1 inline h-3.5 w-3.5 text-lime-200"
@@ -161,7 +179,7 @@ export default function FeatureSuggestionModal({
                         <button
                             type="submit"
                             disabled={isSaving}
-                            className="rounded-full bg-lime-300 px-6 py-3 text-sm font-black text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="vaivia-modal-button-primary"
                         >
                             {isSaving ? "Sending..." : "Send suggestion"}
                         </button>

@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { Minus, Plus } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createAccommodation } from "@/app/actions/accommodations";
-import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
 import FeatureSuggestionModal from "@/components/FeatureSuggestionModal";
+import { getTripRouteSegment } from "@/lib/tripRoutes";
 
 type QuickAddTrip = {
     id: string;
+    slug?: string | null;
     title: string | null;
 };
 
@@ -48,23 +48,28 @@ function getTripLabel(trip: QuickAddTrip) {
 
 export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
     const pathname = usePathname();
+    const searchParams = useSearchParams();
     const router = useRouter();
     const currentTripId = getCurrentTripId(pathname);
     const [isOpen, setIsOpen] = useState(false);
     const [tripPickerAction, setTripPickerAction] = useState<TripAction | null>(
         null
     );
-    const [accommodationTripId, setAccommodationTripId] = useState<string | null>(
-        null
-    );
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const currentTrip = useMemo(
-        () => trips.find((trip) => trip.id === currentTripId) || null,
+        () =>
+            trips.find(
+                (trip) =>
+                    trip.id === currentTripId ||
+                    getTripRouteSegment(trip) === currentTripId
+            ) || null,
         [currentTripId, trips]
     );
     const isMainTripDetailRoute =
         currentTripId && pathname === `/trips/${encodeURIComponent(currentTripId)}`;
+    const hasTripTab = searchParams.has("tab");
+    const isBaseTripLandingRoute = Boolean(isMainTripDetailRoute && !hasTripTab);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -86,51 +91,56 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
     }, [isOpen]);
 
     function openTripAction(action: TripAction) {
-        if (action === "accommodation" && currentTripId) {
-            setAccommodationTripId(currentTripId);
-            setIsOpen(false);
-            setTripPickerAction(null);
-            return;
-        }
-
-        if (action === "food" && currentTripId) {
-            router.push(`/trips/${currentTripId}/food?addFood=1`);
+        if (currentTripId && currentTrip) {
+            const href = getTripActionHref(currentTrip, action);
+            if (href) {
+                router.push(href);
+                setIsOpen(false);
+                setTripPickerAction(null);
+                return;
+            }
+        } else if (action === "food" && currentTripId) {
+            router.push(
+                `/trips/${getTripRouteSegment(currentTrip) || currentTripId}/food?addFood=1`
+            );
             return;
         }
 
         setTripPickerAction(action);
     }
 
-    function getTripActionHref(tripId: string, action: TripAction) {
-        if (action === "accommodation") return null;
-        if (action === "expense") return `/trips/${tripId}/budget/expenses?addExpense=1`;
-        if (action === "food") return `/trips/${tripId}/food?addFood=1`;
-        if (action === "idea") return `/trips/${tripId}?tab=ideas`;
-        if (action === "transportation") return `/trips/${tripId}?tab=journey`;
-        return `/trips/${tripId}`;
+    function getTripActionHref(trip: QuickAddTrip, action: TripAction) {
+        const tripRouteSegment = getTripRouteSegment(trip);
+        if (action === "accommodation") {
+            return `/trips/${tripRouteSegment}/accommodations?addAccommodation=1`;
+        }
+        if (action === "expense") return `/trips/${tripRouteSegment}/budget/expenses?addExpense=1`;
+        if (action === "food") return `/trips/${tripRouteSegment}/food?addFood=1`;
+        if (action === "idea") return `/trips/${tripRouteSegment}?tab=ideas&add=idea`;
+        if (action === "transportation") {
+            return `/trips/${tripRouteSegment}?tab=journey&add=transportation`;
+        }
+        return `/trips/${tripRouteSegment}?tab=itinerary&add=scheduled`;
     }
 
     const quickAddBubbleClass =
         "animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right";
 
-    if (isMainTripDetailRoute) return null;
+    if (isMainTripDetailRoute && hasTripTab) return null;
 
     return (
         <>
-            {accommodationTripId ? (
-                <AccommodationCreateModal
-                    tripId={accommodationTripId}
-                    createAction={createAccommodation}
-                    onClose={() => setAccommodationTripId(null)}
-                />
-            ) : null}
             {isSuggestionOpen ? (
                 <FeatureSuggestionModal onClose={() => setIsSuggestionOpen(false)} />
             ) : null}
 
             <div
                 ref={quickAddRef}
-                className="fixed bottom-[calc(1rem+var(--safe-area-bottom))] left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
+                className={`fixed bottom-[calc(0.75rem+var(--safe-area-bottom))] left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center ${
+                    isBaseTripLandingRoute
+                        ? "md:hidden"
+                        : "md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
+                }`}
             >
                 {isOpen && (
                     <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
@@ -149,30 +159,7 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                                 <div className="mt-2 max-h-56 space-y-1 overflow-y-auto">
                                     {trips.length > 0 ? (
                                         trips.map((trip, index) => {
-                                            const href = getTripActionHref(
-                                                trip.id,
-                                                tripPickerAction
-                                            );
-
-                                            if (!href) {
-                                                return (
-                                                    <button
-                                                        key={trip.id}
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setAccommodationTripId(trip.id);
-                                                            setIsOpen(false);
-                                                            setTripPickerAction(null);
-                                                        }}
-                                                        className={quickAddBubbleClass}
-                                                        style={{
-                                                            animationDelay: `${index * 34}ms`,
-                                                        }}
-                                                    >
-                                                        {getTripLabel(trip)}
-                                                    </button>
-                                                );
-                                            }
+                                            const href = getTripActionHref(trip, tripPickerAction);
 
                                             return (
                                                 <Link
@@ -237,25 +224,35 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                     </div>
                 )}
 
-                <button
-                    type="button"
-                    onClick={() => setIsOpen((current) => !current)}
-                    className="flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
-                    aria-label={isOpen ? "Close quick add menu" : "Open quick add menu"}
-                    aria-expanded={isOpen}
-                >
+                <div className="relative grid place-items-center">
                     <span
-                        className={`grid place-items-center transition-transform duration-300 ${
-                            isOpen ? "-rotate-180" : "rotate-0"
-                        }`}
+                        className="pointer-events-none absolute -inset-4 z-0 rounded-full bg-slate-500/60 blur-2xl"
+                        aria-hidden="true"
+                    />
+                    <span
+                        className="pointer-events-none absolute -inset-2 z-0 rounded-full bg-slate-700/45 blur-xl"
+                        aria-hidden="true"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setIsOpen((current) => !current)}
+                        className="vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                        aria-label={isOpen ? "Close quick add menu" : "Open quick add menu"}
+                        aria-expanded={isOpen}
                     >
-                        {isOpen ? (
-                            <Minus className="h-6 w-6" aria-hidden="true" />
-                        ) : (
-                            <Plus className="h-6 w-6" aria-hidden="true" />
-                        )}
-                    </span>
-                </button>
+                        <span
+                            className={`grid place-items-center transition-transform duration-300 ${
+                                isOpen ? "-rotate-180" : "rotate-0"
+                            }`}
+                        >
+                            {isOpen ? (
+                                <Minus className="h-6 w-6" aria-hidden="true" />
+                            ) : (
+                                <Plus className="h-6 w-6" aria-hidden="true" />
+                            )}
+                        </span>
+                    </button>
+                </div>
 
                 {currentTrip ? (
                     <p className="mt-2 hidden max-w-44 truncate rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-xs font-bold text-slate-300 shadow-xl shadow-black/20 backdrop-blur-xl md:block">

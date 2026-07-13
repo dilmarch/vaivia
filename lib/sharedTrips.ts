@@ -10,6 +10,7 @@ export type SharedTripMemberProfile = {
 
 export type SharedTrip = {
     id: string;
+    slug?: string | null;
     user_id?: string | null;
     title: string | null;
     destination: string | null;
@@ -17,6 +18,11 @@ export type SharedTrip = {
     end_date: string | null;
     notes?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
+    cover_image_unsplash_id?: string | null;
+    cover_image_photographer_name?: string | null;
+    cover_image_photographer_url?: string | null;
     trip_cover_image_url?: string | null;
     countdown_target_type?: string | null;
     countdown_target_id?: string | null;
@@ -55,6 +61,7 @@ export async function loadActiveMemberTrips(
             status,
             trips (
                 id,
+                slug,
                 user_id,
                 title,
                 destination,
@@ -62,6 +69,11 @@ export async function loadActiveMemberTrips(
                 end_date,
                 notes,
                 cover_image_url,
+                cover_image_source,
+                cover_image_storage_path,
+                cover_image_unsplash_id,
+                cover_image_photographer_name,
+                cover_image_photographer_url,
                 countdown_target_type,
                 countdown_target_id,
                 countdown_target_itinerary_item_id,
