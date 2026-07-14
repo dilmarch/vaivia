@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    type DragEvent,
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
+import { GripVertical } from "lucide-react";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import {
     getAirlineNameFromCode,
@@ -51,8 +59,8 @@ type PlanningScenario = {
     transportMode: PlanningTransportMode;
     cost: string;
     currency: string;
-    pros: string;
-    cons: string;
+    pros: string[];
+    cons: string[];
     legs: PlanningLeg[];
 };
 
@@ -97,6 +105,15 @@ type StyledOptionPickerProps = {
     value: string;
     options: StyledOption[];
     onChange: (value: string) => void;
+};
+
+type ScenarioListEditorProps = {
+    title: string;
+    placeholder: string;
+    items: string[];
+    onAdd: () => void;
+    onRemove: (index: number) => void;
+    onChange: (index: number, value: string) => void;
 };
 
 function StyledOptionPicker({
@@ -188,6 +205,64 @@ function StyledOptionPicker({
     );
 }
 
+function ScenarioListEditor({
+    title,
+    placeholder,
+    items,
+    onAdd,
+    onRemove,
+    onChange,
+}: ScenarioListEditorProps) {
+    const populatedCount = items.filter((item) => item.trim()).length;
+
+    return (
+        <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3">
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                        {title}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-500">
+                        {populatedCount} {populatedCount === 1 ? "item" : "items"}
+                    </p>
+                </div>
+                <button
+                    type="button"
+                    onClick={onAdd}
+                    className="rounded-full border border-lime-300/35 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
+                >
+                    Add
+                </button>
+            </div>
+            <div className="mt-3 space-y-2">
+                {items.map((item, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lime-300 text-xs font-black text-slate-950">
+                            {index + 1}
+                        </span>
+                        <input
+                            value={item}
+                            onChange={(event) => onChange(index, event.target.value)}
+                            placeholder={placeholder}
+                            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/40"
+                            {...PASSWORD_MANAGER_IGNORE_PROPS}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => onRemove(index)}
+                            disabled={items.length === 1}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/20 text-sm font-black text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-30"
+                            aria-label={`Remove ${title.toLowerCase()} ${index + 1}`}
+                        >
+                            ×
+                        </button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 function createEmptyLeg(defaultDate = ""): PlanningLeg {
     return {
         departureLocation: "",
@@ -214,10 +289,26 @@ function createScenario(index: number, defaultDate = ""): PlanningScenario {
         transportMode: "airplane",
         cost: "",
         currency: "CAD",
-        pros: "",
-        cons: "",
+        pros: [""],
+        cons: [""],
         legs: [createEmptyLeg(defaultDate)],
     };
+}
+
+function normalizeListItems(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        const items = value.map((item) => String(item || ""));
+        return items.length ? items : [""];
+    }
+
+    if (typeof value === "string" && value.trim()) {
+        return value
+            .split(/\r?\n/)
+            .map((item) => item.replace(/^[-*•]\s*/, "").trim())
+            .filter(Boolean);
+    }
+
+    return [""];
 }
 
 function createInitialScenarios(defaultDate = ""): PlanningScenario[] {
@@ -235,8 +326,8 @@ function normalizeScenario(
         transportMode: scenario.transportMode || "airplane",
         cost: scenario.cost || "",
         currency: scenario.currency || "CAD",
-        pros: scenario.pros || "",
-        cons: scenario.cons || "",
+        pros: normalizeListItems((scenario as { pros?: unknown }).pros),
+        cons: normalizeListItems((scenario as { cons?: unknown }).cons),
         legs:
             Array.isArray(scenario.legs) && scenario.legs.length
                 ? scenario.legs.map((leg) => ({ ...createEmptyLeg(defaultDate), ...leg }))
@@ -437,9 +528,42 @@ export default function JourneyPlanningTab({
     const [pendingDeleteScenarioId, setPendingDeleteScenarioId] = useState<
         string | null
     >(null);
+    const [draggedScenarioId, setDraggedScenarioId] = useState<string | null>(null);
+    const [dragOverScenarioId, setDragOverScenarioId] = useState<string | null>(null);
+    const scenarioCardRefs = useRef<Record<string, HTMLFormElement | null>>({});
+    const previousScenarioRectsRef = useRef<Map<string, DOMRect> | null>(null);
     const [scenarios, setScenarios] = useState<PlanningScenario[]>(() =>
         createInitialScenarios(defaultDate)
     );
+
+    useLayoutEffect(() => {
+        const previousRects = previousScenarioRectsRef.current;
+        if (!previousRects) return;
+
+        previousScenarioRectsRef.current = null;
+
+        scenarios.forEach((scenario) => {
+            const element = scenarioCardRefs.current[scenario.id];
+            const previousRect = previousRects.get(scenario.id);
+            if (!element || !previousRect) return;
+
+            const nextRect = element.getBoundingClientRect();
+            const deltaX = previousRect.left - nextRect.left;
+            const deltaY = previousRect.top - nextRect.top;
+            if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) return;
+
+            element.animate(
+                [
+                    { transform: `translate(${deltaX}px, ${deltaY}px)` },
+                    { transform: "translate(0, 0)" },
+                ],
+                {
+                    duration: 260,
+                    easing: "cubic-bezier(0.2, 0.8, 0.2, 1)",
+                }
+            );
+        });
+    }, [scenarios]);
 
     useEffect(() => {
         try {
@@ -494,6 +618,55 @@ export default function JourneyPlanningTab({
             currentScenarios.map((scenario) =>
                 scenario.id === scenarioId ? { ...scenario, ...values } : scenario
             )
+        );
+    }
+
+    function updateScenarioListItem(
+        scenarioId: string,
+        field: "pros" | "cons",
+        itemIndex: number,
+        value: string
+    ) {
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) => {
+                if (scenario.id !== scenarioId) return scenario;
+
+                return {
+                    ...scenario,
+                    [field]: scenario[field].map((item, index) =>
+                        index === itemIndex ? value : item
+                    ),
+                };
+            })
+        );
+    }
+
+    function addScenarioListItem(scenarioId: string, field: "pros" | "cons") {
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) =>
+                scenario.id === scenarioId
+                    ? { ...scenario, [field]: [...scenario[field], ""] }
+                    : scenario
+            )
+        );
+    }
+
+    function removeScenarioListItem(
+        scenarioId: string,
+        field: "pros" | "cons",
+        itemIndex: number
+    ) {
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) => {
+                if (scenario.id !== scenarioId || scenario[field].length === 1) {
+                    return scenario;
+                }
+
+                return {
+                    ...scenario,
+                    [field]: scenario[field].filter((_, index) => index !== itemIndex),
+                };
+            })
         );
     }
 
@@ -715,6 +888,94 @@ export default function JourneyPlanningTab({
         setPendingDeleteScenarioId(null);
     }
 
+    function captureScenarioRects() {
+        previousScenarioRectsRef.current = new Map(
+            Object.entries(scenarioCardRefs.current)
+                .filter((entry): entry is [string, HTMLFormElement] => Boolean(entry[1]))
+                .map(([scenarioId, element]) => [
+                    scenarioId,
+                    element.getBoundingClientRect(),
+                ])
+        );
+    }
+
+    function moveScenario(scenarioId: string, direction: "up" | "down") {
+        captureScenarioRects();
+        setScenarios((currentScenarios) => {
+            const currentIndex = currentScenarios.findIndex(
+                (scenario) => scenario.id === scenarioId
+            );
+            if (currentIndex === -1) return currentScenarios;
+
+            const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+            if (nextIndex < 0 || nextIndex >= currentScenarios.length) {
+                return currentScenarios;
+            }
+
+            const nextScenarios = [...currentScenarios];
+            const [scenarioToMove] = nextScenarios.splice(currentIndex, 1);
+            nextScenarios.splice(nextIndex, 0, scenarioToMove);
+
+            return nextScenarios;
+        });
+    }
+
+    function swapScenarios(draggedId: string, targetId: string) {
+        if (draggedId === targetId) return;
+
+        captureScenarioRects();
+        setScenarios((currentScenarios) => {
+            const draggedIndex = currentScenarios.findIndex(
+                (scenario) => scenario.id === draggedId
+            );
+            const targetIndex = currentScenarios.findIndex(
+                (scenario) => scenario.id === targetId
+            );
+            if (draggedIndex === -1 || targetIndex === -1) return currentScenarios;
+
+            const nextScenarios = [...currentScenarios];
+            [nextScenarios[draggedIndex], nextScenarios[targetIndex]] = [
+                nextScenarios[targetIndex],
+                nextScenarios[draggedIndex],
+            ];
+
+            return nextScenarios;
+        });
+    }
+
+    function handleScenarioDragStart(
+        event: DragEvent<HTMLElement>,
+        scenarioId: string
+    ) {
+        setDraggedScenarioId(scenarioId);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", scenarioId);
+    }
+
+    function handleScenarioDragOver(
+        event: DragEvent<HTMLFormElement>,
+        scenarioId: string
+    ) {
+        if (!draggedScenarioId || draggedScenarioId === scenarioId) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDragOverScenarioId(scenarioId);
+    }
+
+    function handleScenarioDrop(
+        event: DragEvent<HTMLFormElement>,
+        targetScenarioId: string
+    ) {
+        event.preventDefault();
+        const droppedScenarioId =
+            event.dataTransfer.getData("text/plain") || draggedScenarioId;
+        if (droppedScenarioId) {
+            swapScenarios(droppedScenarioId, targetScenarioId);
+        }
+        setDraggedScenarioId(null);
+        setDragOverScenarioId(null);
+    }
+
     return (
         <section className="rounded-[2rem] border border-white/10 bg-[#03030a]/90 p-5 text-white shadow-2xl shadow-black/30">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -738,7 +999,7 @@ export default function JourneyPlanningTab({
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {scenarios.map((scenario) => {
+                {scenarios.map((scenario, scenarioIndex) => {
                     const scenarioReady = isScenarioReady(scenario);
                     const isSelected = selectedScenarioId === scenario.id;
                     const isDimmed = Boolean(selectedScenarioId && !isSelected);
@@ -765,9 +1026,33 @@ export default function JourneyPlanningTab({
                     return (
                         <form
                             key={scenario.id}
+                            ref={(element) => {
+                                scenarioCardRefs.current[scenario.id] = element;
+                            }}
                             action={createTransportationAction}
                             onSubmit={() => setSelectedScenarioId(scenario.id)}
-                            className={`flex min-h-full flex-col rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20 transition duration-300 ${
+                            onDragOver={(event) =>
+                                handleScenarioDragOver(event, scenario.id)
+                            }
+                            onDragLeave={() => {
+                                if (dragOverScenarioId === scenario.id) {
+                                    setDragOverScenarioId(null);
+                                }
+                            }}
+                            onDrop={(event) => handleScenarioDrop(event, scenario.id)}
+                            onDragEnd={() => {
+                                setDraggedScenarioId(null);
+                                setDragOverScenarioId(null);
+                            }}
+                            className={`flex min-h-full flex-col rounded-[1.5rem] border p-4 shadow-xl shadow-black/20 transition-all duration-300 ease-out ${
+                                dragOverScenarioId === scenario.id
+                                    ? "border-lime-300/70 bg-lime-300/10 ring-2 ring-lime-300/30"
+                                    : "border-white/10 bg-white/[0.06]"
+                            } ${
+                                draggedScenarioId === scenario.id
+                                    ? "scale-[0.985] opacity-60"
+                                    : ""
+                            } ${
                                 isDimmed ? "opacity-35 grayscale" : "opacity-100"
                             }`}
                         >
@@ -851,17 +1136,36 @@ export default function JourneyPlanningTab({
                                 name="currency"
                                 value={scenarioCurrency}
                             />
-                            <input type="hidden" name="scenario_pros" value={scenario.pros} />
-                            <input type="hidden" name="scenario_cons" value={scenario.cons} />
+                            <input
+                                type="hidden"
+                                name="scenario_pros"
+                                value={scenario.pros
+                                    .map((item) => item.trim())
+                                    .filter(Boolean)
+                                    .join("\n")}
+                            />
+                            <input
+                                type="hidden"
+                                name="scenario_cons"
+                                value={scenario.cons
+                                    .map((item) => item.trim())
+                                    .filter(Boolean)
+                                    .join("\n")}
+                            />
 
                             <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-4">
                                 <div className="flex items-start gap-3">
-                                    <span
-                                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-lime-300 text-2xl text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]"
-                                        aria-hidden="true"
-                                    >
-                                        {selectedMode.emoji}
-                                    </span>
+                                    <div className="relative shrink-0">
+                                        <span
+                                            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-lime-300/25 bg-lime-300 text-2xl text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]"
+                                            aria-hidden="true"
+                                        >
+                                            {selectedMode.emoji}
+                                        </span>
+                                        <span className="absolute -right-2 -top-2 flex h-7 min-w-7 items-center justify-center rounded-full border border-slate-950/20 bg-white px-1.5 text-[11px] font-black text-slate-950 shadow-xl shadow-black/30">
+                                            #{scenarioIndex + 1}
+                                        </span>
+                                    </div>
                                     <div className="min-w-0 flex-1">
                                         <label className="block text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
                                             Scenario name
@@ -878,15 +1182,66 @@ export default function JourneyPlanningTab({
                                             {...PASSWORD_MANAGER_IGNORE_PROPS}
                                         />
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            setPendingDeleteScenarioId(scenario.id)
-                                        }
-                                        className="rounded-full border border-red-300/20 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-red-100 transition hover:bg-red-400/15"
-                                    >
-                                        Delete
-                                    </button>
+                                    <div className="flex shrink-0 flex-col gap-2">
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            draggable
+                                            onDragStart={(event) =>
+                                                handleScenarioDragStart(
+                                                    event,
+                                                    scenario.id
+                                                )
+                                            }
+                                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                            aria-label={`Drag ${scenario.label} to reorder`}
+                                            title="Drag to reorder"
+                                        >
+                                            <GripVertical
+                                                className="h-4 w-4"
+                                                aria-hidden="true"
+                                            />
+                                        </div>
+                                        <div className="flex gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    moveScenario(scenario.id, "up")
+                                                }
+                                                disabled={scenarioIndex === 0}
+                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                                aria-label={`Move ${scenario.label} earlier`}
+                                                title="Move earlier"
+                                            >
+                                                <span className="md:hidden">↑</span>
+                                                <span className="hidden md:inline">←</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    moveScenario(scenario.id, "down")
+                                                }
+                                                disabled={
+                                                    scenarioIndex === scenarios.length - 1
+                                                }
+                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                                aria-label={`Move ${scenario.label} later`}
+                                                title="Move later"
+                                            >
+                                                <span className="md:hidden">↓</span>
+                                                <span className="hidden md:inline">→</span>
+                                            </button>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setPendingDeleteScenarioId(scenario.id)
+                                            }
+                                            className="rounded-full border border-red-300/20 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-red-100 transition hover:bg-red-400/15"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
                                 </div>
                                 {pendingDeleteScenarioId === scenario.id ? (
                                     <div className="mt-4 rounded-2xl border border-red-300/20 bg-red-400/10 p-3">
@@ -1322,40 +1677,52 @@ export default function JourneyPlanningTab({
 
                             <div className="mt-5 flex flex-col gap-3">
                                 <div className="grid gap-3 sm:grid-cols-2">
-                                    <label className="block">
-                                        <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                                            Pros
-                                        </span>
-                                        <textarea
-                                            value={scenario.pros}
-                                            onChange={(event) =>
-                                                updateScenarioFields(scenario.id, {
-                                                    pros: event.target.value,
-                                                })
-                                            }
-                                            rows={3}
-                                            placeholder="What makes this option strong?"
-                                            className="mt-2 min-h-24 w-full resize-y rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/40"
-                                            {...PASSWORD_MANAGER_IGNORE_PROPS}
-                                        />
-                                    </label>
-                                    <label className="block">
-                                        <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                                            Cons
-                                        </span>
-                                        <textarea
-                                            value={scenario.cons}
-                                            onChange={(event) =>
-                                                updateScenarioFields(scenario.id, {
-                                                    cons: event.target.value,
-                                                })
-                                            }
-                                            rows={3}
-                                            placeholder="What tradeoffs should you remember?"
-                                            className="mt-2 min-h-24 w-full resize-y rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/40"
-                                            {...PASSWORD_MANAGER_IGNORE_PROPS}
-                                        />
-                                    </label>
+                                    <ScenarioListEditor
+                                        title="Pros"
+                                        placeholder="What makes this option strong?"
+                                        items={scenario.pros}
+                                        onAdd={() =>
+                                            addScenarioListItem(scenario.id, "pros")
+                                        }
+                                        onRemove={(index) =>
+                                            removeScenarioListItem(
+                                                scenario.id,
+                                                "pros",
+                                                index
+                                            )
+                                        }
+                                        onChange={(index, value) =>
+                                            updateScenarioListItem(
+                                                scenario.id,
+                                                "pros",
+                                                index,
+                                                value
+                                            )
+                                        }
+                                    />
+                                    <ScenarioListEditor
+                                        title="Cons"
+                                        placeholder="What tradeoffs should you remember?"
+                                        items={scenario.cons}
+                                        onAdd={() =>
+                                            addScenarioListItem(scenario.id, "cons")
+                                        }
+                                        onRemove={(index) =>
+                                            removeScenarioListItem(
+                                                scenario.id,
+                                                "cons",
+                                                index
+                                            )
+                                        }
+                                        onChange={(index, value) =>
+                                            updateScenarioListItem(
+                                                scenario.id,
+                                                "cons",
+                                                index,
+                                                value
+                                            )
+                                        }
+                                    />
                                 </div>
                                 <button
                                     type="submit"

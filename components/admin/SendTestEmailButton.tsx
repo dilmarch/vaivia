@@ -6,8 +6,11 @@ import { MailCheck } from "lucide-react";
 type TestEmailResponse = {
     ok?: boolean;
     notificationId?: string;
+    outboxId?: string;
     message?: string;
     error?: string;
+    details?: string;
+    code?: string;
 };
 
 export default function SendTestEmailButton() {
@@ -62,9 +65,20 @@ export default function SendTestEmailButton() {
                     {result.ok
                         ? result.message || "Test notification created."
                         : result.error || "Could not create test notification."}
+                    {!result.ok && result.details ? (
+                        <span className="block text-red-100/80">
+                            {result.details}
+                            {result.code ? ` (${result.code})` : ""}
+                        </span>
+                    ) : null}
                     {result.notificationId ? (
                         <span className="block text-slate-400">
                             Notification: {result.notificationId}
+                        </span>
+                    ) : null}
+                    {result.outboxId ? (
+                        <span className="block text-slate-400">
+                            Email outbox: {result.outboxId}
                         </span>
                     ) : null}
                 </p>

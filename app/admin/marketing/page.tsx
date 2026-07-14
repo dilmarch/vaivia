@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Megaphone, Save } from "lucide-react";
 import DeleteMarketingConsentForm from "@/app/admin/marketing/DeleteMarketingConsentForm";
+import SendTestEmailButton from "@/components/admin/SendTestEmailButton";
 import {
     DEFAULT_TERMS_CONTENT,
     DEFAULT_TERMS_TITLE,
@@ -318,14 +319,17 @@ export default async function AdminMarketingPage({
                                         : "Not published yet"}
                                 </p>
                             </div>
-                            <Link
-                                href="/terms"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
-                            >
-                                Preview public page
-                            </Link>
+                            <div className="flex flex-wrap gap-2">
+                                <Link
+                                    href="/terms"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
+                                >
+                                    Preview public page
+                                </Link>
+                                <SendTestEmailButton />
+                            </div>
                         </div>
                         <form action={saveTermsVersion} className="mt-6 space-y-5">
                             <label className="block">
