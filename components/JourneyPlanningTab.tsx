@@ -2,6 +2,7 @@
 
 import {
     type DragEvent,
+    type FormEvent,
     useEffect,
     useLayoutEffect,
     useMemo,
@@ -28,6 +29,7 @@ type JourneyPlanningTabProps = {
     undoJourneyTransportationAction?: (formData: FormData) => Promise<void>;
     addedScenarioId?: string | null;
     addedTransportationId?: string | null;
+    initialScenarios?: unknown[] | null;
 };
 
 type PlanningLeg = {
@@ -78,6 +80,13 @@ const FLIGHT_STRUCTURE_OPTIONS = [
     { value: "2", label: "1 layover" },
     { value: "3", label: "2 layovers" },
     { value: "4", label: "3 layovers" },
+];
+const TRANSPORTATION_STATUS_OPTIONS = [
+    { value: "planned", label: "Planned" },
+    { value: "booked", label: "Booked" },
+    { value: "confirmed", label: "Confirmed" },
+    { value: "cancelled", label: "Cancelled" },
+    { value: "completed", label: "Completed" },
 ];
 const PLANNING_TRANSPORT_MODES: Array<{
     value: PlanningTransportMode;
@@ -254,10 +263,18 @@ function ScenarioListEditor({
         });
     };
 
-    const handleAdd = (focusIndex = items.length) => {
-        setEditingIndexes(new Set());
-        onAdd();
-        focusInput(focusIndex);
+    const handleSave = (indexToSave: number) => {
+        if (!items[indexToSave]?.trim()) return;
+
+        setEditingIndexes((current) => {
+            const next = new Set(current);
+            next.delete(indexToSave);
+            return next;
+        });
+
+        if (indexToSave === items.length - 1) {
+            onAdd();
+        }
     };
 
     const handleRemove = (indexToRemove: number) => {
@@ -328,15 +345,6 @@ function ScenarioListEditor({
                         {populatedCount} {populatedCount === 1 ? "item" : "items"}
                     </p>
                 </div>
-                {!readOnly ? (
-                    <button
-                        type="button"
-                        onClick={() => handleAdd()}
-                        className="rounded-full border border-lime-300/35 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
-                    >
-                        Add
-                    </button>
-                ) : null}
             </div>
             <div className="mt-3 space-y-2">
                 {items.map((item, index) => {
@@ -354,16 +362,21 @@ function ScenarioListEditor({
                                         inputRefs.current[index] = element;
                                     }}
                                     value={item}
-                                    onChange={(event) =>
-                                        onChange(index, event.target.value)
-                                    }
+                                    onChange={(event) => {
+                                        setEditingIndexes((current) => {
+                                            const next = new Set(current);
+                                            next.add(index);
+                                            return next;
+                                        });
+                                        onChange(index, event.target.value);
+                                    }}
                                     onKeyDown={(event) => {
                                         if (event.key !== "Enter") return;
 
                                         event.preventDefault();
 
                                         if (item.trim()) {
-                                            handleAdd();
+                                            handleSave(index);
                                         }
                                     }}
                                     placeholder={placeholder}
@@ -372,9 +385,19 @@ function ScenarioListEditor({
                                 />
                             ) : (
                                 <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/55 px-3 py-2 text-sm font-semibold text-slate-100">
-                                    <span className="block truncate">{item}</span>
+                                    <span className="block break-words">{item}</span>
                                 </div>
                             )}
+                            {isEditing ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleSave(index)}
+                                    disabled={!item.trim()}
+                                    className="shrink-0 rounded-full border border-lime-300/35 px-3 py-2 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                >
+                                    Save
+                                </button>
+                            ) : null}
                             {hasValue && !isEditing ? (
                                 <button
                                     type="button"
@@ -389,7 +412,7 @@ function ScenarioListEditor({
                                 <button
                                     type="button"
                                     onClick={() => handleRemove(index)}
-                                    disabled={items.length === 1}
+                                    disabled={!hasValue && items.length === 1}
                                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/20 text-sm font-black text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-30"
                                     aria-label={`Remove ${title.toLowerCase()} ${index + 1}`}
                                 >
@@ -506,6 +529,20 @@ function normalizeScenario(
                 ? scenario.legs.map((leg) => ({ ...createEmptyLeg(defaultDate), ...leg }))
                 : [createEmptyLeg(defaultDate)],
     };
+}
+
+function normalizeScenarioArray(value: unknown, defaultDate = "") {
+    return Array.isArray(value)
+        ? value.map((scenario, index) =>
+              normalizeScenario(
+                  typeof scenario === "object" && scenario !== null
+                      ? (scenario as Partial<PlanningScenario>)
+                      : {},
+                  index,
+                  defaultDate
+              )
+          )
+        : [];
 }
 
 function normalizeFlightNumber(value: string) {
@@ -644,6 +681,7 @@ function formatScenarioPrice(cost: string, currency: string) {
 }
 
 function getScenarioTotalCost(scenario: PlanningScenario) {
+    const fallbackCost = scenario.cost.trim() || "0";
     const pricedLegs = scenario.legs
         .map((leg) => ({
             amount: Number(leg.cost.replace(/,/g, "")),
@@ -651,10 +689,12 @@ function getScenarioTotalCost(scenario: PlanningScenario) {
         }))
         .filter((leg) => Number.isFinite(leg.amount) && leg.amount > 0);
 
-    if (!pricedLegs.length) return scenario.cost;
+    if (!pricedLegs.length) return fallbackCost;
 
     const firstCurrency = pricedLegs[0].currency;
-    if (!pricedLegs.every((leg) => leg.currency === firstCurrency)) return scenario.cost;
+    if (!pricedLegs.every((leg) => leg.currency === firstCurrency)) {
+        return fallbackCost;
+    }
 
     return pricedLegs
         .reduce((total, leg) => total + leg.amount, 0)
@@ -718,9 +758,16 @@ export default function JourneyPlanningTab({
     undoJourneyTransportationAction,
     addedScenarioId = null,
     addedTransportationId = null,
+    initialScenarios = null,
 }: JourneyPlanningTabProps) {
     const defaultDate = tripStartDate || "";
     const storageKey = `${STORAGE_KEY_PREFIX}${tripId}`;
+    const initialScenarioRef = useRef(
+        normalizeScenarioArray(initialScenarios, defaultDate)
+    );
+    const hasLoadedInitialScenariosRef = useRef(false);
+    const saveTimeoutRef = useRef<number | null>(null);
+    const latestScenariosRef = useRef<PlanningScenario[]>([]);
     const airportCoordinateRefs = useRef<
         Record<
             string,
@@ -757,10 +804,19 @@ export default function JourneyPlanningTab({
     const [scenarioModalMode, setScenarioModalMode] = useState<"add" | "edit">(
         "add"
     );
+    const [statusModalScenarioId, setStatusModalScenarioId] = useState<
+        string | null
+    >(null);
+    const [legStatusDrafts, setLegStatusDrafts] = useState<Record<string, string[]>>(
+        {}
+    );
+    const bypassStatusPromptRef = useRef<string | null>(null);
     const scenarioCardRefs = useRef<Record<string, HTMLFormElement | null>>({});
     const previousScenarioRectsRef = useRef<Map<string, DOMRect> | null>(null);
     const [scenarios, setScenarios] = useState<PlanningScenario[]>(() =>
-        createInitialScenarios(defaultDate)
+        initialScenarioRef.current.length
+            ? initialScenarioRef.current
+            : createInitialScenarios(defaultDate)
     );
 
     useLayoutEffect(() => {
@@ -793,19 +849,26 @@ export default function JourneyPlanningTab({
     }, [scenarios]);
 
     useEffect(() => {
+        if (hasLoadedInitialScenariosRef.current) return;
+        hasLoadedInitialScenariosRef.current = true;
+
+        if (initialScenarioRef.current.length) {
+            setScenarios(initialScenarioRef.current);
+            return;
+        }
+
         try {
             const storedScenarios = window.localStorage.getItem(storageKey);
             if (!storedScenarios) return;
 
-            const parsedScenarios = JSON.parse(storedScenarios) as Array<
-                Partial<PlanningScenario>
-            >;
-            if (Array.isArray(parsedScenarios) && parsedScenarios.length) {
-                setScenarios(
-                    parsedScenarios.map((scenario, index) =>
-                        normalizeScenario(scenario, index, defaultDate)
-                    )
-                );
+            const parsedScenarios = JSON.parse(storedScenarios);
+            const normalizedScenarios = normalizeScenarioArray(
+                parsedScenarios,
+                defaultDate
+            );
+
+            if (normalizedScenarios.length) {
+                setScenarios(normalizedScenarios);
             }
         } catch {
             setScenarios(createInitialScenarios(defaultDate));
@@ -813,8 +876,45 @@ export default function JourneyPlanningTab({
     }, [defaultDate, storageKey]);
 
     useEffect(() => {
+        latestScenariosRef.current = scenarios;
         window.localStorage.setItem(storageKey, JSON.stringify(scenarios));
-    }, [scenarios, storageKey]);
+
+        if (!hasLoadedInitialScenariosRef.current) return;
+
+        if (saveTimeoutRef.current) {
+            window.clearTimeout(saveTimeoutRef.current);
+        }
+
+        saveTimeoutRef.current = window.setTimeout(async () => {
+            try {
+                const response = await fetch(
+                    `/api/trips/${encodeURIComponent(tripId)}/journey-planning`,
+                    {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            scenarios: latestScenariosRef.current,
+                        }),
+                    }
+                );
+
+                if (!response.ok) {
+                    console.warn("Could not save journey planning state:", {
+                        status: response.status,
+                    });
+                }
+            } catch (error) {
+                console.warn("Could not save journey planning state:", error);
+            }
+        }, 650);
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                window.clearTimeout(saveTimeoutRef.current);
+                saveTimeoutRef.current = null;
+            }
+        };
+    }, [scenarios, storageKey, tripId]);
 
     useEffect(() => {
         setSelectedScenarioId(addedScenarioId);
@@ -884,13 +984,18 @@ export default function JourneyPlanningTab({
     ) {
         setScenarios((currentScenarios) =>
             currentScenarios.map((scenario) => {
-                if (scenario.id !== scenarioId || scenario[field].length === 1) {
+                if (scenario.id !== scenarioId) {
                     return scenario;
                 }
 
                 return {
                     ...scenario,
-                    [field]: scenario[field].filter((_, index) => index !== itemIndex),
+                    [field]:
+                        scenario[field].length === 1
+                            ? [""]
+                            : scenario[field].filter(
+                                  (_, index) => index !== itemIndex
+                              ),
                 };
             })
         );
@@ -1577,11 +1682,14 @@ export default function JourneyPlanningTab({
 
     function removeScenarioDraftListItem(field: "pros" | "cons", itemIndex: number) {
         setScenarioModalDraft((draft) => {
-            if (!draft || draft[field].length === 1) return draft;
+            if (!draft) return draft;
 
             return {
                 ...draft,
-                [field]: draft[field].filter((_, index) => index !== itemIndex),
+                [field]:
+                    draft[field].length === 1
+                        ? [""]
+                        : draft[field].filter((_, index) => index !== itemIndex),
             };
         });
     }
@@ -1636,6 +1744,68 @@ export default function JourneyPlanningTab({
         );
         if (selectedScenarioId === scenarioId) setSelectedScenarioId(null);
         setPendingDeleteScenarioId(null);
+    }
+
+    function getScenarioLegStatuses(scenario: PlanningScenario) {
+        const currentStatuses = legStatusDrafts[scenario.id] || [];
+        return scenario.legs.map(
+            (_, index) => currentStatuses[index] || "planned"
+        );
+    }
+
+    function openStatusModalForScenario(
+        event: FormEvent<HTMLFormElement>,
+        scenario: PlanningScenario
+    ) {
+        if (bypassStatusPromptRef.current === scenario.id) {
+            bypassStatusPromptRef.current = null;
+            setSelectedScenarioId(scenario.id);
+            return;
+        }
+
+        event.preventDefault();
+        setLegStatusDrafts((current) => ({
+            ...current,
+            [scenario.id]: getScenarioLegStatuses(scenario),
+        }));
+        setStatusModalScenarioId(scenario.id);
+    }
+
+    function updateScenarioLegStatus(
+        scenarioId: string,
+        legIndex: number,
+        status: string
+    ) {
+        const scenario = scenarios.find((item) => item.id === scenarioId);
+        if (!scenario) return;
+
+        setLegStatusDrafts((current) => {
+            const nextStatuses =
+                current[scenarioId]?.slice() || getScenarioLegStatuses(scenario);
+            nextStatuses[legIndex] = status;
+
+            return {
+                ...current,
+                [scenarioId]: nextStatuses,
+            };
+        });
+    }
+
+    function setAllScenarioLegStatuses(scenario: PlanningScenario) {
+        const firstStatus = getScenarioLegStatuses(scenario)[0] || "planned";
+        setLegStatusDrafts((current) => ({
+            ...current,
+            [scenario.id]: scenario.legs.map(() => firstStatus),
+        }));
+    }
+
+    function submitScenarioAfterStatusReview(scenarioId: string) {
+        const form = scenarioCardRefs.current[scenarioId];
+        if (!form) return;
+
+        bypassStatusPromptRef.current = scenarioId;
+        setStatusModalScenarioId(null);
+        form.requestSubmit();
     }
 
     function captureScenarioRects() {
@@ -1771,6 +1941,9 @@ export default function JourneyPlanningTab({
         setDragOverLeg(null);
     }
 
+    const statusModalScenario =
+        scenarios.find((scenario) => scenario.id === statusModalScenarioId) || null;
+
     return (
         <section className="rounded-[2rem] border border-white/10 bg-[#03030a]/90 p-5 text-white shadow-2xl shadow-black/30">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1837,7 +2010,9 @@ export default function JourneyPlanningTab({
                                 scenarioCardRefs.current[scenario.id] = element;
                             }}
                             action={createTransportationAction}
-                            onSubmit={() => setSelectedScenarioId(scenario.id)}
+                            onSubmit={(event) =>
+                                openStatusModalForScenario(event, scenario)
+                            }
                             onDragOver={(event) =>
                                 handleScenarioDragOver(event, scenario.id)
                             }
@@ -1883,12 +2058,24 @@ export default function JourneyPlanningTab({
                                 name="transportation_mode"
                                 value={scenario.transportMode}
                             />
-                            <input type="hidden" name="status" value="planned" />
+                            <input
+                                type="hidden"
+                                name="status"
+                                value={getScenarioLegStatuses(scenario)[0] || "planned"}
+                            />
                             <input
                                 type="hidden"
                                 name="flight_leg_count"
                                 value={scenario.legs.length}
                             />
+                            {getScenarioLegStatuses(scenario).map((status, index) => (
+                                <input
+                                    key={`${scenario.id}-leg-status-${index}`}
+                                    type="hidden"
+                                    name={`leg_${index}_status`}
+                                    value={status}
+                                />
+                            ))}
                             <input
                                 type="hidden"
                                 name="item_date"
@@ -1987,6 +2174,128 @@ export default function JourneyPlanningTab({
                                     .filter(Boolean)
                                     .join("\n")}
                             />
+
+                            <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3">
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                openEditScenarioModal(scenario)
+                                            }
+                                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                            aria-label={`Edit ${scenario.label}`}
+                                            title="Edit scenario"
+                                        >
+                                            <Pencil
+                                                className="h-4 w-4"
+                                                aria-hidden="true"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                duplicateScenario(scenario.id)
+                                            }
+                                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                            aria-label={`Duplicate ${scenario.label}`}
+                                            title="Duplicate scenario"
+                                        >
+                                            <Copy
+                                                className="h-4 w-4"
+                                                aria-hidden="true"
+                                            />
+                                        </button>
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            draggable
+                                            onDragStart={(event) =>
+                                                handleScenarioDragStart(
+                                                    event,
+                                                    scenario.id
+                                                )
+                                            }
+                                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                            aria-label={`Drag ${scenario.label} to reorder`}
+                                            title="Drag to reorder"
+                                        >
+                                            <GripVertical
+                                                className="h-4 w-4"
+                                                aria-hidden="true"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                moveScenario(scenario.id, "up")
+                                            }
+                                            disabled={scenarioIndex === 0}
+                                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                            aria-label={`Move ${scenario.label} earlier`}
+                                            title="Move earlier"
+                                        >
+                                            <span className="md:hidden">↑</span>
+                                            <span className="hidden md:inline">←</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                moveScenario(scenario.id, "down")
+                                            }
+                                            disabled={
+                                                scenarioIndex === scenarios.length - 1
+                                            }
+                                            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                            aria-label={`Move ${scenario.label} later`}
+                                            title="Move later"
+                                        >
+                                            <span className="md:hidden">↓</span>
+                                            <span className="hidden md:inline">→</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setPendingDeleteScenarioId(
+                                                    scenario.id
+                                                )
+                                            }
+                                            className="rounded-full border border-red-300/20 px-3 py-2 text-xs font-black uppercase tracking-wide text-red-100 transition hover:bg-red-400/15"
+                                        >
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                                {pendingDeleteScenarioId === scenario.id ? (
+                                    <div className="mt-3 rounded-2xl border border-red-300/20 bg-red-400/10 p-3">
+                                        <p className="text-sm font-bold text-red-50">
+                                            Delete this transport idea?
+                                        </p>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    deleteScenario(scenario.id)
+                                                }
+                                                className="rounded-full bg-red-300 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-950 transition hover:bg-red-200"
+                                            >
+                                                Confirm delete
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setPendingDeleteScenarioId(null)
+                                                }
+                                                className="rounded-full border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-200 transition hover:bg-white/10"
+                                            >
+                                                Keep it
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : null}
+                            </div>
 
                             <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-4">
                                 <div className="flex items-start gap-3">
@@ -2148,8 +2457,63 @@ export default function JourneyPlanningTab({
                                         >
                                             <input
                                                 type="hidden"
+                                                name={`leg_${legIndex}_departure_location`}
+                                                value={leg.departureLocation}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_arrival_location`}
+                                                value={leg.arrivalLocation}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_departure_date`}
+                                                value={leg.departureDate}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_departure_time`}
+                                                value={leg.departureTime}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_arrival_date`}
+                                                value={leg.arrivalDate}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_arrival_time`}
+                                                value={leg.arrivalTime}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_departure_timezone`}
+                                                value={leg.departureTimezone}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_arrival_timezone`}
+                                                value={leg.arrivalTimezone}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_departure_terminal`}
+                                                value={leg.departureTerminal}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_arrival_terminal`}
+                                                value={leg.arrivalTerminal}
+                                            />
+                                            <input
+                                                type="hidden"
                                                 name={`leg_${legIndex}_flight_number`}
                                                 value={flightNumber}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${legIndex}_airline_name`}
+                                                value={leg.airlineName}
                                             />
                                             <input
                                                 type="hidden"
@@ -2164,7 +2528,7 @@ export default function JourneyPlanningTab({
                                             <input
                                                 type="hidden"
                                                 name={`leg_${legIndex}_cost`}
-                                                value={leg.cost}
+                                                value={leg.cost.trim() || "0"}
                                             />
                                             <input
                                                 type="hidden"
@@ -2663,6 +3027,136 @@ export default function JourneyPlanningTab({
                     Add scenario
                 </button>
             </div>
+            {statusModalScenario ? (
+                <AnimatedModal
+                    onClose={() => setStatusModalScenarioId(null)}
+                    labelledBy="journey-status-modal-title"
+                    panelClassName="max-w-2xl"
+                >
+                    {({ requestClose }) => {
+                        const statuses = getScenarioLegStatuses(statusModalScenario);
+
+                        return (
+                            <>
+                                <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                    <div>
+                                        <p className="vaivia-modal-eyebrow">
+                                            Add to itinerary
+                                        </p>
+                                        <h2
+                                            id="journey-status-modal-title"
+                                            className="vaivia-modal-title"
+                                        >
+                                            Set leg status
+                                        </h2>
+                                        <p className="mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-300">
+                                            Choose whether each leg is planned,
+                                            booked, confirmed, cancelled, or completed
+                                            before VAIVIA adds this scenario to your
+                                            itinerary.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={requestClose}
+                                        className="vaivia-modal-close"
+                                        aria-label="Close status review"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                                <div className="vaivia-modal-body space-y-4">
+                                    <div className="rounded-[1.25rem] border border-lime-300/20 bg-lime-300/10 p-3">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div>
+                                                <p className="text-sm font-black text-lime-100">
+                                                    {statusModalScenario.label}
+                                                </p>
+                                                <p className="mt-1 text-xs font-semibold text-slate-300">
+                                                    {statusModalScenario.legs.length}{" "}
+                                                    {statusModalScenario.legs.length ===
+                                                    1
+                                                        ? "leg"
+                                                        : "legs"}{" "}
+                                                    will be added.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setAllScenarioLegStatuses(
+                                                        statusModalScenario
+                                                    )
+                                                }
+                                                className="rounded-full border border-lime-300/35 px-4 py-2 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
+                                            >
+                                                Set all to first status
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {statusModalScenario.legs.map((leg, index) => (
+                                            <div
+                                                key={`${statusModalScenario.id}-status-${index}`}
+                                                className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/80 p-3"
+                                            >
+                                                <div className="mb-3">
+                                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+                                                        Leg {index + 1}
+                                                    </p>
+                                                    <p className="mt-1 text-sm font-bold text-white">
+                                                        {leg.departureLocation ||
+                                                            "Departure"}{" "}
+                                                        →{" "}
+                                                        {leg.arrivalLocation ||
+                                                            "Arrival"}
+                                                    </p>
+                                                </div>
+                                                <StyledOptionPicker
+                                                    label={`Leg ${index + 1} status`}
+                                                    value={
+                                                        statuses[index] || "planned"
+                                                    }
+                                                    options={
+                                                        TRANSPORTATION_STATUS_OPTIONS
+                                                    }
+                                                    onChange={(value) =>
+                                                        updateScenarioLegStatus(
+                                                            statusModalScenario.id,
+                                                            index,
+                                                            value
+                                                        )
+                                                    }
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="vaivia-modal-actions border-t border-white/10 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={requestClose}
+                                        className="vaivia-modal-button-secondary"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            submitScenarioAfterStatusReview(
+                                                statusModalScenario.id
+                                            )
+                                        }
+                                        className="vaivia-modal-button-primary"
+                                    >
+                                        Add to itinerary
+                                    </button>
+                                </div>
+                            </>
+                        );
+                    }}
+                </AnimatedModal>
+            ) : null}
             {scenarioModalDraft ? (
                 <AnimatedModal
                     onClose={closeScenarioModal}

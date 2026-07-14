@@ -42,6 +42,7 @@ type ItineraryTabsProps = {
     initialQuickAddAction?: QuickAddInitialAction | null;
     addedJourneyScenarioId?: string | null;
     addedJourneyTransportationId?: string | null;
+    initialJourneyPlanningScenarios?: unknown[] | null;
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
@@ -89,6 +90,7 @@ export default function ItineraryTabs({
     initialQuickAddAction = null,
     addedJourneyScenarioId = null,
     addedJourneyTransportationId = null,
+    initialJourneyPlanningScenarios = null,
 }: ItineraryTabsProps) {
     const activeTab = initialTab;
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -192,6 +194,7 @@ export default function ItineraryTabs({
                             }
                             addedScenarioId={addedJourneyScenarioId}
                             addedTransportationId={addedJourneyTransportationId}
+                            initialScenarios={initialJourneyPlanningScenarios}
                         />
                     )}
                 </div>

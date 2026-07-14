@@ -1317,6 +1317,9 @@ async function createTransportationItem(formData: FormData) {
         itemDate,
     });
     const flightLegCount = Number(formData.get("flight_leg_count") || 1);
+    const firstLegStatus = getTransportationDbStatus(
+        String(formData.get("leg_0_status") || rawStatus).trim()
+    );
     const flightLegDetails = Array.from({ length: flightLegCount }, (_, index) => {
         const legDepartureLocation = formData.get(
             `leg_${index}_departure_location`
@@ -1350,6 +1353,9 @@ async function createTransportationItem(formData: FormData) {
         )
             .trim()
             .toUpperCase();
+        const legStatus = getTransportationDbStatus(
+            String(formData.get(`leg_${index}_status`) || rawStatus).trim()
+        );
 
         const note = [
             `Leg ${index + 1}: ${legDepartureLocation || "Departure"} → ${
@@ -1401,6 +1407,7 @@ async function createTransportationItem(formData: FormData) {
             duration: legDuration,
             cost: legCost,
             currency: legCurrency,
+            status: legStatus,
             note,
         };
     }).filter(
@@ -1514,7 +1521,7 @@ async function createTransportationItem(formData: FormData) {
                           transportation_mode: mode || null,
                           mode: mode || null,
                           type: mode || null,
-                          status: transportationStatus,
+                          status: leg.status,
                           item_date: leg.departureDate || null,
                           date: leg.departureDate || null,
                           departure_date: leg.departureDate || null,
@@ -1590,7 +1597,7 @@ async function createTransportationItem(formData: FormData) {
                       transportation_mode: mode || null,
                       mode: mode || null,
                       type: mode || null,
-                      status: transportationStatus,
+                      status: firstLegStatus,
                       item_date: itemDate || null,
                       date: itemDate || null,
                       departure_date: itemDate || null,
@@ -2923,6 +2930,28 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const tripId = resolvedTrip.tripId;
     const trip = resolvedTrip.trip;
 
+    const { data: journeyPlanningState, error: journeyPlanningStateError } =
+        await (supabase.from as any)("trip_journey_planning_states")
+            .select("scenarios")
+            .eq("trip_id", tripId)
+            .maybeSingle();
+
+    if (journeyPlanningStateError) {
+        console.warn("Could not load journey planning state:", {
+            message: journeyPlanningStateError.message,
+            code: journeyPlanningStateError.code,
+            details: journeyPlanningStateError.details,
+            hint: journeyPlanningStateError.hint,
+            tripId,
+        });
+    }
+
+    const initialJourneyPlanningScenarios = Array.isArray(
+        journeyPlanningState?.scenarios
+    )
+        ? journeyPlanningState.scenarios
+        : null;
+
     const { data: userPreferences, error: userPreferencesError } = await supabase
         .from("user_preferences")
         .select("itinerary_default_view")
@@ -4083,6 +4112,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         initialQuickAddAction={initialQuickAddAction}
                         addedJourneyScenarioId={addedJourneyScenarioId}
                         addedJourneyTransportationId={addedJourneyTransportationId}
+                        initialJourneyPlanningScenarios={
+                            initialJourneyPlanningScenarios
+                        }
                     />
                 </section>
             </div>

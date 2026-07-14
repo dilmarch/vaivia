@@ -39,6 +39,15 @@ type SharedStamp = {
 type ShareDetails = {
     id: string;
     status: string;
+    sender?: {
+        id?: string | null;
+        firstName?: string | null;
+        lastName?: string | null;
+        username?: string | null;
+        email?: string | null;
+        avatarUrl?: string | null;
+        displayName?: string | null;
+    } | null;
     source_stamp?: SharedStamp | null;
 };
 
@@ -109,6 +118,17 @@ function getDateError(year: string, month: string) {
     return "";
 }
 
+function getInitials(name: string) {
+    const initials = name
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+
+    return initials || "V";
+}
+
 export default function PassportStampShareReviewModal({
     notification,
     open,
@@ -145,19 +165,15 @@ export default function PassportStampShareReviewModal({
             setIsLoading(true);
             setErrorMessage("");
 
-            const { data, error } = await (supabase.from as any)(
-                "user_passport_stamp_shares"
-            )
-                .select(
-                    "id,status,source_stamp:source_stamp_id(id,country_code,country_name,flag_emoji,first_visited_on,first_entry_iata_code,first_entry_icao_code,first_entry_city,first_entry_airport_name,welcome_label_snapshot,arrival_label_snapshot,stamp_display_country_name,stamp_display_flag,visit_city,visit_region,visit_month,visit_status,port_of_entry_name)"
-                )
-                .eq("id", shareId)
-                .maybeSingle();
+            const { data, error } = await supabase.rpc(
+                "get_passport_stamp_share_review" as any,
+                { share_id: shareId }
+            );
 
             if (error) {
                 setErrorMessage("Could not load this passport stamp.");
             } else {
-                const nextShare = data as unknown as ShareDetails | null;
+                const nextShare = data as ShareDetails | null;
                 const nextStamp = nextShare?.source_stamp || null;
                 setShare(nextShare);
                 setYear(getYearFromDate(nextStamp?.first_visited_on));
@@ -230,6 +246,16 @@ export default function PassportStampShareReviewModal({
         setIsSubmitting(false);
     }
 
+    const senderName =
+        share?.sender?.displayName ||
+        notification.metadata?.senderName?.toString() ||
+        "A friend";
+    const senderAvatarUrl =
+        share?.sender?.avatarUrl ||
+        (typeof notification.metadata?.senderAvatarUrl === "string"
+            ? notification.metadata.senderAvatarUrl
+            : "");
+
     return (
         <Portal>
             <AnimatedModal
@@ -277,6 +303,27 @@ export default function PassportStampShareReviewModal({
                                 </p>
                             ) : stamp ? (
                                 <>
+                                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] p-3">
+                                        <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-lime-300/25 bg-slate-950 text-sm font-black uppercase text-lime-100 shadow-xl shadow-black/20">
+                                            {senderAvatarUrl ? (
+                                                <img
+                                                    src={senderAvatarUrl}
+                                                    alt=""
+                                                    className="h-full w-full object-cover"
+                                                />
+                                            ) : (
+                                                getInitials(senderName)
+                                            )}
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-black text-white">
+                                                {senderName}
+                                            </p>
+                                            <p className="text-xs font-semibold text-slate-400">
+                                                sent you this passport stamp to review
+                                            </p>
+                                        </div>
+                                    </div>
                                     <p className="text-sm font-semibold leading-6 text-slate-300">
                                         Please confirm you joined this trip and this
                                         passport stamp will be added to your profile.

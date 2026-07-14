@@ -2,28 +2,27 @@ import { Archive, Bell, CheckCircle2, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import NotificationActionButton from "@/components/NotificationActionButton";
+import {
+    DROPDOWN_NOTIFICATION_SELECT,
+    filterInAppNotifications,
+    isActionRequiredNotification,
+    resolveActiveDropdownNotifications,
+    type DropdownNotification,
+} from "@/lib/notifications/dropdown";
 import { mergeNotificationPreferences } from "@/lib/notificationTypes";
 import { createClient } from "@/lib/supabase/server";
 
-type NotificationRow = {
-    id: string;
-    type: string | null;
-    title: string | null;
-    body: string | null;
-    read_at: string | null;
-    archived_at: string | null;
-    created_at: string | null;
-    trip_id: string | null;
-    invitation_id: string | null;
-};
-
-function isActionRequired(notification: NotificationRow) {
-    return (
-        (notification.type === "trip_invite_received" ||
-            notification.type === "friend_request_received" ||
-            notification.type === "passport_stamp_share_received") &&
-        !notification.read_at
-    );
+function normalizeNotification(row: DropdownNotification): DropdownNotification {
+    return {
+        ...row,
+        metadata:
+            row.metadata &&
+            typeof row.metadata === "object" &&
+            !Array.isArray(row.metadata)
+                ? row.metadata
+                : null,
+    };
 }
 
 function formatNotificationDate(value?: string | null) {
@@ -148,9 +147,7 @@ export default async function NotificationsPage() {
     ] = await Promise.all([
         supabase
             .from("notifications")
-            .select(
-                "id,type,title,body,read_at,archived_at,created_at,trip_id,invitation_id"
-            )
+            .select(DROPDOWN_NOTIFICATION_SELECT)
             .eq("user_id", user.id)
             .order("created_at", { ascending: false }),
         (supabase.from as any)("user_notification_preferences")
@@ -180,10 +177,27 @@ export default async function NotificationsPage() {
             }>
         ).map((preference) => [preference.notificationType, preference])
     );
-    const notifications = ((data || []) as NotificationRow[]).filter(
+    const notifications = filterInAppNotifications(
+        ((data || []) as DropdownNotification[]).map(normalizeNotification),
+        (notificationPreferenceRows || []) as Array<{
+            notification_type?: string | null;
+            in_app_enabled?: boolean | null;
+            push_enabled?: boolean | null;
+            email_enabled?: boolean | null;
+        }>
+    ).filter(
         (notification) =>
             !notification.type ||
             (preferencesByType.get(notification.type)?.inAppEnabled ?? true)
+    );
+    const activeActionNotifications = await resolveActiveDropdownNotifications(
+        supabase,
+        notifications.filter((notification) =>
+            isActionRequiredNotification(notification)
+        )
+    );
+    const activeActionNotificationIds = new Set(
+        activeActionNotifications.map((notification) => notification.id)
     );
 
     return (
@@ -215,7 +229,8 @@ export default async function NotificationsPage() {
                 {notifications.length > 0 ? (
                     <div className="space-y-3">
                         {notifications.map((notification) => {
-                            const actionRequired = isActionRequired(notification);
+                            const actionRequired =
+                                activeActionNotificationIds.has(notification.id);
                             return (
                                 <article
                                     key={notification.id}
@@ -268,6 +283,11 @@ export default async function NotificationsPage() {
                                         </div>
 
                                         <div className="flex shrink-0 flex-wrap gap-2">
+                                            {actionRequired ? (
+                                                <NotificationActionButton
+                                                    notification={notification}
+                                                />
+                                            ) : null}
                                             {!notification.read_at ? (
                                                 <form action={markNotificationRead}>
                                                     <input
