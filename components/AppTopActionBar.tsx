@@ -1,7 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Briefcase, Check, Home, Search, Stamp } from "lucide-react";
+import {
+    Bell,
+    Briefcase,
+    CalendarDays,
+    Check,
+    ChevronsUp,
+    Home,
+    ListChecks,
+    Plus,
+    Search,
+    Stamp,
+    type LucideIcon,
+} from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
@@ -43,6 +55,14 @@ type AppTopActionBarProps = {
 };
 
 export type AppNotification = DropdownNotification;
+
+type MobileTourKind = "home" | "trip-overview";
+
+type MobileTourStep = {
+    title: string;
+    description: string;
+    icon: LucideIcon;
+};
 
 type ProminentSharedStamp = {
     country_code: string;
@@ -157,6 +177,66 @@ function getProminentActionInitial(notification: AppNotification) {
     return notification.title?.trim()[0]?.toUpperCase() || "V";
 }
 
+const MOBILE_TOUR_STORAGE_KEYS: Record<MobileTourKind, string> = {
+    home: "vaivia:mobile-tour:home:v1",
+    "trip-overview": "vaivia:mobile-tour:trip-overview:v1",
+};
+
+const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
+    home: [
+        {
+            title: "Select a trip",
+            description:
+                "Use Trips at the top to jump between upcoming trips without digging around.",
+            icon: Briefcase,
+        },
+        {
+            title: "See your calendar",
+            description:
+                "Your dashboard keeps the near-term trip calendar close so plans and dates stay visible.",
+            icon: CalendarDays,
+        },
+        {
+            title: "Track essentials",
+            description:
+                "Use your reminders and task list for accommodations, transportation, and the little things that make trips easier.",
+            icon: ListChecks,
+        },
+    ],
+    "trip-overview": [
+        {
+            title: "Add trip items",
+            description:
+                "Tap the green + button to add transportation, activities, ideas, accommodations, and more.",
+            icon: Plus,
+        },
+        {
+            title: "Open trip apps",
+            description:
+                "Tap the ^ button to jump into itinerary, budget, accommodations, journey planning, food, and ideas.",
+            icon: ChevronsUp,
+        },
+        {
+            title: "Toggle trips",
+            description:
+                "Use Trips at the top to switch between your trips from anywhere.",
+            icon: Briefcase,
+        },
+    ],
+};
+
+function getTripOverviewRoute(pathname: string | null) {
+    if (!pathname) return false;
+    const match = pathname.match(/^\/trips\/([^/]+)\/?$/);
+    return Boolean(match && match[1] !== "new");
+}
+
+function getMobileTourForPath(pathname: string | null): MobileTourKind | null {
+    if (pathname === "/") return "home";
+    if (getTripOverviewRoute(pathname)) return "trip-overview";
+    return null;
+}
+
 function getTripSwitchHref({
     targetTrip,
     pathname,
@@ -235,6 +315,9 @@ export default function AppTopActionBar({
             onboardingProgress.current_step === "welcome"
     );
     const [isSubmittingOnboarding, setIsSubmittingOnboarding] = useState(false);
+    const [activeMobileTour, setActiveMobileTour] =
+        useState<MobileTourKind | null>(null);
+    const [activeMobileTourIndex, setActiveMobileTourIndex] = useState(0);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const openMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const previousOpenMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
@@ -243,10 +326,27 @@ export default function AppTopActionBar({
     const dropdownNotificationCount = hasSyncedNotifications
         ? visibleNotifications.length
         : 0;
+    const activeMobileTourSteps = activeMobileTour
+        ? MOBILE_TOUR_STEPS[activeMobileTour]
+        : [];
+    const activeMobileTourStep =
+        activeMobileTourSteps[activeMobileTourIndex] || null;
 
     function exitRolePreview() {
         setStoredRolePreview(null);
         window.location.reload();
+    }
+
+    function completeMobileTour(tourKind: MobileTourKind | null) {
+        if (tourKind && typeof window !== "undefined") {
+            window.localStorage.setItem(
+                MOBILE_TOUR_STORAGE_KEYS[tourKind],
+                "complete"
+            );
+        }
+
+        setActiveMobileTour(null);
+        setActiveMobileTourIndex(0);
     }
 
     useEffect(() => {
@@ -260,6 +360,32 @@ export default function AppTopActionBar({
                 onboardingProgress.current_step === "welcome"
         );
     }, [onboardingProgress]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (activeMobileTour) return;
+        if (prominentActionNotification) return;
+        if (isOnboardingWelcomeOpen) return;
+        if (onboardingProgress?.status === "in_progress") return;
+
+        const tourKind = getMobileTourForPath(pathname);
+        if (!tourKind) return;
+
+        const isMobile = window.matchMedia("(max-width: 767px)").matches;
+        if (!isMobile) return;
+
+        const storageKey = MOBILE_TOUR_STORAGE_KEYS[tourKind];
+        if (window.localStorage.getItem(storageKey) === "complete") return;
+
+        setActiveMobileTour(tourKind);
+        setActiveMobileTourIndex(0);
+    }, [
+        activeMobileTour,
+        isOnboardingWelcomeOpen,
+        onboardingProgress?.status,
+        pathname,
+        prominentActionNotification,
+    ]);
 
     useEffect(() => {
         void refreshNotifications();
@@ -922,6 +1048,119 @@ export default function AppTopActionBar({
                                 </div>
                             </div>
                         )}
+                    </AnimatedModal>
+                </Portal>
+            ) : null}
+            {activeMobileTour && activeMobileTourStep ? (
+                <Portal>
+                    <AnimatedModal
+                        onClose={() => completeMobileTour(activeMobileTour)}
+                        className="z-[125] items-center bg-slate-950/70 md:hidden"
+                        panelClassName="max-w-sm overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/70"
+                        labelledBy="mobile-context-tour-title"
+                    >
+                        {() => {
+                            const Icon = activeMobileTourStep.icon;
+                            const isFirst = activeMobileTourIndex === 0;
+                            const isLast =
+                                activeMobileTourIndex ===
+                                activeMobileTourSteps.length - 1;
+
+                            return (
+                                <div className="space-y-5 p-6">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex items-center gap-3">
+                                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                                                <Icon
+                                                    className="h-6 w-6"
+                                                    aria-hidden="true"
+                                                />
+                                            </span>
+                                            <div>
+                                                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                                    Quick tour{" "}
+                                                    {activeMobileTourIndex + 1} of{" "}
+                                                    {activeMobileTourSteps.length}
+                                                </p>
+                                                <h2
+                                                    id="mobile-context-tour-title"
+                                                    className="mt-1 text-2xl font-black"
+                                                >
+                                                    {activeMobileTourStep.title}
+                                                </h2>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                completeMobileTour(activeMobileTour)
+                                            }
+                                            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.1]"
+                                            aria-label="Close tour"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+
+                                    <p className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
+                                        {activeMobileTourStep.description}
+                                    </p>
+
+                                    <div className="flex justify-center gap-2">
+                                        {activeMobileTourSteps.map((step, index) => (
+                                            <button
+                                                key={step.title}
+                                                type="button"
+                                                onClick={() =>
+                                                    setActiveMobileTourIndex(index)
+                                                }
+                                                className={`h-2.5 rounded-full transition-all ${
+                                                    index === activeMobileTourIndex
+                                                        ? "w-8 bg-lime-300"
+                                                        : "w-2.5 bg-white/20"
+                                                }`}
+                                                aria-label={`Show tour step ${
+                                                    index + 1
+                                                }`}
+                                            />
+                                        ))}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setActiveMobileTourIndex((current) =>
+                                                    Math.max(current - 1, 0)
+                                                )
+                                            }
+                                            disabled={isFirst}
+                                            className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (isLast) {
+                                                    completeMobileTour(
+                                                        activeMobileTour
+                                                    );
+                                                    return;
+                                                }
+
+                                                setActiveMobileTourIndex(
+                                                    (current) => current + 1
+                                                );
+                                            }}
+                                            className="rounded-full bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                        >
+                                            {isLast ? "Finish" : "Next"}
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        }}
                     </AnimatedModal>
                 </Portal>
             ) : null}

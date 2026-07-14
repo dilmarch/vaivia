@@ -201,7 +201,7 @@ export default async function NotificationsPage() {
     );
 
     return (
-        <main className="min-h-screen bg-[#0c0115] px-4 py-8 text-white md:pl-28">
+        <main className="min-h-screen bg-[#0c0115] px-4 pb-8 pt-24 text-white md:py-8 md:pl-28">
             <div className="mx-auto max-w-5xl space-y-6">
                 <div className="rounded-[2rem] border border-white/10 bg-[#03030a]/90 p-6 shadow-2xl shadow-black/30">
                     <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
