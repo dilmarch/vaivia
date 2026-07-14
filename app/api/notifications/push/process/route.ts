@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { processNotificationEmailOutbox } from "@/lib/emailNotifications";
-import { processNotificationPushOutbox } from "@/lib/pushNotifications";
+import { processNotificationQueues } from "@/lib/notificationQueueProcessor";
 
 export const runtime = "nodejs";
 
@@ -23,48 +22,9 @@ export async function GET(request: Request) {
     }
 
     try {
-        const [pushResult, emailResult] = await Promise.allSettled([
-            processNotificationPushOutbox(25),
-            processNotificationEmailOutbox(25),
-        ]);
-        const pushResults =
-            pushResult.status === "fulfilled" ? pushResult.value : [];
-        const emailResults =
-            emailResult.status === "fulfilled" ? emailResult.value : [];
-        const errors = [
-            pushResult.status === "rejected"
-                ? {
-                      channel: "push",
-                      error:
-                          pushResult.reason instanceof Error
-                              ? pushResult.reason.message
-                              : "Could not process push notifications.",
-                  }
-                : null,
-            emailResult.status === "rejected"
-                ? {
-                      channel: "email",
-                      error:
-                          emailResult.reason instanceof Error
-                              ? emailResult.reason.message
-                              : "Could not process email notifications.",
-                  }
-                : null,
-        ].filter(Boolean);
+        const result = await processNotificationQueues(25);
 
-        return NextResponse.json({
-            ok: errors.length === 0,
-            processed: pushResults.length + emailResults.length,
-            push: {
-                processed: pushResults.length,
-                results: pushResults,
-            },
-            email: {
-                processed: emailResults.length,
-                results: emailResults,
-            },
-            errors,
-        });
+        return NextResponse.json(result);
     } catch (error) {
         console.error("Could not process notification outboxes:", error);
         return NextResponse.json(

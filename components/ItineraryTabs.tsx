@@ -26,6 +26,7 @@ type ItineraryTabsProps = {
     updateTransportationAction: (formData: FormData) => Promise<void>;
     createItineraryAction: (formData: FormData) => Promise<void>;
     createTransportationAction: (formData: FormData) => Promise<void>;
+    undoJourneyTransportationAction?: (formData: FormData) => Promise<void>;
     createIdeaAction: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
@@ -39,6 +40,8 @@ type ItineraryTabsProps = {
     audienceOptions?: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
     initialQuickAddAction?: QuickAddInitialAction | null;
+    addedJourneyScenarioId?: string | null;
+    addedJourneyTransportationId?: string | null;
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
@@ -70,6 +73,7 @@ export default function ItineraryTabs({
     updateTransportationAction,
     createItineraryAction,
     createTransportationAction,
+    undoJourneyTransportationAction,
     createIdeaAction,
     updateIdeaAction,
     moveItemAction,
@@ -83,6 +87,8 @@ export default function ItineraryTabs({
     audienceOptions = [],
     currentUserTripMemberId = null,
     initialQuickAddAction = null,
+    addedJourneyScenarioId = null,
+    addedJourneyTransportationId = null,
 }: ItineraryTabsProps) {
     const activeTab = initialTab;
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -181,6 +187,11 @@ export default function ItineraryTabs({
                             tripId={tripId}
                             tripStartDate={tripStartDate}
                             createTransportationAction={createTransportationAction}
+                            undoJourneyTransportationAction={
+                                undoJourneyTransportationAction
+                            }
+                            addedScenarioId={addedJourneyScenarioId}
+                            addedTransportationId={addedJourneyTransportationId}
                         />
                     )}
                 </div>

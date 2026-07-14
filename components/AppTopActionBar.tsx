@@ -105,6 +105,8 @@ export default function AppTopActionBar({
     const [activePassportStampNotification, setActivePassportStampNotification] =
         useState<AppNotification | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
+    const openMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
+    const previousOpenMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const dropdownNotificationCount = hasSyncedNotifications
         ? visibleNotifications.length
         : 0;
@@ -122,6 +124,19 @@ export default function AppTopActionBar({
     useEffect(() => {
         void refreshNotifications();
     }, []);
+
+    useEffect(() => {
+        openMenuRef.current = openMenu;
+
+        if (
+            previousOpenMenuRef.current === "notifications" &&
+            openMenu !== "notifications"
+        ) {
+            void refreshNotifications();
+        }
+
+        previousOpenMenuRef.current = openMenu;
+    }, [openMenu]);
 
     useEffect(() => {
         let isMounted = true;
@@ -147,6 +162,7 @@ export default function AppTopActionBar({
                         filter: `user_id=eq.${user.id}`,
                     },
                     () => {
+                        if (openMenuRef.current === "notifications") return;
                         void refreshNotifications();
                     }
                 )
@@ -260,11 +276,6 @@ export default function AppTopActionBar({
         if (passiveUnreadIds.length === 0) return;
 
         const readAt = new Date().toISOString();
-        setVisibleNotifications((current) =>
-            current.filter(
-                (notification) => !passiveUnreadIds.includes(notification.id)
-            )
-        );
 
         const supabase = createClient();
         const { error } = await supabase
@@ -281,6 +292,14 @@ export default function AppTopActionBar({
             });
             return;
         }
+
+        setVisibleNotifications((current) =>
+            current.map((notification) =>
+                passiveUnreadIds.includes(notification.id)
+                    ? { ...notification, read_at: readAt }
+                    : notification
+            )
+        );
     }
 
     async function markNotificationRead(notification: AppNotification) {

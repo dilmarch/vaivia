@@ -152,7 +152,7 @@ export default function CostAllocationFields({
                 </p>
             </div>
 
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="mt-4 space-y-4">
                 <div className="space-y-2">
                     <span className={`text-xs font-black uppercase tracking-[0.18em] ${labelClass}`}>
                         Paid by
@@ -193,12 +193,12 @@ export default function CostAllocationFields({
                     </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-3">
                     <span className={`text-xs font-black uppercase tracking-[0.18em] ${labelClass}`}>
                         Split
                     </span>
                     <input type="hidden" name="split_method" value={splitMethod} />
-                    <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3">
+                    <div className="grid gap-2 sm:grid-cols-3">
                         {splitMethodOptions.map((option) => {
                             const isSelected = splitMethod === option.value;
 
@@ -234,69 +234,83 @@ export default function CostAllocationFields({
                             );
                         })}
                     </div>
-                </div>
-            </div>
 
-            <div className="mt-4 grid gap-2 md:grid-cols-2">
-                {options.map((participant) => {
-                    const value = participantValue(participant);
-                    const label = getParticipantLabel(
-                        participant,
-                        currentUserTripMemberId
-                    );
+                    <div className="grid gap-2 md:grid-cols-2">
+                        {options.map((participant) => {
+                            const value = participantValue(participant);
+                            const label = getParticipantLabel(
+                                participant,
+                                currentUserTripMemberId
+                            );
 
-                    return (
-                        <label
-                            key={value}
-                            className={`grid grid-cols-[auto_auto_1fr_7rem] items-center gap-3 rounded-2xl border p-3 ${rowClass}`}
-                        >
-                            <input
-                                type="checkbox"
-                                name="included_participants"
-                                value={value}
-                                defaultChecked
-                                className="h-4 w-4 accent-lime-300"
-                            />
-                            <ParticipantAvatar
-                                participant={participant}
-                                label={label}
-                            />
-                            <span className="min-w-0">
-                                <span className="block truncate text-sm font-black">
-                                    {label}
-                                </span>
-                                {participant.secondaryLabel ? (
-                                    <span
-                                        className={`block truncate text-xs font-semibold ${
-                                            isDark ? "text-slate-400" : "text-slate-500"
-                                        }`}
-                                    >
-                                        {participant.secondaryLabel}
+                            return (
+                                <label
+                                    key={value}
+                                    className={`grid grid-cols-[auto_auto_1fr_7rem] items-center gap-3 rounded-2xl border p-3 ${rowClass}`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        name="included_participants"
+                                        value={value}
+                                        defaultChecked
+                                        className="h-4 w-4 accent-lime-300"
+                                    />
+                                    <ParticipantAvatar
+                                        participant={participant}
+                                        label={label}
+                                    />
+                                    <span className="min-w-0">
+                                        <span className="block truncate text-sm font-black">
+                                            {label}
+                                        </span>
+                                        {participant.secondaryLabel ? (
+                                            <span
+                                                className={`block truncate text-xs font-semibold ${
+                                                    isDark
+                                                        ? "text-slate-400"
+                                                        : "text-slate-500"
+                                                }`}
+                                            >
+                                                {participant.secondaryLabel}
+                                            </span>
+                                        ) : null}
                                     </span>
-                                ) : null}
-                            </span>
-                            {splitMethod === "exact" ? (
-                                <input
-                                    name={splitInputName("split_amount", participant)}
-                                    inputMode="decimal"
-                                    placeholder="0.00"
-                                    className={`rounded-xl border px-3 py-2 text-right text-xs font-bold outline-none ${inputClass}`}
-                                />
-                            ) : splitMethod === "percentage" ? (
-                                <input
-                                    name={splitInputName("split_percentage", participant)}
-                                    inputMode="decimal"
-                                    placeholder="%"
-                                    className={`rounded-xl border px-3 py-2 text-right text-xs font-bold outline-none ${inputClass}`}
-                                />
-                            ) : (
-                                <span className={`text-right text-xs font-black uppercase ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                                    Equal
-                                </span>
-                            )}
-                        </label>
-                    );
-                })}
+                                    {splitMethod === "exact" ? (
+                                        <input
+                                            name={splitInputName(
+                                                "split_amount",
+                                                participant
+                                            )}
+                                            inputMode="decimal"
+                                            placeholder="0.00"
+                                            className={`rounded-xl border px-3 py-2 text-right text-xs font-bold outline-none ${inputClass}`}
+                                        />
+                                    ) : splitMethod === "percentage" ? (
+                                        <input
+                                            name={splitInputName(
+                                                "split_percentage",
+                                                participant
+                                            )}
+                                            inputMode="decimal"
+                                            placeholder="%"
+                                            className={`rounded-xl border px-3 py-2 text-right text-xs font-bold outline-none ${inputClass}`}
+                                        />
+                                    ) : (
+                                        <span
+                                            className={`text-right text-xs font-black uppercase ${
+                                                isDark
+                                                    ? "text-slate-400"
+                                                    : "text-slate-500"
+                                            }`}
+                                        >
+                                            Equal
+                                        </span>
+                                    )}
+                                </label>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
         </section>
     );

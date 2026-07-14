@@ -88,6 +88,8 @@ type PageProps = {
     searchParams?: Promise<{
         tab?: string;
         add?: string;
+        addedScenario?: string;
+        addedTransportation?: string;
     }>;
 };
 
@@ -550,6 +552,18 @@ function getTransportationReturnPath(formData: FormData, tripId: string) {
     }
 
     return fallbackPath;
+}
+
+function appendTripReturnParam(path: string, key: string, value: string) {
+    if (!value) return path;
+
+    const [pathAndQuery, hash = ""] = path.split("#");
+    const [pathname, query = ""] = pathAndQuery.split("?");
+    const params = new URLSearchParams(query);
+    params.set(key, value);
+    const nextQuery = params.toString();
+
+    return `${pathname}${nextQuery ? `?${nextQuery}` : ""}${hash ? `#${hash}` : ""}`;
 }
 
 function normalizeAirlineCode(rawCode?: string | null) {
@@ -1282,6 +1296,10 @@ async function createTransportationItem(formData: FormData) {
     const scenarioPros = String(formData.get("scenario_pros") || "").trim();
     const scenarioCons = String(formData.get("scenario_cons") || "").trim();
     const duration = formData.get("duration") as string;
+    const isRoundTrip = formData.get("is_round_trip") === "true";
+    const returnFlightLegCount = Number(
+        formData.get("return_flight_leg_count") || 0
+    );
     const visaRequirements = formData.get("visa_requirements") as string;
     const luggageRequirements = formData.get("luggage_requirements") as string;
     const departureTerminal = formData.get("departure_terminal") as string;
@@ -1299,7 +1317,7 @@ async function createTransportationItem(formData: FormData) {
         itemDate,
     });
     const flightLegCount = Number(formData.get("flight_leg_count") || 1);
-    const flightLegNotes = Array.from({ length: flightLegCount }, (_, index) => {
+    const flightLegDetails = Array.from({ length: flightLegCount }, (_, index) => {
         const legDepartureLocation = formData.get(
             `leg_${index}_departure_location`
         ) as string;
@@ -1333,7 +1351,7 @@ async function createTransportationItem(formData: FormData) {
             .trim()
             .toUpperCase();
 
-        return [
+        const note = [
             `Leg ${index + 1}: ${legDepartureLocation || "Departure"} → ${
                 legArrivalLocation || "Arrival"
             }`,
@@ -1364,7 +1382,36 @@ async function createTransportationItem(formData: FormData) {
         ]
             .filter(Boolean)
             .join("\n");
-    }).filter(Boolean);
+
+        return {
+            index,
+            departureLocation: legDepartureLocation,
+            arrivalLocation: legArrivalLocation,
+            departureDate: legDepartureDate,
+            departureTime: legDepartureTime,
+            arrivalDate: legArrivalDate,
+            arrivalTime: legArrivalTime,
+            departureTimezone: legDepartureTimezone,
+            arrivalTimezone: legArrivalTimezone,
+            departureTerminal: legDepartureTerminal,
+            arrivalTerminal: legArrivalTerminal,
+            flightNumber: legFlightNumber,
+            airlineName: legAirlineName,
+            airlineCode: legAirlineCode,
+            duration: legDuration,
+            cost: legCost,
+            currency: legCurrency,
+            note,
+        };
+    }).filter(
+        (leg) =>
+            leg.departureLocation ||
+            leg.arrivalLocation ||
+            leg.departureDate ||
+            leg.arrivalDate ||
+            leg.flightNumber
+    );
+    const flightLegNotes = flightLegDetails.map((leg) => leg.note).filter(Boolean);
     const firstLegFlightNumber = String(
         formData.get("leg_0_flight_number") || ""
     ).trim();
@@ -1397,6 +1444,15 @@ async function createTransportationItem(formData: FormData) {
         arrivalTerminal ? `Arrival terminal/platform: ${arrivalTerminal}` : "",
         departureTimezone ? `Departure time zone: ${departureTimezone}` : "",
         arrivalTimezone ? `Arrival time zone: ${arrivalTimezone}` : "",
+        isRoundTrip
+            ? `Roundtrip: Yes${
+                  returnFlightLegCount > 0
+                      ? ` (${returnFlightLegCount} return ${
+                            returnFlightLegCount === 1 ? "leg" : "legs"
+                        })`
+                      : ""
+              }`
+            : "",
         scenarioPros ? `Pros:\n${scenarioPros}` : "",
         scenarioCons ? `Cons:\n${scenarioCons}` : "",
         flightLegNotes.length ? `Flight legs:\n\n${flightLegNotes.join("\n\n")}` : "",
@@ -1406,102 +1462,245 @@ async function createTransportationItem(formData: FormData) {
         .filter(Boolean)
         .join("\n\n");
 
-    const transportationPayload: TransportationItemPayload = {
-        user_id: user.id,
-        created_by: user.id,
-        trip_id: tripId,
-        title,
-        transportation_mode: mode || null,
-        mode: mode || null,
-        type: mode || null,
-        status: transportationStatus,
-        item_date: itemDate || null,
-        date: itemDate || null,
-        departure_date: itemDate || null,
-        arrival_date: endDate || null,
-        end_date: endDate || null,
-        start_time: startTime || null,
-        departure_time: startTime || null,
-        end_time: endTime || null,
-        arrival_time: endTime || null,
-        departure_location: departureLocation || null,
-        arrival_location: arrivalLocation || null,
-        location: routeSummary || [departureLocation, arrivalLocation].filter(Boolean).join(" → "),
-        route_stops: routeStops,
-        preferred_ride_provider: preferredRideProvider || null,
-        departure_timezone: departureTimezone || null,
-        arrival_timezone: arrivalTimezone || null,
-        timezone: departureTimezone || null,
-        airline_name: airlineName || null,
-        airline_code: effectiveAirlineCode || null,
-        flight_number: effectiveFlightNumber || null,
-        reservation_code: reservationCode || null,
-        cost: transportationCost
-            ? Number(String(transportationCost).replace(/,/g, ""))
-            : null,
-        currency: String(transportationCurrency || "").trim().toUpperCase() || null,
-        duration: duration || null,
-        departure_terminal: departureTerminal || null,
-        arrival_terminal: arrivalTerminal || null,
-        flight_leg_count: flightLegCount,
-        visa_requirements: visaRequirements || null,
-        luggage_requirements: luggageRequirements || null,
-        is_private: isPrivate,
-        audience_mode: audience.audienceMode,
-        trip_leg_id: tripLegId,
-        notes,
-    };
+    const shouldCreateSeparateFlightLegs = flightLegDetails.length > 1;
+    const transportationPayloads = shouldCreateSeparateFlightLegs
+        ? await Promise.all(
+              flightLegDetails.map(async (leg) => {
+                  const legAirlineCode = normalizeAirlineCode(
+                      leg.airlineCode || leg.flightNumber
+                  );
+                  const legFlightNumber = normalizeFlightNumber({
+                      flightNumber: leg.flightNumber,
+                      airlineCode: legAirlineCode,
+                  });
+                  const legTitle =
+                      mode === "airplane" && legFlightNumber
+                          ? `${legFlightNumber} ${
+                                leg.departureLocation || ""
+                            } to ${leg.arrivalLocation || ""}`.trim()
+                          : `${modeLabel}: ${
+                                leg.departureLocation || "Departure"
+                            } to ${leg.arrivalLocation || "Arrival"}`;
+                  const legNotes = [
+                      `Scenario leg ${leg.index + 1} of ${flightLegDetails.length}`,
+                      isRoundTrip
+                          ? `Roundtrip: Yes${
+                                returnFlightLegCount > 0
+                                    ? ` (${returnFlightLegCount} return ${
+                                          returnFlightLegCount === 1
+                                              ? "leg"
+                                              : "legs"
+                                      })`
+                                    : ""
+                            }`
+                          : "",
+                      leg.note,
+                      scenarioPros ? `Pros:\n${scenarioPros}` : "",
+                      scenarioCons ? `Cons:\n${scenarioCons}` : "",
+                      visaRequirements ? `VISA requirements:\n${visaRequirements}` : "",
+                      luggageRequirements
+                          ? `Luggage requirements:\n${luggageRequirements}`
+                          : "",
+                  ]
+                      .filter(Boolean)
+                      .join("\n\n");
 
-    if (process.env.NODE_ENV !== "production") {
-        console.log("Creating transportation item:", {
-            authenticatedUserId: user.id,
-            tripId,
-            rawStatus,
-            transportationStatus,
-            payload: transportationPayload,
-        });
-    }
+                  return {
+                      payload: {
+                          user_id: user.id,
+                          created_by: user.id,
+                          trip_id: tripId,
+                          title: legTitle,
+                          transportation_mode: mode || null,
+                          mode: mode || null,
+                          type: mode || null,
+                          status: transportationStatus,
+                          item_date: leg.departureDate || null,
+                          date: leg.departureDate || null,
+                          departure_date: leg.departureDate || null,
+                          arrival_date: leg.arrivalDate || null,
+                          end_date: leg.arrivalDate || null,
+                          start_time: leg.departureTime || null,
+                          departure_time: leg.departureTime || null,
+                          end_time: leg.arrivalTime || null,
+                          arrival_time: leg.arrivalTime || null,
+                          departure_location: leg.departureLocation || null,
+                          arrival_location: leg.arrivalLocation || null,
+                          location: [leg.departureLocation, leg.arrivalLocation]
+                              .filter(Boolean)
+                              .join(" → "),
+                          route_stops: [
+                              { order: 0, label: leg.departureLocation },
+                              { order: 1, label: leg.arrivalLocation },
+                          ].filter((stop) => stop.label),
+                          preferred_ride_provider: preferredRideProvider || null,
+                          departure_timezone: leg.departureTimezone || null,
+                          arrival_timezone: leg.arrivalTimezone || null,
+                          timezone: leg.departureTimezone || null,
+                          airline_name: leg.airlineName || airlineName || null,
+                          airline_code: legAirlineCode || null,
+                          flight_number: legFlightNumber || null,
+                          reservation_code: reservationCode || null,
+                          cost: leg.cost
+                              ? Number(String(leg.cost).replace(/,/g, ""))
+                              : null,
+                          currency:
+                              leg.currency ||
+                              String(transportationCurrency || "")
+                                  .trim()
+                                  .toUpperCase() ||
+                              null,
+                          duration: leg.duration || null,
+                          departure_terminal: leg.departureTerminal || null,
+                          arrival_terminal: leg.arrivalTerminal || null,
+                          flight_leg_count: 1,
+                          visa_requirements: visaRequirements || null,
+                          luggage_requirements: luggageRequirements || null,
+                          is_private: isPrivate,
+                          audience_mode: audience.audienceMode,
+                          trip_leg_id: await resolveTripLegIdForDate({
+                              supabase,
+                              tripId,
+                              explicitTripLegId: String(
+                                  formData.get("trip_leg_id") || ""
+                              ),
+                              itemDate: leg.departureDate,
+                          }),
+                          notes: legNotes,
+                      } satisfies TransportationItemPayload,
+                      title: legTitle,
+                      amount: leg.cost,
+                      currency: leg.currency || transportationCurrency,
+                      expenseDate: leg.departureDate,
+                      departureLocation: leg.departureLocation,
+                      arrivalLocation: leg.arrivalLocation,
+                      arrivalDate: leg.arrivalDate,
+                      arrivalTime: leg.arrivalTime,
+                      arrivalTimezone: leg.arrivalTimezone,
+                  };
+              })
+          )
+        : [
+              {
+                  payload: {
+                      user_id: user.id,
+                      created_by: user.id,
+                      trip_id: tripId,
+                      title,
+                      transportation_mode: mode || null,
+                      mode: mode || null,
+                      type: mode || null,
+                      status: transportationStatus,
+                      item_date: itemDate || null,
+                      date: itemDate || null,
+                      departure_date: itemDate || null,
+                      arrival_date: endDate || null,
+                      end_date: endDate || null,
+                      start_time: startTime || null,
+                      departure_time: startTime || null,
+                      end_time: endTime || null,
+                      arrival_time: endTime || null,
+                      departure_location: departureLocation || null,
+                      arrival_location: arrivalLocation || null,
+                      location:
+                          routeSummary ||
+                          [departureLocation, arrivalLocation]
+                              .filter(Boolean)
+                              .join(" → "),
+                      route_stops: routeStops,
+                      preferred_ride_provider: preferredRideProvider || null,
+                      departure_timezone: departureTimezone || null,
+                      arrival_timezone: arrivalTimezone || null,
+                      timezone: departureTimezone || null,
+                      airline_name: airlineName || null,
+                      airline_code: effectiveAirlineCode || null,
+                      flight_number: effectiveFlightNumber || null,
+                      reservation_code: reservationCode || null,
+                      cost: transportationCost
+                          ? Number(String(transportationCost).replace(/,/g, ""))
+                          : null,
+                      currency:
+                          String(transportationCurrency || "").trim().toUpperCase() ||
+                          null,
+                      duration: duration || null,
+                      departure_terminal: departureTerminal || null,
+                      arrival_terminal: arrivalTerminal || null,
+                      flight_leg_count: flightLegCount,
+                      visa_requirements: visaRequirements || null,
+                      luggage_requirements: luggageRequirements || null,
+                      is_private: isPrivate,
+                      audience_mode: audience.audienceMode,
+                      trip_leg_id: tripLegId,
+                      notes,
+                  } satisfies TransportationItemPayload,
+                  title,
+                  amount: transportationCost,
+                  currency: transportationCurrency,
+                  expenseDate: itemDate,
+                  departureLocation,
+                  arrivalLocation,
+                  arrivalDate: endDate,
+                  arrivalTime: endTime,
+                  arrivalTimezone,
+              },
+          ];
 
-    const transportationInsert = await insertTransportationPayloadWithFallback(
-        transportationPayload
-    );
-    const error = transportationInsert.error;
+    const createdTransportationItemIds: string[] = [];
 
-    if (error) {
+    for (const transportationPayload of transportationPayloads) {
         if (process.env.NODE_ENV !== "production") {
-            console.error("Error creating transportation item:", {
+            console.log("Creating transportation item:", {
                 authenticatedUserId: user.id,
                 tripId,
-                message: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint,
-                payload: transportationPayload,
+                rawStatus,
+                transportationStatus,
+                payload: transportationPayload.payload,
             });
         }
-        throw new Error(
-            `Could not create transportation item: ${
-                error.message ?? "Unknown Supabase error"
-            }`
+
+        const transportationInsert = await insertTransportationPayloadWithFallback(
+            transportationPayload.payload
         );
-    }
+        const error = transportationInsert.error;
 
-    const transportationItemId =
-        typeof transportationInsert.data?.id === "string"
-            ? transportationInsert.data.id
-            : "";
+        if (error) {
+            if (process.env.NODE_ENV !== "production") {
+                console.error("Error creating transportation item:", {
+                    authenticatedUserId: user.id,
+                    tripId,
+                    message: error.message,
+                    code: error.code,
+                    details: error.details,
+                    hint: error.hint,
+                    payload: transportationPayload.payload,
+                });
+            }
+            throw new Error(
+                `Could not create transportation item: ${
+                    error.message ?? "Unknown Supabase error"
+                }`
+            );
+        }
 
-    if (transportationItemId) {
+        const transportationItemId =
+            typeof transportationInsert.data?.id === "string"
+                ? transportationInsert.data.id
+                : "";
+
+        if (!transportationItemId) continue;
+
+        createdTransportationItemIds.push(transportationItemId);
+
         await syncAutoBudgetExpense({
             supabase,
             userId: user.id,
             tripId,
             sourceType: "transportation",
             sourceId: transportationItemId,
-            amount: transportationCost,
-            currency: transportationCurrency,
-            expenseDate: itemDate,
-            description: title,
+            amount: transportationPayload.amount,
+            currency: transportationPayload.currency,
+            expenseDate: transportationPayload.expenseDate,
+            description: transportationPayload.title,
             formData,
         });
 
@@ -1536,28 +1735,90 @@ async function createTransportationItem(formData: FormData) {
             userId: user.id,
             tripId,
             transportationItemId,
-            title,
-            departureLocation,
-            arrivalLocation,
-            arrivalDate: endDate,
-            arrivalTime: endTime,
-            arrivalTimezone,
+            title: transportationPayload.title,
+            departureLocation: transportationPayload.departureLocation,
+            arrivalLocation: transportationPayload.arrivalLocation,
+            arrivalDate: transportationPayload.arrivalDate,
+            arrivalTime: transportationPayload.arrivalTime,
+            arrivalTimezone: transportationPayload.arrivalTimezone,
         });
     }
+
+    const transportationItemId = createdTransportationItemIds[0] || "";
 
     if (!isPrivate) {
         await supabase.rpc("notify_trip_members", {
             target_trip_id: tripId,
             notification_type: "trip_item_added",
             notification_title: "Trip item added",
-            notification_body: `${title || "A transportation item"} was added to the trip.`,
+            notification_body:
+                createdTransportationItemIds.length > 1
+                    ? `${createdTransportationItemIds.length} transportation items were added to the trip.`
+                    : `${title || "A transportation item"} was added to the trip.`,
             notification_metadata: {
                 itemType: "transportation_item",
+                count: createdTransportationItemIds.length,
             },
         });
     }
 
-    redirect(getTransportationReturnPath(formData, tripId));
+    let returnPath = getTransportationReturnPath(formData, tripId);
+    if (transportationItemId && returnPath.includes("tab=journey-planning")) {
+        returnPath = appendTripReturnParam(
+            returnPath,
+            "addedTransportation",
+            createdTransportationItemIds.join(",")
+        );
+    }
+
+    redirect(returnPath);
+}
+
+async function undoJourneyTransportationItem(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const transportationItemIds = String(
+        formData.get("transportation_item_id") || ""
+    )
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean);
+
+    if (!tripId || transportationItemIds.length === 0) {
+        throw new Error("Could not remove journey plan from itinerary");
+    }
+
+    const { error } = await supabase
+        .from("transportation_items")
+        .delete()
+        .in("id", transportationItemIds)
+        .eq("trip_id", tripId);
+
+    if (error) {
+        console.error("Error undoing journey transportation item:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            transportationItemIds,
+        });
+        throw new Error("Could not remove journey plan from itinerary");
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+    redirect(`/trips/${tripId}?tab=journey-planning`);
 }
 
 async function updateTransportationItem(formData: FormData) {
@@ -2617,6 +2878,14 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         resolvedSearchParams.add === "scheduled" ||
         resolvedSearchParams.add === "idea"
             ? resolvedSearchParams.add
+            : null;
+    const addedJourneyScenarioId =
+        typeof resolvedSearchParams.addedScenario === "string"
+            ? resolvedSearchParams.addedScenario
+            : null;
+    const addedJourneyTransportationId =
+        typeof resolvedSearchParams.addedTransportation === "string"
+            ? resolvedSearchParams.addedTransportation
             : null;
 
     const supabase = await createClient();
@@ -3798,6 +4067,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         updateTransportationAction={updateTransportationItem}
                         createItineraryAction={createItineraryItem}
                         createTransportationAction={createTransportationItem}
+                        undoJourneyTransportationAction={undoJourneyTransportationItem}
                         createIdeaAction={createTripIdea}
                         updateIdeaAction={updateTripIdea}
                         moveItemAction={moveTripItem}
@@ -3811,6 +4081,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         audienceOptions={audienceOptions}
                         currentUserTripMemberId={currentUserTripMemberId}
                         initialQuickAddAction={initialQuickAddAction}
+                        addedJourneyScenarioId={addedJourneyScenarioId}
+                        addedJourneyTransportationId={addedJourneyTransportationId}
                     />
                 </section>
             </div>

@@ -154,16 +154,21 @@ async function sendEmailForOutboxRow(
     supabase: ReturnType<typeof createServiceRoleClient>,
     row: EmailOutboxRow
 ): Promise<ProcessedEmailResult> {
-    const { data: preference, error: preferenceError } = await supabase
-        .from("user_notification_preferences")
-        .select("email_enabled")
-        .eq("user_id", row.user_id)
-        .eq("notification_type", row.notification_type)
-        .maybeSingle();
+    const metadata = asRecord(row.payload.metadata);
+    const isAdminEmailTest = metadata.source === "email_test";
 
-    if (preferenceError) throw new Error(preferenceError.message);
-    if (!preference?.email_enabled) {
-        return cancelEmailOutbox(supabase, row, "preference_disabled");
+    if (!isAdminEmailTest) {
+        const { data: preference, error: preferenceError } = await supabase
+            .from("user_notification_preferences")
+            .select("email_enabled")
+            .eq("user_id", row.user_id)
+            .eq("notification_type", row.notification_type)
+            .maybeSingle();
+
+        if (preferenceError) throw new Error(preferenceError.message);
+        if (!preference?.email_enabled) {
+            return cancelEmailOutbox(supabase, row, "preference_disabled");
+        }
     }
 
     const { data: userData, error: userError } =

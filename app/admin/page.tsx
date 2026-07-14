@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Award, ShieldCheck, UsersRound, X } from "lucide-react";
 import FeatureSuggestionStatusSelect from "@/components/admin/FeatureSuggestionStatusSelect";
+import ProcessNotificationQueuesButton from "@/components/admin/ProcessNotificationQueuesButton";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -601,7 +602,8 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                                 Site-wide stats, theme adoption, new user trends, and user-submitted feature requests.
                             </p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap items-start gap-2">
+                            <ProcessNotificationQueuesButton />
                             <Link
                                 href={getAdminHref({
                                     metrics: "levels",

@@ -8,7 +8,8 @@ import {
     useRef,
     useState,
 } from "react";
-import { GripVertical } from "lucide-react";
+import { Copy, GripVertical, Pencil } from "lucide-react";
+import AnimatedModal from "@/components/AnimatedModal";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import {
     getAirlineNameFromCode,
@@ -24,6 +25,9 @@ type JourneyPlanningTabProps = {
     tripId: string;
     tripStartDate?: string | null;
     createTransportationAction: (formData: FormData) => Promise<void>;
+    undoJourneyTransportationAction?: (formData: FormData) => Promise<void>;
+    addedScenarioId?: string | null;
+    addedTransportationId?: string | null;
 };
 
 type PlanningLeg = {
@@ -57,6 +61,8 @@ type PlanningScenario = {
     id: string;
     label: string;
     transportMode: PlanningTransportMode;
+    isRoundTrip: boolean;
+    returnLegCount: number;
     cost: string;
     currency: string;
     pros: string[];
@@ -287,6 +293,8 @@ function createScenario(index: number, defaultDate = ""): PlanningScenario {
         id: `scenario-${index + 1}`,
         label: SCENARIO_LABELS[index] || `Scenario ${index + 1}`,
         transportMode: "airplane",
+        isRoundTrip: false,
+        returnLegCount: 0,
         cost: "",
         currency: "CAD",
         pros: [""],
@@ -324,6 +332,10 @@ function normalizeScenario(
         id: scenario.id || `scenario-${index + 1}`,
         label: scenario.label || SCENARIO_LABELS[index] || `Scenario ${index + 1}`,
         transportMode: scenario.transportMode || "airplane",
+        isRoundTrip: Boolean(scenario.isRoundTrip),
+        returnLegCount: Boolean(scenario.isRoundTrip)
+            ? Math.min(Math.max(Number(scenario.returnLegCount || 1), 1), 4)
+            : 0,
         cost: scenario.cost || "",
         currency: scenario.currency || "CAD",
         pros: normalizeListItems((scenario as { pros?: unknown }).pros),
@@ -379,6 +391,22 @@ function getLegDurationLabel(leg: PlanningLeg) {
         endTime: leg.arrivalTime,
         endTimezone: leg.arrivalTimezone,
     });
+}
+
+function getLegDurationDisplayLabel(leg: PlanningLeg) {
+    const hasDateAndTime =
+        leg.departureDate &&
+        leg.departureTime &&
+        leg.arrivalDate &&
+        leg.arrivalTime;
+
+    if (!hasDateAndTime) return "Add flight times";
+
+    if (!leg.departureTimezone || !leg.arrivalTimezone) {
+        return "Add time zones";
+    }
+
+    return getLegDurationLabel(leg) || "Check flight times";
 }
 
 function isScenarioReady(scenario: PlanningScenario) {
@@ -472,6 +500,12 @@ function getScenarioCurrency(scenario: PlanningScenario) {
         : scenario.currency;
 }
 
+function getOutboundLegCount(scenario: PlanningScenario) {
+    if (!scenario.isRoundTrip) return scenario.legs.length;
+
+    return Math.max(1, scenario.legs.length - scenario.returnLegCount);
+}
+
 function getLayoverDurationLabel(previousLeg: PlanningLeg, nextLeg: PlanningLeg) {
     if (
         !previousLeg.arrivalDate ||
@@ -509,6 +543,9 @@ export default function JourneyPlanningTab({
     tripId,
     tripStartDate,
     createTransportationAction,
+    undoJourneyTransportationAction,
+    addedScenarioId = null,
+    addedTransportationId = null,
 }: JourneyPlanningTabProps) {
     const defaultDate = tripStartDate || "";
     const storageKey = `${STORAGE_KEY_PREFIX}${tripId}`;
@@ -524,12 +561,30 @@ export default function JourneyPlanningTab({
     const [detectingTimezones, setDetectingTimezones] = useState<Record<string, boolean>>(
         {}
     );
-    const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(null);
+    const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(
+        addedScenarioId
+    );
+    const [pendingUndoScenarioId, setPendingUndoScenarioId] = useState<string | null>(
+        null
+    );
     const [pendingDeleteScenarioId, setPendingDeleteScenarioId] = useState<
         string | null
     >(null);
     const [draggedScenarioId, setDraggedScenarioId] = useState<string | null>(null);
     const [dragOverScenarioId, setDragOverScenarioId] = useState<string | null>(null);
+    const [draggedLeg, setDraggedLeg] = useState<{
+        scenarioId: string;
+        legIndex: number;
+    } | null>(null);
+    const [dragOverLeg, setDragOverLeg] = useState<{
+        scenarioId: string;
+        legIndex: number;
+    } | null>(null);
+    const [scenarioModalDraft, setScenarioModalDraft] =
+        useState<PlanningScenario | null>(null);
+    const [scenarioModalMode, setScenarioModalMode] = useState<"add" | "edit">(
+        "add"
+    );
     const scenarioCardRefs = useRef<Record<string, HTMLFormElement | null>>({});
     const previousScenarioRectsRef = useRef<Map<string, DOMRect> | null>(null);
     const [scenarios, setScenarios] = useState<PlanningScenario[]>(() =>
@@ -588,6 +643,11 @@ export default function JourneyPlanningTab({
     useEffect(() => {
         window.localStorage.setItem(storageKey, JSON.stringify(scenarios));
     }, [scenarios, storageKey]);
+
+    useEffect(() => {
+        setSelectedScenarioId(addedScenarioId);
+        setPendingUndoScenarioId(null);
+    }, [addedScenarioId, addedTransportationId]);
 
     const scenarioTotals = useMemo(
         () =>
@@ -744,23 +804,196 @@ export default function JourneyPlanningTab({
         );
     }
 
+    function clearScenarioCoordinateRefs(scenarioId: string) {
+        Object.keys(airportCoordinateRefs.current).forEach((key) => {
+            if (key.startsWith(`${scenarioId}:`)) {
+                delete airportCoordinateRefs.current[key];
+            }
+        });
+    }
+
+    function moveLeg(scenarioId: string, legIndex: number, direction: "up" | "down") {
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) => {
+                if (scenario.id !== scenarioId) return scenario;
+
+                const nextIndex = direction === "up" ? legIndex - 1 : legIndex + 1;
+                if (nextIndex < 0 || nextIndex >= scenario.legs.length) return scenario;
+
+                const nextLegs = [...scenario.legs];
+                const [legToMove] = nextLegs.splice(legIndex, 1);
+                nextLegs.splice(nextIndex, 0, legToMove);
+
+                return { ...scenario, legs: nextLegs };
+            })
+        );
+        clearScenarioCoordinateRefs(scenarioId);
+    }
+
+    function reorderLeg(scenarioId: string, fromIndex: number, toIndex: number) {
+        if (fromIndex === toIndex) return;
+
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) => {
+                if (scenario.id !== scenarioId) return scenario;
+                if (
+                    fromIndex < 0 ||
+                    fromIndex >= scenario.legs.length ||
+                    toIndex < 0 ||
+                    toIndex >= scenario.legs.length
+                ) {
+                    return scenario;
+                }
+
+                const nextLegs = [...scenario.legs];
+                const [legToMove] = nextLegs.splice(fromIndex, 1);
+                nextLegs.splice(toIndex, 0, legToMove);
+
+                return { ...scenario, legs: nextLegs };
+            })
+        );
+        clearScenarioCoordinateRefs(scenarioId);
+    }
+
     function setScenarioLegCount(scenarioId: string, legCount: number) {
         setScenarios((currentScenarios) =>
             currentScenarios.map((scenario) => {
                 if (scenario.id !== scenarioId) return scenario;
 
-                const nextLegs = [...scenario.legs];
-                while (nextLegs.length < legCount) {
-                    const previousLeg = nextLegs.at(-1);
-                    nextLegs.push({
+                const outboundLegCount = getOutboundLegCount(scenario);
+                const outboundLegs = scenario.legs.slice(0, outboundLegCount);
+                const returnLegs = scenario.isRoundTrip
+                    ? scenario.legs.slice(outboundLegCount)
+                    : [];
+                const nextOutboundLegs = [...outboundLegs];
+                while (nextOutboundLegs.length < legCount) {
+                    const previousLeg = nextOutboundLegs.at(-1);
+                    nextOutboundLegs.push({
                         ...createEmptyLeg(defaultDate),
                         currency: previousLeg?.currency || scenario.currency || "CAD",
                     });
                 }
+                const trimmedOutboundLegs = nextOutboundLegs.slice(0, legCount);
 
                 return {
                     ...scenario,
-                    legs: nextLegs.slice(0, legCount),
+                    legs: scenario.isRoundTrip
+                        ? [...trimmedOutboundLegs, ...returnLegs]
+                        : trimmedOutboundLegs,
+                };
+            })
+        );
+    }
+
+    function createReturnLegFromScenario(scenario: PlanningScenario) {
+        const outboundLegCount = getOutboundLegCount(scenario);
+        const firstOutboundLeg = scenario.legs[0] || createEmptyLeg(defaultDate);
+        const lastOutboundLeg =
+            scenario.legs[outboundLegCount - 1] || firstOutboundLeg;
+
+        return {
+            ...createEmptyLeg(lastOutboundLeg.arrivalDate || defaultDate),
+            departureLocation: lastOutboundLeg.arrivalLocation,
+            arrivalLocation: firstOutboundLeg.departureLocation,
+            departureDate: lastOutboundLeg.arrivalDate || defaultDate,
+            arrivalDate: lastOutboundLeg.arrivalDate || defaultDate,
+            departureTimezone: lastOutboundLeg.arrivalTimezone,
+            arrivalTimezone: firstOutboundLeg.departureTimezone,
+            currency: firstOutboundLeg.currency || scenario.currency || "CAD",
+        };
+    }
+
+    function setScenarioRoundTrip(scenarioId: string, isRoundTrip: boolean) {
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) => {
+                if (scenario.id !== scenarioId) return scenario;
+
+                const outboundLegCount = getOutboundLegCount(scenario);
+                const outboundLegs = scenario.legs.slice(0, outboundLegCount);
+                if (!isRoundTrip) {
+                    return {
+                        ...scenario,
+                        isRoundTrip: false,
+                        returnLegCount: 0,
+                        legs: outboundLegs.length ? outboundLegs : [createEmptyLeg(defaultDate)],
+                    };
+                }
+
+                const existingReturnLegs = scenario.legs.slice(outboundLegCount);
+                const returnLegCount = Math.max(
+                    existingReturnLegs.length || scenario.returnLegCount || 1,
+                    1
+                );
+                const nextReturnLegs = [...existingReturnLegs];
+                while (nextReturnLegs.length < returnLegCount) {
+                    const previousLeg = nextReturnLegs.at(-1);
+                    nextReturnLegs.push(
+                        previousLeg
+                            ? {
+                                  ...createEmptyLeg(
+                                      previousLeg.arrivalDate || defaultDate
+                                  ),
+                                  departureLocation: previousLeg.arrivalLocation,
+                                  departureDate:
+                                      previousLeg.arrivalDate || defaultDate,
+                                  arrivalDate: previousLeg.arrivalDate || defaultDate,
+                                  departureTimezone:
+                                      previousLeg.arrivalTimezone,
+                                  currency:
+                                      previousLeg.currency ||
+                                      scenario.currency ||
+                                      "CAD",
+                              }
+                            : createReturnLegFromScenario(scenario)
+                    );
+                }
+
+                return {
+                    ...scenario,
+                    isRoundTrip: true,
+                    returnLegCount,
+                    legs: [...outboundLegs, ...nextReturnLegs.slice(0, returnLegCount)],
+                };
+            })
+        );
+    }
+
+    function setScenarioReturnLegCount(scenarioId: string, returnLegCount: number) {
+        setScenarios((currentScenarios) =>
+            currentScenarios.map((scenario) => {
+                if (scenario.id !== scenarioId) return scenario;
+
+                const outboundLegCount = getOutboundLegCount(scenario);
+                const outboundLegs = scenario.legs.slice(0, outboundLegCount);
+                const nextReturnLegs = scenario.legs.slice(outboundLegCount);
+                while (nextReturnLegs.length < returnLegCount) {
+                    const previousLeg = nextReturnLegs.at(-1);
+                    nextReturnLegs.push(
+                        previousLeg
+                            ? {
+                                  ...createEmptyLeg(
+                                      previousLeg.arrivalDate || defaultDate
+                                  ),
+                                  departureLocation: previousLeg.arrivalLocation,
+                                  departureDate:
+                                      previousLeg.arrivalDate || defaultDate,
+                                  arrivalDate: previousLeg.arrivalDate || defaultDate,
+                                  departureTimezone:
+                                      previousLeg.arrivalTimezone,
+                                  currency:
+                                      previousLeg.currency ||
+                                      scenario.currency ||
+                                      "CAD",
+                              }
+                            : createReturnLegFromScenario(scenario)
+                    );
+                }
+
+                return {
+                    ...scenario,
+                    isRoundTrip: true,
+                    returnLegCount,
+                    legs: [...outboundLegs, ...nextReturnLegs.slice(0, returnLegCount)],
                 };
             })
         );
@@ -870,14 +1103,191 @@ export default function JourneyPlanningTab({
         });
     }
 
-    function addScenario() {
-        setScenarios((currentScenarios) => [
-            ...currentScenarios,
-            {
-                ...createScenario(currentScenarios.length, defaultDate),
+    function openAddScenarioModal() {
+        setScenarioModalMode("add");
+        setScenarioModalDraft({
+            ...createScenario(scenarios.length, defaultDate),
+            id: `scenario-${Date.now()}`,
+        });
+    }
+
+    function openEditScenarioModal(scenario: PlanningScenario) {
+        setScenarioModalMode("edit");
+        setScenarioModalDraft({
+            ...scenario,
+            pros: [...scenario.pros],
+            cons: [...scenario.cons],
+            legs: scenario.legs.map((leg) => ({ ...leg })),
+        });
+    }
+
+    function closeScenarioModal() {
+        setScenarioModalDraft(null);
+    }
+
+    function updateScenarioDraftFields(
+        values: Partial<Omit<PlanningScenario, "id" | "legs">>
+    ) {
+        setScenarioModalDraft((draft) => (draft ? { ...draft, ...values } : draft));
+    }
+
+    function setScenarioDraftLegCount(legCount: number) {
+        setScenarioModalDraft((draft) => {
+            if (!draft) return draft;
+
+            const outboundLegCount = getOutboundLegCount(draft);
+            const outboundLegs = draft.legs.slice(0, outboundLegCount);
+            const returnLegs = draft.isRoundTrip
+                ? draft.legs.slice(outboundLegCount)
+                : [];
+            const nextOutboundLegs = [...outboundLegs];
+            while (nextOutboundLegs.length < legCount) {
+                const previousLeg = nextOutboundLegs.at(-1);
+                nextOutboundLegs.push({
+                    ...createEmptyLeg(defaultDate),
+                    currency: previousLeg?.currency || draft.currency || "CAD",
+                });
+            }
+
+            return {
+                ...draft,
+                legs: draft.isRoundTrip
+                    ? [...nextOutboundLegs.slice(0, legCount), ...returnLegs]
+                    : nextOutboundLegs.slice(0, legCount),
+            };
+        });
+    }
+
+    function setScenarioDraftRoundTrip(isRoundTrip: boolean) {
+        setScenarioModalDraft((draft) => {
+            if (!draft) return draft;
+
+            const outboundLegCount = getOutboundLegCount(draft);
+            const outboundLegs = draft.legs.slice(0, outboundLegCount);
+            if (!isRoundTrip) {
+                return {
+                    ...draft,
+                    isRoundTrip: false,
+                    returnLegCount: 0,
+                    legs: outboundLegs.length ? outboundLegs : [createEmptyLeg(defaultDate)],
+                };
+            }
+
+            const existingReturnLegs = draft.legs.slice(outboundLegCount);
+            const returnLegCount = Math.max(
+                existingReturnLegs.length || draft.returnLegCount || 1,
+                1
+            );
+            const nextReturnLegs = [...existingReturnLegs];
+            while (nextReturnLegs.length < returnLegCount) {
+                nextReturnLegs.push(createReturnLegFromScenario(draft));
+            }
+
+            return {
+                ...draft,
+                isRoundTrip: true,
+                returnLegCount,
+                legs: [...outboundLegs, ...nextReturnLegs.slice(0, returnLegCount)],
+            };
+        });
+    }
+
+    function setScenarioDraftReturnLegCount(returnLegCount: number) {
+        setScenarioModalDraft((draft) => {
+            if (!draft) return draft;
+
+            const outboundLegCount = getOutboundLegCount(draft);
+            const outboundLegs = draft.legs.slice(0, outboundLegCount);
+            const nextReturnLegs = draft.legs.slice(outboundLegCount);
+            while (nextReturnLegs.length < returnLegCount) {
+                nextReturnLegs.push(createReturnLegFromScenario(draft));
+            }
+
+            return {
+                ...draft,
+                isRoundTrip: true,
+                returnLegCount,
+                legs: [...outboundLegs, ...nextReturnLegs.slice(0, returnLegCount)],
+            };
+        });
+    }
+
+    function updateScenarioDraftListItem(
+        field: "pros" | "cons",
+        itemIndex: number,
+        value: string
+    ) {
+        setScenarioModalDraft((draft) =>
+            draft
+                ? {
+                      ...draft,
+                      [field]: draft[field].map((item, index) =>
+                          index === itemIndex ? value : item
+                      ),
+                  }
+                : draft
+        );
+    }
+
+    function addScenarioDraftListItem(field: "pros" | "cons") {
+        setScenarioModalDraft((draft) =>
+            draft ? { ...draft, [field]: [...draft[field], ""] } : draft
+        );
+    }
+
+    function removeScenarioDraftListItem(field: "pros" | "cons", itemIndex: number) {
+        setScenarioModalDraft((draft) => {
+            if (!draft || draft[field].length === 1) return draft;
+
+            return {
+                ...draft,
+                [field]: draft[field].filter((_, index) => index !== itemIndex),
+            };
+        });
+    }
+
+    function saveScenarioModalDraft() {
+        if (!scenarioModalDraft) return;
+
+        setScenarios((currentScenarios) => {
+            const normalizedDraft = normalizeScenario(
+                scenarioModalDraft,
+                currentScenarios.length,
+                defaultDate
+            );
+
+            if (scenarioModalMode === "edit") {
+                return currentScenarios.map((scenario) =>
+                    scenario.id === normalizedDraft.id ? normalizedDraft : scenario
+                );
+            }
+
+            return [...currentScenarios, normalizedDraft];
+        });
+        closeScenarioModal();
+    }
+
+    function duplicateScenario(scenarioId: string) {
+        setScenarios((currentScenarios) => {
+            const scenarioIndex = currentScenarios.findIndex(
+                (scenario) => scenario.id === scenarioId
+            );
+            if (scenarioIndex === -1) return currentScenarios;
+
+            const sourceScenario = currentScenarios[scenarioIndex];
+            const duplicatedScenario: PlanningScenario = {
+                ...sourceScenario,
                 id: `scenario-${Date.now()}`,
-            },
-        ]);
+                label: `${sourceScenario.label} copy`,
+                pros: [...sourceScenario.pros],
+                cons: [...sourceScenario.cons],
+                legs: sourceScenario.legs.map((leg) => ({ ...leg })),
+            };
+            const nextScenarios = [...currentScenarios];
+            nextScenarios.splice(scenarioIndex + 1, 0, duplicatedScenario);
+
+            return nextScenarios;
+        });
     }
 
     function deleteScenario(scenarioId: string) {
@@ -976,6 +1386,51 @@ export default function JourneyPlanningTab({
         setDragOverScenarioId(null);
     }
 
+    function handleLegDragStart(
+        event: DragEvent<HTMLDivElement>,
+        scenarioId: string,
+        legIndex: number
+    ) {
+        setDraggedLeg({ scenarioId, legIndex });
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", `${scenarioId}:${legIndex}`);
+    }
+
+    function handleLegDragOver(
+        event: DragEvent<HTMLDivElement>,
+        scenarioId: string,
+        legIndex: number
+    ) {
+        if (!draggedLeg || draggedLeg.scenarioId !== scenarioId) return;
+
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDragOverLeg({ scenarioId, legIndex });
+    }
+
+    function handleLegDrop(
+        event: DragEvent<HTMLDivElement>,
+        scenarioId: string,
+        legIndex: number
+    ) {
+        event.preventDefault();
+
+        const dragKey = event.dataTransfer.getData("text/plain");
+        const [, rawIndex] = dragKey.startsWith(`${scenarioId}:`)
+            ? dragKey.split(":")
+            : [];
+        const fromIndex = Number(rawIndex);
+
+        if (Number.isInteger(fromIndex)) {
+            reorderLeg(scenarioId, fromIndex, legIndex);
+        } else if (draggedLeg?.scenarioId === scenarioId) {
+            reorderLeg(scenarioId, draggedLeg.legIndex, legIndex);
+        }
+
+        setDraggedLeg(null);
+        setDragOverLeg(null);
+    }
+
     return (
         <section className="rounded-[2rem] border border-white/10 bg-[#03030a]/90 p-5 text-white shadow-2xl shadow-black/30">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -993,7 +1448,9 @@ export default function JourneyPlanningTab({
                 </div>
                 {selectedScenarioId && (
                     <div className="rounded-full border border-lime-300/40 bg-lime-300/15 px-4 py-2 text-sm font-bold text-lime-100">
-                        Selected plan is being added
+                        {addedTransportationId
+                            ? "Selected plan added to itinerary"
+                            : "Selected plan is being added"}
                     </div>
                 )}
             </div>
@@ -1019,8 +1476,9 @@ export default function JourneyPlanningTab({
                     const scenarioTotalCost = getScenarioTotalCost(scenario);
                     const scenarioCurrency = getScenarioCurrency(scenario);
                     const routeSummary = getScenarioSummary(scenario);
+                    const outboundLegCount = getOutboundLegCount(scenario);
                     const flightStructureValue = String(
-                        Math.min(Math.max(scenario.legs.length, 1), 4)
+                        Math.min(Math.max(outboundLegCount, 1), 4)
                     );
 
                     return (
@@ -1057,6 +1515,20 @@ export default function JourneyPlanningTab({
                             }`}
                         >
                             <input type="hidden" name="trip_id" value={tripId} />
+                            <input
+                                type="hidden"
+                                name="return_to"
+                                value={`/trips/${tripId}?tab=journey-planning&addedScenario=${encodeURIComponent(
+                                    scenario.id
+                                )}`}
+                            />
+                            {isSelected && addedTransportationId ? (
+                                <input
+                                    type="hidden"
+                                    name="transportation_item_id"
+                                    value={addedTransportationId}
+                                />
+                            ) : null}
                             <input
                                 type="hidden"
                                 name="transportation_mode"
@@ -1138,6 +1610,20 @@ export default function JourneyPlanningTab({
                             />
                             <input
                                 type="hidden"
+                                name="is_round_trip"
+                                value={scenario.isRoundTrip ? "true" : "false"}
+                            />
+                            <input
+                                type="hidden"
+                                name="return_flight_leg_count"
+                                value={
+                                    scenario.isRoundTrip
+                                        ? String(scenario.returnLegCount)
+                                        : "0"
+                                }
+                            />
+                            <input
+                                type="hidden"
                                 name="scenario_pros"
                                 value={scenario.pros
                                     .map((item) => item.trim())
@@ -1183,24 +1669,54 @@ export default function JourneyPlanningTab({
                                         />
                                     </div>
                                     <div className="flex shrink-0 flex-col gap-2">
-                                        <div
-                                            role="button"
-                                            tabIndex={0}
-                                            draggable
-                                            onDragStart={(event) =>
-                                                handleScenarioDragStart(
-                                                    event,
-                                                    scenario.id
-                                                )
-                                            }
-                                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
-                                            aria-label={`Drag ${scenario.label} to reorder`}
-                                            title="Drag to reorder"
-                                        >
-                                            <GripVertical
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            />
+                                        <div className="flex justify-end gap-1">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openEditScenarioModal(scenario)
+                                                }
+                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                aria-label={`Edit ${scenario.label}`}
+                                                title="Edit scenario"
+                                            >
+                                                <Pencil
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    duplicateScenario(scenario.id)
+                                                }
+                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                aria-label={`Duplicate ${scenario.label}`}
+                                                title="Duplicate scenario"
+                                            >
+                                                <Copy
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                            </button>
+                                            <div
+                                                role="button"
+                                                tabIndex={0}
+                                                draggable
+                                                onDragStart={(event) =>
+                                                    handleScenarioDragStart(
+                                                        event,
+                                                        scenario.id
+                                                    )
+                                                }
+                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                aria-label={`Drag ${scenario.label} to reorder`}
+                                                title="Drag to reorder"
+                                            >
+                                                <GripVertical
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                            </div>
                                         </div>
                                         <div className="flex gap-1">
                                             <button
@@ -1280,14 +1796,48 @@ export default function JourneyPlanningTab({
                                             })
                                         }
                                     />
-                                    <StyledOptionPicker
-                                        label="Flight structure"
-                                        value={flightStructureValue}
-                                        options={FLIGHT_STRUCTURE_OPTIONS}
-                                        onChange={(value) =>
-                                            setScenarioLegCount(scenario.id, Number(value))
-                                        }
-                                    />
+                                    <div>
+                                        <StyledOptionPicker
+                                            label="Flight structure"
+                                            value={flightStructureValue}
+                                            options={FLIGHT_STRUCTURE_OPTIONS}
+                                            onChange={(value) =>
+                                                setScenarioLegCount(
+                                                    scenario.id,
+                                                    Number(value)
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                    <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                                        <label className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-white/10 bg-[#0c0115]/90 px-3 py-2 text-sm font-black text-slate-100 shadow-xl shadow-black/20 transition hover:border-lime-300/35 hover:bg-white/[0.08]">
+                                            <input
+                                                type="checkbox"
+                                                checked={scenario.isRoundTrip}
+                                                onChange={(event) =>
+                                                    setScenarioRoundTrip(
+                                                        scenario.id,
+                                                        event.target.checked
+                                                    )
+                                                }
+                                                className="h-4 w-4 accent-lime-300"
+                                            />
+                                            Roundtrip
+                                        </label>
+                                        {scenario.isRoundTrip ? (
+                                            <StyledOptionPicker
+                                                label="Return connections"
+                                                value={String(scenario.returnLegCount)}
+                                                options={FLIGHT_STRUCTURE_OPTIONS}
+                                                onChange={(value) =>
+                                                    setScenarioReturnLegCount(
+                                                        scenario.id,
+                                                        Number(value)
+                                                    )
+                                                }
+                                            />
+                                        ) : null}
+                                    </div>
                                 </div>
                                 <div className="mt-4 rounded-2xl bg-lime-300 px-4 py-3 text-slate-950">
                                     <p className="text-[11px] font-black uppercase tracking-[0.2em]">
@@ -1314,11 +1864,68 @@ export default function JourneyPlanningTab({
                                     const airlineCode =
                                         inferAirlineCodeFromFlightNumber(flightNumber);
                                     const durationLabel = getLegDurationLabel(leg);
+                                    const durationDisplayLabel =
+                                        getLegDurationDisplayLabel(leg);
+                                    const isLegDragTarget =
+                                        dragOverLeg?.scenarioId === scenario.id &&
+                                        dragOverLeg.legIndex === legIndex;
+                                    const isReturnLeg =
+                                        scenario.isRoundTrip &&
+                                        legIndex >= outboundLegCount;
+                                    const legDisplayIndex = isReturnLeg
+                                        ? legIndex - outboundLegCount + 1
+                                        : legIndex + 1;
+                                    const shouldShowLayover =
+                                        Boolean(scenario.legs[legIndex + 1]) &&
+                                        !(
+                                            scenario.isRoundTrip &&
+                                            legIndex === outboundLegCount - 1
+                                        );
 
                                     return (
-                                        <div key={legIndex} className="space-y-4">
+                                        <div
+                                            key={legIndex}
+                                            className="space-y-4"
+                                            onDragOver={(event) =>
+                                                handleLegDragOver(
+                                                    event,
+                                                    scenario.id,
+                                                    legIndex
+                                                )
+                                            }
+                                            onDrop={(event) =>
+                                                handleLegDrop(
+                                                    event,
+                                                    scenario.id,
+                                                    legIndex
+                                                )
+                                            }
+                                            onDragLeave={() => {
+                                                if (
+                                                    dragOverLeg?.scenarioId ===
+                                                        scenario.id &&
+                                                    dragOverLeg.legIndex === legIndex
+                                                ) {
+                                                    setDragOverLeg(null);
+                                                }
+                                            }}
+                                        >
+                                        {isReturnLeg && legIndex === outboundLegCount ? (
+                                            <div className="rounded-[1.25rem] border border-lime-300/25 bg-lime-300/10 p-4">
+                                                <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200">
+                                                    Roundtrip
+                                                </p>
+                                                <h3 className="mt-1 text-lg font-black text-white">
+                                                    Return flight
+                                                </h3>
+                                            </div>
+                                        ) : null}
                                         <fieldset
-                                            className="rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-4"
+                                            className={`rounded-[1.25rem] border bg-white/[0.07] p-4 transition ${
+                                                isLegDragTarget
+                                                    ? "border-lime-300/60 shadow-[0_0_30px_rgba(var(--vaivia-neon-rgb),0.16)]"
+                                                    : "border-white/10"
+                                            }`}
                                         >
                                             <input
                                                 type="hidden"
@@ -1348,11 +1955,92 @@ export default function JourneyPlanningTab({
 
                                             <div className="flex items-center justify-between gap-3">
                                                 <legend className="text-sm font-black uppercase tracking-wide text-white">
+                                                    {isReturnLeg
+                                                        ? "Return "
+                                                        : ""}
                                                     {scenario.transportMode === "airplane"
                                                         ? "Flight"
                                                         : "Segment"}{" "}
-                                                    {legIndex + 1}
+                                                    {legDisplayIndex}
                                                 </legend>
+                                                {scenario.legs.length > 1 ? (
+                                                    <div className="flex shrink-0 items-center gap-1">
+                                                        <div
+                                                            role="button"
+                                                            tabIndex={0}
+                                                            draggable
+                                                            onDragStart={(event) =>
+                                                                handleLegDragStart(
+                                                                    event,
+                                                                    scenario.id,
+                                                                    legIndex
+                                                                )
+                                                            }
+                                                            onDragEnd={() => {
+                                                                setDraggedLeg(null);
+                                                                setDragOverLeg(null);
+                                                            }}
+                                                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                            aria-label={`Drag ${
+                                                                scenario.transportMode ===
+                                                                "airplane"
+                                                                    ? "flight"
+                                                                    : "segment"
+                                                            } ${legIndex + 1} to reorder`}
+                                                            title="Drag to reorder"
+                                                        >
+                                                            <GripVertical
+                                                                className="h-4 w-4"
+                                                                aria-hidden="true"
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                moveLeg(
+                                                                    scenario.id,
+                                                                    legIndex,
+                                                                    "up"
+                                                                )
+                                                            }
+                                                            disabled={legIndex === 0}
+                                                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                                            aria-label={`Move ${
+                                                                scenario.transportMode ===
+                                                                "airplane"
+                                                                    ? "flight"
+                                                                    : "segment"
+                                                            } ${legIndex + 1} earlier`}
+                                                            title="Move earlier"
+                                                        >
+                                                            ↑
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                moveLeg(
+                                                                    scenario.id,
+                                                                    legIndex,
+                                                                    "down"
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                legIndex ===
+                                                                scenario.legs.length - 1
+                                                            }
+                                                            className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                                            aria-label={`Move ${
+                                                                scenario.transportMode ===
+                                                                "airplane"
+                                                                    ? "flight"
+                                                                    : "segment"
+                                                            } ${legIndex + 1} later`}
+                                                            title="Move later"
+                                                        >
+                                                            ↓
+                                                        </button>
+                                                    </div>
+                                                ) : null}
                                             </div>
 
                                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1643,7 +2331,7 @@ export default function JourneyPlanningTab({
                                                     Calculated flight duration
                                                 </p>
                                                 <p className="mt-1 text-lg font-black text-white">
-                                                    {durationLabel || "Add flight times"}
+                                                    {durationDisplayLabel}
                                                 </p>
                                                 <p className="mt-2 text-sm font-black text-lime-100">
                                                     {formatScenarioPrice(
@@ -1654,7 +2342,7 @@ export default function JourneyPlanningTab({
                                             </div>
 
                                         </fieldset>
-                                        {scenario.legs[legIndex + 1] ? (
+                                        {shouldShowLayover ? (
                                             <div
                                                 key={`${scenario.id}-${legIndex}-layover`}
                                                 className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3"
@@ -1676,7 +2364,27 @@ export default function JourneyPlanningTab({
                             </div>
 
                             <div className="mt-5 flex flex-col gap-3">
-                                <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-[1.25rem] border border-lime-300/20 bg-[#0c0115]/70 p-4">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-lime-200">
+                                        Total price across all legs
+                                    </p>
+                                    <p className="mt-1 text-2xl font-black text-white">
+                                        {formatScenarioPrice(
+                                            scenarioTotalCost,
+                                            scenarioCurrency
+                                        )}
+                                    </p>
+                                    {scenario.legs.some((leg) => leg.cost.trim()) ? (
+                                        <p className="mt-1 text-xs font-semibold text-slate-400">
+                                            Includes outbound
+                                            {scenario.isRoundTrip
+                                                ? " and return"
+                                                : ""}{" "}
+                                            legs.
+                                        </p>
+                                    ) : null}
+                                </div>
+                                <div className="space-y-3">
                                     <ScenarioListEditor
                                         title="Pros"
                                         placeholder="What makes this option strong?"
@@ -1724,6 +2432,62 @@ export default function JourneyPlanningTab({
                                         }
                                     />
                                 </div>
+                                {isSelected &&
+                                addedTransportationId &&
+                                undoJourneyTransportationAction ? (
+                                    <div className="rounded-[1.25rem] border border-lime-300/25 bg-lime-300/10 p-3">
+                                        <p className="text-sm font-black text-lime-100">
+                                            This plan has been added to your itinerary.
+                                        </p>
+                                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-300">
+                                            Undoing will remove the associated flights
+                                            from the itinerary and make the other
+                                            scenarios selectable again.
+                                        </p>
+                                        {pendingUndoScenarioId === scenario.id ? (
+                                            <div className="mt-3 rounded-2xl border border-red-300/20 bg-red-400/10 p-3">
+                                                <p className="text-sm font-bold text-red-50">
+                                                    Remove these associated flights
+                                                    from the itinerary?
+                                                </p>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    <button
+                                                        type="submit"
+                                                        formAction={
+                                                            undoJourneyTransportationAction
+                                                        }
+                                                        className="rounded-full bg-red-300 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-950 transition hover:bg-red-200"
+                                                    >
+                                                        Confirm undo
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setPendingUndoScenarioId(
+                                                                null
+                                                            )
+                                                        }
+                                                        className="rounded-full border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-200 transition hover:bg-white/10"
+                                                    >
+                                                        Keep itinerary item
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setPendingUndoScenarioId(
+                                                        scenario.id
+                                                    )
+                                                }
+                                                className="mt-3 rounded-full border border-lime-300/35 px-4 py-2 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
+                                            >
+                                                Undo add to itinerary
+                                            </button>
+                                        )}
+                                    </div>
+                                ) : null}
                                 <button
                                     type="submit"
                                     disabled={!scenarioReady || Boolean(selectedScenarioId)}
@@ -1739,12 +2503,187 @@ export default function JourneyPlanningTab({
             <div className="mt-5 flex justify-center">
                 <button
                     type="button"
-                    onClick={addScenario}
+                    onClick={openAddScenarioModal}
                     className="rounded-full border border-lime-300/40 bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/60"
                 >
                     Add scenario
                 </button>
             </div>
+            {scenarioModalDraft ? (
+                <AnimatedModal
+                    onClose={closeScenarioModal}
+                    labelledBy="journey-scenario-modal-title"
+                    panelClassName="max-w-3xl"
+                >
+                    {({ requestClose }) => {
+                        const draftOutboundLegCount =
+                            getOutboundLegCount(scenarioModalDraft);
+                        const draftFlightStructureValue = String(
+                            Math.min(Math.max(draftOutboundLegCount, 1), 4)
+                        );
+
+                        return (
+                            <>
+                                <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                    <div>
+                                        <p className="vaivia-modal-eyebrow">
+                                            Journey planning
+                                        </p>
+                                        <h2
+                                            id="journey-scenario-modal-title"
+                                            className="vaivia-modal-title"
+                                        >
+                                            {scenarioModalMode === "edit"
+                                                ? "Edit scenario"
+                                                : "Add scenario"}
+                                        </h2>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={requestClose}
+                                        className="vaivia-modal-close"
+                                        aria-label="Close scenario modal"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                                <div className="vaivia-modal-body space-y-5">
+                                    <label className="block">
+                                        <span className="block text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            Scenario name
+                                        </span>
+                                        <input
+                                            value={scenarioModalDraft.label}
+                                            onChange={(event) =>
+                                                updateScenarioDraftFields({
+                                                    label: event.target.value,
+                                                })
+                                            }
+                                            className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                            {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                        />
+                                    </label>
+
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <StyledOptionPicker
+                                            label="Transport type"
+                                            value={scenarioModalDraft.transportMode}
+                                            options={PLANNING_TRANSPORT_MODES}
+                                            onChange={(value) =>
+                                                updateScenarioDraftFields({
+                                                    transportMode:
+                                                        value as PlanningTransportMode,
+                                                })
+                                            }
+                                        />
+                                        <StyledOptionPicker
+                                            label="Flight structure"
+                                            value={draftFlightStructureValue}
+                                            options={FLIGHT_STRUCTURE_OPTIONS}
+                                            onChange={(value) =>
+                                                setScenarioDraftLegCount(
+                                                    Number(value)
+                                                )
+                                            }
+                                        />
+                                    </div>
+
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <label className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-white/10 bg-[#0c0115]/90 px-3 py-2 text-sm font-black text-slate-100 shadow-xl shadow-black/20 transition hover:border-lime-300/35 hover:bg-white/[0.08]">
+                                            <input
+                                                type="checkbox"
+                                                checked={scenarioModalDraft.isRoundTrip}
+                                                onChange={(event) =>
+                                                    setScenarioDraftRoundTrip(
+                                                        event.target.checked
+                                                    )
+                                                }
+                                                className="h-4 w-4 accent-lime-300"
+                                            />
+                                            Roundtrip
+                                        </label>
+                                        {scenarioModalDraft.isRoundTrip ? (
+                                            <StyledOptionPicker
+                                                label="Return connections"
+                                                value={String(
+                                                    scenarioModalDraft.returnLegCount
+                                                )}
+                                                options={FLIGHT_STRUCTURE_OPTIONS}
+                                                onChange={(value) =>
+                                                    setScenarioDraftReturnLegCount(
+                                                        Number(value)
+                                                    )
+                                                }
+                                            />
+                                        ) : null}
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <ScenarioListEditor
+                                            title="Pros"
+                                            placeholder="What makes this option strong?"
+                                            items={scenarioModalDraft.pros}
+                                            onAdd={() =>
+                                                addScenarioDraftListItem("pros")
+                                            }
+                                            onRemove={(index) =>
+                                                removeScenarioDraftListItem(
+                                                    "pros",
+                                                    index
+                                                )
+                                            }
+                                            onChange={(index, value) =>
+                                                updateScenarioDraftListItem(
+                                                    "pros",
+                                                    index,
+                                                    value
+                                                )
+                                            }
+                                        />
+                                        <ScenarioListEditor
+                                            title="Cons"
+                                            placeholder="What tradeoffs should you remember?"
+                                            items={scenarioModalDraft.cons}
+                                            onAdd={() =>
+                                                addScenarioDraftListItem("cons")
+                                            }
+                                            onRemove={(index) =>
+                                                removeScenarioDraftListItem(
+                                                    "cons",
+                                                    index
+                                                )
+                                            }
+                                            onChange={(index, value) =>
+                                                updateScenarioDraftListItem(
+                                                    "cons",
+                                                    index,
+                                                    value
+                                                )
+                                            }
+                                        />
+                                    </div>
+                                </div>
+                                <div className="vaivia-modal-footer flex flex-wrap justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={requestClose}
+                                        className="vaivia-modal-button-secondary"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={saveScenarioModalDraft}
+                                        className="vaivia-modal-button-primary"
+                                    >
+                                        Save scenario
+                                    </button>
+                                </div>
+                            </>
+                        );
+                    }}
+                </AnimatedModal>
+            ) : null}
         </section>
     );
 }
