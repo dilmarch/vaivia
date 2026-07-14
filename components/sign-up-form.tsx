@@ -7,17 +7,60 @@ import { useMemo, useState } from "react";
 import {
   ArrowRight,
   Camera,
-  Check,
   Home,
   ImagePlus,
   PlaneTakeoff,
   Stamp,
+  TrainFront,
   Upload,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
-type SignupStep = "account" | "photo" | "start";
+type SignupStep = "account" | "photo" | "invites" | "start";
+
+type OnboardingTripInvitation = {
+  id: string;
+  trip_id: string;
+  trip_title: string;
+  trip_slug: string | null;
+  trip_start_date: string | null;
+  trip_end_date: string | null;
+  invited_by: string;
+  inviter_name: string;
+  invitation_scope: string | null;
+  invited_start_date: string | null;
+  invited_end_date: string | null;
+};
+
+type OnboardingInviteClient = {
+  rpc: (
+    functionName: "claim_pending_trip_invitations_for_current_user"
+  ) => Promise<{ data: OnboardingTripInvitation[] | null; error: Error | null }>;
+} & {
+  rpc: (
+    functionName: "accept_trip_invitation_with_scope",
+    args: {
+      target_invitation_id: string;
+      target_confirmed_start_date: string | null;
+      target_confirmed_end_date: string | null;
+      target_personal_start_date: string | null;
+      target_personal_end_date: string | null;
+      target_joining_leg_ids: string[] | null;
+    }
+  ) => Promise<{ data: string | null; error: Error | null }>;
+} & {
+  rpc: (
+    functionName: "decline_trip_invitation",
+    args: { invitation_id: string }
+  ) => Promise<{ data: null; error: Error | null }>;
+};
+
+type SignupConsentClient = {
+  rpc: (
+    functionName: "accept_current_terms"
+  ) => Promise<{ data: string | null; error: Error | null }>;
+};
 
 function getAvatarExtension(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
@@ -31,6 +74,40 @@ function getAvatarExtension(file: File) {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function getPasswordValidationError({
+  password,
+  email,
+  username,
+}: {
+  password: string;
+  email: string;
+  username: string;
+}) {
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (!/[A-Z]/.test(password)) {
+    return "Password must include at least one capital letter.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must include at least one lowercase letter.";
+  }
+  if (!/[0-9]/.test(password)) return "Password must include at least one number.";
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Password must include at least one special character.";
+  }
+  if (/\s/.test(password)) return "Password cannot contain spaces.";
+
+  const normalizedPassword = password.toLowerCase();
+  if (username && normalizedPassword.includes(username.toLowerCase())) {
+    return "Password cannot contain your username.";
+  }
+  const emailName = email.split("@")[0]?.toLowerCase() || "";
+  if (emailName && normalizedPassword.includes(emailName)) {
+    return "Password cannot contain the first part of your email address.";
+  }
+
+  return "";
 }
 
 export function SignUpForm({
@@ -51,6 +128,11 @@ export function SignUpForm({
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
+  const [pendingInvitations, setPendingInvitations] = useState<
+    OnboardingTripInvitation[]
+  >([]);
+  const [acceptedInvitation, setAcceptedInvitation] =
+    useState<OnboardingTripInvitation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -59,6 +141,47 @@ export function SignUpForm({
     const name = [firstName, lastName].filter(Boolean).join(" ").trim();
     return name || username || "Traveller";
   }, [firstName, lastName, username]);
+  const passwordCriteria = useMemo(
+    () => [
+      {
+        label: "At least 8 characters",
+        met: password.length >= 8,
+      },
+      {
+        label: "1 capital letter",
+        met: /[A-Z]/.test(password),
+      },
+      {
+        label: "1 lowercase letter",
+        met: /[a-z]/.test(password),
+      },
+      {
+        label: "1 number",
+        met: /[0-9]/.test(password),
+      },
+      {
+        label: "1 special character",
+        met: /[^A-Za-z0-9]/.test(password),
+      },
+      {
+        label: "No spaces or obvious account details",
+        met:
+          password.length > 0 &&
+          !/\s/.test(password) &&
+          !(
+            username.trim() &&
+            password.toLowerCase().includes(username.trim().toLowerCase())
+          ) &&
+          !(
+            email.trim().split("@")[0] &&
+            password
+              .toLowerCase()
+              .includes(email.trim().split("@")[0].toLowerCase())
+          ),
+      },
+    ],
+    [email, password, username]
+  );
 
   async function seedProfile({
     nextUserId,
@@ -83,6 +206,7 @@ export function SignUpForm({
         terms_accepted_at: now,
         marketing_emails_consent: marketingConsent,
         marketing_emails_consented_at: marketingConsent ? now : null,
+        marketing_emails_consent_decided_at: now,
         onboarding_completed_at: onboardingCompleted ? now : null,
         updated_at: now,
       },
@@ -90,12 +214,30 @@ export function SignUpForm({
     );
 
     if (profileError) throw profileError;
+
+    const { error: termsError } = await (
+      supabase as unknown as SignupConsentClient
+    ).rpc("accept_current_terms");
+    if (termsError) throw termsError;
   }
 
   async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setStatusMessage(null);
+
+    const cleanEmail = email.trim();
+    const cleanUsername = username.trim();
+    const passwordError = getPasswordValidationError({
+      password,
+      email: cleanEmail,
+      username: cleanUsername,
+    });
+
+    if (passwordError) {
+      setError(passwordError);
+      return;
+    }
 
     if (password !== repeatPassword) {
       setError("Passwords do not match.");
@@ -113,8 +255,6 @@ export function SignUpForm({
       const now = new Date().toISOString();
       const cleanFirstName = firstName.trim();
       const cleanLastName = lastName.trim();
-      const cleanUsername = username.trim();
-      const cleanEmail = email.trim();
       const supabase = createClient();
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: cleanEmail,
@@ -129,6 +269,7 @@ export function SignUpForm({
             username: cleanUsername,
             marketing_emails_consent: marketingConsent,
             marketing_emails_consented_at: marketingConsent ? now : null,
+            marketing_emails_consent_decided_at: now,
             terms_accepted_at: now,
           },
         },
@@ -137,16 +278,27 @@ export function SignUpForm({
       if (signUpError) throw signUpError;
 
       const nextUserId = data.user?.id || null;
-      setUserId(nextUserId);
-      setHasActiveSession(Boolean(data.session));
+      let hasSession = Boolean(data.session);
 
-      if (nextUserId && data.session) {
-        await seedProfile({ nextUserId });
-      } else {
-        setStatusMessage(
-          "Account created. Confirm your email to finish activating VAIVIA."
-        );
+      if (nextUserId && !hasSession) {
+        const { data: signInData, error: signInError } =
+          await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+
+        if (!signInError && signInData.session) {
+          hasSession = true;
+        }
       }
+
+      setUserId(nextUserId);
+      setHasActiveSession(hasSession);
+
+      if (nextUserId && hasSession) {
+        await seedProfile({ nextUserId });
+      }
+      setStatusMessage(null);
 
       setStep("photo");
     } catch (error) {
@@ -181,6 +333,25 @@ export function SignUpForm({
     return data.publicUrl || null;
   }
 
+  async function loadPendingTripInvitations() {
+    if (!hasActiveSession) return [];
+
+    const supabase = createClient();
+    const { data, error } = await (supabase as unknown as OnboardingInviteClient).rpc(
+      "claim_pending_trip_invitations_for_current_user"
+    );
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function advanceAfterPhoto() {
+    const invitations = await loadPendingTripInvitations();
+    setPendingInvitations(invitations);
+    setAcceptedInvitation(null);
+    setStep(invitations.length > 0 ? "invites" : "start");
+  }
+
   async function handlePhotoNext() {
     setError(null);
     setIsLoading(true);
@@ -194,7 +365,7 @@ export function SignUpForm({
           onboardingCompleted: true,
         });
       }
-      setStep("start");
+      await advanceAfterPhoto();
     } catch (error) {
       setError(getErrorMessage(error));
     } finally {
@@ -202,9 +373,142 @@ export function SignUpForm({
     }
   }
 
-  function goTo(path: string) {
-    router.push(path);
+  async function handlePhotoSkip() {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      await advanceAfterPhoto();
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
   }
+
+  async function handleAcceptInvitation(invitation: OnboardingTripInvitation) {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const supabase = createClient();
+      const { error } = await (supabase as unknown as OnboardingInviteClient).rpc(
+        "accept_trip_invitation_with_scope",
+        {
+          target_invitation_id: invitation.id,
+          target_confirmed_start_date: invitation.invited_start_date || null,
+          target_confirmed_end_date: invitation.invited_end_date || null,
+          target_personal_start_date: invitation.invited_start_date || null,
+          target_personal_end_date: invitation.invited_end_date || null,
+          target_joining_leg_ids: null,
+        }
+      );
+
+      if (error) throw error;
+
+      setAcceptedInvitation(invitation);
+      setPendingInvitations((current) =>
+        current.filter((item) => item.id !== invitation.id)
+      );
+      setStatusMessage(`You joined ${invitation.trip_title}.`);
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleDeclineInvitation(invitationId: string) {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const supabase = createClient();
+      const { error } = await (supabase as unknown as OnboardingInviteClient).rpc(
+        "decline_trip_invitation",
+        { invitation_id: invitationId }
+      );
+
+      if (error) throw error;
+
+      setPendingInvitations((current) =>
+        current.filter((item) => item.id !== invitationId)
+      );
+      setStatusMessage("Invite declined.");
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  function formatTripDates(invitation: OnboardingTripInvitation) {
+    const start = invitation.invited_start_date || invitation.trip_start_date;
+    const end = invitation.invited_end_date || invitation.trip_end_date;
+    if (start && end) return `${start} - ${end}`;
+    if (start) return start;
+    return "Dates to be confirmed";
+  }
+
+  function getTripHref(invitation: OnboardingTripInvitation) {
+    return `/trips/${encodeURIComponent(invitation.trip_slug || invitation.trip_id)}`;
+  }
+
+  function goToAcceptedTrip(invitation: OnboardingTripInvitation) {
+    window.localStorage.setItem("vaivia:show-finish-onboarding-options", "true");
+    void goTo(getTripHref(invitation));
+  }
+
+  async function ensureOnboardingSession() {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (session) {
+      setHasActiveSession(true);
+      return true;
+    }
+
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) return false;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+
+    if (error || !data.session) return false;
+
+    setHasActiveSession(true);
+    setUserId(data.user?.id || userId);
+    return true;
+  }
+
+  async function goTo(path: string) {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const hasSession = await ensureOnboardingSession();
+      if (!hasSession) {
+        setError(
+          "Your account was created, but VAIVIA needs you to sign in once before opening that page."
+        );
+        return;
+      }
+
+      router.refresh();
+      router.push(path);
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const onboardingStation =
+    step === "account" ? 0 : step === "photo" ? 1 : 2;
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
@@ -218,6 +522,8 @@ export function SignUpForm({
               ? "Create your account"
               : step === "photo"
                 ? "Add your profile photo"
+                : step === "invites"
+                  ? "Trip invitation"
                 : "Get started in VAIVIA"}
           </h1>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">
@@ -225,34 +531,47 @@ export function SignUpForm({
               ? "Tell us who you are so your trips feel personal from day one."
               : step === "photo"
                 ? "Add a profile photo now, or skip it and come back later."
+                : step === "invites"
+                  ? "Review trips you were invited to before choosing where to begin."
                 : `Welcome, ${displayName}. Pick where you want to begin.`}
           </p>
         </div>
 
         <div className="p-6">
-          <div className="mb-6 grid grid-cols-3 gap-2">
-            {["Account", "Photo", "Start"].map((label, index) => {
-              const isActive =
-                (step === "account" && index === 0) ||
-                (step === "photo" && index === 1) ||
-                (step === "start" && index === 2);
-              const isDone =
-                (step === "photo" && index === 0) ||
-                (step === "start" && index < 2);
-
-              return (
+          <div className="mb-6 rounded-[1.75rem] border border-white/10 bg-white/[0.05] px-5 py-5">
+            <div className="relative mx-auto h-14 max-w-md">
+              <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/10">
                 <div
-                  key={label}
-                  className={`rounded-2xl border px-3 py-2 text-center text-xs font-black uppercase tracking-[0.12em] ${
-                    isActive || isDone
-                      ? "border-lime-300/35 bg-lime-300 text-slate-950"
-                      : "border-white/10 bg-white/[0.06] text-slate-400"
-                  }`}
-                >
-                  {isDone ? <Check className="mx-auto h-4 w-4" /> : label}
-                </div>
-              );
-            })}
+                  className="h-full rounded-full bg-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.42)] transition-all duration-700 ease-out"
+                  style={{ width: `${onboardingStation * 50}%` }}
+                />
+              </div>
+              <div className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-between">
+                {[0, 1, 2].map((station) => (
+                  <span
+                    key={station}
+                    className={`h-4 w-4 rounded-full border transition ${
+                      station <= onboardingStation
+                        ? "border-lime-200 bg-lime-300 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.45)]"
+                        : "border-white/20 bg-slate-950"
+                    }`}
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+              <div
+                className="absolute top-1/2 z-10 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl border border-lime-300/40 bg-slate-950 text-lime-200 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.32)] transition-all duration-700 ease-out"
+                style={{ left: `${onboardingStation * 50}%` }}
+                aria-label={`Onboarding step ${onboardingStation + 1} of 3`}
+              >
+                <TrainFront className="h-5 w-5" aria-hidden="true" />
+              </div>
+            </div>
+            {step === "start" ? (
+              <p className="mt-3 text-center text-sm font-black text-lime-100">
+                You&apos;ve arrived. Welcome to VAIVIA!
+              </p>
+            ) : null}
           </div>
 
           {step === "account" ? (
@@ -322,7 +641,7 @@ export function SignUpForm({
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     required
-                    minLength={6}
+                    minLength={8}
                     type="password"
                     className="mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/90 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-lime-300/55"
                     autoComplete="new-password"
@@ -336,12 +655,34 @@ export function SignUpForm({
                     value={repeatPassword}
                     onChange={(event) => setRepeatPassword(event.target.value)}
                     required
-                    minLength={6}
+                    minLength={8}
                     type="password"
                     className="mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/90 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-lime-300/55"
                     autoComplete="new-password"
                   />
                 </label>
+                <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-4 sm:col-span-2">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-lime-200/80">
+                    Password must include
+                  </p>
+                  <div className="mt-3 grid gap-2 text-xs font-bold sm:grid-cols-2">
+                    {passwordCriteria.map((criterion) => (
+                      <div
+                        key={criterion.label}
+                        className={
+                          criterion.met
+                            ? "text-lime-100"
+                            : "text-slate-500"
+                        }
+                      >
+                        <span aria-hidden="true">
+                          {criterion.met ? "✓" : "•"}
+                        </span>{" "}
+                        {criterion.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.06] p-4">
@@ -351,10 +692,18 @@ export function SignUpForm({
                     checked={acceptedTerms}
                     onChange={(event) => setAcceptedTerms(event.target.checked)}
                     className="mt-1 h-4 w-4 rounded border-white/20 accent-lime-300"
-                    required
                   />
                   <span>
-                    I agree to VAIVIA&apos;s terms and conditions.
+                    I agree to VAIVIA&apos;s{" "}
+                    <Link
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-black text-lime-100 underline decoration-lime-300/50 underline-offset-4"
+                    >
+                      terms and conditions
+                    </Link>
+                    .
                   </span>
                 </label>
                 <label className="flex items-start gap-3 text-sm font-semibold text-slate-300">
@@ -409,12 +758,6 @@ export function SignUpForm({
                   Your photo appears beside trip votes, shared trips, and your
                   VAIVIA profile.
                 </p>
-                {!hasActiveSession ? (
-                  <p className="mt-3 max-w-sm rounded-2xl border border-amber-300/30 bg-amber-300/10 p-3 text-xs font-bold text-amber-100">
-                    Confirm your email before uploading a photo. You can skip for
-                    now and add it from My account later.
-                  </p>
-                ) : null}
                 <label className="mt-5 inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-5 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]">
                   <ImagePlus className="h-4 w-4" aria-hidden="true" />
                   Choose photo
@@ -422,7 +765,6 @@ export function SignUpForm({
                     type="file"
                     accept="image/*"
                     className="sr-only"
-                    disabled={!hasActiveSession}
                     onChange={(event) =>
                       handleAvatarFileChange(event.target.files?.[0] || null)
                     }
@@ -444,12 +786,107 @@ export function SignUpForm({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStep("start")}
+                  onClick={handlePhotoSkip}
+                  disabled={isLoading}
                   className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
                 >
                   Skip
                 </button>
               </div>
+            </div>
+          ) : null}
+
+          {step === "invites" ? (
+            <div className="space-y-4">
+              {statusMessage ? (
+                <p className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm font-bold text-lime-100">
+                  {statusMessage}
+                </p>
+              ) : null}
+
+              {acceptedInvitation ? (
+                <div className="rounded-[1.5rem] border border-lime-300/30 bg-lime-300/10 p-5">
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                    You’re going
+                  </p>
+                  <h2 className="mt-2 text-2xl font-black text-white">
+                    {acceptedInvitation.trip_title}
+                  </h2>
+                  <p className="mt-1 text-sm font-semibold text-slate-300">
+                    {formatTripDates(acceptedInvitation)}
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => goToAcceptedTrip(acceptedInvitation)}
+                      className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-lime-300 px-6 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                    >
+                      Go to trip
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStep("start")}
+                      className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
+                    >
+                      Later
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {pendingInvitations.length > 0 ? (
+                pendingInvitations.map((invitation) => (
+                  <div
+                    key={invitation.id}
+                    className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5"
+                  >
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                      Trip invite
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black text-white">
+                      {invitation.trip_title}
+                    </h2>
+                    <p className="mt-1 text-sm font-semibold text-slate-300">
+                      {formatTripDates(invitation)}
+                    </p>
+                    <p className="mt-3 text-sm font-semibold leading-6 text-slate-400">
+                      {invitation.inviter_name} invited you to join this trip.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => handleAcceptInvitation(invitation)}
+                        className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-lime-300 px-6 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isLoading}
+                        onClick={() => handleDeclineInvitation(invitation.id)}
+                        className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))
+              ) : !acceptedInvitation ? (
+                <p className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 text-sm font-bold text-slate-300">
+                  No pending trip invites left.
+                </p>
+              ) : null}
+
+              {error ? <p className="text-sm font-bold text-red-200">{error}</p> : null}
+
+              <button
+                type="button"
+                onClick={() => setStep("start")}
+                className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
+              >
+                Continue to other options
+              </button>
             </div>
           ) : null}
 
@@ -462,7 +899,7 @@ export function SignUpForm({
               ) : null}
               <button
                 type="button"
-                onClick={() => goTo("/trips/new")}
+                onClick={() => void goTo("/trips/new")}
                 className="flex w-full items-center gap-4 rounded-[1.35rem] border border-lime-300/25 bg-lime-300 p-4 text-left text-slate-950 shadow-[0_0_30px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:-translate-y-0.5 hover:bg-lime-200"
               >
                 <PlaneTakeoff className="h-6 w-6 shrink-0" aria-hidden="true" />
@@ -475,7 +912,7 @@ export function SignUpForm({
               </button>
               <button
                 type="button"
-                onClick={() => goTo("/profile")}
+                onClick={() => void goTo("/profile")}
                 className="flex w-full items-center gap-4 rounded-[1.35rem] border border-white/10 bg-white/[0.08] p-4 text-left text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
               >
                 <Stamp className="h-6 w-6 shrink-0 text-lime-200" aria-hidden="true" />
@@ -490,7 +927,7 @@ export function SignUpForm({
               </button>
               <button
                 type="button"
-                onClick={() => goTo("/")}
+                onClick={() => void goTo("/")}
                 className="flex w-full items-center gap-4 rounded-[1.35rem] border border-white/10 bg-white/[0.08] p-4 text-left text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
               >
                 <Home className="h-6 w-6 shrink-0 text-lime-200" aria-hidden="true" />

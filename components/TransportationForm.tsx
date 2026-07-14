@@ -2,6 +2,7 @@
 
 import { AlertTriangle, GripVertical, Lock, Plus, Trash2, X } from "lucide-react";
 import Script from "next/script";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     getAirlineLogoUrl,
@@ -256,6 +257,8 @@ export default function TransportationForm({
     audienceOptions = [],
     currentUserTripMemberId = null,
 }: TransportationFormProps) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const initialMode = getInitialMode(initialItem);
     const [mode, setMode] = useState(initialMode);
     const [audienceMode, setAudienceMode] = useState(
@@ -324,6 +327,10 @@ export default function TransportationForm({
     const effectiveArrivalLocation = isTaxiOrCarMode
         ? lastRouteStop
         : lastLeg.arrivalLocation;
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
 
     useEffect(() => {
         flightLegsRef.current = flightLegs;
@@ -656,7 +663,7 @@ export default function TransportationForm({
                     onClick={(event) => event.stopPropagation()}
                 >
                     <div className="vaivia-modal-header flex min-h-32 items-center gap-4">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/90 text-3xl text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.12)]">
+                        <div className="vaivia-transport-light-card flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/90 text-3xl text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.12)]">
                             {mode === "airplane" && logoUrl ? (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img
@@ -699,6 +706,7 @@ export default function TransportationForm({
                         onChange={() => setHasUnsavedChanges(true)}
                     >
                         <input type="hidden" name="trip_id" value={tripId} />
+                        <input type="hidden" name="return_to" value={returnTo} />
                         <input type="hidden" name="transportation_mode" value={mode} />
                         <input type="hidden" name="flight_leg_count" value={flightLegs.length} />
                         <input

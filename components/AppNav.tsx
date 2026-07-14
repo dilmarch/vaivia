@@ -6,6 +6,7 @@ import AuthenticatedActivityRecorder from "@/components/AuthenticatedActivityRec
 import AppSidebarNav from "@/components/AppSidebarNav";
 import AppTopActionBar, { type AppNotification } from "@/components/AppTopActionBar";
 import GlobalQuickAdd from "@/components/GlobalQuickAdd";
+import TermsConsentGate from "@/components/TermsConsentGate";
 import { loadActiveDropdownNotifications } from "@/lib/notifications/dropdown";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
@@ -147,6 +148,7 @@ export default async function AppNav() {
     return (
         <>
             {user ? <AuthenticatedActivityRecorder /> : null}
+            {user ? <TermsConsentGate userId={user.id} /> : null}
             <AccountThemeSync
                 userId={user?.id || null}
                 themeMode={preferences?.theme_mode || null}
@@ -164,6 +166,7 @@ export default async function AppNav() {
                     <AppTopActionBar
                         trips={upcomingTrips}
                         notifications={notifications}
+                        isSuperAdmin={profile?.role === "super_admin"}
                     />
                     <GlobalQuickAdd trips={upcomingTrips} />
                 </>

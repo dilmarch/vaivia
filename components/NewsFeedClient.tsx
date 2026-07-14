@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type NewsFeedMode = "integrated" | "widget";
 
-type NewsFeedReaction = {
+export type NewsFeedReaction = {
     post_key: string;
     emoji: string;
     user_id: string;
@@ -22,7 +22,7 @@ type NewsFeedPost = {
     borderClass: string;
 };
 
-type StoredNewsFeedPost = {
+export type StoredNewsFeedPost = {
     post_key: string;
     post_type: string;
     title: string;
@@ -37,6 +37,24 @@ type NewsFeedClientProps = {
     hasFriends: boolean;
     initialReactions: NewsFeedReaction[];
     initialPosts?: StoredNewsFeedPost[];
+};
+
+type NewsFeedReactionClient = {
+    from: (table: "news_feed_reactions") => {
+        delete: () => {
+            eq: (column: string, value: string) => {
+                eq: (column: string, value: string) => {
+                    eq: (
+                        column: string,
+                        value: string
+                    ) => Promise<{ error: unknown }>;
+                };
+            };
+        };
+        insert: (
+            value: NewsFeedReaction
+        ) => Promise<{ error: unknown }>;
+    };
 };
 
 const POSTS: NewsFeedPost[] = [
@@ -212,8 +230,8 @@ export default function NewsFeedClient({
                         )
                 )
             );
-            await supabase
-                .from("news_feed_reactions" as any)
+            await (supabase as unknown as NewsFeedReactionClient)
+                .from("news_feed_reactions")
                 .delete()
                 .eq("post_key", postKey)
                 .eq("emoji", emoji)
@@ -223,8 +241,8 @@ export default function NewsFeedClient({
                 ...current,
                 { post_key: postKey, emoji, user_id: userId },
             ]);
-            await supabase
-                .from("news_feed_reactions" as any)
+            await (supabase as unknown as NewsFeedReactionClient)
+                .from("news_feed_reactions")
                 .insert({ post_key: postKey, emoji, user_id: userId });
         }
     }

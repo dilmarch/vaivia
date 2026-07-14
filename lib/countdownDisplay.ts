@@ -80,6 +80,8 @@ function getMixedCountdownParts(differenceMs: number) {
     ].filter(
         (part, index, parts) =>
             part.value > 0 ||
+            part.unit === "day" ||
+            part.unit === "days" ||
             part.unit === "hour" ||
             part.unit === "hours" ||
             index === parts.length - 1

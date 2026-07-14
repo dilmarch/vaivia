@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import TermsFooterLink from "@/components/TermsFooterLink";
 
 type AppLayoutShellProps = {
     children: ReactNode;
@@ -18,11 +19,18 @@ export default function AppLayoutShell({ children, nav }: AppLayoutShellProps) {
             <div
                 className={
                     isAuthRoute
-                        ? "min-h-screen"
-                        : "min-h-screen pb-[calc(6.25rem+var(--safe-area-bottom))] md:pb-0 md:pl-24"
+                        ? "min-h-screen pb-8"
+                        : "min-h-screen pb-[calc(8.5rem+var(--safe-area-bottom))] md:pb-8 md:pl-24"
                 }
             >
                 {children}
+                <TermsFooterLink
+                    className={
+                        isAuthRoute
+                            ? "-mt-8 pb-8"
+                            : "pb-[calc(1rem+var(--safe-area-bottom))] md:pb-0"
+                    }
+                />
             </div>
         </>
     );

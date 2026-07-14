@@ -11,6 +11,7 @@ import {
     ChevronsUp,
     Home,
     Map,
+    Megaphone,
     MoreHorizontal,
     Newspaper,
     PiggyBank,
@@ -25,6 +26,10 @@ import AccountMenu, {
     type UserPreferences,
     type UserProfile,
 } from "@/components/AccountMenu";
+import {
+    getEffectiveIsSuperAdmin,
+    useRolePreview,
+} from "@/components/admin/useRolePreview";
 import SidebarLogoutButton from "@/components/SidebarLogoutButton";
 
 type AppSidebarNavProps = {
@@ -79,11 +84,21 @@ function getAdminStatsItem(): NavItem {
     };
 }
 
+function getAdminMarketingItem(): NavItem {
+    return {
+        label: "Marketing",
+        href: "/admin/marketing",
+        icon: Megaphone,
+        match: (currentPathname) => currentPathname.startsWith("/admin/marketing"),
+    };
+}
+
 function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
     const currentTripId = getCurrentTripId(pathname);
     const tripHref = currentTripId ? `/trips/${currentTripId}` : undefined;
     const showAdminUsers = isSuperAdmin && pathname.startsWith("/admin");
     const showAdminStats = isSuperAdmin && pathname.startsWith("/admin");
+    const showAdminMarketing = isSuperAdmin && pathname.startsWith("/admin");
 
     if (!tripHref) {
         const items: NavItem[] = [
@@ -93,12 +108,15 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
                 icon: Home,
                 match: (currentPathname) => currentPathname === "/",
             },
-            {
+            ...(isSuperAdmin
+                ? [{
                 label: "News Feed",
                 href: "/news-feed",
                 icon: Newspaper,
-                match: (currentPathname) => currentPathname.startsWith("/news-feed"),
-            },
+                match: (currentPathname: string) =>
+                    currentPathname.startsWith("/news-feed"),
+            }]
+                : []),
             {
                 label: "Travel Assistant",
                 icon: Bot,
@@ -108,6 +126,7 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
 
         if (showAdminStats) items.push(getAdminStatsItem());
         if (showAdminUsers) items.push(getAdminUsersItem());
+        if (showAdminMarketing) items.push(getAdminMarketingItem());
         return items;
     }
 
@@ -118,12 +137,14 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
             icon: Home,
             match: (pathname) => pathname === "/",
         },
-        {
+        ...(isSuperAdmin
+            ? [{
             label: "News Feed",
             href: "/news-feed",
             icon: Newspaper,
-            match: (pathname) => pathname.startsWith("/news-feed"),
-        },
+            match: (pathname: string) => pathname.startsWith("/news-feed"),
+        }]
+            : []),
         {
             label: "Itinerary",
             href: tripHref,
@@ -177,6 +198,7 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
 
     if (showAdminStats) items.push(getAdminStatsItem());
     if (showAdminUsers) items.push(getAdminUsersItem());
+    if (showAdminMarketing) items.push(getAdminMarketingItem());
     return items;
 }
 
@@ -268,11 +290,17 @@ export default function AppSidebarNav({
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const tab = searchParams.get("tab") || "";
-    const isSuperAdmin = profile?.role === "super_admin";
+    const realIsSuperAdmin = profile?.role === "super_admin";
+    const previewRole = useRolePreview(realIsSuperAdmin);
+    const isSuperAdmin = getEffectiveIsSuperAdmin({
+        realIsSuperAdmin,
+        previewRole,
+    });
     const navItems = getNavItems(pathname, isSuperAdmin);
     const adminItem = getAdminItem();
     const adminUsersItem = getAdminUsersItem();
     const adminStatsItem = getAdminStatsItem();
+    const adminMarketingItem = getAdminMarketingItem();
     const newsFeedItem = navItems.find((item) => item.label === "News Feed");
     const isAdminRoute = pathname.startsWith("/admin");
     const [mobileMenu, setMobileMenu] = useState<"view" | "more" | null>(null);
@@ -295,12 +323,14 @@ export default function AppSidebarNav({
                   adminItem,
                   adminStatsItem,
                   adminUsersItem,
+                  adminMarketingItem,
               ]
             : [
                   ...(isSuperAdmin ? [adminItem] : []),
                   ...(isSuperAdmin && isAdminRoute
                       ? [adminStatsItem, adminUsersItem]
                       : []),
+                  ...(isSuperAdmin && isAdminRoute ? [adminMarketingItem] : []),
               ];
 
     useEffect(() => {

@@ -176,9 +176,8 @@ export default function TripMembersPanel({
             }
 
             const supabase = createClient();
-            const { data, error } = await (supabase.from as any)(
-                "user_friendships"
-            )
+            const { data, error } = await supabase
+                .from("user_friendships")
                 .select(
                     "id,requester_user_id,addressee_user_id,status,blocked_by_user_id"
                 )
@@ -380,7 +379,13 @@ export default function TripMembersPanel({
                                         }}
                                         className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] py-1.5 pl-1.5 pr-3 text-left text-white shadow-xl shadow-black/10 transition hover:border-lime-300/30 hover:bg-white/[0.1]"
                                     >
-                                        <span className="relative pb-4">
+                                        <span
+                                            className={
+                                                showPending
+                                                    ? "relative pb-4"
+                                                    : "relative flex h-11 items-center"
+                                            }
+                                        >
                                             <MemberAvatar member={member} />
                                             <span className="absolute inset-x-0 top-0 flex h-11 items-center justify-center rounded-full bg-slate-950/70 opacity-0 transition group-hover/member:opacity-100">
                                                 <Pencil

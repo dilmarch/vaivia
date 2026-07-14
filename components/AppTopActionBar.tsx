@@ -7,6 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import FriendInviteReviewModal from "@/components/FriendInviteReviewModal";
 import PassportStampShareReviewModal from "@/components/PassportStampShareReviewModal";
 import TripInviteReviewModal from "@/components/TripInviteReviewModal";
+import ViewAsRoleSwitcher from "@/components/admin/ViewAsRoleSwitcher";
+import {
+    getRolePreviewLabel,
+    setStoredRolePreview,
+    useRolePreview,
+} from "@/components/admin/useRolePreview";
 import {
     isActionRequiredNotification,
     loadActiveDropdownNotifications,
@@ -24,6 +30,7 @@ type TopNavTrip = {
 type AppTopActionBarProps = {
     trips: TopNavTrip[];
     notifications?: AppNotification[];
+    isSuperAdmin?: boolean;
 };
 
 export type AppNotification = DropdownNotification;
@@ -79,9 +86,11 @@ function getTripSwitchHref({
 export default function AppTopActionBar({
     trips,
     notifications = [],
+    isSuperAdmin = false,
 }: AppTopActionBarProps) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const previewRole = useRolePreview(isSuperAdmin);
     const [openMenu, setOpenMenu] = useState<"trips" | "notifications" | null>(
         null
     );
@@ -99,6 +108,11 @@ export default function AppTopActionBar({
     const dropdownNotificationCount = hasSyncedNotifications
         ? visibleNotifications.length
         : 0;
+
+    function exitRolePreview() {
+        setStoredRolePreview(null);
+        window.location.reload();
+    }
 
     useEffect(() => {
         if (hasSyncedNotifications) return;
@@ -304,6 +318,20 @@ export default function AppTopActionBar({
 
     return (
         <>
+            {previewRole ? (
+                <div className="pointer-events-none fixed left-24 right-0 top-[calc(4.75rem+var(--safe-area-top))] z-[44] hidden justify-center px-8 md:flex">
+                    <div className="pointer-events-auto inline-flex items-center gap-3 rounded-full border border-lime-300/25 bg-slate-950/85 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-lime-100 shadow-2xl shadow-black/30 backdrop-blur-xl">
+                        Viewing as {getRolePreviewLabel(previewRole)}
+                        <button
+                            type="button"
+                            onClick={exitRolePreview}
+                            className="rounded-full bg-lime-300 px-3 py-1 text-[10px] font-black text-slate-950 transition hover:bg-lime-200"
+                        >
+                            Exit
+                        </button>
+                    </div>
+                </div>
+            ) : null}
             <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-[calc(1rem+var(--safe-area-right))] pt-[calc(1rem+var(--safe-area-top))] md:left-24 md:px-8 md:pt-6">
                 <div
                     ref={wrapperRef}
@@ -317,6 +345,7 @@ export default function AppTopActionBar({
                 >
                     <Home className="h-5 w-5" aria-hidden="true" />
                 </Link>
+                <ViewAsRoleSwitcher isSuperAdmin={isSuperAdmin} />
                 <div
                     className="relative"
                     onMouseLeave={() => {

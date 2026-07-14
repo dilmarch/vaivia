@@ -1,7 +1,8 @@
 "use client";
 
 import { Lock } from "lucide-react";
-import { useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
 import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
@@ -76,6 +77,8 @@ export default function TransportationEditForm({
     moveTargetTrips = [],
     initialItem,
 }: TransportationEditFormProps) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [departureLocation, setDepartureLocation] = useState(
         initialItem.departure_location || ""
     );
@@ -112,6 +115,10 @@ export default function TransportationEditForm({
         endTime: arrivalTime,
         endTimezone: arrivalTimezone,
     });
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
 
     function swapDepartureAndArrival() {
         setDepartureLocation(arrivalLocation);
@@ -126,6 +133,7 @@ export default function TransportationEditForm({
         <form action={submitAction} className="space-y-5 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <input type="hidden" name="trip_id" value={tripId} />
             <input type="hidden" name="item_id" value={itemId} />
+            <input type="hidden" name="return_to" value={returnTo} />
             <input type="hidden" name="duration" value={duration} />
 
             <TripAudienceSelector

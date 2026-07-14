@@ -21,6 +21,27 @@ function participantValue(participant: TripAudienceOption) {
     return `${participant.kind}:${participant.id}`;
 }
 
+function isCurrentUserParticipant(
+    participant: TripAudienceOption,
+    currentUserTripMemberId?: string | null
+) {
+    return (
+        participant.isCurrentUser ||
+        (participant.kind === "member" &&
+            Boolean(currentUserTripMemberId) &&
+            participant.id === currentUserTripMemberId)
+    );
+}
+
+function getParticipantLabel(
+    participant: TripAudienceOption,
+    currentUserTripMemberId?: string | null
+) {
+    return isCurrentUserParticipant(participant, currentUserTripMemberId)
+        ? "Just me"
+        : participant.displayName;
+}
+
 function splitInputName(
     prefix: "split_amount" | "split_percentage",
     participant: TripAudienceOption
@@ -28,7 +49,13 @@ function splitInputName(
     return `${prefix}_${participant.kind}_${participant.id}`;
 }
 
-function ParticipantAvatar({ participant }: { participant: TripAudienceOption }) {
+function ParticipantAvatar({
+    participant,
+    label,
+}: {
+    participant: TripAudienceOption;
+    label: string;
+}) {
     return (
         <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-950 text-[10px] font-black uppercase text-lime-200">
             {participant.avatarUrl ? (
@@ -39,11 +66,33 @@ function ParticipantAvatar({ participant }: { participant: TripAudienceOption })
                     className="h-full w-full object-cover"
                 />
             ) : (
-                getInitials(participant.displayName)
+                getInitials(label)
             )}
         </span>
     );
 }
+
+const splitMethodOptions: Array<{
+    value: SplitMethod;
+    label: string;
+    description: string;
+}> = [
+    {
+        value: "equal",
+        label: "Equal split",
+        description: "Divide evenly between selected people.",
+    },
+    {
+        value: "exact",
+        label: "Exact amounts",
+        description: "Enter a specific amount for each person.",
+    },
+    {
+        value: "percentage",
+        label: "Percentages",
+        description: "Assign each person a percentage.",
+    },
+];
 
 export default function CostAllocationFields({
     amount,
@@ -110,67 +159,91 @@ export default function CostAllocationFields({
                     </span>
                     <input type="hidden" name="paid_by" value={selectedPayer} />
                     <div className="flex flex-wrap gap-2">
-                        {options.map((participant) => (
-                            <button
-                                key={participantValue(participant)}
-                                type="button"
-                                onClick={() =>
-                                    setSelectedPayer(participantValue(participant))
-                                }
-                                className={`inline-flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-left text-sm font-black transition ${
-                                    selectedPayer === participantValue(participant)
-                                        ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)]"
-                                        : isDark
-                                          ? "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.1]"
-                                          : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-100"
-                                }`}
-                            >
-                                <ParticipantAvatar participant={participant} />
-                                <span className="max-w-40 truncate">
-                                    {participant.displayName}
-                                </span>
-                            </button>
-                        ))}
+                        {options.map((participant) => {
+                            const label = getParticipantLabel(
+                                participant,
+                                currentUserTripMemberId
+                            );
+
+                            return (
+                                <button
+                                    key={participantValue(participant)}
+                                    type="button"
+                                    onClick={() =>
+                                        setSelectedPayer(participantValue(participant))
+                                    }
+                                    className={`inline-flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-left text-sm font-black transition ${
+                                        selectedPayer === participantValue(participant)
+                                            ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)]"
+                                            : isDark
+                                              ? "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.1]"
+                                              : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-100"
+                                    }`}
+                                >
+                                    <ParticipantAvatar
+                                        participant={participant}
+                                        label={label}
+                                    />
+                                    <span className="max-w-40 truncate">
+                                        {label}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
-                <label className="space-y-2">
+                <div className="space-y-2">
                     <span className={`text-xs font-black uppercase tracking-[0.18em] ${labelClass}`}>
                         Split
                     </span>
-                    <select
-                        name="split_method"
-                        value={splitMethod}
-                        onChange={(event) =>
-                            setSplitMethod(event.target.value as SplitMethod)
-                        }
-                        className={`w-full rounded-xl border px-3 py-2 text-sm font-bold outline-none ${inputClass}`}
-                    >
-                        <option
-                            value="equal"
-                            className={isDark ? "bg-slate-950 text-white" : "bg-white text-slate-900"}
-                        >
-                            Equal split
-                        </option>
-                        <option
-                            value="exact"
-                            className={isDark ? "bg-slate-950 text-white" : "bg-white text-slate-900"}
-                        >
-                            Exact amounts
-                        </option>
-                        <option
-                            value="percentage"
-                            className={isDark ? "bg-slate-950 text-white" : "bg-white text-slate-900"}
-                        >
-                            Percentages
-                        </option>
-                    </select>
-                </label>
+                    <input type="hidden" name="split_method" value={splitMethod} />
+                    <div className="grid gap-2 sm:grid-cols-3 md:grid-cols-1 xl:grid-cols-3">
+                        {splitMethodOptions.map((option) => {
+                            const isSelected = splitMethod === option.value;
+
+                            return (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setSplitMethod(option.value)}
+                                    aria-pressed={isSelected}
+                                    className={`rounded-2xl border px-3 py-2 text-left transition ${
+                                        isSelected
+                                            ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)]"
+                                            : isDark
+                                              ? "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.1]"
+                                              : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-100"
+                                    }`}
+                                >
+                                    <span className="block text-xs font-black">
+                                        {option.label}
+                                    </span>
+                                    <span
+                                        className={`mt-1 block text-[11px] font-semibold leading-4 ${
+                                            isSelected
+                                                ? "text-slate-950/70"
+                                                : isDark
+                                                  ? "text-slate-400"
+                                                  : "text-slate-500"
+                                        }`}
+                                    >
+                                        {option.description}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
             <div className="mt-4 grid gap-2 md:grid-cols-2">
                 {options.map((participant) => {
                     const value = participantValue(participant);
+                    const label = getParticipantLabel(
+                        participant,
+                        currentUserTripMemberId
+                    );
 
                     return (
                         <label
@@ -184,10 +257,13 @@ export default function CostAllocationFields({
                                 defaultChecked
                                 className="h-4 w-4 accent-lime-300"
                             />
-                            <ParticipantAvatar participant={participant} />
+                            <ParticipantAvatar
+                                participant={participant}
+                                label={label}
+                            />
                             <span className="min-w-0">
                                 <span className="block truncate text-sm font-black">
-                                    {participant.displayName}
+                                    {label}
                                 </span>
                                 {participant.secondaryLabel ? (
                                     <span

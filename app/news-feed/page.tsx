@@ -1,6 +1,45 @@
 import { redirect } from "next/navigation";
-import NewsFeedClient from "@/components/NewsFeedClient";
+import NewsFeedClient, {
+    type NewsFeedReaction,
+    type StoredNewsFeedPost,
+} from "@/components/NewsFeedClient";
 import { createClient } from "@/lib/supabase/server";
+
+type NewsFeedUntypedClient = {
+    from: (table: "news_feed_reactions") => {
+        select: (
+            columns: string
+        ) => Promise<{ data: NewsFeedReaction[] | null; error: unknown }>;
+    };
+} & {
+    from: (table: "user_friendships") => {
+        select: (
+            columns: string,
+            options: { count: "exact"; head: true }
+        ) => {
+            eq: (column: string, value: string) => {
+                or: (
+                    filters: string
+                ) => Promise<{ count: number | null; error: unknown }>;
+            };
+        };
+    };
+} & {
+    from: (table: "news_feed_posts") => {
+        select: (columns: string) => {
+            is: (column: string, value: null) => {
+                order: (
+                    column: string,
+                    options: { ascending: boolean }
+                ) => {
+                    limit: (
+                        count: number
+                    ) => Promise<{ data: StoredNewsFeedPost[] | null; error: unknown }>;
+                };
+            };
+        };
+    };
+};
 
 export default async function NewsFeedPage() {
     const supabase = await createClient();
@@ -10,26 +49,35 @@ export default async function NewsFeedPage() {
 
     if (!user) redirect("/auth/login");
 
+    const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (profile?.role !== "super_admin") redirect("/");
+
     const [
         { data: preferences },
         { data: reactions },
         { count: friendCount },
         { data: userPosts },
-    ] =
-        await Promise.all([
+    ] = await Promise.all([
         supabase
             .from("user_preferences")
             .select("news_feed_mode")
             .eq("user_id", user.id)
             .maybeSingle(),
-        supabase
-            .from("news_feed_reactions" as any)
+        (supabase as unknown as NewsFeedUntypedClient)
+            .from("news_feed_reactions")
             .select("post_key,emoji,user_id"),
-        (supabase.from as any)("user_friendships")
+        (supabase as unknown as NewsFeedUntypedClient)
+            .from("user_friendships")
             .select("id", { count: "exact", head: true })
             .eq("status", "accepted")
             .or(`requester_user_id.eq.${user.id},addressee_user_id.eq.${user.id}`),
-        (supabase.from as any)("news_feed_posts")
+        (supabase as unknown as NewsFeedUntypedClient)
+            .from("news_feed_posts")
             .select("post_key,post_type,title,body,meta,created_at")
             .is("archived_at", null)
             .order("created_at", { ascending: false })
@@ -61,8 +109,8 @@ export default async function NewsFeedPage() {
                     mode={mode}
                     userId={user.id}
                     hasFriends={Boolean(friendCount && friendCount > 0)}
-                    initialReactions={(reactions || []) as any}
-                    initialPosts={(userPosts || []) as any}
+                    initialReactions={reactions || []}
+                    initialPosts={userPosts || []}
                 />
             </div>
         </main>

@@ -2,9 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import CountdownUnitToggle from "@/components/CountdownUnitToggle";
+import MarketingConsentToggle from "@/components/MarketingConsentToggle";
 import PinkModeToggle from "@/components/PinkModeToggle";
 import type { VaiviaThemeMode } from "@/components/PinkModeProvider";
 import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
+import SettingsDataClient from "@/components/SettingsDataClient";
 import SettingsFamilyMembersClient from "@/components/SettingsFamilyMembersClient";
 import SettingsFinancialClient from "@/components/SettingsFinancialClient";
 import SettingsNotificationsClient from "@/components/SettingsNotificationsClient";
@@ -29,6 +31,30 @@ type SettingsPageProps = {
         section?: string;
         message?: string;
     }>;
+};
+
+type NotificationPreferenceRow = {
+    notification_type?: string | null;
+    in_app_enabled?: boolean | null;
+    push_enabled?: boolean | null;
+    email_enabled?: boolean | null;
+};
+
+type SettingsUntypedClient = {
+    rpc?: (
+        functionName:
+            | "set_marketing_email_consent"
+            | "request_current_user_account_deletion",
+        args: { consent: boolean }
+    ) => Promise<{ data: null; error: { message?: string } | null }>;
+    from: (table: "user_notification_preferences") => {
+        select: (columns: string) => {
+            eq: (
+                column: string,
+                value: string
+            ) => Promise<{ data: NotificationPreferenceRow[] | null; error: unknown }>;
+        };
+    };
 };
 
 function friendlyCategoryMessage(message?: string) {
@@ -556,8 +582,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                   ? "time-date"
                   : params.section === "security"
                     ? "security"
-                    : params.section === "notifications"
-                      ? "notifications"
+                    : params.section === "notifications" ||
+                        params.section === "communications"
+                      ? "communications"
+                      : params.section === "data"
+                        ? "data"
                       : "general";
     const supabase = await createClient();
     const {
@@ -603,10 +632,13 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
             .maybeSingle(),
         supabase
             .from("user_profiles")
-            .select("biometric_login_enabled")
+            .select(
+                "biometric_login_enabled,role,marketing_emails_consent,marketing_emails_consent_decided_at,account_deletion_requested_at,data_center_preference"
+            )
             .eq("id", user.id)
             .maybeSingle(),
-        (supabase.from as any)("user_notification_preferences")
+        (supabase as unknown as SettingsUntypedClient)
+            .from("user_notification_preferences")
             .select(
                 "notification_type,in_app_enabled,push_enabled,email_enabled"
             )
@@ -634,16 +666,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         ? rawCountdownDisplayMode
         : "days";
     const themeMode = normalizeThemeMode(userPreferences?.theme_mode);
+    const isSuperAdmin = userProfile?.role === "super_admin";
     const newsFeedMode = normalizeNewsFeedMode(
         (userPreferences as { news_feed_mode?: unknown } | null)?.news_feed_mode
     );
     const notificationPreferences = mergeNotificationPreferences(
-        (notificationPreferenceRows || []) as Array<{
-            notification_type?: string | null;
-            in_app_enabled?: boolean | null;
-            push_enabled?: boolean | null;
-            email_enabled?: boolean | null;
-        }>
+        notificationPreferenceRows || []
     );
     const currencyOptions = ALL_CURRENCY_OPTIONS.map((currency) => ({
         code: currency.code,
@@ -709,14 +737,24 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             Password & Security
                         </Link>
                         <Link
-                            href="/settings?section=notifications"
+                            href="/settings?section=communications"
                             className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "notifications"
+                                activeSection === "communications"
                                     ? "bg-lime-300 text-slate-950"
                                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                             }`}
                         >
-                            Notifications
+                            Communications
+                        </Link>
+                        <Link
+                            href="/settings?section=data"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "data"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Data
                         </Link>
                         <Link
                             href="/settings?section=categories"
@@ -769,6 +807,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             <PinkModeToggle
                                 initialThemeMode={themeMode}
                             />
+                            {isSuperAdmin ? (
                             <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-5">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200/80">
@@ -823,6 +862,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                     })}
                                 </form>
                             </section>
+                            ) : null}
                         </div>
                     ) : activeSection === "time-date" ? (
                         <div className="space-y-6">
@@ -930,24 +970,73 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                 updateBiometricAction={updateSecuritySettings}
                             />
                         </div>
-                    ) : activeSection === "notifications" ? (
+                    ) : activeSection === "communications" ? (
                         <div className="space-y-6">
                             <div>
                                 <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
-                                    Notifications
+                                    Communications
                                 </p>
                                 <h1 className="mt-2 text-3xl font-black">
-                                    Notification settings
+                                    Communication settings
                                 </h1>
                                 <p className="mt-2 text-slate-400">
-                                    Choose which VAIVIA notifications appear in-app,
-                                    by push, or by email.
+                                    Manage marketing email consent and choose
+                                    which VAIVIA notifications appear in-app, by
+                                    push, or by email.
                                 </p>
                             </div>
+                            <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5">
+                                <div className="flex flex-wrap items-center justify-between gap-4">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200">
+                                            Marketing consent
+                                        </p>
+                                        <h2 className="mt-2 text-2xl font-black">
+                                            Promotions and app updates
+                                        </h2>
+                                        <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-400">
+                                            Receive occasional marketing emails
+                                            about VAIVIA promotions, launches, and
+                                            product updates. You can opt out any
+                                            time.
+                                        </p>
+                                    </div>
+                                    <MarketingConsentToggle
+                                        initialEnabled={Boolean(
+                                            userProfile?.marketing_emails_consent
+                                        )}
+                                    />
+                                </div>
+                            </section>
                             <SettingsNotificationsClient
                                 preferences={notificationPreferences}
                                 vapidPublicKey={
                                     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null
+                                }
+                            />
+                        </div>
+                    ) : activeSection === "data" ? (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Data
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Data and privacy
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Choose the available data centre option,
+                                    export your information, or request account
+                                    deletion.
+                                </p>
+                            </div>
+                            <SettingsDataClient
+                                deletionRequestedAt={
+                                    userProfile?.account_deletion_requested_at ||
+                                    null
+                                }
+                                supabaseUrl={
+                                    process.env.NEXT_PUBLIC_SUPABASE_URL || null
                                 }
                             />
                         </div>

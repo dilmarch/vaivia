@@ -5,7 +5,16 @@ import { createClient } from "@/lib/supabase/client";
 import { SocialLoginButton } from "@/components/social-login-button";
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, KeyRound } from "lucide-react";
+
+type PasskeyLoginClient = ReturnType<typeof createClient> & {
+  auth: ReturnType<typeof createClient>["auth"] & {
+    signInWithPasskey: () => Promise<{
+      data: unknown;
+      error: Error | null;
+    }>;
+  };
+};
 
 export function LoginForm({
   className,
@@ -16,6 +25,7 @@ export function LoginForm({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError || null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPasskeyLoading, setIsPasskeyLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +44,26 @@ export function LoginForm({
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setIsPasskeyLoading(true);
+    setError(null);
+
+    try {
+      const supabase = createClient() as PasskeyLoginClient;
+      const { error } = await supabase.auth.signInWithPasskey();
+      if (error) throw error;
+      window.location.assign("/");
+    } catch (error: unknown) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Could not sign in with passkey"
+      );
+    } finally {
+      setIsPasskeyLoading(false);
     }
   };
 
@@ -64,6 +94,16 @@ export function LoginForm({
                 className="min-h-12 rounded-full border-white/10 bg-white/[0.08] text-sm font-black text-slate-100 hover:border-lime-300 hover:bg-lime-300 hover:text-slate-950 focus-visible:ring-lime-300"
               />
             </div>
+
+            <button
+              type="button"
+              onClick={handlePasskeyLogin}
+              disabled={isPasskeyLoading || isLoading}
+              className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-lime-300/30 bg-lime-300/10 px-6 text-sm font-black text-lime-100 transition hover:bg-lime-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <KeyRound className="h-4 w-4" aria-hidden="true" />
+              {isPasskeyLoading ? "Opening passkey..." : "Sign in with passkey"}
+            </button>
 
             <div className="relative">
               <div className="absolute inset-0 flex items-center">

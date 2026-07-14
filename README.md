@@ -98,6 +98,24 @@ If you wish to just develop locally and not deploy to Vercel, [follow the steps 
 
 > Check out [the docs for Local Development](https://supabase.com/docs/guides/getting-started/local-development) to also run Supabase locally.
 
+## VAIVIA transactional email
+
+VAIVIA sends optional transactional notification emails through Resend. Production
+and preview secrets should be configured in Vercel Environment Variables. Local
+development values may live in `.env.local`, which must remain ignored by Git.
+
+```env
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=VAIVIA <notifications@updates.thetravellinglinguist.com>
+RESEND_REPLY_TO_EMAIL=
+NEXT_PUBLIC_APP_URL=https://app.thetravellinglinguist.com
+```
+
+Never place the Resend API key in source code, commit it, prefix it with
+`NEXT_PUBLIC_`, or share it in prompts. Supabase secrets are not required for
+Resend itself, but server-side processors that use service-role Supabase helpers
+still require the existing server-only Supabase service role environment variable.
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).

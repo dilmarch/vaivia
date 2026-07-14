@@ -536,6 +536,22 @@ function getTransportationDbStatus(rawStatus: string) {
         : "planned";
 }
 
+function getTransportationReturnPath(formData: FormData, tripId: string) {
+    const fallbackPath = `/trips/${tripId}`;
+    const returnTo = String(formData.get("return_to") || "").trim();
+
+    if (
+        returnTo.startsWith("/trips/") &&
+        !returnTo.startsWith("//") &&
+        !returnTo.includes("://") &&
+        !/[\r\n]/.test(returnTo)
+    ) {
+        return returnTo;
+    }
+
+    return fallbackPath;
+}
+
 function normalizeAirlineCode(rawCode?: string | null) {
     const compactCode = String(rawCode || "")
         .trim()
@@ -1227,7 +1243,7 @@ async function createItineraryItem(formData: FormData) {
         });
     }
 
-    redirect(`/trips/${tripId}`);
+    redirect(getTransportationReturnPath(formData, tripId));
 }
 
 async function createTransportationItem(formData: FormData) {
@@ -1263,6 +1279,8 @@ async function createTransportationItem(formData: FormData) {
     ).trim();
     const transportationCost = formData.get("cost");
     const transportationCurrency = formData.get("currency");
+    const scenarioPros = String(formData.get("scenario_pros") || "").trim();
+    const scenarioCons = String(formData.get("scenario_cons") || "").trim();
     const duration = formData.get("duration") as string;
     const visaRequirements = formData.get("visa_requirements") as string;
     const luggageRequirements = formData.get("luggage_requirements") as string;
@@ -1308,6 +1326,12 @@ async function createTransportationItem(formData: FormData) {
         const legAirlineName = formData.get(`leg_${index}_airline_name`) as string;
         const legAirlineCode = formData.get(`leg_${index}_airline_code`) as string;
         const legDuration = formData.get(`leg_${index}_duration`) as string;
+        const legCost = String(formData.get(`leg_${index}_cost`) || "").trim();
+        const legCurrency = String(
+            formData.get(`leg_${index}_currency`) || transportationCurrency || ""
+        )
+            .trim()
+            .toUpperCase();
 
         return [
             `Leg ${index + 1}: ${legDepartureLocation || "Departure"} → ${
@@ -1336,6 +1360,7 @@ async function createTransportationItem(formData: FormData) {
                 : "",
             legArrivalTerminal ? `Arrival terminal: ${legArrivalTerminal}` : "",
             legDuration ? `Duration: ${legDuration}` : "",
+            legCost ? `Price: ${[legCurrency, legCost].filter(Boolean).join(" ")}` : "",
         ]
             .filter(Boolean)
             .join("\n");
@@ -1372,6 +1397,8 @@ async function createTransportationItem(formData: FormData) {
         arrivalTerminal ? `Arrival terminal/platform: ${arrivalTerminal}` : "",
         departureTimezone ? `Departure time zone: ${departureTimezone}` : "",
         arrivalTimezone ? `Arrival time zone: ${arrivalTimezone}` : "",
+        scenarioPros ? `Pros:\n${scenarioPros}` : "",
+        scenarioCons ? `Cons:\n${scenarioCons}` : "",
         flightLegNotes.length ? `Flight legs:\n\n${flightLegNotes.join("\n\n")}` : "",
         visaRequirements ? `VISA requirements:\n${visaRequirements}` : "",
         luggageRequirements ? `Luggage requirements:\n${luggageRequirements}` : "",
@@ -1530,7 +1557,7 @@ async function createTransportationItem(formData: FormData) {
         });
     }
 
-    redirect(`/trips/${tripId}`);
+    redirect(getTransportationReturnPath(formData, tripId));
 }
 
 async function updateTransportationItem(formData: FormData) {

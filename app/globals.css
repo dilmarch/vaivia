@@ -1415,6 +1415,63 @@
     @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-red-300/35 bg-red-400/15 px-5 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/25 disabled:cursor-not-allowed disabled:opacity-60;
   }
 
+  select:not([data-vaivia-native-select]) {
+    min-height: 2.75rem;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid rgb(255 255 255 / 0.14) !important;
+    border-radius: 1rem !important;
+    background-color: rgb(2 6 23 / 0.9) !important;
+    background-image:
+      linear-gradient(45deg, transparent 50%, rgb(190 242 100) 50%),
+      linear-gradient(135deg, rgb(190 242 100) 50%, transparent 50%),
+      linear-gradient(to right, rgb(255 255 255 / 0.1), rgb(255 255 255 / 0.1));
+    background-position:
+      calc(100% - 18px) 50%,
+      calc(100% - 12px) 50%,
+      calc(100% - 2.65rem) 50%;
+    background-repeat: no-repeat;
+    background-size:
+      6px 6px,
+      6px 6px,
+      1px 1.55rem;
+    color: rgb(248 250 252) !important;
+    padding: 0.7rem 3.25rem 0.7rem 1rem !important;
+    font-weight: 800;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.06),
+      0 16px 34px rgb(0 0 0 / 0.18);
+    outline: none;
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+
+  select:not([data-vaivia-native-select]):hover {
+    border-color: rgb(190 242 100 / 0.34) !important;
+    background-color: rgb(15 23 42 / 0.92) !important;
+  }
+
+  select:not([data-vaivia-native-select]):focus,
+  select:not([data-vaivia-native-select]):focus-visible {
+    border-color: rgb(190 242 100 / 0.58) !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 0 0 3px rgb(190 242 100 / 0.16),
+      0 18px 40px rgb(0 0 0 / 0.22);
+  }
+
+  select:not([data-vaivia-native-select]):disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  select:not([data-vaivia-native-select]) option {
+    background: rgb(2 6 23);
+    color: rgb(248 250 252);
+  }
+
   .vaivia-modal-panel :where(input, select, textarea),
   .vaivia-modal-confirm :where(input, select, textarea) {
     @apply border-white/15 bg-slate-950/90 text-white shadow-inner shadow-black/25 placeholder:text-slate-400/80 focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/15;
@@ -1444,6 +1501,25 @@
   .vaivia-modal-panel :where(.text-slate-950).bg-lime-300,
   .vaivia-modal-panel .bg-lime-300 :where(.text-slate-950, .text-slate-900, .text-slate-800, .text-slate-700, .text-slate-600, .text-slate-500) {
     color: rgb(2 6 23);
+  }
+
+  .vaivia-modal-panel .vaivia-transport-detail-light,
+  .vaivia-modal-panel .vaivia-transport-detail-light :where(h3, p, dt, dd, span:not(.vaivia-transport-preserve-color)) {
+    color: rgb(15 23 42) !important;
+  }
+
+  .vaivia-modal-panel .vaivia-transport-light-card {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border-color: rgba(255, 255, 255, 0.72) !important;
+    color: rgb(15 23 42) !important;
+  }
+
+  .vaivia-modal-panel .vaivia-transport-light-card :where(dt, .vaivia-transport-muted) {
+    color: rgb(100 116 139) !important;
+  }
+
+  .vaivia-modal-panel .vaivia-transport-light-card :where(dd, p, span:not(.vaivia-transport-preserve-color)) {
+    color: rgb(15 23 42) !important;
   }
 
   @keyframes vaivia-modal-backdrop-in {
@@ -1571,6 +1647,9 @@
   .pac-container {
     z-index: 10000 !important;
     margin-top: 0.5rem !important;
+    width: min(56rem, calc(100vw - 2rem)) !important;
+    max-width: calc(100vw - 2rem) !important;
+    min-width: min(24rem, calc(100vw - 2rem)) !important;
     border: 1px solid rgb(190 242 100 / 0.24) !important;
     border-radius: 22px !important;
     background:

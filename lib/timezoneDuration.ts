@@ -1,4 +1,11 @@
 function getTimezoneOffsetMinutes(timezone: string, date: Date) {
+    const utcOffsetMatch = timezone.match(/^UTC([+-])(\d{2}):?(\d{2})$/i);
+    if (utcOffsetMatch) {
+        const [, sign, hours, minutes] = utcOffsetMatch;
+        const offsetMinutes = Number(hours) * 60 + Number(minutes);
+        return sign === "-" ? -offsetMinutes : offsetMinutes;
+    }
+
     const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: timezone,
         hour12: false,

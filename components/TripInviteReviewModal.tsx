@@ -125,12 +125,14 @@ export default function TripInviteReviewModal({
                 ? await supabase.rpc("accept_trip_invitation_with_scope", {
                       target_invitation_id: invitation.id,
                       target_confirmed_start_date:
-                          invitation.invited_start_date || null,
-                      target_confirmed_end_date: invitation.invited_end_date || null,
+                          invitation.invited_start_date || undefined,
+                      target_confirmed_end_date:
+                          invitation.invited_end_date || undefined,
                       target_personal_start_date:
-                          invitation.invited_start_date || null,
-                      target_personal_end_date: invitation.invited_end_date || null,
-                      target_joining_leg_ids: null,
+                          invitation.invited_start_date || undefined,
+                      target_personal_end_date:
+                          invitation.invited_end_date || undefined,
+                      target_joining_leg_ids: undefined,
                   })
                 : await supabase.rpc("decline_trip_invitation", {
                       invitation_id: invitation.id,

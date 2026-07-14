@@ -26,6 +26,7 @@ const AIRLINE_NAMES_BY_CODE: Record<string, string> = {
     LH: "Lufthansa",
     QR: "Qatar Airways",
     RK: "Ryanair UK",
+    U2: "easyJet",
     UA: "United Airlines",
     VJ: "VietJet Air",
     VN: "Vietnam Airlines",

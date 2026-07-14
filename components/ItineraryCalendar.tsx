@@ -2267,12 +2267,24 @@ function getTransportationAudienceText(item: ItineraryCalendarItem) {
         .join(", ");
 }
 
-function TransportationAudienceText({ item }: { item: ItineraryCalendarItem }) {
+function TransportationAudienceText({
+    item,
+    light = false,
+}: {
+    item: ItineraryCalendarItem;
+    light?: boolean;
+}) {
     const label = getTransportationAudienceText(item);
     if (!label) return null;
 
     return (
-        <p className="mt-1 truncate text-xs font-semibold text-[color:var(--airline-card-muted,#64748b)]">
+        <p
+            className={`mt-1 truncate text-xs font-semibold ${
+                light
+                    ? "text-slate-600"
+                    : "text-[color:var(--airline-card-muted,#64748b)]"
+            }`}
+        >
             {label}
         </p>
     );
@@ -2337,7 +2349,7 @@ function FlightDetailGridRow({
     if (!value) return null;
 
     return (
-        <div className="rounded-md border border-white/70 bg-white/90 p-3 shadow-sm">
+        <div className="vaivia-transport-light-card rounded-md border border-white/70 bg-white/90 p-3 text-slate-950 shadow-sm">
             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 {label}
             </dt>
@@ -2361,8 +2373,8 @@ function FlightModalContent({
     );
 
     return (
-        <div className="space-y-5 p-5">
-            <section className="flex items-center gap-3 rounded-md border border-white/60 border-l-4 border-l-[var(--airline-primary)] bg-white/90 p-4 shadow-sm ring-1 ring-black/5">
+        <div className="vaivia-transport-detail-light space-y-5 p-5 text-slate-950">
+            <section className="vaivia-transport-light-card flex items-center gap-3 rounded-md border border-white/60 border-l-4 border-l-[var(--airline-primary)] bg-white/90 p-4 text-slate-950 shadow-sm ring-1 ring-black/5">
                 <AirlineLogo
                     airlineCode={flight.airlineCode}
                     airlineName={flight.airlineName}
@@ -2385,14 +2397,14 @@ function FlightModalContent({
                     {item.reservation_code && (
                         <div className="mt-3">
                             <ReservationCodeCopy code={item.reservation_code} light />
-                            <TransportationAudienceText item={item} />
+                            <TransportationAudienceText item={item} light />
                         </div>
                     )}
                 </div>
             </section>
 
             <section className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
-                <div className="rounded-md border border-white/70 bg-white/90 p-4 shadow-sm">
+                <div className="vaivia-transport-light-card rounded-md border border-white/70 bg-white/90 p-4 text-slate-950 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Departure
                     </p>
@@ -2420,7 +2432,7 @@ function FlightModalContent({
                     </div>
                 )}
 
-                <div className="rounded-md border border-white/70 bg-white/90 p-4 shadow-sm">
+                <div className="vaivia-transport-light-card rounded-md border border-white/70 bg-white/90 p-4 text-slate-950 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Arrival
                     </p>
@@ -2451,13 +2463,13 @@ function FlightModalContent({
                     <FlightDetailGridRow label="Airline" value={flight.airlineName} />
                     <FlightDetailGridRow label="Flight number" value={flight.flightNumber} />
                     {item.reservation_code && (
-                        <div className="rounded-md border border-white/70 bg-white/90 p-3 shadow-sm">
+                        <div className="vaivia-transport-light-card rounded-md border border-white/70 bg-white/90 p-3 text-slate-950 shadow-sm">
                             <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 Reservation code
                             </dt>
                             <dd className="mt-2">
                                 <ReservationCodeCopy code={item.reservation_code} light />
-                                <TransportationAudienceText item={item} />
+                                <TransportationAudienceText item={item} light />
                             </dd>
                         </div>
                     )}
@@ -2494,7 +2506,7 @@ function FlightModalContent({
                         {flight.legs.map((leg, index) => (
                             <div
                                 key={`${leg.flightNumber || index}-${leg.originName}`}
-                                className="rounded-md border border-white/70 bg-white/90 p-3 shadow-sm"
+                                className="vaivia-transport-light-card rounded-md border border-white/70 bg-white/90 p-3 text-slate-950 shadow-sm"
                             >
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                     <div>
@@ -2516,7 +2528,7 @@ function FlightModalContent({
                                         ) : null}
                                     </div>
                                     {leg.duration && (
-                                        <span className="rounded-full bg-[var(--airline-primary)] px-3 py-1 text-xs font-semibold text-[var(--airline-primary-text)]">
+                                        <span className="vaivia-transport-preserve-color rounded-full bg-[var(--airline-primary)] px-3 py-1 text-xs font-semibold text-[var(--airline-primary-text)]">
                                             {leg.duration}
                                         </span>
                                     )}
@@ -2756,11 +2768,11 @@ function ItineraryItemModal({
                 ) : flightDisplay ? (
                     <FlightModalContent item={item} flight={flightDisplay} />
                 ) : (
-                    <div className="space-y-5 p-5">
+                    <div className="vaivia-transport-detail-light space-y-5 p-5 text-slate-950">
                         {(item.transportation_mode ||
                             item.airline_code ||
                             item.flight_number) && (
-                            <div className="flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+                            <div className="vaivia-transport-light-card flex items-center gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 text-slate-950">
                                 {item.transportation_mode === "airplane" ? (
                                     <AirlineLogo
                                         airlineCode={item.airline_code}
@@ -2794,7 +2806,7 @@ function ItineraryItemModal({
                             <DetailRow label="Address" value={item.formatted_address} />
                             <DetailRow label="Time zone" value={item.timezone} />
                             {item.reservation_code && (
-                                <div>
+                                <div className="text-slate-950">
                                     <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                         Reservation code
                                     </dt>
@@ -2803,7 +2815,7 @@ function ItineraryItemModal({
                                             code={item.reservation_code}
                                             light
                                         />
-                                        <TransportationAudienceText item={item} />
+                                        <TransportationAudienceText item={item} light />
                                     </dd>
                                 </div>
                             )}
@@ -2876,7 +2888,9 @@ function ItineraryItemModal({
                 {!isEditingTransportation && (
                     <div
                         className={`flex flex-col gap-2 border-t p-5 sm:flex-row sm:justify-end ${
-                            flightDisplay ? "border-white/50 bg-white/60" : "border-slate-200"
+                            flightDisplay
+                                ? "border-white/50 bg-white/60 text-slate-950"
+                                : "border-slate-200"
                         }`}
                     >
                     {item.source_table === "transportation_items" ? (

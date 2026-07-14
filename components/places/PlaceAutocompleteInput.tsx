@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 type PlaceAutocompleteInputProps = {
     id?: string;
+    name?: string;
     value: string;
     onInputChange: (value: string) => void;
     onPlaceSelect: (place: google.maps.places.PlaceResult) => void;
@@ -12,6 +13,7 @@ type PlaceAutocompleteInputProps = {
     disabled?: boolean;
     required?: boolean;
     className?: string;
+    types?: string[];
 };
 
 const PLACE_FIELDS = [
@@ -24,6 +26,7 @@ const PLACE_FIELDS = [
     "types",
     "business_status",
     "opening_hours",
+    "utc_offset_minutes",
     "formatted_phone_number",
     "international_phone_number",
     "address_components",
@@ -42,6 +45,9 @@ const VAIVIA_GOOGLE_PLACES_CSS = `
 body .pac-container {
     z-index: 2147483647 !important;
     margin-top: 0.5rem !important;
+    width: min(56rem, calc(100vw - 2rem)) !important;
+    max-width: calc(100vw - 2rem) !important;
+    min-width: min(24rem, calc(100vw - 2rem)) !important;
     border: 1px solid rgb(190 242 100 / 0.28) !important;
     border-radius: 22px !important;
     background: linear-gradient(180deg, rgb(8 5 17 / 0.98), rgb(3 7 18 / 0.98)) !important;
@@ -109,6 +115,37 @@ body .pac-container.pac-logo::after {
 }
 `;
 
+function resizeGooglePlacesDropdown(input: HTMLInputElement | null) {
+    if (typeof window === "undefined" || typeof document === "undefined") return;
+    if (!input) return;
+
+    const containers = Array.from(
+        document.querySelectorAll<HTMLElement>(".pac-container")
+    );
+    if (!containers.length) return;
+
+    const inputRect = input.getBoundingClientRect();
+    const viewportPadding = 16;
+    const viewportWidth = window.innerWidth;
+    const maxWidth = Math.max(240, viewportWidth - viewportPadding * 2);
+    const preferredWidth = Math.max(inputRect.width * 4, 384);
+    const targetWidth = Math.min(preferredWidth, maxWidth);
+    const maxLeft = Math.max(viewportPadding, viewportWidth - targetWidth - viewportPadding);
+    const targetLeft = Math.min(Math.max(inputRect.left, viewportPadding), maxLeft);
+
+    containers.forEach((container) => {
+        container.style.setProperty("width", `${targetWidth}px`, "important");
+        container.style.setProperty("max-width", `calc(100vw - 2rem)`, "important");
+        container.style.setProperty("min-width", `${inputRect.width}px`, "important");
+        container.style.setProperty(
+            "left",
+            `${targetLeft + window.scrollX}px`,
+            "important"
+        );
+        container.style.setProperty("right", "auto", "important");
+    });
+}
+
 function ensureVaiviaGooglePlacesStyles() {
     if (typeof document === "undefined") return;
     if (document.getElementById(VAIVIA_GOOGLE_PLACES_STYLE_ID)) return;
@@ -121,6 +158,7 @@ function ensureVaiviaGooglePlacesStyles() {
 
 export default function PlaceAutocompleteInput({
     id,
+    name,
     value,
     onInputChange,
     onPlaceSelect,
@@ -128,11 +166,13 @@ export default function PlaceAutocompleteInput({
     disabled = false,
     required = false,
     className = "",
+    types,
 }: PlaceAutocompleteInputProps) {
     const inputRef = useRef<HTMLInputElement | null>(null);
     const serviceHostRef = useRef<HTMLDivElement | null>(null);
     const onPlaceSelectRef = useRef(onPlaceSelect);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
+    const typesKey = types?.join("|") || "";
 
     useEffect(() => {
         onPlaceSelectRef.current = onPlaceSelect;
@@ -160,10 +200,14 @@ export default function PlaceAutocompleteInput({
         if (!isGoogleReady) return;
         if (!inputRef.current) return;
         if (!window.google?.maps?.places?.Autocomplete) return;
+        const inputElement = inputRef.current;
 
         const autocomplete = new window.google.maps.places.Autocomplete(
-            inputRef.current,
-            { fields: PLACE_FIELDS }
+            inputElement,
+            {
+                fields: PLACE_FIELDS,
+                ...(typesKey ? { types: typesKey.split("|") } : {}),
+            }
         );
 
         const listener = autocomplete.addListener("place_changed", () => {
@@ -204,8 +248,24 @@ export default function PlaceAutocompleteInput({
             );
         });
 
-        return () => listener.remove();
-    }, [isGoogleReady]);
+        const scheduleDropdownResize = () => {
+            window.setTimeout(() => resizeGooglePlacesDropdown(inputElement), 0);
+            window.setTimeout(() => resizeGooglePlacesDropdown(inputElement), 80);
+            window.setTimeout(() => resizeGooglePlacesDropdown(inputElement), 180);
+            window.setTimeout(() => resizeGooglePlacesDropdown(inputElement), 320);
+        };
+
+        inputElement.addEventListener("focus", scheduleDropdownResize);
+        inputElement.addEventListener("input", scheduleDropdownResize);
+        window.addEventListener("resize", scheduleDropdownResize);
+
+        return () => {
+            listener.remove();
+            inputElement.removeEventListener("focus", scheduleDropdownResize);
+            inputElement.removeEventListener("input", scheduleDropdownResize);
+            window.removeEventListener("resize", scheduleDropdownResize);
+        };
+    }, [isGoogleReady, typesKey]);
 
     return (
         <>
@@ -219,6 +279,7 @@ export default function PlaceAutocompleteInput({
             <input
                 ref={inputRef}
                 id={id}
+                name={name}
                 value={value}
                 onChange={(event) => onInputChange(event.target.value)}
                 placeholder={placeholder}

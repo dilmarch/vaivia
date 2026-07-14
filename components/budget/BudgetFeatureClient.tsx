@@ -63,6 +63,28 @@ type Settlement = {
     amount: number;
 };
 
+const splitMethodOptions: Array<{
+    value: SplitMethod;
+    label: string;
+    description: string;
+}> = [
+    {
+        value: "equal",
+        label: "Equal split",
+        description: "Divide evenly between selected people.",
+    },
+    {
+        value: "exact",
+        label: "Exact amounts",
+        description: "Enter a specific amount for each person.",
+    },
+    {
+        value: "percentage",
+        label: "Percentages",
+        description: "Assign each person a percentage.",
+    },
+];
+
 function participantValue(participant: BudgetParticipant) {
     if (participant.kind === "member" && participant.tripMemberId) {
         return `member:${participant.tripMemberId}`;
@@ -77,6 +99,11 @@ function participantValue(participant: BudgetParticipant) {
         return `family_member:${participant.familyMemberId}`;
     }
     return `guest:${participant.guestName || participant.label}`;
+}
+
+function getBudgetParticipantLabel(participant?: BudgetParticipant | null) {
+    if (!participant) return null;
+    return participant.isCurrentUser ? "Just me" : participant.label;
 }
 
 function getPayerParticipant(
@@ -114,7 +141,7 @@ function getPayerParticipant(
 
 function getPayerLabel(expense: TripExpense, participants: BudgetParticipant[]) {
     return (
-        getPayerParticipant(expense, participants)?.label ||
+        getBudgetParticipantLabel(getPayerParticipant(expense, participants)) ||
         expense.paid_by_guest_name ||
         "Someone"
     );
@@ -205,7 +232,8 @@ function getParticipantLabelFromValue(
     const participant = participants.find(
         (option) => participantValue(option) === value
     );
-    if (participant) return participant.label;
+    const participantLabel = getBudgetParticipantLabel(participant);
+    if (participantLabel) return participantLabel;
 
     if (value.startsWith("guest:")) return value.replace(/^guest:/, "") || "Guest";
     return "Someone";
@@ -1135,6 +1163,9 @@ export function AddExpenseModal({
                                 {participants.map((participant) => {
                                     const value = participantValue(participant);
                                     const isSelected = selectedPayer === value;
+                                    const label =
+                                        getBudgetParticipantLabel(participant) ||
+                                        participant.label;
 
                                     return (
                                         <button
@@ -1149,39 +1180,58 @@ export function AddExpenseModal({
                                         >
                                             <ParticipantAvatar
                                                 participant={participant}
-                                                label={participant.label}
+                                                label={label}
                                             />
                                             <span className="max-w-40 truncate">
-                                                {participant.label}
+                                                {label}
                                             </span>
                                         </button>
                                     );
                                 })}
                             </div>
                         </div>
-                        <Field label="Split method">
-                            <select
+                        <div>
+                            <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                Split method
+                            </span>
+                            <input
+                                type="hidden"
                                 name="split_method"
                                 value={splitMethod}
-                                onChange={(event) =>
-                                    setSplitMethod(event.target.value as SplitMethod)
-                                }
-                                className={selectClass}
-                            >
-                                <option value="equal" className="bg-slate-950 text-white">
-                                    Equal split
-                                </option>
-                                <option value="exact" className="bg-slate-950 text-white">
-                                    Exact amounts
-                                </option>
-                                <option
-                                    value="percentage"
-                                    className="bg-slate-950 text-white"
-                                >
-                                    Percentages
-                                </option>
-                            </select>
-                        </Field>
+                            />
+                            <div className="mt-2 grid gap-2">
+                                {splitMethodOptions.map((option) => {
+                                    const isSelected = splitMethod === option.value;
+
+                                    return (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => setSplitMethod(option.value)}
+                                            aria-pressed={isSelected}
+                                            className={`rounded-2xl border px-3 py-2 text-left transition ${
+                                                isSelected
+                                                    ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)]"
+                                                    : "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.1]"
+                                            }`}
+                                        >
+                                            <span className="block text-xs font-black">
+                                                {option.label}
+                                            </span>
+                                            <span
+                                                className={`mt-1 block text-[11px] font-semibold leading-4 ${
+                                                    isSelected
+                                                        ? "text-slate-950/70"
+                                                        : "text-slate-400"
+                                                }`}
+                                            >
+                                                {option.description}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
                     </div>
                     <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
                         <p className="text-sm font-black text-white">
@@ -1190,6 +1240,9 @@ export function AddExpenseModal({
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
                             {participants.map((participant) => {
                                 const value = participantValue(participant);
+                                const label =
+                                    getBudgetParticipantLabel(participant) ||
+                                    participant.label;
                                 return (
                                     <label
                                         key={value}
@@ -1208,11 +1261,11 @@ export function AddExpenseModal({
                                         />
                                         <ParticipantAvatar
                                             participant={participant}
-                                            label={participant.label}
+                                            label={label}
                                         />
                                         <span className="min-w-0">
                                             <span className="block truncate text-sm font-bold text-white">
-                                                {participant.label}
+                                                {label}
                                             </span>
                                             {participant.secondaryLabel ? (
                                                 <span className="block truncate text-xs text-slate-400">
@@ -1469,31 +1522,97 @@ function BudgetDashboard({
                 </div>
 
                 {!budget ? (
-                    <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 text-white shadow-2xl shadow-black/30">
-                        <ChartPie className="h-10 w-10 text-lime-300" />
-                        <h2 className="mt-4 text-2xl font-black">
-                            No budget yet.
-                        </h2>
-                        <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-400">
-                            Create a trip budget, then track expenses without losing
-                            the original currency or transaction-date exchange rate.
-                        </p>
-                        <div className="mt-5 flex flex-wrap gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setIsCreatingBudget(true)}
-                                className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950"
-                            >
-                                Create budget
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsAddingExpense(true)}
-                                className="rounded-full border border-white/10 bg-white/[0.08] px-5 py-3 text-sm font-black text-white"
-                            >
-                                Add expense anyway
-                            </button>
+                    <div className="space-y-5">
+                        <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 text-white shadow-2xl shadow-black/30">
+                            <ChartPie className="h-10 w-10 text-lime-300" />
+                            <h2 className="mt-4 text-2xl font-black">
+                                No budget yet.
+                            </h2>
+                            <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-400">
+                                You can still track expenses now. Create a budget
+                                when you&apos;re ready to compare spending against a
+                                plan.
+                            </p>
+                            <div className="mt-5 flex flex-wrap gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsCreatingBudget(true)}
+                                    className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950"
+                                >
+                                    Create budget
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddingExpense(true)}
+                                    className="rounded-full border border-white/10 bg-white/[0.08] px-5 py-3 text-sm font-black text-white"
+                                >
+                                    Add expense
+                                </button>
+                            </div>
                         </div>
+
+                        {expenses.length > 0 ? (
+                            <>
+                                <div className="grid gap-4 md:grid-cols-3">
+                                    <SummaryCard
+                                        label="Total expenses"
+                                        value={formatCurrency(
+                                            totals.spent,
+                                            reportingCurrency
+                                        )}
+                                    />
+                                    <SummaryCard
+                                        label="Expenses"
+                                        value={String(expenses.length)}
+                                    />
+                                    <SummaryCard
+                                        label="Reporting currency"
+                                        value={reportingCurrency}
+                                    />
+                                </div>
+                                <RunningTotalCard
+                                    settlements={settlements}
+                                    reportingCurrency={reportingCurrency}
+                                />
+                                <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200">
+                                                Expense tally
+                                            </p>
+                                            <h2 className="mt-2 text-2xl font-black text-white">
+                                                Spending so far
+                                            </h2>
+                                        </div>
+                                        <span className="rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-sm font-black text-white">
+                                            No planned budget
+                                        </span>
+                                    </div>
+                                    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                        {Object.entries(categoryActuals)
+                                            .sort(([, first], [, second]) => second - first)
+                                            .map(([category, amount]) => (
+                                                <div
+                                                    key={category}
+                                                    className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
+                                                >
+                                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                                                        {DEFAULT_EXPENSE_CATEGORY_LABELS[
+                                                            category as ExpenseCategory
+                                                        ] || "Other"}
+                                                    </p>
+                                                    <p className="mt-2 text-xl font-black text-white">
+                                                        {formatCurrency(
+                                                            amount,
+                                                            reportingCurrency
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            </>
+                        ) : null}
                     </div>
                 ) : (
                     <>

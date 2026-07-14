@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Award, ShieldCheck, UsersRound, X } from "lucide-react";
 import FeatureSuggestionStatusSelect from "@/components/admin/FeatureSuggestionStatusSelect";
+import SendTestEmailButton from "@/components/admin/SendTestEmailButton";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -620,6 +621,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
                                 <UsersRound className="h-4 w-4" aria-hidden="true" />
                                 Users
                             </Link>
+                            <SendTestEmailButton />
                         </div>
                     </div>
                 </header>

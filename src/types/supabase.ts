@@ -542,6 +542,77 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_email_outbox: {
+        Row: {
+          attempts: number
+          created_at: string
+          failed_at: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          next_attempt_at: string | null
+          notification_id: string
+          notification_type: string
+          payload: Json
+          provider_message_id: string | null
+          recipient_email: string
+          sent_at: string | null
+          status: string
+          subject: string
+          template_key: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          failed_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
+          notification_id: string
+          notification_type: string
+          payload?: Json
+          provider_message_id?: string | null
+          recipient_email: string
+          sent_at?: string | null
+          status?: string
+          subject: string
+          template_key: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          failed_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
+          notification_id?: string
+          notification_type?: string
+          payload?: Json
+          provider_message_id?: string | null
+          recipient_email?: string
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          template_key?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_email_outbox_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: true
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_push_outbox: {
         Row: {
           attempts: number
@@ -645,6 +716,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      terms_versions: {
+        Row: {
+          change_type: string
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          published_at: string
+          requires_acceptance: boolean
+          title: string
+          updated_at: string
+          version_number: number
+        }
+        Insert: {
+          change_type?: string
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          published_at?: string
+          requires_acceptance?: boolean
+          title?: string
+          updated_at?: string
+          version_number: number
+        }
+        Update: {
+          change_type?: string
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          published_at?: string
+          requires_acceptance?: boolean
+          title?: string
+          updated_at?: string
+          version_number?: number
+        }
+        Relationships: []
       }
       transportation_item_travelers: {
         Row: {
@@ -2448,6 +2558,54 @@ export type Database = {
           },
         ]
       }
+      user_data_exports: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          downloaded_at: string | null
+          expires_at: string | null
+          export_schema_version: string
+          failure_code: string | null
+          id: string
+          processing_started_at: string | null
+          requested_at: string
+          status: string
+          storage_path: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          downloaded_at?: string | null
+          expires_at?: string | null
+          export_schema_version?: string
+          failure_code?: string | null
+          id?: string
+          processing_started_at?: string | null
+          requested_at?: string
+          status?: string
+          storage_path?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          downloaded_at?: string | null
+          expires_at?: string | null
+          export_schema_version?: string
+          failure_code?: string | null
+          id?: string
+          processing_started_at?: string | null
+          requested_at?: string
+          status?: string
+          storage_path?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_family_members: {
         Row: {
           avatar_url: string | null
@@ -2837,56 +2995,74 @@ export type Database = {
       }
       user_profiles: {
         Row: {
+          account_deletion_requested_at: string | null
           avatar_url: string | null
           biometric_login_enabled: boolean
           biometric_login_enabled_at: string | null
           created_at: string
+          data_center_preference: string
           email: string | null
           first_name: string | null
           id: string
           join_date: string
           last_name: string | null
           marketing_emails_consent: boolean
+          marketing_emails_consent_decided_at: string | null
           marketing_emails_consented_at: string | null
           onboarding_completed_at: string | null
           role: string
           terms_accepted_at: string | null
+          terms_decline_delete_after: string | null
+          terms_declined_at: string | null
+          terms_declined_version_id: string | null
           updated_at: string
           username: string | null
         }
         Insert: {
+          account_deletion_requested_at?: string | null
           avatar_url?: string | null
           biometric_login_enabled?: boolean
           biometric_login_enabled_at?: string | null
           created_at?: string
+          data_center_preference?: string
           email?: string | null
           first_name?: string | null
           id: string
           join_date?: string
           last_name?: string | null
           marketing_emails_consent?: boolean
+          marketing_emails_consent_decided_at?: string | null
           marketing_emails_consented_at?: string | null
           onboarding_completed_at?: string | null
           role?: string
           terms_accepted_at?: string | null
+          terms_decline_delete_after?: string | null
+          terms_declined_at?: string | null
+          terms_declined_version_id?: string | null
           updated_at?: string
           username?: string | null
         }
         Update: {
+          account_deletion_requested_at?: string | null
           avatar_url?: string | null
           biometric_login_enabled?: boolean
           biometric_login_enabled_at?: string | null
           created_at?: string
+          data_center_preference?: string
           email?: string | null
           first_name?: string | null
           id?: string
           join_date?: string
           last_name?: string | null
           marketing_emails_consent?: boolean
+          marketing_emails_consent_decided_at?: string | null
           marketing_emails_consented_at?: string | null
           onboarding_completed_at?: string | null
           role?: string
           terms_accepted_at?: string | null
+          terms_decline_delete_after?: string | null
+          terms_declined_at?: string | null
+          terms_declined_version_id?: string | null
           updated_at?: string
           username?: string | null
         }
@@ -2957,6 +3133,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_terms_acceptances: {
+        Row: {
+          accepted_at: string
+          created_at: string
+          id: string
+          terms_version_id: string
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string
+          created_at?: string
+          id?: string
+          terms_version_id: string
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string
+          created_at?: string
+          id?: string
+          terms_version_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_terms_acceptances_terms_version_id_fkey"
+            columns: ["terms_version_id"]
+            isOneToOne: false
+            referencedRelation: "terms_versions"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_travel_bucket_list: {
         Row: {
@@ -3098,6 +3306,7 @@ export type Database = {
       }
     }
     Functions: {
+      accept_current_terms: { Args: never; Returns: string }
       accept_trip_invitation: {
         Args: { invitation_id: string }
         Returns: undefined
@@ -3112,6 +3321,10 @@ export type Database = {
           target_personal_start_date?: string
         }
         Returns: string
+      }
+      admin_get_place_stats: {
+        Args: { range_end?: string; range_start?: string }
+        Returns: Json
       }
       admin_get_stats: { Args: never; Returns: Json }
       admin_update_user_profile: {
@@ -3134,6 +3347,51 @@ export type Database = {
         Args: { target_trip_id: string; target_trip_leg_id: string }
         Returns: boolean
       }
+      claim_notification_email_outbox: {
+        Args: { batch_limit?: number }
+        Returns: {
+          attempts: number
+          created_at: string
+          failed_at: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          next_attempt_at: string | null
+          notification_id: string
+          notification_type: string
+          payload: Json
+          provider_message_id: string | null
+          recipient_email: string
+          sent_at: string | null
+          status: string
+          subject: string
+          template_key: string
+          updated_at: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "notification_email_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_pending_trip_invitations_for_current_user: {
+        Args: never
+        Returns: {
+          id: string
+          invitation_scope: string
+          invited_by: string
+          invited_end_date: string
+          invited_start_date: string
+          inviter_name: string
+          trip_end_date: string
+          trip_id: string
+          trip_slug: string
+          trip_start_date: string
+          trip_title: string
+        }[]
+      }
       create_friend_invitation: {
         Args: { invitee_identifier: string }
         Returns: string
@@ -3146,6 +3404,7 @@ export type Database = {
         }
         Returns: string
       }
+      decline_current_terms: { Args: never; Returns: string }
       decline_trip_invitation: {
         Args: { invitation_id: string }
         Returns: undefined
@@ -3197,6 +3456,10 @@ export type Database = {
           target_user_id: string
         }
         Returns: string
+      }
+      get_friend_profile_snapshot: {
+        Args: { target_user_id: string }
+        Returns: Json
       }
       get_trip_slug_fallback_for_user: {
         Args: { excluded_trip_id?: string; target_user_id: string }
@@ -3284,6 +3547,11 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      request_account_deletion_after_terms_decline: {
+        Args: never
+        Returns: undefined
+      }
+      request_current_user_account_deletion: { Args: never; Returns: undefined }
       respond_to_friend_invitation: {
         Args: { friendship_id: string; next_status: string }
         Returns: undefined
@@ -3332,6 +3600,10 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      set_marketing_email_consent: {
+        Args: { consent: boolean }
+        Returns: undefined
+      }
       trip_slug_conflicts_for_user: {
         Args: {
           excluded_trip_id?: string
@@ -3340,6 +3612,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      unfriend_user: { Args: { target_user_id: string }; Returns: undefined }
       vaivia_level_for_points: { Args: { raw_points: number }; Returns: Json }
       vaivia_trip_owner: { Args: { trip_id: string }; Returns: string }
       visible_trip_member_ids: {

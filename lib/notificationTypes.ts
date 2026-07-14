@@ -85,6 +85,16 @@ export const NOTIFICATION_TYPE_OPTIONS = [
         label: "Feature requests implemented",
         description: "When something you suggested becomes available.",
     },
+    {
+        type: "terms_updated",
+        label: "Terms updates",
+        description: "When VAIVIA makes a minor Terms and Conditions update.",
+    },
+    {
+        type: "terms_acceptance_required",
+        label: "Terms acceptance required",
+        description: "When a major Terms update requires your acceptance.",
+    },
 ] as const;
 
 export const NOTIFICATION_TYPES = NOTIFICATION_TYPE_OPTIONS.map(
