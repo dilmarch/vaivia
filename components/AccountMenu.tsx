@@ -3145,14 +3145,21 @@ export default function AccountMenu({
             }
 
             let sentShareCount = 0;
+            let shareSendFailed = false;
             try {
                 sentShareCount = await sendPassportStampToFriends(supabase, data?.id);
             } catch (shareError) {
+                shareSendFailed = true;
                 console.warn("Passport stamp was added but could not be shared:", {
                     ...getErrorDetails(shareError),
                     stampId: data?.id,
                     friendCount: passportStampFriendIds.length,
                 });
+                if (passportStampFriendIds.length > 0) {
+                    setStatusMessage(
+                        "Passport stamp saved, but VAIVIA could not send the friend invite. Try editing the stamp and saving again."
+                    );
+                }
             }
 
             const stamp: PassportStamp = {
@@ -3231,7 +3238,9 @@ export default function AccountMenu({
             setIsAddPassportStampOpen(false);
             if (passportStampFriendIds.length > 0) {
                 setStatusMessage(
-                    sentShareCount > 0
+                    shareSendFailed
+                        ? "Passport stamp saved, but VAIVIA could not send the friend invite. Try editing the stamp and saving again."
+                        : sentShareCount > 0
                         ? `Passport stamp sent to ${sentShareCount} friend${
                               sentShareCount === 1 ? "" : "s"
                           } for review.`
@@ -3483,17 +3492,24 @@ export default function AccountMenu({
             if (error) throw error;
 
             let sentShareCount = 0;
+            let shareSendFailed = false;
             try {
                 sentShareCount = await sendPassportStampToFriends(
                     supabase,
                     data?.id || stamp.id
                 );
             } catch (shareError) {
+                shareSendFailed = true;
                 console.warn("Passport stamp was updated but could not be shared:", {
                     ...getErrorDetails(shareError),
                     stampId: data?.id || stamp.id,
                     friendCount: passportStampFriendIds.length,
                 });
+                if (passportStampFriendIds.length > 0) {
+                    setStatusMessage(
+                        "Passport stamp saved, but VAIVIA could not send the friend invite. Try saving again."
+                    );
+                }
             }
 
             const updatedStamp: PassportStamp = {
@@ -3560,7 +3576,9 @@ export default function AccountMenu({
             setIsEditingPassportStamp(false);
             if (passportStampFriendIds.length > 0) {
                 setStatusMessage(
-                    sentShareCount > 0
+                    shareSendFailed
+                        ? "Passport stamp saved, but VAIVIA could not send the friend invite. Try saving again."
+                        : sentShareCount > 0
                         ? `Passport stamp sent to ${sentShareCount} friend${
                               sentShareCount === 1 ? "" : "s"
                           } for review.`

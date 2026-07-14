@@ -242,7 +242,49 @@ function ScenarioListEditor({
     onChange,
     readOnly = false,
 }: ScenarioListEditorProps) {
+    const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
+    const [editingIndexes, setEditingIndexes] = useState<Set<number>>(
+        () => new Set(),
+    );
     const populatedCount = items.filter((item) => item.trim()).length;
+
+    const focusInput = (index: number) => {
+        window.requestAnimationFrame(() => {
+            inputRefs.current[index]?.focus();
+        });
+    };
+
+    const handleAdd = (focusIndex = items.length) => {
+        setEditingIndexes(new Set());
+        onAdd();
+        focusInput(focusIndex);
+    };
+
+    const handleRemove = (indexToRemove: number) => {
+        setEditingIndexes((current) => {
+            const next = new Set<number>();
+
+            current.forEach((index) => {
+                if (index < indexToRemove) {
+                    next.add(index);
+                } else if (index > indexToRemove) {
+                    next.add(index - 1);
+                }
+            });
+
+            return next;
+        });
+        onRemove(indexToRemove);
+    };
+
+    const handleEdit = (index: number) => {
+        setEditingIndexes((current) => {
+            const next = new Set(current);
+            next.add(index);
+            return next;
+        });
+        focusInput(index);
+    };
 
     if (readOnly) {
         const visibleItems = items.map((item) => item.trim()).filter(Boolean);
@@ -289,7 +331,7 @@ function ScenarioListEditor({
                 {!readOnly ? (
                     <button
                         type="button"
-                        onClick={onAdd}
+                        onClick={() => handleAdd()}
                         className="rounded-full border border-lime-300/35 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
                     >
                         Add
@@ -297,32 +339,66 @@ function ScenarioListEditor({
                 ) : null}
             </div>
             <div className="mt-3 space-y-2">
-                {items.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lime-300 text-xs font-black text-slate-950">
-                            {index + 1}
-                        </span>
-                        <input
-                            value={item}
-                            onChange={(event) => onChange(index, event.target.value)}
-                            placeholder={placeholder}
-                            readOnly={readOnly}
-                            className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/40"
-                            {...PASSWORD_MANAGER_IGNORE_PROPS}
-                        />
-                        {!readOnly ? (
-                            <button
-                                type="button"
-                                onClick={() => onRemove(index)}
-                                disabled={items.length === 1}
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/20 text-sm font-black text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-30"
-                                aria-label={`Remove ${title.toLowerCase()} ${index + 1}`}
-                            >
-                                ×
-                            </button>
-                        ) : null}
-                    </div>
-                ))}
+                {items.map((item, index) => {
+                    const hasValue = item.trim().length > 0;
+                    const isEditing = !hasValue || editingIndexes.has(index);
+
+                    return (
+                        <div key={index} className="flex items-center gap-2">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lime-300 text-xs font-black text-slate-950">
+                                {index + 1}
+                            </span>
+                            {isEditing ? (
+                                <input
+                                    ref={(element) => {
+                                        inputRefs.current[index] = element;
+                                    }}
+                                    value={item}
+                                    onChange={(event) =>
+                                        onChange(index, event.target.value)
+                                    }
+                                    onKeyDown={(event) => {
+                                        if (event.key !== "Enter") return;
+
+                                        event.preventDefault();
+
+                                        if (item.trim()) {
+                                            handleAdd();
+                                        }
+                                    }}
+                                    placeholder={placeholder}
+                                    className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/40"
+                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                />
+                            ) : (
+                                <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950/55 px-3 py-2 text-sm font-semibold text-slate-100">
+                                    <span className="block truncate">{item}</span>
+                                </div>
+                            )}
+                            {hasValue && !isEditing ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleEdit(index)}
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-lime-300/25 text-lime-100 transition hover:bg-lime-300/10"
+                                    aria-label={`Edit ${title.toLowerCase()} ${index + 1}`}
+                                >
+                                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                                </button>
+                            ) : null}
+                            {!readOnly ? (
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemove(index)}
+                                    disabled={items.length === 1}
+                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/20 text-sm font-black text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-30"
+                                    aria-label={`Remove ${title.toLowerCase()} ${index + 1}`}
+                                >
+                                    ×
+                                </button>
+                            ) : null}
+                        </div>
+                    );
+                })}
             </div>
         </div>
     );
@@ -1933,122 +2009,7 @@ export default function JourneyPlanningTab({
                                             {scenario.label}
                                         </h3>
                                     </div>
-                                    <div className="flex shrink-0 flex-col gap-2">
-                                        <div className="flex justify-end gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    openEditScenarioModal(scenario)
-                                                }
-                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
-                                                aria-label={`Edit ${scenario.label}`}
-                                                title="Edit scenario"
-                                            >
-                                                <Pencil
-                                                    className="h-4 w-4"
-                                                    aria-hidden="true"
-                                                />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    duplicateScenario(scenario.id)
-                                                }
-                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
-                                                aria-label={`Duplicate ${scenario.label}`}
-                                                title="Duplicate scenario"
-                                            >
-                                                <Copy
-                                                    className="h-4 w-4"
-                                                    aria-hidden="true"
-                                                />
-                                            </button>
-                                            <div
-                                                role="button"
-                                                tabIndex={0}
-                                                draggable
-                                                onDragStart={(event) =>
-                                                    handleScenarioDragStart(
-                                                        event,
-                                                        scenario.id
-                                                    )
-                                                }
-                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
-                                                aria-label={`Drag ${scenario.label} to reorder`}
-                                                title="Drag to reorder"
-                                            >
-                                                <GripVertical
-                                                    className="h-4 w-4"
-                                                    aria-hidden="true"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-1">
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    moveScenario(scenario.id, "up")
-                                                }
-                                                disabled={scenarioIndex === 0}
-                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
-                                                aria-label={`Move ${scenario.label} earlier`}
-                                                title="Move earlier"
-                                            >
-                                                <span className="md:hidden">↑</span>
-                                                <span className="hidden md:inline">←</span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    moveScenario(scenario.id, "down")
-                                                }
-                                                disabled={
-                                                    scenarioIndex === scenarios.length - 1
-                                                }
-                                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
-                                                aria-label={`Move ${scenario.label} later`}
-                                                title="Move later"
-                                            >
-                                                <span className="md:hidden">↓</span>
-                                                <span className="hidden md:inline">→</span>
-                                            </button>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setPendingDeleteScenarioId(scenario.id)
-                                            }
-                                            className="rounded-full border border-red-300/20 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-red-100 transition hover:bg-red-400/15"
-                                        >
-                                            Delete
-                                        </button>
-                                    </div>
                                 </div>
-                                {pendingDeleteScenarioId === scenario.id ? (
-                                    <div className="mt-4 rounded-2xl border border-red-300/20 bg-red-400/10 p-3">
-                                        <p className="text-sm font-bold text-red-50">
-                                            Delete this transport idea?
-                                        </p>
-                                        <div className="mt-3 flex flex-wrap gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => deleteScenario(scenario.id)}
-                                                className="rounded-full bg-red-300 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-950 transition hover:bg-red-200"
-                                            >
-                                                Confirm delete
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setPendingDeleteScenarioId(null)
-                                                }
-                                                className="rounded-full border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-200 transition hover:bg-white/10"
-                                            >
-                                                Keep it
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : null}
                                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                                     <StyledOptionPicker
                                         label="Transport type"
@@ -2479,7 +2440,6 @@ export default function JourneyPlanningTab({
                                                 value
                                             )
                                         }
-                                        readOnly
                                     />
                                     <ScenarioListEditor
                                         title="Cons"
@@ -2503,8 +2463,128 @@ export default function JourneyPlanningTab({
                                                 value
                                             )
                                         }
-                                        readOnly
                                     />
+                                </div>
+                                <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3">
+                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openEditScenarioModal(scenario)
+                                                }
+                                                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                aria-label={`Edit ${scenario.label}`}
+                                                title="Edit scenario"
+                                            >
+                                                <Pencil
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    duplicateScenario(scenario.id)
+                                                }
+                                                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                aria-label={`Duplicate ${scenario.label}`}
+                                                title="Duplicate scenario"
+                                            >
+                                                <Copy
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                            </button>
+                                            <div
+                                                role="button"
+                                                tabIndex={0}
+                                                draggable
+                                                onDragStart={(event) =>
+                                                    handleScenarioDragStart(
+                                                        event,
+                                                        scenario.id
+                                                    )
+                                                }
+                                                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:border-lime-300/30 hover:bg-white/10 hover:text-lime-100"
+                                                aria-label={`Drag ${scenario.label} to reorder`}
+                                                title="Drag to reorder"
+                                            >
+                                                <GripVertical
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    moveScenario(scenario.id, "up")
+                                                }
+                                                disabled={scenarioIndex === 0}
+                                                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                                aria-label={`Move ${scenario.label} earlier`}
+                                                title="Move earlier"
+                                            >
+                                                <span className="md:hidden">↑</span>
+                                                <span className="hidden md:inline">←</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    moveScenario(scenario.id, "down")
+                                                }
+                                                disabled={
+                                                    scenarioIndex === scenarios.length - 1
+                                                }
+                                                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-sm font-black text-lime-100 transition hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-30"
+                                                aria-label={`Move ${scenario.label} later`}
+                                                title="Move later"
+                                            >
+                                                <span className="md:hidden">↓</span>
+                                                <span className="hidden md:inline">→</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setPendingDeleteScenarioId(
+                                                        scenario.id
+                                                    )
+                                                }
+                                                className="rounded-full border border-red-300/20 px-3 py-2 text-xs font-black uppercase tracking-wide text-red-100 transition hover:bg-red-400/15"
+                                            >
+                                                Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {pendingDeleteScenarioId === scenario.id ? (
+                                        <div className="mt-3 rounded-2xl border border-red-300/20 bg-red-400/10 p-3">
+                                            <p className="text-sm font-bold text-red-50">
+                                                Delete this transport idea?
+                                            </p>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        deleteScenario(scenario.id)
+                                                    }
+                                                    className="rounded-full bg-red-300 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-950 transition hover:bg-red-200"
+                                                >
+                                                    Confirm delete
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setPendingDeleteScenarioId(null)
+                                                    }
+                                                    className="rounded-full border border-white/10 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-200 transition hover:bg-white/10"
+                                                >
+                                                    Keep it
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : null}
                                 </div>
                                 {isSelected &&
                                 addedTransportationId &&

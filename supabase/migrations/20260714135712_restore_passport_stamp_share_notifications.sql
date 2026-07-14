@@ -70,22 +70,30 @@ begin
      for update;
 
     if share_row.id is null then
-      insert into public.user_passport_stamp_shares (
-        sender_user_id,
-        recipient_user_id,
-        source_stamp_id,
-        status
-      )
-      values (
-        current_user_id,
-        recipient_id,
-        requested_source_stamp_id,
-        'pending'
-      )
-      on conflict (sender_user_id, recipient_user_id, source_stamp_id)
-        where status = 'pending'
-      do update set updated_at = now()
-      returning * into share_row;
+      begin
+        insert into public.user_passport_stamp_shares (
+          sender_user_id,
+          recipient_user_id,
+          source_stamp_id,
+          status
+        )
+        values (
+          current_user_id,
+          recipient_id,
+          requested_source_stamp_id,
+          'pending'
+        )
+        returning * into share_row;
+      exception
+        when unique_violation then
+          update public.user_passport_stamp_shares shares
+             set updated_at = now()
+           where shares.sender_user_id = current_user_id
+             and shares.recipient_user_id = recipient_id
+             and shares.source_stamp_id = requested_source_stamp_id
+             and shares.status = 'pending'
+          returning * into share_row;
+      end;
     elsif share_row.status = 'pending' then
       update public.user_passport_stamp_shares
          set updated_at = now()
