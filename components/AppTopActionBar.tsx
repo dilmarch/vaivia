@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bell, Briefcase, Home, Search, Stamp } from "lucide-react";
+import { Bell, Briefcase, Check, Home, Search, Stamp } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
@@ -43,10 +43,6 @@ type AppTopActionBarProps = {
 };
 
 export type AppNotification = DropdownNotification;
-
-type RefreshNotificationsOptions = {
-    markPassiveAsViewed?: boolean;
-};
 
 type ProminentSharedStamp = {
     country_code: string;
@@ -243,6 +239,7 @@ export default function AppTopActionBar({
     const openMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const previousOpenMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const remindedActionNotificationIdsRef = useRef<Set<string>>(new Set());
+    const dropdownPreviewNotifications = visibleNotifications.slice(0, 7);
     const dropdownNotificationCount = hasSyncedNotifications
         ? visibleNotifications.length
         : 0;
@@ -437,9 +434,7 @@ export default function AppTopActionBar({
         };
     }, [openMenu]);
 
-    async function refreshNotifications({
-        markPassiveAsViewed = false,
-    }: RefreshNotificationsOptions = {}) {
+    async function refreshNotifications() {
         setIsLoadingNotifications(true);
 
         const supabase = createClient();
@@ -472,10 +467,6 @@ export default function AppTopActionBar({
             const dropdownNotifications = data || [];
             setVisibleNotifications(dropdownNotifications);
             setHasSyncedNotifications(true);
-
-            if (markPassiveAsViewed) {
-                void markViewedPassiveNotifications(dropdownNotifications);
-            }
         }
 
         setIsLoadingNotifications(false);
@@ -486,60 +477,32 @@ export default function AppTopActionBar({
             const nextMenu = current === menu ? null : menu;
 
             if (nextMenu === "notifications") {
-                void refreshNotifications({ markPassiveAsViewed: true });
+                void refreshNotifications();
             }
 
             return nextMenu;
         });
     }
 
-    async function markViewedPassiveNotifications(
-        nextNotifications: AppNotification[]
-    ) {
-        const passiveUnreadIds = nextNotifications
-            .filter(
-                (notification) =>
-                    !notification.read_at &&
-                    !isActionRequiredNotification(notification)
-            )
-            .map((notification) => notification.id);
-
-        if (passiveUnreadIds.length === 0) return;
-
-        const readAt = new Date().toISOString();
+    async function markNotificationRead(notification: AppNotification) {
+        if (notification.read_at) return true;
 
         const supabase = createClient();
-        const { error } = await supabase
-            .from("notifications")
-            .update({ read_at: readAt })
-            .in("id", passiveUnreadIds);
+        const { error } = await supabase.rpc("mark_app_alert_read", {
+            alert_id: notification.id,
+        });
 
         if (error) {
-            console.warn("Could not mark viewed notifications read:", {
+            console.warn("Could not mark notification read:", {
                 message: error.message,
                 code: error.code,
                 details: error.details,
                 hint: error.hint,
             });
-            return;
+            return false;
         }
 
-        setVisibleNotifications((current) =>
-            current.map((notification) =>
-                passiveUnreadIds.includes(notification.id)
-                    ? { ...notification, read_at: readAt }
-                    : notification
-            )
-        );
-    }
-
-    async function markNotificationRead(notification: AppNotification) {
-        if (notification.read_at) return;
-
-        const supabase = createClient();
-        await supabase.rpc("mark_app_alert_read", {
-            alert_id: notification.id,
-        });
+        return true;
     }
 
     async function handleNotificationClick(notification: AppNotification) {
@@ -558,7 +521,9 @@ export default function AppTopActionBar({
             return;
         }
 
-        await markNotificationRead(notification);
+        const didMarkRead = await markNotificationRead(notification);
+        if (!didMarkRead) return;
+
         setVisibleNotifications((current) =>
             current.filter(
                 (currentNotification) => currentNotification.id !== notification.id
@@ -1065,11 +1030,13 @@ export default function AppTopActionBar({
                                 <p className="px-3 py-6 text-center text-sm text-slate-400">
                                     Loading notifications...
                                 </p>
-                            ) : visibleNotifications.length > 0 ? (
-                                visibleNotifications.map((notification) => {
+                            ) : dropdownPreviewNotifications.length > 0 ? (
+                                dropdownPreviewNotifications.map((notification) => {
                                     const isPassportStampShare =
                                         notification.type ===
                                         "passport_stamp_share_received";
+                                    const isActionRequired =
+                                        isActionRequiredNotification(notification);
                                     const senderName = getNotificationMetadataString(
                                         notification,
                                         "senderName"
@@ -1078,26 +1045,36 @@ export default function AppTopActionBar({
                                         getNotificationMetadataString(
                                             notification,
                                             "senderAvatarUrl"
-                                        );
+                                    );
 
                                     return (
-                                        <button
+                                        <div
                                             key={notification.id}
-                                            type="button"
-                                            onClick={() =>
-                                                handleNotificationClick(notification)
-                                            }
                                             className={`block w-full rounded-2xl px-3 py-2 text-left transition hover:bg-white/10 ${
                                                 notification.read_at
                                                     ? "bg-transparent"
                                                     : "bg-lime-300/10"
                                             }`}
                                         >
-                                            <span className="flex items-start gap-2 text-sm font-semibold text-white">
-                                                {!notification.read_at ? (
-                                                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-lime-300" />
-                                                ) : null}
-                                                {isPassportStampShare ? (
+                                            <div className="flex items-start gap-3">
+                                                {!isActionRequired ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleNotificationClick(
+                                                                notification
+                                                            )
+                                                        }
+                                                        className="mt-1 inline-flex !h-5 !min-h-5 !w-5 !min-w-5 shrink-0 items-center justify-center rounded-full border border-lime-300/45 bg-slate-950/80 p-0 text-lime-200 transition hover:border-lime-200 hover:bg-lime-300 hover:text-slate-950 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                                                        aria-label="Mark notification done"
+                                                        title="Mark done"
+                                                    >
+                                                        <Check
+                                                            className="h-3 w-3"
+                                                            aria-hidden="true"
+                                                        />
+                                                    </button>
+                                                ) : isPassportStampShare ? (
                                                     <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-lime-300/25 bg-slate-950 text-[10px] font-black uppercase text-lime-100">
                                                         {senderAvatarUrl ? (
                                                             <img
@@ -1114,33 +1091,57 @@ export default function AppTopActionBar({
                                                             />
                                                         )}
                                                     </span>
-                                                ) : null}
-                                                <span className="block min-w-0">
-                                                    <span className="block">
-                                                        {isPassportStampShare &&
-                                                        senderName
-                                                            ? senderName
-                                                            : notification.title ||
-                                                              "Notification"}
-                                                    </span>
-                                                    {isPassportStampShare ? (
-                                                        <span className="mt-0.5 block text-xs font-semibold text-slate-400">
-                                                            Passport stamp received
+                                                ) : (
+                                                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-lime-300" />
+                                                )}
+
+                                                <div className="min-w-0 flex-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            if (isActionRequired) {
+                                                                void handleNotificationClick(
+                                                                    notification
+                                                                );
+                                                            }
+                                                        }}
+                                                        disabled={!isActionRequired}
+                                                        className="block w-full min-h-0 rounded-xl text-left disabled:cursor-default"
+                                                    >
+                                                        <span className="block text-sm font-semibold text-white">
+                                                            {isPassportStampShare &&
+                                                            senderName
+                                                                ? senderName
+                                                                : notification.title ||
+                                                                  "Notification"}
                                                         </span>
+                                                        {isPassportStampShare ? (
+                                                            <span className="mt-0.5 block text-xs font-semibold text-slate-400">
+                                                                Passport stamp
+                                                                received
+                                                            </span>
+                                                        ) : null}
+                                                        <span className="mt-0.5 block text-xs text-slate-400">
+                                                            {notification.body}
+                                                        </span>
+                                                    </button>
+
+                                                    {isActionRequired ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleNotificationClick(
+                                                                    notification
+                                                                )
+                                                            }
+                                                            className="mt-2 inline-flex rounded-full bg-lime-300 px-3 py-1 text-xs font-black text-slate-950 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
+                                                        >
+                                                            Review
+                                                        </button>
                                                     ) : null}
-                                                </span>
-                                            </span>
-                                            <span className="mt-0.5 block text-xs text-slate-400">
-                                                {notification.body}
-                                            </span>
-                                            {isActionRequiredNotification(
-                                                notification
-                                            ) ? (
-                                                <span className="mt-2 inline-flex rounded-full bg-lime-300 px-3 py-1 text-xs font-black text-slate-950">
-                                                    Review
-                                                </span>
-                                            ) : null}
-                                        </button>
+                                                </div>
+                                            </div>
+                                        </div>
                                     );
                                 })
                             ) : (
