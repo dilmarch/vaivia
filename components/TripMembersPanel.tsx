@@ -412,6 +412,48 @@ export default function TripMembersPanel({
                                 invitation.invited_by === currentUserId ||
                                 tripOwnerId === currentUserId;
 
+                            if (canCancelInvitation) {
+                                return (
+                                    <span
+                                        key={invitation.id}
+                                        className="relative inline-flex"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTripInviteCancelError("");
+                                                setCancelTripInviteTarget(invitation);
+                                            }}
+                                            className="relative inline-flex !h-11 !min-h-11 w-11 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)] transition hover:border-red-200/40 hover:bg-red-400/10 focus:outline-none focus:ring-2 focus:ring-red-200/50 sm:hidden"
+                                            title="Cancel pending invitation"
+                                            aria-label={`Cancel pending trip invitation for ${invitation.label}`}
+                                        >
+                                            {getInvitationInitial(invitation)}
+                                        </button>
+
+                                        <span
+                                            className="group/invite relative hidden h-11 w-11 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)] sm:inline-flex"
+                                            title="Pending invitation"
+                                            aria-label="Pending trip invitation"
+                                        >
+                                            {getInvitationInitial(invitation)}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setTripInviteCancelError("");
+                                                    setCancelTripInviteTarget(invitation);
+                                                }}
+                                                className="absolute -right-1 -top-1 flex !h-5 !min-h-5 !w-5 !min-w-5 items-center justify-center rounded-full border border-red-200/30 bg-slate-950 p-0 text-[10px] font-black leading-none text-red-100 opacity-0 shadow-xl shadow-black/35 transition hover:bg-red-400/20 group-hover/invite:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200/50"
+                                                aria-label="Cancel pending trip invitation"
+                                                title="Cancel invite"
+                                            >
+                                                ×
+                                            </button>
+                                        </span>
+                                    </span>
+                                );
+                            }
+
                             return (
                                 <span
                                     key={invitation.id}
@@ -420,20 +462,6 @@ export default function TripMembersPanel({
                                     aria-label="Pending trip invitation"
                                 >
                                     {getInvitationInitial(invitation)}
-                                    {canCancelInvitation ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setTripInviteCancelError("");
-                                                setCancelTripInviteTarget(invitation);
-                                            }}
-                                            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-red-200/30 bg-slate-950 text-[10px] font-black text-red-100 opacity-0 shadow-xl shadow-black/35 transition hover:bg-red-400/20 group-hover/invite:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200/50"
-                                            aria-label="Cancel pending trip invitation"
-                                            title="Cancel invite"
-                                        >
-                                            ×
-                                        </button>
-                                    ) : null}
                                 </span>
                             );
                         })}
@@ -521,7 +549,7 @@ export default function TripMembersPanel({
                                                 setFriendActionError("");
                                                 setConfirmingFriend(member);
                                             }}
-                                            className="absolute bottom-3 left-8 z-30 inline-flex aspect-square h-5 min-h-5 w-5 min-w-5 max-w-5 shrink-0 items-center justify-center rounded-full border border-slate-950 bg-lime-300 p-0 text-slate-950 leading-none shadow-xl shadow-black/40 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200"
+                                            className="absolute bottom-3 left-8 z-30 inline-flex !h-5 !max-h-5 !min-h-5 !w-5 !min-w-5 !max-w-5 aspect-square shrink-0 items-center justify-center rounded-full border border-slate-950 bg-lime-300 p-0 text-slate-950 leading-none shadow-xl shadow-black/40 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200"
                                             aria-label={`Add ${getDisplayName(member)} as a friend`}
                                             title={`Add ${getDisplayName(member)} as a friend`}
                                         >

@@ -801,88 +801,63 @@ export default function AppTopActionBar({
                                     </button>
                                 </div>
 
-                                <p className="text-sm font-semibold leading-6 text-slate-300">
-                                    {prominentActionCopy.body}
-                                </p>
+                                {prominentActionNotification.type !==
+                                "passport_stamp_share_received" ? (
+                                    <p className="text-sm font-semibold leading-6 text-slate-300">
+                                        {prominentActionCopy.body}
+                                    </p>
+                                ) : null}
 
                                 {prominentActionNotification.type ===
                                 "passport_stamp_share_received" ? (
-                                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-4 shadow-xl shadow-black/20">
-                                        <div className="flex items-center gap-3">
-                                            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-lime-300/25 bg-slate-950 text-sm font-black uppercase text-lime-100 shadow-xl shadow-black/25">
-                                                {prominentPassportSenderAvatarUrl ? (
-                                                    <img
-                                                        src={
-                                                            prominentPassportSenderAvatarUrl
-                                                        }
-                                                        alt=""
-                                                        className="h-full w-full object-cover"
-                                                    />
-                                                ) : (
-                                                    getInitials(
-                                                        prominentPassportSenderName
-                                                    )
-                                                )}
-                                            </span>
-                                            <div className="min-w-0">
-                                                <p className="truncate text-sm font-black text-white">
-                                                    {prominentPassportSenderName}
-                                                </p>
-                                                <p className="text-xs font-semibold text-slate-400">
-                                                    sent you this stamp
-                                                </p>
+                                    <div className="mt-4 flex justify-center">
+                                        {isLoadingProminentPassportPreview ? (
+                                            <div className="flex h-40 w-40 items-center justify-center rounded-full border border-lime-300/20 bg-slate-950/70 text-center text-xs font-black uppercase tracking-[0.18em] text-lime-100">
+                                                Loading stamp
                                             </div>
-                                        </div>
-
-                                        <div className="mt-4 flex justify-center">
-                                            {isLoadingProminentPassportPreview ? (
-                                                <div className="flex h-40 w-40 items-center justify-center rounded-full border border-lime-300/20 bg-slate-950/70 text-center text-xs font-black uppercase tracking-[0.18em] text-lime-100">
-                                                    Loading stamp
-                                                </div>
-                                            ) : prominentPassportStamp ? (
-                                                <PassportStampCard
-                                                    countryName={
-                                                        prominentPassportStamp.stamp_display_country_name ||
-                                                        prominentPassportStamp.country_name ||
-                                                        prominentPassportStamp.country_code
-                                                    }
-                                                    countryCode={
-                                                        prominentPassportStamp.country_code
-                                                    }
-                                                    flagEmoji={
-                                                        prominentPassportStamp.stamp_display_flag ||
-                                                        prominentPassportStamp.flag_emoji ||
-                                                        ""
-                                                    }
-                                                    firstVisitYear={getYearFromDate(
-                                                        prominentPassportStamp.first_visited_on
-                                                    )}
-                                                    welcomeLabel={
-                                                        prominentPassportStamp.welcome_label_snapshot ||
-                                                        prominentPassportStamp.arrival_label_snapshot ||
-                                                        "WELCOME"
-                                                    }
-                                                    airportCode={
-                                                        prominentPassportStamp.first_entry_iata_code ||
-                                                        prominentPassportStamp.first_entry_icao_code
-                                                    }
-                                                    airportCity={
-                                                        prominentPassportStamp.visit_city ||
-                                                        prominentPassportStamp.first_entry_city
-                                                    }
-                                                    portOfEntryLabel={
-                                                        prominentPassportStamp.port_of_entry_name ||
-                                                        prominentPassportStamp.first_entry_airport_name
-                                                    }
-                                                    size="sm"
-                                                />
-                                            ) : (
-                                                <div className="flex h-40 w-40 items-center justify-center rounded-full border border-lime-300/20 bg-slate-950/70 p-5 text-center text-xs font-bold leading-5 text-slate-300">
-                                                    Stamp preview will appear when
-                                                    you review.
-                                                </div>
-                                            )}
-                                        </div>
+                                        ) : prominentPassportStamp ? (
+                                            <PassportStampCard
+                                                countryName={
+                                                    prominentPassportStamp.stamp_display_country_name ||
+                                                    prominentPassportStamp.country_name ||
+                                                    prominentPassportStamp.country_code
+                                                }
+                                                countryCode={
+                                                    prominentPassportStamp.country_code
+                                                }
+                                                flagEmoji={
+                                                    prominentPassportStamp.stamp_display_flag ||
+                                                    prominentPassportStamp.flag_emoji ||
+                                                    ""
+                                                }
+                                                firstVisitYear={getYearFromDate(
+                                                    prominentPassportStamp.first_visited_on
+                                                )}
+                                                welcomeLabel={
+                                                    prominentPassportStamp.welcome_label_snapshot ||
+                                                    prominentPassportStamp.arrival_label_snapshot ||
+                                                    "WELCOME"
+                                                }
+                                                airportCode={
+                                                    prominentPassportStamp.first_entry_iata_code ||
+                                                    prominentPassportStamp.first_entry_icao_code
+                                                }
+                                                airportCity={
+                                                    prominentPassportStamp.visit_city ||
+                                                    prominentPassportStamp.first_entry_city
+                                                }
+                                                portOfEntryLabel={
+                                                    prominentPassportStamp.port_of_entry_name ||
+                                                    prominentPassportStamp.first_entry_airport_name
+                                                }
+                                                size="sm"
+                                            />
+                                        ) : (
+                                            <div className="flex h-40 w-40 items-center justify-center rounded-full border border-lime-300/20 bg-slate-950/70 p-5 text-center text-xs font-bold leading-5 text-slate-300">
+                                                Stamp preview will appear when you
+                                                review.
+                                            </div>
+                                        )}
                                     </div>
                                 ) : null}
 
