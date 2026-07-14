@@ -1,7 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { Minus, Plus, X } from "lucide-react";
+import {
+    BedDouble,
+    CalendarCheck,
+    Lightbulb,
+    Map,
+    Minus,
+    PiggyBank,
+    Plus,
+    Route,
+    Utensils,
+    X,
+    type LucideIcon,
+} from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createAccommodation } from "@/app/actions/accommodations";
@@ -36,6 +48,14 @@ type ItineraryQuickAddProps = {
 
 type QuickAddInitialAction = "transportation" | "scheduled" | "idea";
 
+type TourSection = {
+    label: string;
+    title: string;
+    description: string;
+    href: string;
+    icon: LucideIcon;
+};
+
 export default function ItineraryQuickAdd({
     tripId,
     createItineraryAction,
@@ -68,9 +88,69 @@ export default function ItineraryQuickAdd({
             onboardingProgress?.status === "in_progress" &&
             onboardingProgress.current_step === "complete"
     );
-    const [isShowingAround, setIsShowingAround] = useState(false);
+    const [activeTourIndex, setActiveTourIndex] = useState<number | null>(null);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const handledInitialActionRef = useRef<string | null>(null);
+    const tourSections: TourSection[] = [
+        {
+            label: "Overview",
+            title: "Trip landing page",
+            description:
+                "Start here for the trip snapshot: dates, countdown, people, invite controls, and quick links into every trip app.",
+            href: `/trips/${tripId}`,
+            icon: Map,
+        },
+        {
+            label: "Itinerary",
+            title: "Scheduled plans",
+            description:
+                "Use this for anything happening on a date: activities, events, tickets, reservations, and transportation you have committed to.",
+            href: `/trips/${tripId}?tab=itinerary`,
+            icon: CalendarCheck,
+        },
+        {
+            label: "Ideas",
+            title: "Maybe-list magic",
+            description:
+                "Save places, activities, and loose possibilities without locking them onto the itinerary yet.",
+            href: `/trips/${tripId}?tab=ideas`,
+            icon: Lightbulb,
+        },
+        {
+            label: "Journey",
+            title: "Transportation planning",
+            description:
+                "Compare routes, flights, trains, ferry ideas, round trips, pros and cons, and then add the winner to your itinerary.",
+            href: `/trips/${tripId}?tab=journey-planning`,
+            icon: Route,
+        },
+        {
+            label: "Budget",
+            title: "Money without the mess",
+            description:
+                "Track trip budgets, expenses, split costs, and personal purchases so group travel stays clearer.",
+            href: `/trips/${tripId}/budget`,
+            icon: PiggyBank,
+        },
+        {
+            label: "Stays",
+            title: "Accommodations",
+            description:
+                "Keep hotels, home stays, check-in details, addresses, and booking notes together.",
+            href: `/trips/${tripId}/accommodations`,
+            icon: BedDouble,
+        },
+        {
+            label: "Food",
+            title: "Restaurants and things to try",
+            description:
+                "Collect restaurants, dishes, cafes, and food ideas so the good stuff does not disappear into a chat thread.",
+            href: `/trips/${tripId}/food`,
+            icon: Utensils,
+        },
+    ];
+    const activeTourSection =
+        activeTourIndex === null ? null : tourSections[activeTourIndex] || null;
     const shouldShowFirstItemPrompt =
         onboardingProgress?.status === "in_progress" &&
         onboardingProgress.current_step === "add_first_item" &&
@@ -125,9 +205,14 @@ export default function ItineraryQuickAdd({
 
         setIsCompletionModalOpen(false);
         if (showAround) {
-            setIsShowingAround(true);
-            window.setTimeout(() => setIsShowingAround(false), 2200);
+            setActiveTourIndex(0);
+            return;
         }
+        router.refresh();
+    }
+
+    function closeTour() {
+        setActiveTourIndex(null);
         router.refresh();
     }
 
@@ -279,6 +364,134 @@ export default function ItineraryQuickAdd({
                             </div>
                         </>
                     )}
+                </AnimatedModal>
+            ) : null}
+            {activeTourSection ? (
+                <AnimatedModal
+                    onClose={closeTour}
+                    panelClassName="max-w-xl"
+                    labelledBy="trip-section-tour-title"
+                >
+                    {({ requestClose }) => {
+                        const Icon = activeTourSection.icon;
+                        const currentTourIndex = activeTourIndex ?? 0;
+                        const isFirst = currentTourIndex === 0;
+                        const isLast =
+                            currentTourIndex === tourSections.length - 1;
+
+                        return (
+                            <>
+                                <div className="vaivia-modal-header">
+                                    <div className="flex items-start gap-4">
+                                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                                            <Icon
+                                                className="h-6 w-6"
+                                                aria-hidden="true"
+                                            />
+                                        </span>
+                                        <div>
+                                            <p className="vaivia-modal-eyebrow">
+                                                Trip tour {currentTourIndex + 1} of{" "}
+                                                {tourSections.length}
+                                            </p>
+                                            <h2
+                                                id="trip-section-tour-title"
+                                                className="vaivia-modal-title"
+                                            >
+                                                {activeTourSection.title}
+                                            </h2>
+                                            <p className="vaivia-modal-subtitle">
+                                                {activeTourSection.description}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="vaivia-modal-body space-y-4">
+                                    <div className="grid gap-2 sm:grid-cols-7">
+                                        {tourSections.map((section, index) => {
+                                            const SectionIcon = section.icon;
+                                            const isActive =
+                                                index === currentTourIndex;
+
+                                            return (
+                                                <button
+                                                    key={section.label}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setActiveTourIndex(index)
+                                                    }
+                                                    className={`flex min-h-14 items-center justify-center rounded-2xl border transition ${
+                                                        isActive
+                                                            ? "border-lime-300/45 bg-lime-300 text-slate-950"
+                                                            : "border-white/10 bg-white/[0.05] text-slate-300 hover:border-lime-300/30 hover:bg-white/[0.1] hover:text-lime-100"
+                                                    }`}
+                                                    aria-label={`View ${section.label} in tour`}
+                                                >
+                                                    <SectionIcon
+                                                        className="h-5 w-5"
+                                                        aria-hidden="true"
+                                                    />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
+                                        {activeTourSection.label}: use this section
+                                        whenever you want to{" "}
+                                        {activeTourSection.description
+                                            .charAt(0)
+                                            .toLowerCase() +
+                                            activeTourSection.description.slice(1)}
+                                    </p>
+                                </div>
+                                <div className="vaivia-modal-footer flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setActiveTourIndex((current) =>
+                                                    Math.max((current || 0) - 1, 0)
+                                                )
+                                            }
+                                            disabled={isFirst}
+                                            className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                            Back
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (isLast) {
+                                                    requestClose();
+                                                    closeTour();
+                                                    return;
+                                                }
+                                                setActiveTourIndex((current) =>
+                                                    Math.min(
+                                                        (current || 0) + 1,
+                                                        tourSections.length - 1
+                                                    )
+                                                );
+                                            }}
+                                            className="rounded-full bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                        >
+                                            {isLast ? "Finish tour" : "Next"}
+                                        </button>
+                                    </div>
+                                    <Link
+                                        href={activeTourSection.href}
+                                        onClick={() => {
+                                            requestClose();
+                                            setActiveTourIndex(null);
+                                        }}
+                                        className="rounded-full border border-lime-300/25 bg-lime-300/10 px-4 py-2.5 text-center text-sm font-black text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
+                                    >
+                                        Open {activeTourSection.label}
+                                    </Link>
+                                </div>
+                            </>
+                        );
+                    }}
                 </AnimatedModal>
             ) : null}
 
@@ -446,11 +659,7 @@ export default function ItineraryQuickAdd({
                     <button
                         type="button"
                         onClick={() => setIsOpen((current) => !current)}
-                        className={`vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] ${
-                            isShowingAround
-                                ? "ring-4 ring-lime-200/80 ring-offset-4 ring-offset-slate-950"
-                                : ""
-                        }`}
+                        className="vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
                         aria-label={
                             isOpen
                                 ? "Close itinerary quick add menu"

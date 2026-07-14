@@ -65,6 +65,9 @@ export default function TripAudienceSelector({
         if (audienceMode === "everyone") return [];
         return options.filter((option) => selectedKeys.has(optionKey(option)));
     }, [audienceMode, options, selectedKeys]);
+    const hasTripAudienceChoices = options.some(
+        (option) => !(option.kind === "member" && option.isCurrentUser)
+    );
 
     function setMode(nextMode: TripAudienceMode) {
         setAudienceMode(nextMode);
@@ -84,6 +87,10 @@ export default function TripAudienceSelector({
             else next.add(key);
             return next;
         });
+    }
+
+    if (!hasTripAudienceChoices) {
+        return <input type="hidden" name="audience_mode" value="everyone" />;
     }
 
     return (
