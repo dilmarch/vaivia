@@ -11,6 +11,7 @@ type PlaceAutocompleteInputProps = {
     onPlaceSelect: (place: google.maps.places.PlaceResult) => void;
     placeholder?: string;
     disabled?: boolean;
+    readOnly?: boolean;
     required?: boolean;
     className?: string;
     types?: string[];
@@ -164,6 +165,7 @@ export default function PlaceAutocompleteInput({
     onPlaceSelect,
     placeholder,
     disabled = false,
+    readOnly = false,
     required = false,
     className = "",
     types,
@@ -281,9 +283,12 @@ export default function PlaceAutocompleteInput({
                 id={id}
                 name={name}
                 value={value}
-                onChange={(event) => onInputChange(event.target.value)}
+                onChange={(event) => {
+                    if (!readOnly) onInputChange(event.target.value);
+                }}
                 placeholder={placeholder}
                 disabled={disabled}
+                readOnly={readOnly}
                 required={required}
                 className={className}
                 {...PASSWORD_MANAGER_IGNORE_PROPS}

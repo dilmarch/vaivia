@@ -99,6 +99,7 @@ type PassportStamp = {
     visitStatus?: "visited" | "lived" | string | null;
     portOfEntryType?: string | null;
     portOfEntryName?: string | null;
+    travelFriendIds?: string[];
     sourceTripTitle?: string | null;
     source: "auto" | "manual";
 };
@@ -1501,6 +1502,7 @@ export default function AccountMenu({
                     scratchMapResult,
                     friendshipsResult,
                     pointsResult,
+                    passportStampSharesResult,
                 ] =
                     await Promise.all([
                         supabase
@@ -1542,6 +1544,11 @@ export default function AccountMenu({
                             .select("points,level,level_name")
                             .eq("user_id", userId)
                             .maybeSingle(),
+                        supabase
+                            .from("user_passport_stamp_shares")
+                            .select("source_stamp_id,recipient_user_id,status")
+                            .eq("sender_user_id", userId)
+                            .in("status", ["pending", "accepted"]),
                     ]);
 
                 if (membershipResult.error) throw membershipResult.error;
@@ -1578,6 +1585,13 @@ export default function AccountMenu({
                 if (pointsResult.error) {
                     console.warn("Could not load user points:", {
                         ...getErrorDetails(pointsResult.error),
+                        userId,
+                    });
+                }
+
+                if (passportStampSharesResult.error) {
+                    console.warn("Could not load passport stamp friend shares:", {
+                        ...getErrorDetails(passportStampSharesResult.error),
                         userId,
                     });
                 }
@@ -1959,6 +1973,28 @@ export default function AccountMenu({
                     themeMode: friendThemesById.get(friend.id) || null,
                     joinedAt: friend.join_date || friend.created_at || null,
                 }));
+                const acceptedFriendIdSet = new Set(friends.map((friend) => friend.id));
+                const travelFriendIdsByStampId = (
+                    passportStampSharesResult.error
+                        ? []
+                        : passportStampSharesResult.data || []
+                ).reduce<Map<string, string[]>>((sharesByStamp, share) => {
+                    const stampId = String(share.source_stamp_id || "");
+                    const friendId = String(share.recipient_user_id || "");
+                    if (
+                        !stampId ||
+                        !friendId ||
+                        !acceptedFriendIdSet.has(friendId)
+                    ) {
+                        return sharesByStamp;
+                    }
+
+                    const existing = sharesByStamp.get(stampId) || [];
+                    if (!existing.includes(friendId)) {
+                        sharesByStamp.set(stampId, [...existing, friendId]);
+                    }
+                    return sharesByStamp;
+                }, new Map());
 
                 const stampCountryCodes = mergedStamps.map((stamp) => stamp.countryCode);
                 const countryDetailsResult =
@@ -2100,6 +2136,9 @@ export default function AccountMenu({
                             defaultAirport?.municipality ||
                             country?.capital ||
                             null,
+                        travelFriendIds: stamp.id
+                            ? travelFriendIdsByStampId.get(stamp.id) || []
+                            : stamp.travelFriendIds || [],
                     };
                 });
 
@@ -3170,6 +3209,7 @@ export default function AccountMenu({
                     airportSnapshot.name ||
                     airportSearchValue.trim() ||
                     null,
+                travelFriendIds: [...passportStampFriendIds],
                 source: "manual",
             };
 
@@ -3249,11 +3289,50 @@ export default function AccountMenu({
         }
     }
 
+    async function getPassportStampShareFriendIds(stampId: string) {
+        const supabase = createClient();
+        const { data, error } = await supabase
+            .from("user_passport_stamp_shares")
+            .select("recipient_user_id,status")
+            .eq("sender_user_id", userId)
+            .eq("source_stamp_id", stampId)
+            .in("status", ["pending", "accepted"]);
+
+        if (error) {
+            console.warn("Could not load passport stamp friend shares:", {
+                ...getErrorDetails(error),
+                stampId,
+                userId,
+            });
+            return [];
+        }
+
+        const acceptedFriendIds = new Set(
+            profileStats.friends.map((friend) => friend.id)
+        );
+        return Array.from(
+            new Set(
+                ((data || []) as Array<{ recipient_user_id?: string | null }>)
+                    .map((share) => share.recipient_user_id)
+                    .filter(
+                        (friendId): friendId is string =>
+                            typeof friendId === "string" &&
+                            acceptedFriendIds.has(friendId)
+                    )
+            )
+        );
+    }
+
+    async function loadPassportStampShareFriendIds(stampId: string) {
+        const nextFriendIds = await getPassportStampShareFriendIds(stampId);
+        setPassportStampFriendIds(nextFriendIds);
+    }
+
     function beginEditPassportStamp(stamp: PassportStamp) {
         if (stamp.source !== "manual") return;
 
         setErrorMessage(null);
-        setPassportStampFriendIds([]);
+        setPassportStampFriendIds(stamp.travelFriendIds || []);
         setIsEditingPassportStamp(true);
         setEditStampYear(
             stamp.firstVisitYear ? String(stamp.firstVisitYear) : ""
@@ -3287,6 +3366,9 @@ export default function AccountMenu({
         setSelectedAirportFormattedAddress(stamp.airportFormattedAddress || "");
         setSelectedAirportCity(stamp.airportCity || "");
         setSelectedAirportParsedCode(stamp.airportCode || "");
+        if (stamp.id) {
+            void loadPassportStampShareFriendIds(stamp.id);
+        }
     }
 
     function togglePassportStampFriend(friendId: string) {
@@ -3302,10 +3384,11 @@ export default function AccountMenu({
         stampId?: string | null
     ) {
         if (!stampId || passportStampFriendIds.length === 0) return 0;
+        const friendIdsToSend = Array.from(new Set(passportStampFriendIds));
 
         const { data, error } = await supabase.rpc("send_passport_stamp_share" as any, {
             source_stamp_id: stampId,
-            recipient_user_ids: passportStampFriendIds,
+            recipient_user_ids: friendIdsToSend,
         });
 
         if (error) throw error;
@@ -3458,6 +3541,7 @@ export default function AccountMenu({
                 visitStatus: data?.visit_status || "visited",
                 portOfEntryType: data?.port_of_entry_type || null,
                 portOfEntryName: data?.port_of_entry_name || null,
+                travelFriendIds: [...passportStampFriendIds],
                 source: "manual",
             };
 
@@ -6233,6 +6317,54 @@ export default function AccountMenu({
                                                     .join(" / ") || "Visited"}
                                             </dd>
                                         </div>
+                                        {selectedPassportStamp.travelFriendIds?.length ? (
+                                            <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+                                                <dt className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                                    You went with
+                                                </dt>
+                                                <dd className="mt-2 flex flex-wrap gap-2">
+                                                    {selectedPassportStamp.travelFriendIds
+                                                        .map((friendId) =>
+                                                            profileStats.friends.find(
+                                                                (friend) =>
+                                                                    friend.id ===
+                                                                    friendId
+                                                            )
+                                                        )
+                                                        .filter(
+                                                            (
+                                                                friend
+                                                            ): friend is FriendProfile =>
+                                                                Boolean(friend)
+                                                        )
+                                                        .map((friend) => (
+                                                            <span
+                                                                key={friend.id}
+                                                                className="inline-flex items-center gap-2 rounded-full border border-lime-300/25 bg-lime-300/10 px-3 py-1.5 text-xs font-black text-lime-100"
+                                                            >
+                                                                {friend.avatarUrl ? (
+                                                                    <img
+                                                                        src={
+                                                                            friend.avatarUrl
+                                                                        }
+                                                                        alt=""
+                                                                        className="h-5 w-5 rounded-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-950 text-[10px] text-lime-200">
+                                                                        {getFriendInitials(
+                                                                            friend
+                                                                        )}
+                                                                    </span>
+                                                                )}
+                                                                {getFriendDisplayName(
+                                                                    friend
+                                                                )}
+                                                            </span>
+                                                        ))}
+                                                </dd>
+                                            </div>
+                                        ) : null}
                                         <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
                                             <dt className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                                 Welcome

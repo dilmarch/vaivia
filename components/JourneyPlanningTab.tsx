@@ -111,6 +111,7 @@ type StyledOptionPickerProps = {
     value: string;
     options: StyledOption[];
     onChange: (value: string) => void;
+    readOnly?: boolean;
 };
 
 type ScenarioListEditorProps = {
@@ -120,6 +121,7 @@ type ScenarioListEditorProps = {
     onAdd: () => void;
     onRemove: (index: number) => void;
     onChange: (index: number, value: string) => void;
+    readOnly?: boolean;
 };
 
 function StyledOptionPicker({
@@ -127,6 +129,7 @@ function StyledOptionPicker({
     value,
     options,
     onChange,
+    readOnly = false,
 }: StyledOptionPickerProps) {
     const [isOpen, setIsOpen] = useState(false);
     const pickerRef = useRef<HTMLDivElement | null>(null);
@@ -146,6 +149,20 @@ function StyledOptionPicker({
         return () => document.removeEventListener("pointerdown", handlePointerDown);
     }, [isOpen]);
 
+    if (readOnly) {
+        return (
+            <div>
+                <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    {label}
+                </span>
+                <p className="mt-1 text-sm font-black text-white">
+                    {selectedOption?.emoji ? `${selectedOption.emoji} ` : ""}
+                    {selectedOption?.label || value || "Not added"}
+                </p>
+            </div>
+        );
+    }
+
     return (
         <div ref={pickerRef} className="relative">
             <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
@@ -155,21 +172,26 @@ function StyledOptionPicker({
                 type="button"
                 aria-haspopup="listbox"
                 aria-expanded={isOpen}
-                onClick={() => setIsOpen((current) => !current)}
-                className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0c0115]/90 px-3 py-2 text-left text-sm font-bold text-white shadow-xl shadow-black/20 outline-none transition hover:border-lime-300/35 hover:bg-white/[0.08] focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/30"
+                onClick={() => {
+                    if (!readOnly) setIsOpen((current) => !current);
+                }}
+                disabled={readOnly}
+                className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-white/10 bg-[#0c0115]/90 px-3 py-2 text-left text-sm font-bold text-white shadow-xl shadow-black/20 outline-none transition hover:border-lime-300/35 hover:bg-white/[0.08] focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/30 disabled:cursor-default disabled:hover:border-white/10 disabled:hover:bg-[#0c0115]/90"
             >
                 <span className="min-w-0 truncate">
                     {selectedOption?.emoji ? `${selectedOption.emoji} ` : ""}
                     {selectedOption?.label || value}
                 </span>
-                <span
-                    className={`text-lime-200 transition ${isOpen ? "rotate-180" : ""}`}
-                    aria-hidden="true"
-                >
-                    ▾
-                </span>
+                {!readOnly ? (
+                    <span
+                        className={`text-lime-200 transition ${isOpen ? "rotate-180" : ""}`}
+                        aria-hidden="true"
+                    >
+                        ▾
+                    </span>
+                ) : null}
             </button>
-            {isOpen ? (
+            {isOpen && !readOnly ? (
                 <div
                     role="listbox"
                     className="absolute left-0 right-0 top-[calc(100%+0.4rem)] z-30 overflow-hidden rounded-2xl border border-white/10 bg-[#080710]/95 p-1 text-sm text-white shadow-2xl shadow-black/50 backdrop-blur-xl"
@@ -218,8 +240,40 @@ function ScenarioListEditor({
     onAdd,
     onRemove,
     onChange,
+    readOnly = false,
 }: ScenarioListEditorProps) {
     const populatedCount = items.filter((item) => item.trim()).length;
+
+    if (readOnly) {
+        const visibleItems = items.map((item) => item.trim()).filter(Boolean);
+
+        return (
+            <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    {title}
+                </p>
+                {visibleItems.length ? (
+                    <ol className="mt-3 space-y-2">
+                        {visibleItems.map((item, index) => (
+                            <li
+                                key={`${item}-${index}`}
+                                className="flex items-start gap-2 text-sm font-semibold leading-5 text-slate-100"
+                            >
+                                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-lime-300 text-xs font-black text-slate-950">
+                                    {index + 1}
+                                </span>
+                                <span>{item}</span>
+                            </li>
+                        ))}
+                    </ol>
+                ) : (
+                    <p className="mt-2 text-sm font-semibold text-slate-500">
+                        Nothing added.
+                    </p>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3">
@@ -232,13 +286,15 @@ function ScenarioListEditor({
                         {populatedCount} {populatedCount === 1 ? "item" : "items"}
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={onAdd}
-                    className="rounded-full border border-lime-300/35 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
-                >
-                    Add
-                </button>
+                {!readOnly ? (
+                    <button
+                        type="button"
+                        onClick={onAdd}
+                        className="rounded-full border border-lime-300/35 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-lime-100 transition hover:bg-lime-300/10"
+                    >
+                        Add
+                    </button>
+                ) : null}
             </div>
             <div className="mt-3 space-y-2">
                 {items.map((item, index) => (
@@ -250,18 +306,21 @@ function ScenarioListEditor({
                             value={item}
                             onChange={(event) => onChange(index, event.target.value)}
                             placeholder={placeholder}
+                            readOnly={readOnly}
                             className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/40"
                             {...PASSWORD_MANAGER_IGNORE_PROPS}
                         />
-                        <button
-                            type="button"
-                            onClick={() => onRemove(index)}
-                            disabled={items.length === 1}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/20 text-sm font-black text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-30"
-                            aria-label={`Remove ${title.toLowerCase()} ${index + 1}`}
-                        >
-                            ×
-                        </button>
+                        {!readOnly ? (
+                            <button
+                                type="button"
+                                onClick={() => onRemove(index)}
+                                disabled={items.length === 1}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/20 text-sm font-black text-red-100 transition hover:bg-red-400/15 disabled:cursor-not-allowed disabled:opacity-30"
+                                aria-label={`Remove ${title.toLowerCase()} ${index + 1}`}
+                            >
+                                ×
+                            </button>
+                        ) : null}
                     </div>
                 ))}
             </div>
@@ -286,6 +345,32 @@ function createEmptyLeg(defaultDate = ""): PlanningLeg {
         cost: "",
         currency: "CAD",
     };
+}
+
+function formatStaticValue(value?: string | null, fallback = "Not added") {
+    const trimmed = String(value || "").trim();
+    return trimmed || fallback;
+}
+
+function StaticDetail({
+    label,
+    value,
+    fallback = "Not added",
+}: {
+    label: string;
+    value?: string | null;
+    fallback?: string;
+}) {
+    return (
+        <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                {label}
+            </p>
+            <p className="mt-1 text-sm font-bold leading-5 text-white">
+                {formatStaticValue(value, fallback)}
+            </p>
+        </div>
+    );
 }
 
 function createScenario(index: number, defaultDate = ""): PlanningScenario {
@@ -407,6 +492,17 @@ function getLegDurationDisplayLabel(leg: PlanningLeg) {
     }
 
     return getLegDurationLabel(leg) || "Check flight times";
+}
+
+function getScenarioTotalDurationLabel(scenario: PlanningScenario) {
+    const totalMinutes = scenario.legs.reduce(
+        (sum, leg) => sum + getLegDurationMinutes(leg),
+        0
+    );
+
+    return totalMinutes
+        ? formatDurationLabelFromMinutes(totalMinutes)
+        : "Add flight times";
 }
 
 function isScenarioReady(scenario: PlanningScenario) {
@@ -652,15 +748,9 @@ export default function JourneyPlanningTab({
     const scenarioTotals = useMemo(
         () =>
             scenarios.reduce<Record<string, string>>((totals, scenario) => {
-                const totalMinutes = scenario.legs.reduce(
-                    (sum, leg) => sum + getLegDurationMinutes(leg),
-                    0
-                );
                 return {
                     ...totals,
-                    [scenario.id]: totalMinutes
-                        ? formatDurationLabelFromMinutes(totalMinutes)
-                        : "Add flight times",
+                    [scenario.id]: getScenarioTotalDurationLabel(scenario),
                 };
             }, {}),
         [scenarios]
@@ -1212,6 +1302,180 @@ export default function JourneyPlanningTab({
         });
     }
 
+    function updateScenarioDraftLeg(
+        legIndex: number,
+        field: keyof PlanningLeg,
+        value: string
+    ) {
+        setScenarioModalDraft((draft) => {
+            if (!draft) return draft;
+
+            return {
+                ...draft,
+                legs: draft.legs.map((leg, index) => {
+                    if (index !== legIndex) return leg;
+
+                    const nextLeg = { ...leg, [field]: value };
+                    if (
+                        field === "departureDate" &&
+                        (!leg.arrivalDate || leg.arrivalDate === leg.departureDate)
+                    ) {
+                        nextLeg.arrivalDate = value;
+                    }
+                    if (field === "flightNumber") {
+                        const airlineCode = inferAirlineCodeFromFlightNumber(value);
+                        nextLeg.airlineName = getAirlineNameFromCode(airlineCode);
+                    }
+
+                    return nextLeg;
+                }),
+            };
+        });
+
+        if (field === "departureDate" || field === "arrivalDate") {
+            const draftId = scenarioModalDraft?.id;
+            if (!draftId) return;
+            const coordinateKey = field === "departureDate" ? "departure" : "arrival";
+            const timezoneKey =
+                field === "departureDate" ? "departureTimezone" : "arrivalTimezone";
+            const coordinates =
+                airportCoordinateRefs.current[`${draftId}:${legIndex}`]?.[
+                    coordinateKey
+                ];
+
+            if (coordinates) {
+                void resolveDraftLegTimezone({
+                    draftId,
+                    legIndex,
+                    timezoneKey,
+                    lat: coordinates.lat,
+                    lng: coordinates.lng,
+                    date: value,
+                });
+            }
+        }
+    }
+
+    function updateScenarioDraftLegFields(
+        legIndex: number,
+        values: Partial<PlanningLeg>
+    ) {
+        setScenarioModalDraft((draft) =>
+            draft
+                ? {
+                      ...draft,
+                      legs: draft.legs.map((leg, index) =>
+                          index === legIndex ? { ...leg, ...values } : leg
+                      ),
+                  }
+                : draft
+        );
+    }
+
+    async function resolveDraftLegTimezone({
+        draftId,
+        legIndex,
+        timezoneKey,
+        lat,
+        lng,
+        date,
+        fallbackTimezone,
+    }: {
+        draftId: string;
+        legIndex: number;
+        timezoneKey: "departureTimezone" | "arrivalTimezone";
+        lat: number;
+        lng: number;
+        date?: string;
+        fallbackTimezone?: string;
+    }) {
+        const detectingKey = `${draftId}:${legIndex}:${timezoneKey}`;
+        setDetectingTimezones((current) => ({ ...current, [detectingKey]: true }));
+
+        try {
+            const response = await fetch("/api/timezone", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    lat,
+                    lng,
+                    date: date || undefined,
+                }),
+            });
+            const data: { timeZoneId?: string } = await response.json();
+            if (data.timeZoneId) {
+                updateScenarioDraftLegFields(legIndex, {
+                    [timezoneKey]: data.timeZoneId,
+                });
+            } else if (fallbackTimezone) {
+                updateScenarioDraftLegFields(legIndex, {
+                    [timezoneKey]: fallbackTimezone,
+                });
+            }
+        } catch {
+            if (fallbackTimezone) {
+                updateScenarioDraftLegFields(legIndex, {
+                    [timezoneKey]: fallbackTimezone,
+                });
+            }
+        } finally {
+            setDetectingTimezones((current) => {
+                const next = { ...current };
+                delete next[detectingKey];
+                return next;
+            });
+        }
+    }
+
+    function handleDraftAirportPlaceSelect({
+        legIndex,
+        place,
+        locationKey,
+        timezoneKey,
+        coordinateKey,
+        fallback,
+        date,
+    }: {
+        legIndex: number;
+        place: google.maps.places.PlaceResult;
+        locationKey: "departureLocation" | "arrivalLocation";
+        timezoneKey: "departureTimezone" | "arrivalTimezone";
+        coordinateKey: "departure" | "arrival";
+        fallback: string;
+        date?: string;
+    }) {
+        const draftId = scenarioModalDraft?.id;
+        if (!draftId) return;
+
+        const placeName = getPlaceName(place, fallback);
+        const coordinates = getPlaceCoordinates(place);
+        const fallbackTimezone = getPlaceUtcOffsetTimezone(place);
+
+        updateScenarioDraftLegFields(legIndex, {
+            [locationKey]: placeName,
+            ...(fallbackTimezone ? { [timezoneKey]: fallbackTimezone } : {}),
+        });
+
+        if (!coordinates) return;
+
+        airportCoordinateRefs.current[`${draftId}:${legIndex}`] = {
+            ...airportCoordinateRefs.current[`${draftId}:${legIndex}`],
+            [coordinateKey]: coordinates,
+        };
+
+        void resolveDraftLegTimezone({
+            draftId,
+            legIndex,
+            timezoneKey,
+            lat: coordinates.lat,
+            lng: coordinates.lng,
+            date,
+            fallbackTimezone,
+        });
+    }
+
     function updateScenarioDraftListItem(
         field: "pros" | "cons",
         itemIndex: number,
@@ -1446,13 +1710,22 @@ export default function JourneyPlanningTab({
                         the itinerary until you choose a scenario.
                     </p>
                 </div>
-                {selectedScenarioId && (
-                    <div className="rounded-full border border-lime-300/40 bg-lime-300/15 px-4 py-2 text-sm font-bold text-lime-100">
-                        {addedTransportationId
-                            ? "Selected plan added to itinerary"
-                            : "Selected plan is being added"}
-                    </div>
-                )}
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    {selectedScenarioId ? (
+                        <div className="rounded-full border border-lime-300/40 bg-lime-300/15 px-4 py-2 text-sm font-bold text-lime-100">
+                            {addedTransportationId
+                                ? "Selected plan added to itinerary"
+                                : "Selected plan is being added"}
+                        </div>
+                    ) : null}
+                    <button
+                        type="button"
+                        onClick={openAddScenarioModal}
+                        className="rounded-full border border-lime-300/40 bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/60"
+                    >
+                        Add scenario
+                    </button>
+                </div>
             </div>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1653,20 +1926,12 @@ export default function JourneyPlanningTab({
                                         </span>
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                        <label className="block text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">
                                             Scenario name
-                                        </label>
-                                        <input
-                                            value={scenario.label}
-                                            onChange={(event) =>
-                                                updateScenarioLabel(
-                                                    scenario.id,
-                                                    event.target.value
-                                                )
-                                            }
-                                            className="mt-2 w-full bg-transparent text-2xl font-black text-white outline-none"
-                                            {...PASSWORD_MANAGER_IGNORE_PROPS}
-                                        />
+                                        </p>
+                                        <h3 className="mt-2 text-2xl font-black text-white">
+                                            {scenario.label}
+                                        </h3>
                                     </div>
                                     <div className="flex shrink-0 flex-col gap-2">
                                         <div className="flex justify-end gap-1">
@@ -1795,6 +2060,7 @@ export default function JourneyPlanningTab({
                                                     value as PlanningTransportMode,
                                             })
                                         }
+                                        readOnly
                                     />
                                     <div>
                                         <StyledOptionPicker
@@ -1807,23 +2073,14 @@ export default function JourneyPlanningTab({
                                                     Number(value)
                                                 )
                                             }
+                                            readOnly
                                         />
                                     </div>
                                     <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
-                                        <label className="flex min-h-10 w-full items-center gap-2 rounded-xl border border-white/10 bg-[#0c0115]/90 px-3 py-2 text-sm font-black text-slate-100 shadow-xl shadow-black/20 transition hover:border-lime-300/35 hover:bg-white/[0.08]">
-                                            <input
-                                                type="checkbox"
-                                                checked={scenario.isRoundTrip}
-                                                onChange={(event) =>
-                                                    setScenarioRoundTrip(
-                                                        scenario.id,
-                                                        event.target.checked
-                                                    )
-                                                }
-                                                className="h-4 w-4 accent-lime-300"
-                                            />
-                                            Roundtrip
-                                        </label>
+                                        <StaticDetail
+                                            label="Roundtrip"
+                                            value={scenario.isRoundTrip ? "Yes" : "No"}
+                                        />
                                         {scenario.isRoundTrip ? (
                                             <StyledOptionPicker
                                                 label="Return connections"
@@ -1835,6 +2092,7 @@ export default function JourneyPlanningTab({
                                                         Number(value)
                                                     )
                                                 }
+                                                readOnly
                                             />
                                         ) : null}
                                     </div>
@@ -1963,7 +2221,7 @@ export default function JourneyPlanningTab({
                                                         : "Segment"}{" "}
                                                     {legDisplayIndex}
                                                 </legend>
-                                                {scenario.legs.length > 1 ? (
+                                                {false && scenario.legs.length > 1 ? (
                                                     <div className="flex shrink-0 items-center gap-1">
                                                         <div
                                                             role="button"
@@ -2044,285 +2302,99 @@ export default function JourneyPlanningTab({
                                             </div>
 
                                             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                                                <PlaceAutocompleteInput
-                                                    name={`leg_${legIndex}_departure_location`}
+                                                <StaticDetail
+                                                    label={`Departure ${locationPlaceholder}`}
                                                     value={leg.departureLocation}
-                                                    onInputChange={(value) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "departureLocation",
-                                                            value
-                                                        )
-                                                    }
-                                                    onPlaceSelect={(place) =>
-                                                        handleAirportPlaceSelect({
-                                                            scenarioId: scenario.id,
-                                                            legIndex,
-                                                            place,
-                                                            locationKey:
-                                                                "departureLocation",
-                                                            timezoneKey:
-                                                                "departureTimezone",
-                                                            coordinateKey: "departure",
-                                                            fallback:
-                                                                leg.departureLocation,
-                                                            date: leg.departureDate,
-                                                        })
-                                                    }
-                                                    placeholder={`Departure ${locationPlaceholder}`}
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                                    types={
-                                                        scenario.transportMode === "airplane"
-                                                            ? ["airport"]
-                                                            : ["geocode", "establishment"]
-                                                    }
                                                 />
-                                                <PlaceAutocompleteInput
-                                                    name={`leg_${legIndex}_arrival_location`}
+                                                <StaticDetail
+                                                    label={`Arrival ${locationPlaceholder}`}
                                                     value={leg.arrivalLocation}
-                                                    onInputChange={(value) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "arrivalLocation",
-                                                            value
-                                                        )
-                                                    }
-                                                    onPlaceSelect={(place) =>
-                                                        handleAirportPlaceSelect({
-                                                            scenarioId: scenario.id,
-                                                            legIndex,
-                                                            place,
-                                                            locationKey: "arrivalLocation",
-                                                            timezoneKey: "arrivalTimezone",
-                                                            coordinateKey: "arrival",
-                                                            fallback: leg.arrivalLocation,
-                                                            date: leg.arrivalDate,
-                                                        })
-                                                    }
-                                                    placeholder={`Arrival ${locationPlaceholder}`}
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                                    types={
-                                                        scenario.transportMode === "airplane"
-                                                            ? ["airport"]
-                                                            : ["geocode", "establishment"]
-                                                    }
                                                 />
                                             </div>
 
                                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                                <input
-                                                    name={`leg_${legIndex}_departure_date`}
-                                                    type="date"
+                                                <StaticDetail
+                                                    label="Departure date"
                                                     value={leg.departureDate}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "departureDate",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="cursor-pointer rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white [color-scheme:dark]"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                 />
-                                                <input
-                                                    name={`leg_${legIndex}_arrival_date`}
-                                                    type="date"
+                                                <StaticDetail
+                                                    label="Arrival date"
                                                     value={leg.arrivalDate}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "arrivalDate",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="cursor-pointer rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white [color-scheme:dark]"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                 />
-                                                <input
-                                                    name={`leg_${legIndex}_departure_time`}
-                                                    type="time"
+                                                <StaticDetail
+                                                    label="Departure time"
                                                     value={leg.departureTime}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "departureTime",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                 />
-                                                <input
-                                                    name={`leg_${legIndex}_arrival_time`}
-                                                    type="time"
+                                                <StaticDetail
+                                                    label="Arrival time"
                                                     value={leg.arrivalTime}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "arrivalTime",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                 />
                                             </div>
 
                                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                                <input
-                                                    name={`leg_${legIndex}_departure_timezone`}
+                                                <StaticDetail
+                                                    label="Departure time zone"
                                                     value={leg.departureTimezone}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "departureTimezone",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder={
+                                                    fallback={
                                                         detectingTimezones[
                                                             `${scenario.id}:${legIndex}:departureTimezone`
                                                         ]
-                                                            ? "Detecting departure time zone..."
-                                                            : "Departure time zone"
+                                                            ? "Detecting..."
+                                                            : "Not added"
                                                     }
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                                                 />
-                                                <input
-                                                    name={`leg_${legIndex}_arrival_timezone`}
+                                                <StaticDetail
+                                                    label="Arrival time zone"
                                                     value={leg.arrivalTimezone}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "arrivalTimezone",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder={
+                                                    fallback={
                                                         detectingTimezones[
                                                             `${scenario.id}:${legIndex}:arrivalTimezone`
                                                         ]
-                                                            ? "Detecting arrival time zone..."
-                                                            : "Arrival time zone"
+                                                            ? "Detecting..."
+                                                            : "Not added"
                                                     }
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                                                 />
                                             </div>
 
                                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                                <input
-                                                    name={`leg_${legIndex}_departure_terminal`}
+                                                <StaticDetail
+                                                    label="Departure terminal"
                                                     value={leg.departureTerminal}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "departureTerminal",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder="Departure terminal"
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                                                 />
-                                                <input
-                                                    name={`leg_${legIndex}_arrival_terminal`}
+                                                <StaticDetail
+                                                    label="Arrival terminal"
                                                     value={leg.arrivalTerminal}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "arrivalTerminal",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder="Arrival terminal"
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
                                                 />
-                                                <input
-                                                    value={leg.flightNumber}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "flightNumber",
-                                                            event.target.value.toUpperCase()
-                                                        )
-                                                    }
-                                                    placeholder={
+                                                <StaticDetail
+                                                    label={
                                                         scenario.transportMode === "airplane"
                                                             ? "Flight number"
                                                             : "Service / route number"
                                                     }
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                    value={flightNumber}
                                                 />
-                                                <input
-                                                    name={`leg_${legIndex}_airline_name`}
-                                                    value={leg.airlineName}
-                                                    onChange={(event) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "airlineName",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder={
+                                                <StaticDetail
+                                                    label={
                                                         scenario.transportMode === "airplane"
                                                             ? airlineCode
                                                                 ? `Airline (${airlineCode})`
                                                                 : "Airline"
                                                             : "Operator"
                                                     }
-                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                    value={leg.airlineName}
                                                 />
                                             </div>
-                                            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_0.5fr]">
-                                                <label className="block">
-                                                    <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                                                        Price
-                                                    </span>
-                                                    <input
-                                                        value={leg.cost}
-                                                        onChange={(event) =>
-                                                            updateLeg(
-                                                                scenario.id,
-                                                                legIndex,
-                                                                "cost",
-                                                                event.target.value
-                                                            )
-                                                        }
-                                                        inputMode="decimal"
-                                                        placeholder="0.00"
-                                                        className="mt-2 w-full rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
-                                                        {...PASSWORD_MANAGER_IGNORE_PROPS}
-                                                    />
-                                                </label>
-                                                <StyledOptionPicker
+                                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                                <StaticDetail
+                                                    label="Price"
+                                                    value={formatScenarioPrice(
+                                                        leg.cost,
+                                                        leg.currency
+                                                    )}
+                                                />
+                                                <StaticDetail
                                                     label="Currency"
                                                     value={leg.currency}
-                                                    options={COMMON_CURRENCIES.map(
-                                                        (currency) => ({
-                                                            value: currency,
-                                                            label: currency,
-                                                        })
-                                                    )}
-                                                    onChange={(value) =>
-                                                        updateLeg(
-                                                            scenario.id,
-                                                            legIndex,
-                                                            "currency",
-                                                            value
-                                                        )
-                                                    }
                                                 />
                                             </div>
 
@@ -2407,6 +2479,7 @@ export default function JourneyPlanningTab({
                                                 value
                                             )
                                         }
+                                        readOnly
                                     />
                                     <ScenarioListEditor
                                         title="Cons"
@@ -2430,6 +2503,7 @@ export default function JourneyPlanningTab({
                                                 value
                                             )
                                         }
+                                        readOnly
                                     />
                                 </div>
                                 {isSelected &&
@@ -2616,6 +2690,477 @@ export default function JourneyPlanningTab({
                                                 }
                                             />
                                         ) : null}
+                                    </div>
+
+                                    <div className="rounded-2xl bg-lime-300 px-4 py-3 text-slate-950">
+                                        <p className="text-[11px] font-black uppercase tracking-[0.2em]">
+                                            Total{" "}
+                                            {scenarioModalDraft.transportMode ===
+                                            "airplane"
+                                                ? "flying"
+                                                : "travel"}{" "}
+                                            time
+                                        </p>
+                                        <p className="mt-1 text-3xl font-black">
+                                            {getScenarioTotalDurationLabel(
+                                                scenarioModalDraft
+                                            )}
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {scenarioModalDraft.legs.map(
+                                            (leg, legIndex) => {
+                                                const flightNumber =
+                                                    normalizeFlightNumber(
+                                                        leg.flightNumber
+                                                    );
+                                                const airlineCode =
+                                                    inferAirlineCodeFromFlightNumber(
+                                                        flightNumber
+                                                    );
+                                                const durationDisplayLabel =
+                                                    getLegDurationDisplayLabel(leg);
+                                                const draftLocationPlaceholder =
+                                                    scenarioModalDraft.transportMode ===
+                                                    "airplane"
+                                                        ? "airport"
+                                                        : "station, port, stop, or location";
+                                                const isReturnLeg =
+                                                    scenarioModalDraft.isRoundTrip &&
+                                                    legIndex >= draftOutboundLegCount;
+                                                const legDisplayIndex = isReturnLeg
+                                                    ? legIndex -
+                                                      draftOutboundLegCount +
+                                                      1
+                                                    : legIndex + 1;
+                                                const shouldShowLayover =
+                                                    Boolean(
+                                                        scenarioModalDraft.legs[
+                                                            legIndex + 1
+                                                        ]
+                                                    ) &&
+                                                    !(
+                                                        scenarioModalDraft.isRoundTrip &&
+                                                        legIndex ===
+                                                            draftOutboundLegCount - 1
+                                                    );
+
+                                                return (
+                                                    <div
+                                                        key={legIndex}
+                                                        className="space-y-4"
+                                                    >
+                                                        {isReturnLeg &&
+                                                        legIndex ===
+                                                            draftOutboundLegCount ? (
+                                                            <div className="rounded-[1.25rem] border border-lime-300/25 bg-lime-300/10 p-4">
+                                                                <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200">
+                                                                    Roundtrip
+                                                                </p>
+                                                                <h3 className="mt-1 text-lg font-black text-white">
+                                                                    Return flight
+                                                                </h3>
+                                                            </div>
+                                                        ) : null}
+                                                        <fieldset className="rounded-[1.25rem] border border-white/10 bg-white/[0.07] p-4">
+                                                            <legend className="text-sm font-black uppercase tracking-wide text-white">
+                                                                {isReturnLeg
+                                                                    ? "Return "
+                                                                    : ""}
+                                                                {scenarioModalDraft.transportMode ===
+                                                                "airplane"
+                                                                    ? "Flight"
+                                                                    : "Segment"}{" "}
+                                                                {legDisplayIndex}
+                                                            </legend>
+
+                                                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                                                <PlaceAutocompleteInput
+                                                                    value={
+                                                                        leg.departureLocation
+                                                                    }
+                                                                    onInputChange={(
+                                                                        value
+                                                                    ) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "departureLocation",
+                                                                            value
+                                                                        )
+                                                                    }
+                                                                    onPlaceSelect={(
+                                                                        place
+                                                                    ) =>
+                                                                        handleDraftAirportPlaceSelect(
+                                                                            {
+                                                                                legIndex,
+                                                                                place,
+                                                                                locationKey:
+                                                                                    "departureLocation",
+                                                                                timezoneKey:
+                                                                                    "departureTimezone",
+                                                                                coordinateKey:
+                                                                                    "departure",
+                                                                                fallback:
+                                                                                    leg.departureLocation,
+                                                                                date: leg.departureDate,
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                    placeholder={`Departure ${draftLocationPlaceholder}`}
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                    types={
+                                                                        scenarioModalDraft.transportMode ===
+                                                                        "airplane"
+                                                                            ? [
+                                                                                  "airport",
+                                                                              ]
+                                                                            : [
+                                                                                  "geocode",
+                                                                                  "establishment",
+                                                                              ]
+                                                                    }
+                                                                />
+                                                                <PlaceAutocompleteInput
+                                                                    value={
+                                                                        leg.arrivalLocation
+                                                                    }
+                                                                    onInputChange={(
+                                                                        value
+                                                                    ) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "arrivalLocation",
+                                                                            value
+                                                                        )
+                                                                    }
+                                                                    onPlaceSelect={(
+                                                                        place
+                                                                    ) =>
+                                                                        handleDraftAirportPlaceSelect(
+                                                                            {
+                                                                                legIndex,
+                                                                                place,
+                                                                                locationKey:
+                                                                                    "arrivalLocation",
+                                                                                timezoneKey:
+                                                                                    "arrivalTimezone",
+                                                                                coordinateKey:
+                                                                                    "arrival",
+                                                                                fallback:
+                                                                                    leg.arrivalLocation,
+                                                                                date: leg.arrivalDate,
+                                                                            }
+                                                                        )
+                                                                    }
+                                                                    placeholder={`Arrival ${draftLocationPlaceholder}`}
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                    types={
+                                                                        scenarioModalDraft.transportMode ===
+                                                                        "airplane"
+                                                                            ? [
+                                                                                  "airport",
+                                                                              ]
+                                                                            : [
+                                                                                  "geocode",
+                                                                                  "establishment",
+                                                                              ]
+                                                                    }
+                                                                />
+                                                            </div>
+
+                                                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                                                <input
+                                                                    type="date"
+                                                                    value={
+                                                                        leg.departureDate
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "departureDate",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    className="cursor-pointer rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white [color-scheme:dark]"
+                                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                                />
+                                                                <input
+                                                                    type="date"
+                                                                    value={
+                                                                        leg.arrivalDate
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "arrivalDate",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    className="cursor-pointer rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white [color-scheme:dark]"
+                                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                                />
+                                                                <input
+                                                                    type="time"
+                                                                    value={
+                                                                        leg.departureTime
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "departureTime",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white"
+                                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                                />
+                                                                <input
+                                                                    type="time"
+                                                                    value={
+                                                                        leg.arrivalTime
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "arrivalTime",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white"
+                                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                                />
+                                                            </div>
+
+                                                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                                                <input
+                                                                    value={
+                                                                        leg.departureTimezone
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "departureTimezone",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    placeholder={
+                                                                        detectingTimezones[
+                                                                            `${scenarioModalDraft.id}:${legIndex}:departureTimezone`
+                                                                        ]
+                                                                            ? "Detecting departure time zone..."
+                                                                            : "Departure time zone"
+                                                                    }
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                />
+                                                                <input
+                                                                    value={
+                                                                        leg.arrivalTimezone
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "arrivalTimezone",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    placeholder={
+                                                                        detectingTimezones[
+                                                                            `${scenarioModalDraft.id}:${legIndex}:arrivalTimezone`
+                                                                        ]
+                                                                            ? "Detecting arrival time zone..."
+                                                                            : "Arrival time zone"
+                                                                    }
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                />
+                                                            </div>
+
+                                                            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                                                <input
+                                                                    value={
+                                                                        leg.departureTerminal
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "departureTerminal",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    placeholder="Departure terminal"
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                />
+                                                                <input
+                                                                    value={
+                                                                        leg.arrivalTerminal
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "arrivalTerminal",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    placeholder="Arrival terminal"
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                />
+                                                                <input
+                                                                    value={
+                                                                        leg.flightNumber
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "flightNumber",
+                                                                            event.target.value.toUpperCase()
+                                                                        )
+                                                                    }
+                                                                    placeholder={
+                                                                        scenarioModalDraft.transportMode ===
+                                                                        "airplane"
+                                                                            ? "Flight number"
+                                                                            : "Service / route number"
+                                                                    }
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                                />
+                                                                <input
+                                                                    value={
+                                                                        leg.airlineName
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "airlineName",
+                                                                            event.target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    placeholder={
+                                                                        scenarioModalDraft.transportMode ===
+                                                                        "airplane"
+                                                                            ? airlineCode
+                                                                                ? `Airline (${airlineCode})`
+                                                                                : "Airline"
+                                                                            : "Operator"
+                                                                    }
+                                                                    className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                />
+                                                            </div>
+
+                                                            <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_0.5fr]">
+                                                                <label className="block">
+                                                                    <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                                                        Price
+                                                                    </span>
+                                                                    <input
+                                                                        value={
+                                                                            leg.cost
+                                                                        }
+                                                                        onChange={(
+                                                                            event
+                                                                        ) =>
+                                                                            updateScenarioDraftLeg(
+                                                                                legIndex,
+                                                                                "cost",
+                                                                                event
+                                                                                    .target
+                                                                                    .value
+                                                                            )
+                                                                        }
+                                                                        inputMode="decimal"
+                                                                        placeholder="0.00"
+                                                                        className="mt-2 w-full rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white placeholder:text-slate-500"
+                                                                        {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                                                    />
+                                                                </label>
+                                                                <StyledOptionPicker
+                                                                    label="Currency"
+                                                                    value={
+                                                                        leg.currency
+                                                                    }
+                                                                    options={COMMON_CURRENCIES.map(
+                                                                        (
+                                                                            currency
+                                                                        ) => ({
+                                                                            value: currency,
+                                                                            label: currency,
+                                                                        })
+                                                                    )}
+                                                                    onChange={(value) =>
+                                                                        updateScenarioDraftLeg(
+                                                                            legIndex,
+                                                                            "currency",
+                                                                            value
+                                                                        )
+                                                                    }
+                                                                />
+                                                            </div>
+
+                                                            <div className="mt-3 rounded-2xl border border-lime-300/20 bg-lime-300/10 p-3">
+                                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-lime-200">
+                                                                    Calculated flight
+                                                                    duration
+                                                                </p>
+                                                                <p className="mt-1 text-lg font-black text-white">
+                                                                    {
+                                                                        durationDisplayLabel
+                                                                    }
+                                                                </p>
+                                                                <p className="mt-2 text-sm font-black text-lime-100">
+                                                                    {formatScenarioPrice(
+                                                                        leg.cost,
+                                                                        leg.currency
+                                                                    )}
+                                                                </p>
+                                                            </div>
+                                                        </fieldset>
+                                                        {shouldShowLayover ? (
+                                                            <div className="rounded-[1.25rem] border border-white/10 bg-[#0c0115]/70 p-3">
+                                                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                                                                    Layover duration
+                                                                </p>
+                                                                <p className="mt-1 text-lg font-black text-lime-100">
+                                                                    {getLayoverDurationLabel(
+                                                                        leg,
+                                                                        scenarioModalDraft
+                                                                            .legs[
+                                                                            legIndex +
+                                                                                1
+                                                                        ]
+                                                                    )}
+                                                                </p>
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            }
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-[1.25rem] border border-lime-300/20 bg-[#0c0115]/70 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-lime-200">
+                                            Total price across all legs
+                                        </p>
+                                        <p className="mt-1 text-2xl font-black text-white">
+                                            {formatScenarioPrice(
+                                                getScenarioTotalCost(
+                                                    scenarioModalDraft
+                                                ),
+                                                getScenarioCurrency(
+                                                    scenarioModalDraft
+                                                )
+                                            )}
+                                        </p>
                                     </div>
 
                                     <div className="space-y-3">
