@@ -616,35 +616,65 @@ export type Database = {
       notification_push_outbox: {
         Row: {
           attempts: number
+          body: string | null
           created_at: string
+          destination_url: string | null
+          event_id: string | null
+          failed_at: string | null
           id: string
+          last_attempt_at: string | null
           last_error: string | null
+          next_attempt_at: string | null
           notification_id: string
           notification_type: string
+          payload: Json
           processed_at: string | null
+          sent_at: string | null
           status: string
+          title: string | null
+          updated_at: string
           user_id: string
         }
         Insert: {
           attempts?: number
+          body?: string | null
           created_at?: string
+          destination_url?: string | null
+          event_id?: string | null
+          failed_at?: string | null
           id?: string
+          last_attempt_at?: string | null
           last_error?: string | null
+          next_attempt_at?: string | null
           notification_id: string
           notification_type: string
+          payload?: Json
           processed_at?: string | null
+          sent_at?: string | null
           status?: string
+          title?: string | null
+          updated_at?: string
           user_id: string
         }
         Update: {
           attempts?: number
+          body?: string | null
           created_at?: string
+          destination_url?: string | null
+          event_id?: string | null
+          failed_at?: string | null
           id?: string
+          last_attempt_at?: string | null
           last_error?: string | null
+          next_attempt_at?: string | null
           notification_id?: string
           notification_type?: string
+          payload?: Json
           processed_at?: string | null
+          sent_at?: string | null
           status?: string
+          title?: string | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: [
@@ -2214,6 +2244,38 @@ export type Database = {
           },
         ]
       }
+      trip_journey_planning_states: {
+        Row: {
+          created_at: string
+          scenarios: Json
+          trip_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          scenarios?: Json
+          trip_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          scenarios?: Json
+          trip_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_journey_planning_states_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: true
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       trip_legs: {
         Row: {
           city_name: string | null
@@ -3376,6 +3438,36 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      claim_notification_push_outbox: {
+        Args: { batch_limit?: number }
+        Returns: {
+          attempts: number
+          body: string | null
+          created_at: string
+          destination_url: string | null
+          event_id: string | null
+          failed_at: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          next_attempt_at: string | null
+          notification_id: string
+          notification_type: string
+          payload: Json
+          processed_at: string | null
+          sent_at: string | null
+          status: string
+          title: string | null
+          updated_at: string
+          user_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "notification_push_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_pending_trip_invitations_for_current_user: {
         Args: never
         Returns: {
@@ -3459,6 +3551,10 @@ export type Database = {
       }
       get_friend_profile_snapshot: {
         Args: { target_user_id: string }
+        Returns: Json
+      }
+      get_passport_stamp_share_review: {
+        Args: { share_id: string }
         Returns: Json
       }
       get_trip_slug_fallback_for_user: {
