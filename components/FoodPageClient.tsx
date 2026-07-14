@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Check, ChevronLeft, Coffee, ExternalLink, MapPin, Pencil, Plus, Trash2, Utensils, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
@@ -234,6 +234,8 @@ function FoodAddModal({
     createFoodAction: (formData: FormData) => Promise<void>;
     onClose: () => void;
 }) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [step, setStep] = useState<ModalStep>(initialStep);
     const [mealCategories, setMealCategories] = useState<FoodMealCategory[]>(["any"]);
     const [placeSearchValue, setPlaceSearchValue] = useState("");
@@ -248,6 +250,10 @@ function FoodAddModal({
     const [regularOpeningHours, setRegularOpeningHours] = useState("");
     const [websiteUrl, setWebsiteUrl] = useState("");
     const [phoneNumber, setPhoneNumber] = useState("");
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
     const [googleMapsUrl, setGoogleMapsUrl] = useState("");
     const [facebookUrl, setFacebookUrl] = useState("");
     const [instagramUrl, setInstagramUrl] = useState("");
@@ -397,6 +403,7 @@ function FoodAddModal({
                     ) : (
                         <form action={createFoodAction} className="mt-6 space-y-5">
                             <input type="hidden" name="trip_id" value={tripId} />
+                            <input type="hidden" name="return_to" value={returnTo} />
                             <input type="hidden" name="item_type" value={step} />
                             <button
                                 type="button"
@@ -722,9 +729,15 @@ function FoodEditModal({
     moveTargetTrips: MoveTargetTrip[];
     onClose: () => void;
 }) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [mealCategories, setMealCategories] = useState<FoodMealCategory[]>(
         item.meal_categories.length > 0 ? item.meal_categories : ["any"]
     );
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
     const [foodLocationSearchValue, setFoodLocationSearchValue] = useState(
         item.region || item.formatted_address || ""
     );
@@ -806,6 +819,7 @@ function FoodEditModal({
 
                     <form action={updateFoodAction} className="mt-6 space-y-5">
                         <input type="hidden" name="trip_id" value={tripId} />
+                        <input type="hidden" name="return_to" value={returnTo} />
                         <input type="hidden" name="food_item_id" value={item.id} />
                         <input type="hidden" name="item_type" value={item.item_type} />
                         <input type="hidden" name="business_status" value={item.business_status || ""} />
@@ -1067,6 +1081,7 @@ function FoodEditModal({
 
                     <form id={`delete-food-${item.id}`} action={deleteFoodAction}>
                         <input type="hidden" name="trip_id" value={tripId} />
+                        <input type="hidden" name="return_to" value={returnTo} />
                         <input type="hidden" name="food_item_id" value={item.id} />
                     </form>
                 </div>

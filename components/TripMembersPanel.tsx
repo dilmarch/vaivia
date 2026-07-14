@@ -32,6 +32,7 @@ export type TripHeaderFamilyMember = {
 export type TripHeaderInvitation = {
     id: string;
     label: string;
+    invited_by?: string | null;
     created_at?: string | null;
 };
 
@@ -153,10 +154,23 @@ export default function TripMembersPanel({
     >({});
     const [confirmingFriend, setConfirmingFriend] =
         useState<TripHeaderMember | null>(null);
+    const [cancelFriendInviteTarget, setCancelFriendInviteTarget] =
+        useState<TripHeaderMember | null>(null);
     const [friendActionError, setFriendActionError] = useState("");
     const [savingFriendUserId, setSavingFriendUserId] = useState<string | null>(null);
     const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [isRemovingMember, setIsRemovingMember] = useState(false);
+    const [removeMemberError, setRemoveMemberError] = useState("");
+    const [isRemovingFamilyMember, setIsRemovingFamilyMember] = useState(false);
+    const [removeFamilyMemberError, setRemoveFamilyMemberError] = useState("");
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [cancelTripInviteTarget, setCancelTripInviteTarget] =
+        useState<TripHeaderInvitation | null>(null);
+    const [cancelledTripInviteIds, setCancelledTripInviteIds] = useState<string[]>(
+        []
+    );
+    const [isCancellingTripInvite, setIsCancellingTripInvite] = useState(false);
+    const [tripInviteCancelError, setTripInviteCancelError] = useState("");
 
     const friendCandidateIds = useMemo(
         () =>
@@ -225,6 +239,10 @@ export default function TripMembersPanel({
         return null;
     }
 
+    const visibleInvitations = invitations.filter(
+        (invitation) => !cancelledTripInviteIds.includes(invitation.id)
+    );
+
     const canRemoveSelectedMember =
         Boolean(selectedMember) &&
         currentUserId === tripOwnerId &&
@@ -273,6 +291,47 @@ export default function TripMembersPanel({
         setConfirmingFriend(null);
     }
 
+    async function handleRemoveMember(formData: FormData) {
+        setIsRemovingMember(true);
+        setRemoveMemberError("");
+
+        try {
+            await removeMemberAction(formData);
+            setConfirmingDelete(false);
+            setSelectedMember(null);
+            router.refresh();
+        } catch (error) {
+            setRemoveMemberError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not remove this trip member."
+            );
+        } finally {
+            setIsRemovingMember(false);
+        }
+    }
+
+    async function handleRemoveFamilyMember(formData: FormData) {
+        if (!removeFamilyMemberAction) return;
+
+        setIsRemovingFamilyMember(true);
+        setRemoveFamilyMemberError("");
+
+        try {
+            await removeFamilyMemberAction(formData);
+            setSelectedFamilyMember(null);
+            router.refresh();
+        } catch (error) {
+            setRemoveFamilyMemberError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not remove this family member from the trip."
+            );
+        } finally {
+            setIsRemovingFamilyMember(false);
+        }
+    }
+
     async function rescindFriendInvite(member: TripHeaderMember) {
         const friendship = friendshipsByUserId[member.user_id];
         if (!friendship?.id || friendship.requester_user_id !== currentUserId) return;
@@ -300,6 +359,30 @@ export default function TripMembersPanel({
             delete next[member.user_id];
             return next;
         });
+        setCancelFriendInviteTarget(null);
+    }
+
+    async function cancelTripInvitation(invitation: TripHeaderInvitation) {
+        setIsCancellingTripInvite(true);
+        setTripInviteCancelError("");
+
+        const supabase = createClient();
+        const { error } = await supabase.rpc("cancel_trip_invitation", {
+            invitation_id: invitation.id,
+        });
+
+        setIsCancellingTripInvite(false);
+
+        if (error) {
+            setTripInviteCancelError(
+                error.message || "Could not cancel this trip invitation."
+            );
+            return;
+        }
+
+        setCancelledTripInviteIds((current) => [...current, invitation.id]);
+        setCancelTripInviteTarget(null);
+        router.refresh();
     }
 
     return (
@@ -324,16 +407,36 @@ export default function TripMembersPanel({
                                 Invite
                             </span>
                         </button>
-                        {invitations.map((invitation) => (
-                            <span
-                                key={invitation.id}
-                                className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)]"
-                                title={invitation.label}
-                                aria-label={`Pending invitation for ${invitation.label}`}
-                            >
-                                {getInvitationInitial(invitation)}
-                            </span>
-                        ))}
+                        {visibleInvitations.map((invitation) => {
+                            const canCancelInvitation =
+                                invitation.invited_by === currentUserId ||
+                                tripOwnerId === currentUserId;
+
+                            return (
+                                <span
+                                    key={invitation.id}
+                                    className="group/invite relative inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)]"
+                                    title="Pending invitation"
+                                    aria-label="Pending trip invitation"
+                                >
+                                    {getInvitationInitial(invitation)}
+                                    {canCancelInvitation ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setTripInviteCancelError("");
+                                                setCancelTripInviteTarget(invitation);
+                                            }}
+                                            className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border border-red-200/30 bg-slate-950 text-[10px] font-black text-red-100 opacity-0 shadow-xl shadow-black/35 transition hover:bg-red-400/20 group-hover/invite:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200/50"
+                                            aria-label="Cancel pending trip invitation"
+                                            title="Cancel invite"
+                                        >
+                                            ×
+                                        </button>
+                                    ) : null}
+                                </span>
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -418,7 +521,7 @@ export default function TripMembersPanel({
                                                 setFriendActionError("");
                                                 setConfirmingFriend(member);
                                             }}
-                                            className="absolute bottom-3 left-8 z-30 flex h-5 w-5 items-center justify-center rounded-full border border-slate-950 bg-lime-300 text-slate-950 shadow-xl shadow-black/40 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200"
+                                            className="absolute bottom-3 left-8 z-30 inline-flex aspect-square h-5 min-h-5 w-5 min-w-5 max-w-5 shrink-0 items-center justify-center rounded-full border border-slate-950 bg-lime-300 p-0 text-slate-950 leading-none shadow-xl shadow-black/40 transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200"
                                             aria-label={`Add ${getDisplayName(member)} as a friend`}
                                             title={`Add ${getDisplayName(member)} as a friend`}
                                         >
@@ -429,7 +532,10 @@ export default function TripMembersPanel({
                                     {isOutgoingPending ? (
                                         <button
                                             type="button"
-                                            onClick={() => rescindFriendInvite(member)}
+                                            onClick={() => {
+                                                setFriendActionError("");
+                                                setCancelFriendInviteTarget(member);
+                                            }}
                                             disabled={isSavingFriend}
                                             className="absolute -bottom-5 left-1 z-30 rounded-full border border-white/10 bg-slate-950/95 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.08em] text-lime-200 opacity-0 shadow-xl shadow-black/35 transition hover:border-red-300/40 hover:text-red-100 group-hover/member:opacity-100 focus:opacity-100"
                                             aria-label={`Rescind friend invite to ${getDisplayName(member)}`}
@@ -571,6 +677,179 @@ export default function TripMembersPanel({
                 </Portal>
             ) : null}
 
+            {cancelFriendInviteTarget ? (
+                <Portal>
+                    <div
+                        className="vaivia-modal-backdrop"
+                        onClick={() => {
+                            if (!savingFriendUserId) setCancelFriendInviteTarget(null);
+                        }}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="friend-invite-cancel-title"
+                            className="vaivia-modal-panel max-w-md"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <MemberAvatar member={cancelFriendInviteTarget} />
+                                    <div>
+                                        <p className="vaivia-modal-eyebrow">
+                                            Pending friend invite
+                                        </p>
+                                        <h2
+                                            id="friend-invite-cancel-title"
+                                            className="vaivia-modal-title"
+                                        >
+                                            Cancel this friend invite?
+                                        </h2>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCancelFriendInviteTarget(null)}
+                                    disabled={Boolean(savingFriendUserId)}
+                                    className="vaivia-modal-close"
+                                    aria-label="Close friend invitation cancellation"
+                                >
+                                    <X className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <div className="vaivia-modal-body space-y-4">
+                                <p className="text-sm font-semibold leading-6 text-slate-700">
+                                    This will rescind the pending friend request to{" "}
+                                    {getDisplayName(cancelFriendInviteTarget)}.
+                                </p>
+
+                                {friendActionError ? (
+                                    <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+                                        {friendActionError}
+                                    </p>
+                                ) : null}
+
+                                <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCancelFriendInviteTarget(null)}
+                                        disabled={Boolean(savingFriendUserId)}
+                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                        Keep invite
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            rescindFriendInvite(cancelFriendInviteTarget)
+                                        }
+                                        disabled={Boolean(savingFriendUserId)}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-sm font-black text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {savingFriendUserId ? (
+                                            <Loader2
+                                                className="h-4 w-4 animate-spin"
+                                                aria-hidden="true"
+                                            />
+                                        ) : null}
+                                        Cancel invite
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            ) : null}
+
+            {cancelTripInviteTarget ? (
+                <Portal>
+                    <div
+                        className="vaivia-modal-backdrop"
+                        onClick={() => {
+                            if (!isCancellingTripInvite) setCancelTripInviteTarget(null);
+                        }}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="trip-invite-cancel-title"
+                            className="vaivia-modal-panel max-w-md"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-white/15 bg-slate-950 text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.26)]">
+                                        {getInvitationInitial(cancelTripInviteTarget)}
+                                    </span>
+                                    <div>
+                                        <p className="vaivia-modal-eyebrow">
+                                            Pending invite
+                                        </p>
+                                        <h2
+                                            id="trip-invite-cancel-title"
+                                            className="vaivia-modal-title"
+                                        >
+                                            Cancel this trip invite?
+                                        </h2>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setCancelTripInviteTarget(null)}
+                                    disabled={isCancellingTripInvite}
+                                    className="vaivia-modal-close"
+                                    aria-label="Close trip invitation cancellation"
+                                >
+                                    <X className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <div className="vaivia-modal-body space-y-4">
+                                <p className="text-sm font-semibold leading-6 text-slate-700">
+                                    This will rescind the pending invite
+                                    {cancelTripInviteTarget.label
+                                        ? ` for ${cancelTripInviteTarget.label}`
+                                        : ""}
+                                    . They will no longer be able to accept it.
+                                </p>
+
+                                {tripInviteCancelError ? (
+                                    <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+                                        {tripInviteCancelError}
+                                    </p>
+                                ) : null}
+
+                                <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setCancelTripInviteTarget(null)}
+                                        disabled={isCancellingTripInvite}
+                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                        Keep invite
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            cancelTripInvitation(cancelTripInviteTarget)
+                                        }
+                                        disabled={isCancellingTripInvite}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-sm font-black text-white transition hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                        {isCancellingTripInvite ? (
+                                            <Loader2
+                                                className="h-4 w-4 animate-spin"
+                                                aria-hidden="true"
+                                            />
+                                        ) : null}
+                                        Cancel invite
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            ) : null}
+
             {selectedMember ? (
                 <Portal>
                     <div
@@ -663,7 +942,7 @@ export default function TripMembersPanel({
                                             >
                                                 Cancel
                                             </button>
-                                            <form action={removeMemberAction}>
+                                            <form action={handleRemoveMember}>
                                                 <input
                                                     type="hidden"
                                                     name="trip_id"
@@ -676,16 +955,29 @@ export default function TripMembersPanel({
                                                 />
                                                 <button
                                                     type="submit"
+                                                    disabled={isRemovingMember}
                                                     className="inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-800"
                                                 >
-                                                    <Trash2
-                                                        className="h-4 w-4"
-                                                        aria-hidden="true"
-                                                    />
-                                                    Delete
+                                                    {isRemovingMember ? (
+                                                        <Loader2
+                                                            className="h-4 w-4 animate-spin"
+                                                            aria-hidden="true"
+                                                        />
+                                                    ) : (
+                                                        <Trash2
+                                                            className="h-4 w-4"
+                                                            aria-hidden="true"
+                                                        />
+                                                    )}
+                                                    {isRemovingMember ? "Removing" : "Delete"}
                                                 </button>
                                             </form>
                                         </div>
+                                        {removeMemberError ? (
+                                            <p className="mt-3 text-sm font-semibold text-red-700">
+                                                {removeMemberError}
+                                            </p>
+                                        ) : null}
                                     </div>
                                 ) : null}
 
@@ -775,7 +1067,7 @@ export default function TripMembersPanel({
 
                                 <div className="flex justify-end gap-2 border-t border-slate-200 pt-5">
                                     {removeFamilyMemberAction ? (
-                                        <form action={removeFamilyMemberAction}>
+                                        <form action={handleRemoveFamilyMember}>
                                             <input
                                                 type="hidden"
                                                 name="trip_id"
@@ -790,13 +1082,23 @@ export default function TripMembersPanel({
                                             />
                                             <button
                                                 type="submit"
+                                                disabled={isRemovingFamilyMember}
                                                 className="inline-flex items-center gap-2 rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
                                             >
-                                                <Trash2
-                                                    className="h-4 w-4"
-                                                    aria-hidden="true"
-                                                />
-                                                Delete
+                                                {isRemovingFamilyMember ? (
+                                                    <Loader2
+                                                        className="h-4 w-4 animate-spin"
+                                                        aria-hidden="true"
+                                                    />
+                                                ) : (
+                                                    <Trash2
+                                                        className="h-4 w-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                )}
+                                                {isRemovingFamilyMember
+                                                    ? "Removing"
+                                                    : "Delete"}
                                             </button>
                                         </form>
                                     ) : null}
@@ -808,6 +1110,11 @@ export default function TripMembersPanel({
                                         Close
                                     </button>
                                 </div>
+                                {removeFamilyMemberError ? (
+                                    <p className="text-sm font-semibold text-red-700">
+                                        {removeFamilyMemberError}
+                                    </p>
+                                ) : null}
                             </div>
                         </div>
                     </div>

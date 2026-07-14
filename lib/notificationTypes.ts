@@ -117,7 +117,7 @@ export function getDefaultNotificationPreference(
         notificationType,
         inAppEnabled: true,
         pushEnabled: false,
-        emailEnabled: false,
+        emailEnabled: true,
     };
 }
 

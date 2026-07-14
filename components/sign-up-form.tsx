@@ -7,13 +7,15 @@ import { useMemo, useState } from "react";
 import {
   ArrowRight,
   Camera,
-  Home,
   ImagePlus,
-  PlaneTakeoff,
-  Stamp,
   TrainFront,
   Upload,
 } from "lucide-react";
+import {
+  dismissOnboarding,
+  ensureNewUserOnboardingProgress,
+  markOnboardingStepCompleted,
+} from "@/lib/onboarding";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 
@@ -219,6 +221,14 @@ export function SignUpForm({
       supabase as unknown as SignupConsentClient
     ).rpc("accept_current_terms");
     if (termsError) throw termsError;
+
+    if (!onboardingCompleted) {
+      const { error: onboardingError } = await ensureNewUserOnboardingProgress(
+        supabase,
+        nextUserId
+      );
+      if (onboardingError) throw onboardingError;
+    }
   }
 
   async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
@@ -362,7 +372,6 @@ export function SignUpForm({
         await seedProfile({
           nextUserId: userId,
           avatarUrl,
-          onboardingCompleted: true,
         });
       }
       await advanceAfterPhoto();
@@ -405,6 +414,21 @@ export function SignUpForm({
       );
 
       if (error) throw error;
+
+      if (userId) {
+        await markOnboardingStepCompleted({
+          supabase,
+          userId,
+          step: "welcome",
+          nextStep: "create_trip",
+        });
+        await markOnboardingStepCompleted({
+          supabase,
+          userId,
+          step: "create_trip",
+          nextStep: "add_first_item",
+        });
+      }
 
       setAcceptedInvitation(invitation);
       setPendingInvitations((current) =>
@@ -455,8 +479,67 @@ export function SignUpForm({
   }
 
   function goToAcceptedTrip(invitation: OnboardingTripInvitation) {
-    window.localStorage.setItem("vaivia:show-finish-onboarding-options", "true");
-    void goTo(getTripHref(invitation));
+    void goTo(`${getTripHref(invitation)}?tab=itinerary&onboarding=first-item`);
+  }
+
+  async function handlePlanFirstTrip() {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const hasSession = await ensureOnboardingSession();
+      if (!hasSession) {
+        setError(
+          "Your account was created, but VAIVIA needs you to sign in once before opening that page."
+        );
+        return;
+      }
+
+      if (userId) {
+        const supabase = createClient();
+        const { error } = await markOnboardingStepCompleted({
+          supabase,
+          userId,
+          step: "welcome",
+          nextStep: "create_trip",
+        });
+        if (error) throw error;
+      }
+
+      router.refresh();
+      router.push("/trips/new?onboarding=1");
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleExploreOnOwn() {
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const hasSession = await ensureOnboardingSession();
+      if (!hasSession) {
+        setError(
+          "Your account was created, but VAIVIA needs you to sign in once before opening that page."
+        );
+        return;
+      }
+
+      if (userId) {
+        const supabase = createClient();
+        await dismissOnboarding(supabase, userId);
+      }
+
+      router.refresh();
+      router.push("/");
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function ensureOnboardingSession() {
@@ -538,6 +621,7 @@ export function SignUpForm({
         </div>
 
         <div className="p-6">
+          {step !== "start" ? (
           <div className="mb-6 rounded-[1.75rem] border border-white/10 bg-white/[0.05] px-5 py-5">
             <div className="relative mx-auto h-14 max-w-md">
               <div className="absolute left-4 right-4 top-1/2 h-1 -translate-y-1/2 rounded-full bg-white/10">
@@ -567,12 +651,8 @@ export function SignUpForm({
                 <TrainFront className="h-5 w-5" aria-hidden="true" />
               </div>
             </div>
-            {step === "start" ? (
-              <p className="mt-3 text-center text-sm font-black text-lime-100">
-                You&apos;ve arrived. Welcome to VAIVIA!
-              </p>
-            ) : null}
           </div>
+          ) : null}
 
           {step === "account" ? (
             <form onSubmit={handleCreateAccount} className="space-y-5">
@@ -891,55 +971,63 @@ export function SignUpForm({
           ) : null}
 
           {step === "start" ? (
-            <div className="space-y-3">
+            <div className="space-y-5 rounded-[1.75rem] border border-lime-300/20 bg-lime-300/[0.08] p-5">
               {statusMessage ? (
                 <p className="rounded-2xl border border-lime-300/20 bg-lime-300/10 p-4 text-sm font-bold text-lime-100">
                   {statusMessage}
                 </p>
               ) : null}
-              <button
-                type="button"
-                onClick={() => void goTo("/trips/new")}
-                className="flex w-full items-center gap-4 rounded-[1.35rem] border border-lime-300/25 bg-lime-300 p-4 text-left text-slate-950 shadow-[0_0_30px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-              >
-                <PlaneTakeoff className="h-6 w-6 shrink-0" aria-hidden="true" />
-                <span>
-                  <span className="block text-lg font-black">Setup your first trip</span>
-                  <span className="text-sm font-bold text-slate-950/70">
-                    Start with dates, places, and a cover photo.
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void goTo("/profile")}
-                className="flex w-full items-center gap-4 rounded-[1.35rem] border border-white/10 bg-white/[0.08] p-4 text-left text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
-              >
-                <Stamp className="h-6 w-6 shrink-0 text-lime-200" aria-hidden="true" />
-                <span>
-                  <span className="block text-lg font-black">
-                    Add passport stamps
-                  </span>
-                  <span className="text-sm font-bold text-slate-400">
-                    Mark places you have already visited.
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void goTo("/")}
-                className="flex w-full items-center gap-4 rounded-[1.35rem] border border-white/10 bg-white/[0.08] p-4 text-left text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
-              >
-                <Home className="h-6 w-6 shrink-0 text-lime-200" aria-hidden="true" />
-                <span>
-                  <span className="block text-lg font-black">
-                    Take me to homepage
-                  </span>
-                  <span className="text-sm font-bold text-slate-400">
-                    Go straight to your VAIVIA dashboard.
-                  </span>
-                </span>
-              </button>
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200">
+                  Welcome to VAIVIA
+                </p>
+                <h2 className="mt-3 text-3xl font-black tracking-tight">
+                  Your whole trip, finally in one place.
+                </h2>
+                <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+                  Save ideas, build the plan, keep bookings together, and travel
+                  with your people.
+                </p>
+              </div>
+
+              {acceptedInvitation ? (
+                <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200/80">
+                    Trip invite accepted
+                  </p>
+                  <h3 className="mt-2 text-xl font-black text-white">
+                    {acceptedInvitation.trip_title}
+                  </h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-400">
+                    {formatTripDates(acceptedInvitation)}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={
+                    acceptedInvitation
+                      ? () => goToAcceptedTrip(acceptedInvitation)
+                      : handlePlanFirstTrip
+                  }
+                  disabled={isLoading}
+                  className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-lime-300 px-6 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:opacity-60"
+                >
+                  {acceptedInvitation ? "Review trip invite" : "Plan my first trip"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExploreOnOwn}
+                  disabled={isLoading}
+                  className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14] disabled:opacity-60"
+                >
+                  Explore on my own
+                </button>
+              </div>
+
+              {error ? <p className="text-sm font-bold text-red-200">{error}</p> : null}
             </div>
           ) : null}
 

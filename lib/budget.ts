@@ -16,7 +16,7 @@ export const EXPENSE_CATEGORIES = [
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
-export type SplitMethod = "equal" | "exact" | "percentage";
+export type SplitMethod = "just_me" | "equal" | "exact" | "percentage";
 
 export type ExpenseSourceType =
     | "manual"

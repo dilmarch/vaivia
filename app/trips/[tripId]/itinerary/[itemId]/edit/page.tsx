@@ -214,7 +214,7 @@ async function updateItineraryItem(formData: FormData) {
         throw new Error("Could not update itinerary item");
     }
 
-    redirect(`/trips/${tripId}`);
+    redirect(`/trips/${tripId}?tab=itinerary`);
 }
 
 async function updateTransportationItem(formData: FormData) {
@@ -316,7 +316,7 @@ async function updateTransportationItem(formData: FormData) {
         description: title,
     });
 
-    redirect(`/trips/${tripId}`);
+    redirect(`/trips/${tripId}?tab=itinerary`);
 }
 
 async function EditItineraryItemContent({

@@ -11,7 +11,6 @@ import {
     Pencil,
     Plane,
     Share2,
-    Stamp,
     Trash2,
     X,
 } from "lucide-react";
@@ -1169,17 +1168,6 @@ export default function TripDashboardClient({
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
-    const [showFinishOnboarding, setShowFinishOnboarding] = useState(false);
-
-    useEffect(() => {
-        if (
-            window.localStorage.getItem(
-                "vaivia:show-finish-onboarding-options"
-            ) === "true"
-        ) {
-            setShowFinishOnboarding(true);
-        }
-    }, []);
 
     function closeModal() {
         setSelectedTrip(null);
@@ -1197,11 +1185,6 @@ export default function TripDashboardClient({
 
     function discardChangesAndClose() {
         closeModal();
-    }
-
-    function closeFinishOnboarding() {
-        window.localStorage.removeItem("vaivia:show-finish-onboarding-options");
-        setShowFinishOnboarding(false);
     }
 
     return (
@@ -1235,86 +1218,6 @@ export default function TripDashboardClient({
                     if (!open) setShareTrip(null);
                 }}
             />
-
-            {showFinishOnboarding ? (
-                <AnimatedModal
-                    onClose={closeFinishOnboarding}
-                    panelClassName="max-w-xl"
-                    labelledBy="finish-onboarding-title"
-                >
-                    {() => (
-                        <>
-                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
-                                <div>
-                                    <p className="vaivia-modal-eyebrow">
-                                        Finish onboarding
-                                    </p>
-                                    <h2
-                                        id="finish-onboarding-title"
-                                        className="vaivia-modal-title"
-                                    >
-                                        What do you want to do next?
-                                    </h2>
-                                    <p className="vaivia-modal-subtitle">
-                                        You joined the trip. You can still set up your
-                                        own VAIVIA space when you are ready.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={closeFinishOnboarding}
-                                    className="vaivia-modal-close"
-                                    aria-label="Close onboarding options"
-                                >
-                                    <X className="h-5 w-5" aria-hidden="true" />
-                                </button>
-                            </div>
-                            <div className="vaivia-modal-body space-y-3">
-                                <Link
-                                    href="/trips/new"
-                                    onClick={closeFinishOnboarding}
-                                    className="flex w-full items-center gap-4 rounded-[1.35rem] border border-lime-300/25 bg-lime-300 p-4 text-left text-slate-950 transition hover:bg-lime-200"
-                                >
-                                    <Plane className="h-6 w-6 shrink-0" aria-hidden="true" />
-                                    <span>
-                                        <span className="block text-lg font-black">
-                                            Setup your first trip
-                                        </span>
-                                        <span className="text-sm font-bold text-slate-950/70">
-                                            Create a trip you own from scratch.
-                                        </span>
-                                    </span>
-                                </Link>
-                                <Link
-                                    href="/profile"
-                                    onClick={closeFinishOnboarding}
-                                    className="flex w-full items-center gap-4 rounded-[1.35rem] border border-white/10 bg-white/[0.08] p-4 text-left text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
-                                >
-                                    <Stamp
-                                        className="h-6 w-6 shrink-0 text-lime-200"
-                                        aria-hidden="true"
-                                    />
-                                    <span>
-                                        <span className="block text-lg font-black">
-                                            Add passport stamps
-                                        </span>
-                                        <span className="text-sm font-bold text-slate-400">
-                                            Mark places you have already visited.
-                                        </span>
-                                    </span>
-                                </Link>
-                                <button
-                                    type="button"
-                                    onClick={closeFinishOnboarding}
-                                    className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
-                                >
-                                    Stay on dashboard
-                                </button>
-                            </div>
-                        </>
-                    )}
-                </AnimatedModal>
-            ) : null}
 
             {selectedTrip && (
                 <AnimatedModal

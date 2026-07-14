@@ -10,6 +10,10 @@ import {
     cleanupReplacedTripCover,
     deleteOwnedTripCoverObject,
 } from "@/lib/tripCovers";
+import {
+    loadOnboardingProgress,
+    markOnboardingStepCompleted,
+} from "@/lib/onboarding";
 import { slugifyTripTitle } from "@/lib/tripRoutes";
 
 type TripPayload = {
@@ -246,7 +250,14 @@ async function createTrip(
         }
     }
 
-    redirect("/");
+    await markOnboardingStepCompleted({
+        supabase,
+        userId: user.id,
+        step: "create_trip",
+        nextStep: "add_first_item",
+    });
+
+    redirect(`/trips/${finalSlug}?tab=itinerary&onboarding=first-item`);
 }
 
 async function NewTripContent() {
@@ -267,6 +278,13 @@ async function NewTripContent() {
         .select("id", { count: "exact", head: true })
         .eq("user_id", user.id);
     const nextTripNumber = (existingTripCount ?? 0) + 1;
+    const { data: onboardingProgress } = await loadOnboardingProgress(
+        supabase,
+        user.id
+    );
+    const isOnboardingTripCreate =
+        onboardingProgress?.status === "in_progress" &&
+        onboardingProgress.current_step === "create_trip";
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-6 py-10">
@@ -290,6 +308,7 @@ async function NewTripContent() {
                 <NewTripForm
                     action={createTrip}
                     nextTripNumber={nextTripNumber}
+                    isOnboarding={isOnboardingTripCreate}
                 />
             </div>
         </main>

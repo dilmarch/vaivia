@@ -38,7 +38,7 @@ function getParticipantLabel(
     currentUserTripMemberId?: string | null
 ) {
     return isCurrentUserParticipant(participant, currentUserTripMemberId)
-        ? "Just me"
+        ? "Me"
         : participant.displayName;
 }
 
@@ -78,6 +78,11 @@ const splitMethodOptions: Array<{
     description: string;
 }> = [
     {
+        value: "just_me",
+        label: "Just me",
+        description: "Paid by you and assigned only to you.",
+    },
+    {
         value: "equal",
         label: "Equal split",
         description: "Divide evenly between selected people.",
@@ -100,7 +105,7 @@ export default function CostAllocationFields({
     currentUserTripMemberId = null,
     tone = "dark",
 }: CostAllocationFieldsProps) {
-    const [splitMethod, setSplitMethod] = useState<SplitMethod>("equal");
+    const [splitMethod, setSplitMethod] = useState<SplitMethod>("just_me");
     const hasAmount = parsePositiveAmount(amount) > 0;
     const options = useMemo(
         () =>
@@ -198,7 +203,7 @@ export default function CostAllocationFields({
                         Split
                     </span>
                     <input type="hidden" name="split_method" value={splitMethod} />
-                    <div className="grid gap-2 sm:grid-cols-3">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                         {splitMethodOptions.map((option) => {
                             const isSelected = splitMethod === option.value;
 
@@ -236,23 +241,45 @@ export default function CostAllocationFields({
                     </div>
 
                     <div className="grid gap-2 md:grid-cols-2">
+                        {splitMethod === "just_me" && defaultPayer ? (
+                            <input
+                                type="hidden"
+                                name="included_participants"
+                                value={participantValue(defaultPayer)}
+                            />
+                        ) : null}
                         {options.map((participant) => {
                             const value = participantValue(participant);
                             const label = getParticipantLabel(
                                 participant,
                                 currentUserTripMemberId
                             );
+                            const isCurrentUser = isCurrentUserParticipant(
+                                participant,
+                                currentUserTripMemberId
+                            );
+                            const isLockedToCurrentUser =
+                                splitMethod === "just_me" && isCurrentUser;
 
                             return (
                                 <label
                                     key={value}
-                                    className={`grid grid-cols-[auto_auto_1fr_7rem] items-center gap-3 rounded-2xl border p-3 ${rowClass}`}
+                                    className={`grid grid-cols-[auto_auto_1fr_7rem] items-center gap-3 rounded-2xl border p-3 ${
+                                        splitMethod === "just_me" && !isCurrentUser
+                                            ? `${rowClass} opacity-45`
+                                            : rowClass
+                                    }`}
                                 >
                                     <input
                                         type="checkbox"
                                         name="included_participants"
                                         value={value}
-                                        defaultChecked
+                                        defaultChecked={
+                                            splitMethod === "just_me"
+                                                ? isCurrentUser
+                                                : true
+                                        }
+                                        disabled={splitMethod === "just_me"}
                                         className="h-4 w-4 accent-lime-300"
                                     />
                                     <ParticipantAvatar
@@ -275,7 +302,19 @@ export default function CostAllocationFields({
                                             </span>
                                         ) : null}
                                     </span>
-                                    {splitMethod === "exact" ? (
+                                    {splitMethod === "just_me" ? (
+                                        <span
+                                            className={`text-right text-xs font-black uppercase ${
+                                                isLockedToCurrentUser
+                                                    ? "text-lime-200"
+                                                    : isDark
+                                                      ? "text-slate-500"
+                                                      : "text-slate-400"
+                                            }`}
+                                        >
+                                            {isLockedToCurrentUser ? "Full" : "0"}
+                                        </span>
+                                    ) : splitMethod === "exact" ? (
                                         <input
                                             name={splitInputName(
                                                 "split_amount",

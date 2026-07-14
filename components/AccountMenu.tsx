@@ -947,6 +947,8 @@ export default function AccountMenu({
         bucketList: [],
         scratchMapCountries: [],
     });
+    const [friendInviteCancelTarget, setFriendInviteCancelTarget] =
+        useState<FriendInvitation | null>(null);
     const [currentThemeMode, setCurrentThemeMode] =
         useState<VaiviaThemeMode>("dark");
     const [isLoadingProfileStats, setIsLoadingProfileStats] = useState(false);
@@ -4030,6 +4032,9 @@ export default function AccountMenu({
                       ? "Friend invite cancelled."
                       : "Friend invite declined."
             );
+            if (nextStatus === "cancelled") {
+                setFriendInviteCancelTarget(null);
+            }
             router.refresh();
         } catch (error) {
             console.error("Could not update friend invite:", {
@@ -5413,20 +5418,33 @@ export default function AccountMenu({
                                                                 key={invitation.id}
                                                                 className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/60 p-3"
                                                             >
-                                                                <span className="min-w-0 truncate text-sm font-bold text-slate-100">
-                                                                    {invitation.identifier}
+                                                                <span className="flex min-w-0 items-center gap-3">
+                                                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_20px_rgba(0,0,0,0.2)]">
+                                                                        {invitation.identifier
+                                                                            .trim()[0]
+                                                                            ?.toUpperCase() ||
+                                                                            "?"}
+                                                                    </span>
+                                                                    <span className="min-w-0 truncate text-sm font-bold text-slate-100">
+                                                                        {
+                                                                            invitation.identifier
+                                                                        }
+                                                                    </span>
                                                                 </span>
                                                                 <button
                                                                     type="button"
                                                                     onClick={() =>
-                                                                        handleFriendInvitationStatus(
-                                                                            invitation.id,
-                                                                            "cancelled"
+                                                                        setFriendInviteCancelTarget(
+                                                                            invitation
                                                                         )
                                                                     }
-                                                                    className="rounded-full border border-red-300/30 px-3 py-1.5 text-xs font-black text-red-100 transition hover:bg-red-400/10"
+                                                                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-300/30 text-red-100 transition hover:bg-red-400/10 focus:outline-none focus:ring-2 focus:ring-red-200/40"
+                                                                    aria-label={`Cancel friend invite to ${invitation.identifier}`}
                                                                 >
-                                                                    Cancel
+                                                                    <X
+                                                                        className="h-4 w-4"
+                                                                        aria-hidden="true"
+                                                                    />
                                                                 </button>
                                                             </div>
                                                         )
@@ -5504,6 +5522,80 @@ export default function AccountMenu({
                                             {statusMessage}
                                         </p>
                                     ) : null}
+                                </div>
+                            </div>
+                        )}
+                    </AnimatedModal>
+                </Portal>
+            ) : null}
+            {friendInviteCancelTarget ? (
+                <Portal>
+                    <AnimatedModal
+                        onClose={() => setFriendInviteCancelTarget(null)}
+                        className="z-[120] items-center bg-slate-950/60"
+                        panelClassName="max-w-md overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/60"
+                        labelledBy="cancelFriendInviteTitle"
+                    >
+                        {() => (
+                            <div className="space-y-5 p-6">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_20px_rgba(0,0,0,0.25)]">
+                                            {friendInviteCancelTarget.identifier
+                                                .trim()[0]
+                                                ?.toUpperCase() || "?"}
+                                        </span>
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                                Pending friend invite
+                                            </p>
+                                            <h2
+                                                id="cancelFriendInviteTitle"
+                                                className="mt-1 text-2xl font-black"
+                                            >
+                                                Cancel this invite?
+                                            </h2>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFriendInviteCancelTarget(null)}
+                                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.1]"
+                                        aria-label="Close cancel friend invite modal"
+                                    >
+                                        <X className="h-4 w-4" aria-hidden="true" />
+                                    </button>
+                                </div>
+
+                                <p className="text-sm font-semibold leading-6 text-slate-300">
+                                    This will rescind the friend invite to{" "}
+                                    <span className="font-black text-white">
+                                        {friendInviteCancelTarget.identifier}
+                                    </span>
+                                    . They will not be able to accept it unless you send a
+                                    new invite.
+                                </p>
+
+                                <div className="flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFriendInviteCancelTarget(null)}
+                                        className="rounded-full border border-white/10 px-4 py-2 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
+                                    >
+                                        Keep invite
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleFriendInvitationStatus(
+                                                friendInviteCancelTarget.id,
+                                                "cancelled"
+                                            )
+                                        }
+                                        className="rounded-full bg-red-600 px-4 py-2 text-sm font-black text-white transition hover:bg-red-500"
+                                    >
+                                        Cancel invite
+                                    </button>
                                 </div>
                             </div>
                         )}

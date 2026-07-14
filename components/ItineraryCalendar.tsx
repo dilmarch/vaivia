@@ -1314,7 +1314,7 @@ function FlightListCard({
                     )
                 )}
             </button>
-            <TransportationAudienceAvatars item={item} />
+            <AssignedItemAvatars item={item} />
             <div className="flex flex-wrap justify-start gap-2 px-4 pb-4 pr-20">
                 {flight.flightNumber && (
                     <TrackFlightButton
@@ -1990,7 +1990,7 @@ function EventCard({
                         </div>
                     </div>
                 </button>
-                <TransportationAudienceAvatars item={item} />
+                <AssignedItemAvatars item={item} />
                 <div className="flex flex-wrap justify-start gap-2 px-3 pb-3 pr-16">
                     {flightDisplay.flightNumber && (
                         <TrackFlightButton
@@ -2168,9 +2168,7 @@ function EventCard({
                 </>
             )}
             </button>
-            {item.category === "transportation" ? (
-                <TransportationAudienceAvatars item={item} />
-            ) : null}
+            <AssignedItemAvatars item={item} />
             <div className={compact ? "px-2 pb-2 pr-16" : "px-3 pb-3 pr-16"}>
                 <EventCardActions item={item} compact={compact} onOpen={onOpen} />
             </div>
@@ -2290,13 +2288,12 @@ function TransportationAudienceText({
     );
 }
 
-function getTransportationAudiencePeople(item: ItineraryCalendarItem) {
-    if (item.audience_mode === "everyone" && !item.is_private) return [];
+function getAssignedItemPeople(item: ItineraryCalendarItem) {
     return getItemPeople(item);
 }
 
-function TransportationAudienceAvatars({ item }: { item: ItineraryCalendarItem }) {
-    const people = getTransportationAudiencePeople(item);
+function AssignedItemAvatars({ item }: { item: ItineraryCalendarItem }) {
+    const people = getAssignedItemPeople(item);
     if (people.length === 0) return null;
 
     const visiblePeople = people.slice(0, 4);

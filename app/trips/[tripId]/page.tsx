@@ -25,6 +25,10 @@ import {
     cleanupReplacedTripCover,
     deleteOwnedTripCoverObject,
 } from "@/lib/tripCovers";
+import {
+    loadOnboardingProgress,
+    markOnboardingStepCompleted,
+} from "@/lib/onboarding";
 import TripLegLocationLine, {
     type TripLegLocation,
     type TripLegMemberOption,
@@ -308,7 +312,9 @@ function getPendingInvitationLabel(invitation: Record<string, unknown>) {
     const labelCandidates = [
         invitation.invitee_identifier,
         invitation.invitee_email,
+        invitation.invited_email,
         invitation.invitee_username,
+        invitation.invited_username,
         invitation.email,
         invitation.username,
         invitation.target_email,
@@ -538,8 +544,11 @@ function getTransportationDbStatus(rawStatus: string) {
         : "planned";
 }
 
-function getTransportationReturnPath(formData: FormData, tripId: string) {
-    const fallbackPath = `/trips/${tripId}`;
+function getTransportationReturnPath(
+    formData: FormData,
+    tripId: string,
+    fallbackPath = `/trips/${tripId}`
+) {
     const returnTo = String(formData.get("return_to") || "").trim();
 
     if (
@@ -1257,7 +1266,14 @@ async function createItineraryItem(formData: FormData) {
         });
     }
 
-    redirect(getTransportationReturnPath(formData, tripId));
+    await markOnboardingStepCompleted({
+        supabase,
+        userId: user.id,
+        step: "add_first_item",
+        nextStep: "complete",
+    });
+
+    redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`));
 }
 
 async function createTransportationItem(formData: FormData) {
@@ -1769,6 +1785,13 @@ async function createTransportationItem(formData: FormData) {
         });
     }
 
+    await markOnboardingStepCompleted({
+        supabase,
+        userId: user.id,
+        step: "add_first_item",
+        nextStep: "complete",
+    });
+
     let returnPath = getTransportationReturnPath(formData, tripId);
     if (transportationItemId && returnPath.includes("tab=journey-planning")) {
         returnPath = appendTripReturnParam(
@@ -1825,7 +1848,13 @@ async function undoJourneyTransportationItem(formData: FormData) {
     }
 
     revalidatePath(`/trips/${tripId}`);
-    redirect(`/trips/${tripId}?tab=journey-planning`);
+    redirect(
+        getTransportationReturnPath(
+            formData,
+            tripId,
+            `/trips/${tripId}?tab=journey-planning`
+        )
+    );
 }
 
 async function updateTransportationItem(formData: FormData) {
@@ -2000,7 +2029,9 @@ async function updateTransportationItem(formData: FormData) {
         arrivalTimezone,
     });
 
-    redirect(`/trips/${tripId}`);
+    redirect(
+        getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=journey`)
+    );
 }
 
 async function deleteItineraryItem(formData: FormData) {
@@ -2037,7 +2068,9 @@ async function deleteItineraryItem(formData: FormData) {
         throw new Error("Could not delete itinerary item");
     }
 
-    redirect(`/trips/${tripId}`);
+    redirect(
+        getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`)
+    );
 }
 
 async function updateTrip(formData: FormData) {
@@ -2149,7 +2182,7 @@ async function updateTrip(formData: FormData) {
         },
     });
 
-    redirect(`/trips/${tripId}`);
+    redirect(getTransportationReturnPath(formData, tripId));
 }
 
 async function updateTripCountdownTarget(formData: FormData) {
@@ -2545,7 +2578,20 @@ async function createTripIdea(formData: FormData) {
         });
     }
 
-    redirect(`/trips/${payload.trip_id}?tab=ideas`);
+    await markOnboardingStepCompleted({
+        supabase,
+        userId: user.id,
+        step: "add_first_item",
+        nextStep: "complete",
+    });
+
+    redirect(
+        getTransportationReturnPath(
+            formData,
+            payload.trip_id,
+            `/trips/${payload.trip_id}?tab=ideas`
+        )
+    );
 }
 
 async function updateTripIdea(formData: FormData) {
@@ -2601,7 +2647,13 @@ async function updateTripIdea(formData: FormData) {
         throw new Error("Could not update trip idea");
     }
 
-    redirect(`/trips/${payload.trip_id}?tab=ideas`);
+    redirect(
+        getTransportationReturnPath(
+            formData,
+            payload.trip_id,
+            `/trips/${payload.trip_id}?tab=ideas`
+        )
+    );
 }
 
 async function toggleTripIdeaAttended(formData: FormData) {
@@ -2905,6 +2957,17 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         redirect("/auth/login");
     }
 
+    const { data: onboardingProgress, error: onboardingProgressError } =
+        await loadOnboardingProgress(supabase, user.id);
+
+    if (onboardingProgressError) {
+        console.warn("Could not load trip onboarding progress:", {
+            message: onboardingProgressError.message,
+            code: onboardingProgressError.code,
+            details: onboardingProgressError.details,
+        });
+    }
+
     const resolvedTrip = await resolveTripRouteParam<TripRoutePageRecord>(
         supabase,
         tripRouteParam
@@ -2931,7 +2994,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const trip = resolvedTrip.trip;
 
     const { data: journeyPlanningState, error: journeyPlanningStateError } =
-        await (supabase.from as any)("trip_journey_planning_states")
+        await supabase
+            .from("trip_journey_planning_states")
             .select("scenarios")
             .eq("trip_id", tripId)
             .maybeSingle();
@@ -3182,6 +3246,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const currentUserTraveler =
         tripMemberTravelerOptions.find((traveler) => traveler.user_id === user.id) ||
         null;
+    const everyoneAssignedTravelers =
+        tripMemberTravelerOptions.length > 1 ? tripMemberTravelerOptions : [];
 
     const { data: pendingInvitationRows, error: pendingInvitationsError } =
         await supabase
@@ -3212,6 +3278,10 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         created_at:
             typeof invitation.created_at === "string"
                 ? invitation.created_at
+                : null,
+        invited_by:
+            typeof invitation.invited_by === "string"
+                ? invitation.invited_by
                 : null,
     }));
     const audienceOptions: TripAudienceOption[] = [
@@ -3834,27 +3904,40 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     });
 
     const calendarItems = [
-        ...(((itineraryItems || []) as ItineraryCalendarItem[]).map((item) => ({
-            ...item,
-            participants:
-                participantsByItemKey.get(`itinerary:${item.id}`) || [],
-            audience_selected_options:
-                selectedAudienceOptionsByItemKey.get(`itinerary:${item.id}`) || [],
-            category_name:
-                categoriesById.get(String(item.category_id || ""))?.name ||
-                item.category ||
-                FALLBACK_CATEGORY_LABEL,
-            category_color_hex:
-                categoryColorsByKey.get(
-                    String(
-                        categoriesById.get(String(item.category_id || ""))?.color_key ||
-                            ""
-                    )
-                ) || undefined,
-            category_owner_id:
-                categoriesById.get(String(item.category_id || ""))?.user_id || null,
-            source_table: "itinerary_items" as const,
-        }))),
+        ...(((itineraryItems || []) as ItineraryCalendarItem[]).map((item) => {
+            const itemParticipants =
+                participantsByItemKey.get(`itinerary:${item.id}`) || [];
+            const participants =
+                (item.audience_mode === "just_me" || item.is_private) &&
+                currentUserTraveler
+                    ? [currentUserTraveler]
+                    : item.audience_mode === "custom"
+                      ? itemParticipants
+                      : itemParticipants.length > 0
+                        ? itemParticipants
+                        : everyoneAssignedTravelers;
+
+            return {
+                ...item,
+                participants,
+                audience_selected_options:
+                    selectedAudienceOptionsByItemKey.get(`itinerary:${item.id}`) || [],
+                category_name:
+                    categoriesById.get(String(item.category_id || ""))?.name ||
+                    item.category ||
+                    FALLBACK_CATEGORY_LABEL,
+                category_color_hex:
+                    categoryColorsByKey.get(
+                        String(
+                            categoriesById.get(String(item.category_id || ""))?.color_key ||
+                                ""
+                        )
+                    ) || undefined,
+                category_owner_id:
+                    categoriesById.get(String(item.category_id || ""))?.user_id || null,
+                source_table: "itinerary_items" as const,
+            };
+        })),
         ...((transportationItems || []) as Record<string, unknown>[]).map((item) => {
             const normalizedItem = normalizeTransportationItem(item);
             const rawId = getStringValue(item, ["id"]);
@@ -3865,7 +3948,11 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     normalizedItem.is_private) &&
                 currentUserTraveler
                     ? [currentUserTraveler]
-                    : itemParticipants;
+                    : normalizedItem.audience_mode === "custom"
+                      ? itemParticipants
+                      : itemParticipants.length > 0
+                        ? itemParticipants
+                        : everyoneAssignedTravelers;
 
             return {
                 ...normalizedItem,
@@ -4115,6 +4202,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         initialJourneyPlanningScenarios={
                             initialJourneyPlanningScenarios
                         }
+                        onboardingProgress={onboardingProgress}
                     />
                 </section>
             </div>

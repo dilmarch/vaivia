@@ -136,7 +136,7 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
 
             <div
                 ref={quickAddRef}
-                className={`fixed bottom-[calc(0.75rem+var(--safe-area-bottom))] left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center ${
+                className={`vaivia-mobile-fixed-dock vaivia-mobile-quick-add-dock fixed bottom-[calc(0.75rem+var(--safe-area-bottom))] left-1/2 z-[80] flex -translate-x-1/2 flex-col items-center ${
                     isBaseTripLandingRoute
                         ? "md:hidden"
                         : "md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"

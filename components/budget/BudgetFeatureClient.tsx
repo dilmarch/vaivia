@@ -69,6 +69,11 @@ const splitMethodOptions: Array<{
     description: string;
 }> = [
     {
+        value: "just_me",
+        label: "Just me",
+        description: "Paid by you and assigned only to you.",
+    },
+    {
         value: "equal",
         label: "Equal split",
         description: "Divide evenly between selected people.",
@@ -103,7 +108,7 @@ function participantValue(participant: BudgetParticipant) {
 
 function getBudgetParticipantLabel(participant?: BudgetParticipant | null) {
     if (!participant) return null;
-    return participant.isCurrentUser ? "Just me" : participant.label;
+    return participant.isCurrentUser ? "Me" : participant.label;
 }
 
 function getPayerParticipant(
@@ -916,7 +921,7 @@ export function AddExpenseModal({
     accommodationId?: string | null;
 }) {
     const [splitMethod, setSplitMethod] = useState<SplitMethod>(
-        expense?.split_method || "equal"
+        expense?.split_method || "just_me"
     );
     const isEditing = mode === "edit" && Boolean(expense);
     const isDuplicate = mode === "duplicate";
@@ -1238,25 +1243,42 @@ export function AddExpenseModal({
                             Split with
                         </p>
                         <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            {splitMethod === "just_me" && currentUserParticipant ? (
+                                <input
+                                    type="hidden"
+                                    name="included_participants"
+                                    value={participantValue(currentUserParticipant)}
+                                />
+                            ) : null}
                             {participants.map((participant) => {
                                 const value = participantValue(participant);
                                 const label =
                                     getBudgetParticipantLabel(participant) ||
                                     participant.label;
+                                const isCurrentUser = participant.isCurrentUser;
+                                const isLockedToCurrentUser =
+                                    splitMethod === "just_me" && isCurrentUser;
                                 return (
                                     <label
                                         key={value}
-                                        className="grid grid-cols-[auto_auto_1fr_8rem] items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3"
+                                        className={`grid grid-cols-[auto_auto_1fr_8rem] items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3 ${
+                                            splitMethod === "just_me" && !isCurrentUser
+                                                ? "opacity-45"
+                                                : ""
+                                        }`}
                                     >
                                         <input
                                             type="checkbox"
                                             name="included_participants"
                                             value={value}
                                             defaultChecked={
-                                                hasSavedSplits
-                                                    ? selectedSplitValues.has(value)
-                                                    : true
+                                                splitMethod === "just_me"
+                                                    ? isCurrentUser
+                                                    : hasSavedSplits
+                                                      ? selectedSplitValues.has(value)
+                                                      : true
                                             }
+                                            disabled={splitMethod === "just_me"}
                                             className="h-4 w-4 accent-lime-300"
                                         />
                                         <ParticipantAvatar
@@ -1273,7 +1295,15 @@ export function AddExpenseModal({
                                                 </span>
                                             ) : null}
                                         </span>
-                                        {splitMethod === "exact" ? (
+                                        {splitMethod === "just_me" ? (
+                                            <span className={`text-right text-xs font-bold uppercase ${
+                                                isLockedToCurrentUser
+                                                    ? "text-lime-200"
+                                                    : "text-slate-500"
+                                            }`}>
+                                                {isLockedToCurrentUser ? "Full" : "0"}
+                                            </span>
+                                        ) : splitMethod === "exact" ? (
                                             <input
                                                 name={`split_amount_${participant.kind}_${participant.id}`}
                                                 inputMode="decimal"

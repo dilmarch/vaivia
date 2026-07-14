@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Lock, Pencil, Search, SlidersHorizontal } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
@@ -289,6 +290,8 @@ export function IdeaForm({
     moveItemAction?: (formData: FormData) => Promise<void>;
     moveTargetTrips?: MoveTargetTrip[];
 }) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const addressInputRef = useRef<HTMLInputElement | null>(null);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [title, setTitle] = useState(idea?.title || "");
@@ -325,6 +328,10 @@ export function IdeaForm({
     const [closesAt, setClosesAt] = useState(idea?.closes_at?.slice(0, 5) || "");
     const [ticketPolicy, setTicketPolicy] = useState(idea?.ticket_policy || "any");
     const [agePolicy, setAgePolicy] = useState(idea?.age_policy || "all_ages");
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
 
     useEffect(() => {
         if (!isGoogleReady) return;
@@ -395,6 +402,7 @@ export function IdeaForm({
                 onReady={() => setIsGoogleReady(true)}
             />
             <input type="hidden" name="trip_id" value={tripId} />
+            <input type="hidden" name="return_to" value={returnTo} />
             {idea && <input type="hidden" name="idea_id" value={idea.id} />}
             <input type="hidden" name="formatted_address" value={formattedAddress} />
             <input type="hidden" name="google_place_id" value={googlePlaceId} />

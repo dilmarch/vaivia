@@ -1,6 +1,7 @@
 import "server-only";
 
 import { processNotificationEmailOutbox } from "@/lib/emailNotifications";
+import { processExternalInviteEmailOutbox } from "@/lib/externalInviteEmails";
 import { processNotificationPushOutbox } from "@/lib/pushNotifications";
 
 type QueueResult = {
@@ -36,6 +37,11 @@ export type NotificationQueueProcessResult = {
         results: QueueResult[];
     };
     email: {
+        processed: number;
+        counts: QueueCounts;
+        results: QueueResult[];
+    };
+    externalEmail: {
         processed: number;
         counts: QueueCounts;
         results: QueueResult[];
@@ -92,9 +98,10 @@ function getQueueError(channel: QueueChannel, reason: unknown): QueueError {
 }
 
 export async function processNotificationQueues(limit = 25) {
-    const [pushResult, emailResult] = await Promise.allSettled([
+    const [pushResult, emailResult, externalEmailResult] = await Promise.allSettled([
         processNotificationPushOutbox(limit),
         processNotificationEmailOutbox(limit),
+        processExternalInviteEmailOutbox(limit),
     ]);
     const pushResults =
         pushResult.status === "fulfilled" ? (pushResult.value as QueueResult[]) : [];
@@ -102,8 +109,14 @@ export async function processNotificationQueues(limit = 25) {
         emailResult.status === "fulfilled"
             ? (emailResult.value as QueueResult[])
             : [];
+    const externalEmailResults =
+        externalEmailResult.status === "fulfilled"
+            ? (externalEmailResult.value as QueueResult[])
+            : [];
     const pushCounts = summarizeQueueResults(pushResults);
     const emailCounts = summarizeQueueResults(emailResults);
+    const externalEmailCounts = summarizeQueueResults(externalEmailResults);
+    const combinedEmailCounts = combineCounts(emailCounts, externalEmailCounts);
     const errors = [
         pushResult.status === "rejected"
             ? getQueueError("push", pushResult.reason)
@@ -111,21 +124,29 @@ export async function processNotificationQueues(limit = 25) {
         emailResult.status === "rejected"
             ? getQueueError("email", emailResult.reason)
             : null,
+        externalEmailResult.status === "rejected"
+            ? getQueueError("email", externalEmailResult.reason)
+            : null,
     ].filter((error): error is QueueError => Boolean(error));
 
     return {
         ok: errors.length === 0,
-        processed: pushResults.length + emailResults.length,
-        counts: combineCounts(pushCounts, emailCounts),
+        processed: pushResults.length + emailResults.length + externalEmailResults.length,
+        counts: combineCounts(pushCounts, combinedEmailCounts),
         push: {
             processed: pushResults.length,
             counts: pushCounts,
             results: pushResults,
         },
         email: {
-            processed: emailResults.length,
-            counts: emailCounts,
-            results: emailResults,
+            processed: emailResults.length + externalEmailResults.length,
+            counts: combinedEmailCounts,
+            results: [...emailResults, ...externalEmailResults],
+        },
+        externalEmail: {
+            processed: externalEmailResults.length,
+            counts: externalEmailCounts,
+            results: externalEmailResults,
         },
         errors,
     } satisfies NotificationQueueProcessResult;

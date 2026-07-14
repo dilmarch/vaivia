@@ -48,6 +48,7 @@
     --safe-area-right: env(safe-area-inset-right, 0px);
     --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     --safe-area-left: env(safe-area-inset-left, 0px);
+    --vaivia-visual-viewport-bottom: 0px;
   }
   :root[data-vaivia-theme="pink"],
   :root[data-pink-mode="true"] {
@@ -1818,6 +1819,22 @@
         0 22px 52px rgb(15 23 42 / 0.72),
         0 0 40px rgb(var(--vaivia-neon-rgb) / 0.34),
         inset 0 1px 0 rgb(255 255 255 / 0.48) !important;
+    }
+
+    .vaivia-mobile-fixed-dock {
+      bottom: var(--vaivia-visual-viewport-bottom, 0px) !important;
+      transform: translate3d(0, 0, 0);
+      -webkit-transform: translate3d(0, 0, 0);
+      will-change: transform;
+    }
+
+    .vaivia-mobile-quick-add-dock {
+      bottom: calc(
+        0.75rem + var(--safe-area-bottom) +
+          var(--vaivia-visual-viewport-bottom, 0px)
+      ) !important;
+      transform: translate3d(-50%, 0, 0);
+      -webkit-transform: translate3d(-50%, 0, 0);
     }
   }
 

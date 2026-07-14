@@ -1,8 +1,9 @@
 "use client";
 
 import { AlertTriangle, Lock, Plus, X } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
 import {
     FALLBACK_CATEGORY_LABEL,
@@ -230,8 +231,14 @@ export default function ItineraryItemForm({
     audienceOptions = [],
     currentUserTripMemberId = null,
 }: ItineraryItemFormProps) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const isEditMode = Boolean(initialItem) && !duplicateMode;
     const formRef = useRef<HTMLFormElement | null>(null);
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
     const [startDate, setStartDate] = useState(
         initialItem?.item_date || defaultDate
     );
@@ -616,6 +623,7 @@ export default function ItineraryItemForm({
                             className={FORM_BODY_CLASS}
                         >
                     <input type="hidden" name="trip_id" value={tripId} />
+                    <input type="hidden" name="return_to" value={returnTo} />
                     <input type="hidden" name="timezone_source" value={timezoneSource} />
 
                     <div>

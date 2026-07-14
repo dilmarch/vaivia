@@ -440,7 +440,7 @@ export default function AppSidebarNav({
 
             <nav
                 ref={mobileDockRef}
-                className="fixed inset-x-0 bottom-0 z-50 h-[calc(5.5rem+var(--safe-area-bottom))] text-white md:hidden"
+                className="vaivia-mobile-fixed-dock fixed inset-x-0 bottom-0 z-50 h-[calc(5.5rem+var(--safe-area-bottom))] text-white md:hidden"
                 aria-label="Mobile navigation"
             >
                 {mobileMenu === "view" ? (

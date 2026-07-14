@@ -2,8 +2,9 @@
 
 import Script from "next/script";
 import { AlertTriangle, Pencil, Share2, Trash2, X } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
@@ -26,6 +27,8 @@ export default function TripHeaderCover({
     deleteTripAction,
     children,
 }: TripHeaderCoverProps) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -35,6 +38,10 @@ export default function TripHeaderCover({
     const [coverLoadError, setCoverLoadError] = useState("");
     const formRef = useRef<HTMLFormElement>(null);
     const coverImageUrl = useTripCoverImage(trip, isGoogleReady);
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
 
     function closeModal() {
         setIsModalOpen(false);
@@ -210,6 +217,7 @@ export default function TripHeaderCover({
                             className="vaivia-modal-body space-y-5"
                         >
                             <input type="hidden" name="trip_id" value={trip.id} />
+                            <input type="hidden" name="return_to" value={returnTo} />
 
                             <div>
                                 <label

@@ -36,5 +36,62 @@ export function useStandaloneMode() {
         };
     }, []);
 
+    useEffect(() => {
+        let frameId = 0;
+
+        function updateVisualViewportOffset() {
+            window.cancelAnimationFrame(frameId);
+
+            frameId = window.requestAnimationFrame(() => {
+                const visualViewport = window.visualViewport;
+                const bottomOffset = visualViewport
+                    ? Math.max(
+                          0,
+                          window.innerHeight -
+                              visualViewport.height -
+                              visualViewport.offsetTop
+                      )
+                    : 0;
+
+                document.documentElement.style.setProperty(
+                    "--vaivia-visual-viewport-bottom",
+                    `${Math.round(bottomOffset)}px`
+                );
+            });
+        }
+
+        updateVisualViewportOffset();
+        window.addEventListener("resize", updateVisualViewportOffset);
+        window.addEventListener("orientationchange", updateVisualViewportOffset);
+        window.visualViewport?.addEventListener(
+            "resize",
+            updateVisualViewportOffset
+        );
+        window.visualViewport?.addEventListener(
+            "scroll",
+            updateVisualViewportOffset
+        );
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.removeEventListener("resize", updateVisualViewportOffset);
+            window.removeEventListener(
+                "orientationchange",
+                updateVisualViewportOffset
+            );
+            window.visualViewport?.removeEventListener(
+                "resize",
+                updateVisualViewportOffset
+            );
+            window.visualViewport?.removeEventListener(
+                "scroll",
+                updateVisualViewportOffset
+            );
+            document.documentElement.style.removeProperty(
+                "--vaivia-visual-viewport-bottom"
+            );
+        };
+    }, []);
+
     return isStandalone;
 }

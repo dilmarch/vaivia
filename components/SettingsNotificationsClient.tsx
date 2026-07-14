@@ -284,7 +284,7 @@ export default function SettingsNotificationsClient({
                                             name="email"
                                             value={option.type}
                                             defaultChecked={
-                                                preference?.emailEnabled ?? false
+                                                preference?.emailEnabled ?? true
                                             }
                                             className="h-4 w-4 accent-lime-300"
                                         />

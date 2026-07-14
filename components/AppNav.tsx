@@ -7,7 +7,13 @@ import AppSidebarNav from "@/components/AppSidebarNav";
 import AppTopActionBar, { type AppNotification } from "@/components/AppTopActionBar";
 import GlobalQuickAdd from "@/components/GlobalQuickAdd";
 import TermsConsentGate from "@/components/TermsConsentGate";
+import MobilePushPrompt from "@/components/pwa/MobilePushPrompt";
 import { loadActiveDropdownNotifications } from "@/lib/notifications/dropdown";
+import {
+    ensureNewUserOnboardingProgress,
+    loadOnboardingProgress,
+    type OnboardingProgress,
+} from "@/lib/onboarding";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
 import {
@@ -75,6 +81,7 @@ export default async function AppNav() {
     let notifications: AppNotification[] = [];
     let profile: Partial<UserProfile> | null = null;
     let preferences: Partial<UserPreferences> | null = null;
+    let onboardingProgress: OnboardingProgress | null = null;
 
     if (user) {
         const { trips, error: tripsError } = await loadActiveMemberTrips(
@@ -128,6 +135,33 @@ export default async function AppNav() {
             getUserProfileDefaults(user)
         );
 
+        const { data: progressData, error: onboardingError } =
+            await loadOnboardingProgress(supabase, user.id);
+
+        if (onboardingError) {
+            console.warn("Could not load onboarding progress:", {
+                message: onboardingError.message,
+                code: onboardingError.code,
+                details: onboardingError.details,
+            });
+        } else {
+            onboardingProgress = progressData;
+        }
+
+        if (!onboardingProgress) {
+            const { data: createdProgress, error: createProgressError } =
+                await ensureNewUserOnboardingProgress(supabase, user.id);
+            if (createProgressError) {
+                console.warn("Could not start onboarding progress:", {
+                    message: createProgressError.message,
+                    code: createProgressError.code,
+                    details: createProgressError.details,
+                });
+            } else {
+                onboardingProgress = createdProgress;
+            }
+        }
+
         const { data: preferencesData, error: preferencesError } = await supabase
             .from("user_preferences")
             .select("*")
@@ -167,8 +201,14 @@ export default async function AppNav() {
                         trips={upcomingTrips}
                         notifications={notifications}
                         isSuperAdmin={profile?.role === "super_admin"}
+                        onboardingProgress={onboardingProgress}
                     />
                     <GlobalQuickAdd trips={upcomingTrips} />
+                    <MobilePushPrompt
+                        vapidPublicKey={
+                            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null
+                        }
+                    />
                 </>
             ) : null}
         </>

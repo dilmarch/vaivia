@@ -282,6 +282,83 @@ export type Database = {
         }
         Relationships: []
       }
+      external_email_invite_outbox: {
+        Row: {
+          attempts: number
+          created_at: string
+          event_key: string
+          failed_at: string | null
+          id: string
+          invite_type: string
+          inviter_user_id: string | null
+          last_attempt_at: string | null
+          last_error: string | null
+          next_attempt_at: string | null
+          payload: Json
+          provider_message_id: string | null
+          recipient_email: string
+          related_id: string | null
+          sent_at: string | null
+          status: string
+          subject: string
+          template_key: string
+          trip_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          event_key: string
+          failed_at?: string | null
+          id?: string
+          invite_type: string
+          inviter_user_id?: string | null
+          last_attempt_at?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
+          payload?: Json
+          provider_message_id?: string | null
+          recipient_email: string
+          related_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject: string
+          template_key?: string
+          trip_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          event_key?: string
+          failed_at?: string | null
+          id?: string
+          invite_type?: string
+          inviter_user_id?: string | null
+          last_attempt_at?: string | null
+          last_error?: string | null
+          next_attempt_at?: string | null
+          payload?: Json
+          provider_message_id?: string | null
+          recipient_email?: string
+          related_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject?: string
+          template_key?: string
+          trip_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_email_invite_outbox_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_suggestions: {
         Row: {
           contact_email: string | null
@@ -2791,6 +2868,42 @@ export type Database = {
         }
         Relationships: []
       }
+      user_onboarding_progress: {
+        Row: {
+          completed_at: string | null
+          completed_steps: string[]
+          current_step: string | null
+          dismissed_at: string | null
+          flow_version: number
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_steps?: string[]
+          current_step?: string | null
+          dismissed_at?: string | null
+          flow_version?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          completed_steps?: string[]
+          current_step?: string | null
+          dismissed_at?: string | null
+          flow_version?: number
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_passport_stamp_shares: {
         Row: {
           accepted_stamp_id: string | null
@@ -3409,6 +3522,41 @@ export type Database = {
         Args: { target_trip_id: string; target_trip_leg_id: string }
         Returns: boolean
       }
+      cancel_trip_invitation: {
+        Args: { invitation_id: string }
+        Returns: undefined
+      }
+      claim_external_email_invite_outbox: {
+        Args: { batch_limit?: number }
+        Returns: {
+          attempts: number
+          created_at: string
+          event_key: string
+          failed_at: string | null
+          id: string
+          invite_type: string
+          inviter_user_id: string | null
+          last_attempt_at: string | null
+          last_error: string | null
+          next_attempt_at: string | null
+          payload: Json
+          provider_message_id: string | null
+          recipient_email: string
+          related_id: string | null
+          sent_at: string | null
+          status: string
+          subject: string
+          template_key: string
+          trip_id: string | null
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "external_email_invite_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_notification_email_outbox: {
         Args: { batch_limit?: number }
         Returns: {
@@ -3594,6 +3742,19 @@ export type Database = {
           target_trip_id: string
         }
         Returns: undefined
+      }
+      queue_external_invite_email: {
+        Args: {
+          invite_event_key: string
+          invite_type: string
+          inviter_user_id: string
+          payload?: Json
+          recipient_email: string
+          related_id?: string
+          subject?: string
+          trip_id?: string
+        }
+        Returns: string
       }
       recalculate_all_user_points: { Args: never; Returns: number }
       record_user_activity: { Args: never; Returns: undefined }

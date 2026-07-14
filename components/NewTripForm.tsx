@@ -23,6 +23,7 @@ type NewTripFormProps = {
         formData: FormData
     ) => Promise<CreateTripFormState>;
     nextTripNumber: number;
+    isOnboarding?: boolean;
 };
 
 const initialState: CreateTripFormState = {
@@ -31,7 +32,11 @@ const initialState: CreateTripFormState = {
     values: {},
 };
 
-export default function NewTripForm({ action, nextTripNumber }: NewTripFormProps) {
+export default function NewTripForm({
+    action,
+    nextTripNumber,
+    isOnboarding = false,
+}: NewTripFormProps) {
     const [state, formAction, isPending] = useActionState(action, initialState);
     const [title, setTitle] = useState(state.values?.title || "");
     const [slug, setSlug] = useState(
@@ -62,6 +67,12 @@ export default function NewTripForm({ action, nextTripNumber }: NewTripFormProps
                     </p>
                 ) : null}
 
+                {isOnboarding ? (
+                    <p className="rounded-2xl border border-lime-300/20 bg-lime-300/10 px-4 py-3 text-sm font-bold text-lime-950 sm:text-lime-900">
+                        Start with what you know. Everything can change later.
+                    </p>
+                ) : null}
+
                 <div>
                     <label
                         htmlFor="title"
@@ -82,40 +93,6 @@ export default function NewTripForm({ action, nextTripNumber }: NewTripFormProps
                     {state.fieldErrors?.title ? (
                         <p className="mt-2 text-sm font-semibold text-red-600">
                             {state.fieldErrors.title}
-                        </p>
-                    ) : null}
-                </div>
-
-                <div>
-                    <label
-                        htmlFor="slug"
-                        className="block text-sm font-medium text-slate-700"
-                    >
-                        Trip link
-                    </label>
-                    <div className="mt-2 flex rounded-xl border border-slate-300 bg-slate-50 focus-within:border-slate-500">
-                        <span className="shrink-0 rounded-l-xl border-r border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
-                            trips/
-                        </span>
-                        <input
-                            id="slug"
-                            name="slug"
-                            type="text"
-                            required
-                            value={slug}
-                            onChange={(event) => {
-                                setIsSlugManual(true);
-                                setSlug(sanitizeTripSlugInput(event.target.value));
-                            }}
-                            className="min-w-0 flex-1 rounded-r-xl bg-white px-4 py-2 text-slate-900 outline-none"
-                        />
-                    </div>
-                    <p className="mt-2 text-xs font-semibold text-slate-500">
-                        This is the friendly URL people on this trip will see.
-                    </p>
-                    {state.fieldErrors?.slug ? (
-                        <p className="mt-2 text-sm font-semibold text-red-600">
-                            {state.fieldErrors.slug}
                         </p>
                     ) : null}
                 </div>
@@ -154,21 +131,70 @@ export default function NewTripForm({ action, nextTripNumber }: NewTripFormProps
                     </div>
                 </div>
 
-                <div>
-                    <label
-                        htmlFor="notes"
-                        className="block text-sm font-medium text-slate-700"
-                    >
-                        Notes
-                    </label>
-                    <textarea
-                        id="notes"
-                        name="notes"
-                        rows={4}
-                        placeholder="Anything important about this trip..."
-                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                    />
-                </div>
+                <details
+                    open={Boolean(state.fieldErrors?.slug)}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4"
+                >
+                    <summary className="cursor-pointer text-sm font-black uppercase tracking-[0.12em] text-slate-700">
+                        More options
+                    </summary>
+                    <div className="mt-4 space-y-5">
+                        <div>
+                            <label
+                                htmlFor="slug"
+                                className="block text-sm font-medium text-slate-700"
+                            >
+                                Trip link
+                            </label>
+                            <div className="mt-2 flex rounded-xl border border-slate-300 bg-slate-50 focus-within:border-slate-500">
+                                <span className="shrink-0 rounded-l-xl border-r border-slate-200 px-4 py-2 text-sm font-semibold text-slate-500">
+                                    trips/
+                                </span>
+                                <input
+                                    id="slug"
+                                    name="slug"
+                                    type="text"
+                                    required
+                                    value={slug}
+                                    onChange={(event) => {
+                                        setIsSlugManual(true);
+                                        setSlug(
+                                            sanitizeTripSlugInput(
+                                                event.target.value
+                                            )
+                                        );
+                                    }}
+                                    className="min-w-0 flex-1 rounded-r-xl bg-white px-4 py-2 text-slate-900 outline-none"
+                                />
+                            </div>
+                            <p className="mt-2 text-xs font-semibold text-slate-500">
+                                This is the friendly URL people on this trip will
+                                see.
+                            </p>
+                            {state.fieldErrors?.slug ? (
+                                <p className="mt-2 text-sm font-semibold text-red-600">
+                                    {state.fieldErrors.slug}
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div>
+                            <label
+                                htmlFor="notes"
+                                className="block text-sm font-medium text-slate-700"
+                            >
+                                Notes
+                            </label>
+                            <textarea
+                                id="notes"
+                                name="notes"
+                                rows={4}
+                                placeholder="Anything important about this trip..."
+                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
+                        </div>
+                    </div>
+                </details>
             </div>
 
             <div className="mt-8 flex items-center justify-end gap-3">

@@ -71,7 +71,11 @@ function participantColumns(participant: {
 }
 
 function getSplitMethod(value: string): SplitMethod {
-    return value === "exact" || value === "percentage" ? value : "equal";
+    return value === "just_me" ||
+        value === "exact" ||
+        value === "percentage"
+        ? value
+        : "equal";
 }
 
 function roundMoney(value: number) {
@@ -505,7 +509,10 @@ export async function createExpense(formData: FormData) {
     const reportingCurrency = normalizeCurrency(formData.get("reporting_currency"));
     const manualExchangeRate = parseMoney(formData.get("manual_exchange_rate"));
     const splitMethod = getSplitMethod(getString(formData, "split_method"));
-    const paidBy = parseParticipantValue(formData.get("paid_by"));
+    const paidBy =
+        splitMethod === "just_me"
+            ? { kind: "member" as BudgetParticipantKind, id: `user:${user.id}` }
+            : parseParticipantValue(formData.get("paid_by"));
     const sourceType = getString(formData, "source_type") || "manual";
     const transportationItemId = getString(formData, "transportation_item_id");
     const itineraryEventId = getString(formData, "itinerary_event_id");
@@ -614,12 +621,16 @@ export async function createExpense(formData: FormData) {
     }
 
     const expenseId = String(expenseRow.id);
-    const selectedParticipants = formData
+    const formParticipants = formData
         .getAll("included_participants")
         .map(parseParticipantValue)
         .filter((participant): participant is NonNullable<typeof participant> =>
             Boolean(participant)
         );
+    const selectedParticipants =
+        splitMethod === "just_me"
+            ? [{ kind: "member" as BudgetParticipantKind, id: `user:${user.id}` }]
+            : formParticipants;
 
     if (selectedParticipants.length === 0) {
         throw new Error("Select at least one person to split this expense.");
@@ -628,7 +639,9 @@ export async function createExpense(formData: FormData) {
     let splitAmounts: number[] = [];
     let splitPercentages: Array<number | null> = selectedParticipants.map(() => null);
 
-    if (splitMethod === "equal") {
+    if (splitMethod === "just_me") {
+        splitAmounts = [amount];
+    } else if (splitMethod === "equal") {
         splitAmounts = splitEvenly(amount, selectedParticipants.length);
     } else if (splitMethod === "exact") {
         splitAmounts = selectedParticipants.map((participant) =>
@@ -771,7 +784,10 @@ export async function updateExpense(formData: FormData) {
     const reportingCurrency = normalizeCurrency(formData.get("reporting_currency"));
     const manualExchangeRate = parseMoney(formData.get("manual_exchange_rate"));
     const splitMethod = getSplitMethod(getString(formData, "split_method"));
-    const paidBy = parseParticipantValue(formData.get("paid_by"));
+    const paidBy =
+        splitMethod === "just_me"
+            ? { kind: "member" as BudgetParticipantKind, id: `user:${user.id}` }
+            : parseParticipantValue(formData.get("paid_by"));
     const sourceType = getString(formData, "source_type") || "manual";
     const transportationItemId = getString(formData, "transportation_item_id");
     const itineraryEventId = getString(formData, "itinerary_event_id");
@@ -888,12 +904,16 @@ export async function updateExpense(formData: FormData) {
         );
     }
 
-    const selectedParticipants = formData
+    const formParticipants = formData
         .getAll("included_participants")
         .map(parseParticipantValue)
         .filter((participant): participant is NonNullable<typeof participant> =>
             Boolean(participant)
         );
+    const selectedParticipants =
+        splitMethod === "just_me"
+            ? [{ kind: "member" as BudgetParticipantKind, id: `user:${user.id}` }]
+            : formParticipants;
 
     if (selectedParticipants.length === 0) {
         throw new Error("Select at least one person to split this expense.");
@@ -902,7 +922,9 @@ export async function updateExpense(formData: FormData) {
     let splitAmounts: number[] = [];
     let splitPercentages: Array<number | null> = selectedParticipants.map(() => null);
 
-    if (splitMethod === "equal") {
+    if (splitMethod === "just_me") {
+        splitAmounts = [amount];
+    } else if (splitMethod === "equal") {
         splitAmounts = splitEvenly(amount, selectedParticipants.length);
     } else if (splitMethod === "exact") {
         splitAmounts = selectedParticipants.map((participant) =>

@@ -118,6 +118,21 @@ function getFoodPayload(formData: FormData): FoodItemPayload {
     };
 }
 
+function getFoodReturnPath(formData: FormData, fallbackPath: string) {
+    const returnTo = String(formData.get("return_to") || "").trim();
+
+    if (
+        returnTo.startsWith("/trips/") &&
+        !returnTo.startsWith("//") &&
+        !returnTo.includes("://") &&
+        !/[\r\n]/.test(returnTo)
+    ) {
+        return returnTo;
+    }
+
+    return fallbackPath;
+}
+
 function attachFoodMetadata({
     items,
     reactions,
@@ -279,7 +294,12 @@ async function createFoodItem(formData: FormData) {
     }
 
     revalidatePath(`/trips/${payload.trip_id}/food`);
-    redirect(`/trips/${payload.trip_id}/food?tab=${tab}`);
+    redirect(
+        getFoodReturnPath(
+            formData,
+            `/trips/${payload.trip_id}/food?tab=${tab}`
+        )
+    );
 }
 
 async function updateFoodItem(formData: FormData) {
@@ -340,7 +360,12 @@ async function updateFoodItem(formData: FormData) {
     }
 
     revalidatePath(`/trips/${payload.trip_id}/food`);
-    redirect(`/trips/${payload.trip_id}/food?tab=${tab}`);
+    redirect(
+        getFoodReturnPath(
+            formData,
+            `/trips/${payload.trip_id}/food?tab=${tab}`
+        )
+    );
 }
 
 async function deleteFoodItem(formData: FormData) {

@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { Bell, Briefcase, Home, Search, Stamp } from "lucide-react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import FriendInviteReviewModal from "@/components/FriendInviteReviewModal";
+import PassportStampCard from "@/components/PassportStamp";
 import PassportStampShareReviewModal from "@/components/PassportStampShareReviewModal";
+import Portal from "@/components/Portal";
 import TripInviteReviewModal from "@/components/TripInviteReviewModal";
 import ViewAsRoleSwitcher from "@/components/admin/ViewAsRoleSwitcher";
 import {
@@ -18,6 +21,11 @@ import {
     loadActiveDropdownNotifications,
     type DropdownNotification,
 } from "@/lib/notifications/dropdown";
+import {
+    dismissOnboarding,
+    markOnboardingStepCompleted,
+    type OnboardingProgress,
+} from "@/lib/onboarding";
 import { createClient } from "@/lib/supabase/client";
 import { getTripRouteSegment } from "@/lib/tripRoutes";
 
@@ -31,12 +39,38 @@ type AppTopActionBarProps = {
     trips: TopNavTrip[];
     notifications?: AppNotification[];
     isSuperAdmin?: boolean;
+    onboardingProgress?: OnboardingProgress | null;
 };
 
 export type AppNotification = DropdownNotification;
 
 type RefreshNotificationsOptions = {
     markPassiveAsViewed?: boolean;
+};
+
+type ProminentSharedStamp = {
+    country_code: string;
+    country_name: string | null;
+    flag_emoji: string | null;
+    first_visited_on: string | null;
+    first_entry_iata_code: string | null;
+    first_entry_icao_code: string | null;
+    first_entry_city: string | null;
+    first_entry_airport_name: string | null;
+    welcome_label_snapshot: string | null;
+    arrival_label_snapshot: string | null;
+    stamp_display_country_name: string | null;
+    stamp_display_flag: string | null;
+    visit_city: string | null;
+    port_of_entry_name: string | null;
+};
+
+type ProminentPassportSharePreview = {
+    sender?: {
+        displayName?: string | null;
+        avatarUrl?: string | null;
+    } | null;
+    source_stamp?: ProminentSharedStamp | null;
 };
 
 function tripLabel(trip: TopNavTrip) {
@@ -60,6 +94,71 @@ function getInitials(name: string) {
         .toUpperCase();
 
     return initials || "V";
+}
+
+function isProminentActionNotification(notification: AppNotification) {
+    return (
+        notification.type === "trip_invite_received" ||
+        notification.type === "friend_request_received" ||
+        notification.type === "passport_stamp_share_received"
+    );
+}
+
+function getProminentActionCopy(notification: AppNotification) {
+    if (notification.type === "trip_invite_received") {
+        return {
+            eyebrow: "Trip invitation",
+            title: notification.title || "You have a trip invite",
+            body:
+                notification.body ||
+                "Someone invited you to join a trip on VAIVIA.",
+            acceptLabel: "Review invite",
+        };
+    }
+
+    if (notification.type === "friend_request_received") {
+        return {
+            eyebrow: "Friend request",
+            title: notification.title || "You have a friend request",
+            body:
+                notification.body ||
+                "Someone added you as a friend on VAIVIA.",
+            acceptLabel: "Review request",
+        };
+    }
+
+    const senderName =
+        typeof notification.metadata?.senderName === "string"
+            ? notification.metadata.senderName
+            : "";
+
+    return {
+        eyebrow: "Passport stamp",
+        title: senderName
+            ? `${senderName} sent you a passport stamp`
+            : "A friend sent you a passport stamp",
+        body: notification.body || "A friend sent you a passport stamp to review.",
+        acceptLabel: "Review stamp",
+    };
+}
+
+function getYearFromDate(value?: string | null) {
+    if (!value) return undefined;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return undefined;
+    return date.getFullYear();
+}
+
+function getProminentActionInitial(notification: AppNotification) {
+    if (notification.type === "passport_stamp_share_received") {
+        const senderName =
+            typeof notification.metadata?.senderName === "string"
+                ? notification.metadata.senderName
+                : "";
+        return senderName ? getInitials(senderName) : "S";
+    }
+
+    return notification.title?.trim()[0]?.toUpperCase() || "V";
 }
 
 function getTripSwitchHref({
@@ -106,8 +205,10 @@ export default function AppTopActionBar({
     trips,
     notifications = [],
     isSuperAdmin = false,
+    onboardingProgress = null,
 }: AppTopActionBarProps) {
     const pathname = usePathname();
+    const router = useRouter();
     const searchParams = useSearchParams();
     const previewRole = useRolePreview(isSuperAdmin);
     const [openMenu, setOpenMenu] = useState<"trips" | "notifications" | null>(
@@ -123,9 +224,25 @@ export default function AppTopActionBar({
         useState<AppNotification | null>(null);
     const [activePassportStampNotification, setActivePassportStampNotification] =
         useState<AppNotification | null>(null);
+    const [prominentActionNotification, setProminentActionNotification] =
+        useState<AppNotification | null>(null);
+    const [prominentActionError, setProminentActionError] = useState("");
+    const [prominentPassportSharePreview, setProminentPassportSharePreview] =
+        useState<ProminentPassportSharePreview | null>(null);
+    const [isLoadingProminentPassportPreview, setIsLoadingProminentPassportPreview] =
+        useState(false);
+    const [isSubmittingProminentAction, setIsSubmittingProminentAction] =
+        useState(false);
+    const [isOnboardingWelcomeOpen, setIsOnboardingWelcomeOpen] = useState(
+        () =>
+            onboardingProgress?.status === "in_progress" &&
+            onboardingProgress.current_step === "welcome"
+    );
+    const [isSubmittingOnboarding, setIsSubmittingOnboarding] = useState(false);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const openMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const previousOpenMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
+    const remindedActionNotificationIdsRef = useRef<Set<string>>(new Set());
     const dropdownNotificationCount = hasSyncedNotifications
         ? visibleNotifications.length
         : 0;
@@ -141,8 +258,103 @@ export default function AppTopActionBar({
     }, [hasSyncedNotifications, notifications]);
 
     useEffect(() => {
+        setIsOnboardingWelcomeOpen(
+            onboardingProgress?.status === "in_progress" &&
+                onboardingProgress.current_step === "welcome"
+        );
+    }, [onboardingProgress]);
+
+    useEffect(() => {
         void refreshNotifications();
     }, []);
+
+    useEffect(() => {
+        if (
+            !hasSyncedNotifications ||
+            prominentActionNotification ||
+            activeInviteNotification ||
+            activeFriendNotification ||
+            activePassportStampNotification
+        ) {
+            return;
+        }
+
+        const nextNotification = visibleNotifications.find(
+            (notification) =>
+                isProminentActionNotification(notification) &&
+                !remindedActionNotificationIdsRef.current.has(notification.id)
+        );
+
+        if (nextNotification) {
+            setProminentActionError("");
+            setProminentActionNotification(nextNotification);
+        }
+    }, [
+        activeFriendNotification,
+        activeInviteNotification,
+        activePassportStampNotification,
+        hasSyncedNotifications,
+        prominentActionNotification,
+        visibleNotifications,
+    ]);
+
+    useEffect(() => {
+        if (
+            !prominentActionNotification ||
+            prominentActionNotification.type !== "passport_stamp_share_received"
+        ) {
+            setProminentPassportSharePreview(null);
+            setIsLoadingProminentPassportPreview(false);
+            return;
+        }
+
+        const shareId = getNotificationMetadataString(
+            prominentActionNotification,
+            "shareId"
+        );
+
+        if (!shareId) {
+            setProminentPassportSharePreview(null);
+            setIsLoadingProminentPassportPreview(false);
+            return;
+        }
+
+        let isCancelled = false;
+
+        async function loadPassportStampPreview() {
+            const supabase = createClient();
+            setIsLoadingProminentPassportPreview(true);
+
+            const { data, error } = await supabase.rpc(
+                "get_passport_stamp_share_review",
+                { share_id: shareId }
+            );
+
+            if (isCancelled) return;
+
+            if (error) {
+                console.warn("Could not load passport stamp preview:", {
+                    message: error.message,
+                    code: error.code,
+                    details: error.details,
+                    hint: error.hint,
+                });
+                setProminentPassportSharePreview(null);
+            } else {
+                setProminentPassportSharePreview(
+                    (data as ProminentPassportSharePreview | null) || null
+                );
+            }
+
+            setIsLoadingProminentPassportPreview(false);
+        }
+
+        void loadPassportStampPreview();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [prominentActionNotification]);
 
     useEffect(() => {
         openMenuRef.current = openMenu;
@@ -354,6 +566,166 @@ export default function AppTopActionBar({
         );
     }
 
+    function handleProminentAccept(notification: AppNotification) {
+        remindedActionNotificationIdsRef.current.add(notification.id);
+        setProminentActionNotification(null);
+        void handleNotificationClick(notification);
+    }
+
+    async function handleProminentDecline(notification: AppNotification) {
+        const supabase = createClient();
+        setIsSubmittingProminentAction(true);
+        setProminentActionError("");
+
+        try {
+            if (notification.type === "trip_invite_received") {
+                if (!notification.invitation_id) {
+                    throw new Error("This trip invitation could not be found.");
+                }
+
+                const { error } = await supabase.rpc("decline_trip_invitation", {
+                    invitation_id: notification.invitation_id,
+                });
+
+                if (error) throw error;
+            } else if (notification.type === "friend_request_received") {
+                const friendshipId = getNotificationMetadataString(
+                    notification,
+                    "friendshipId"
+                );
+
+                if (!friendshipId) {
+                    throw new Error("This friend request could not be found.");
+                }
+
+                const { error } = await supabase.rpc("respond_to_friend_invitation", {
+                    friendship_id: friendshipId,
+                    next_status: "declined",
+                });
+
+                if (error) throw error;
+            } else if (notification.type === "passport_stamp_share_received") {
+                const shareId = getNotificationMetadataString(notification, "shareId");
+
+                if (!shareId) {
+                    throw new Error("This passport stamp could not be found.");
+                }
+
+                const { error } = await supabase.rpc(
+                    "respond_to_passport_stamp_share",
+                    {
+                        share_id: shareId,
+                        next_status: "declined",
+                        stamp_patch: {},
+                    }
+                );
+
+                if (error) throw error;
+            }
+
+            await supabase.rpc("mark_app_alert_read", {
+                alert_id: notification.id,
+            });
+            setVisibleNotifications((current) =>
+                current.filter(
+                    (currentNotification) => currentNotification.id !== notification.id
+                )
+            );
+            setProminentActionNotification(null);
+            void refreshNotifications();
+        } catch (error) {
+            setProminentActionError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not update this invitation."
+            );
+        } finally {
+            setIsSubmittingProminentAction(false);
+        }
+    }
+
+    function handleProminentRemindLater(notification: AppNotification) {
+        remindedActionNotificationIdsRef.current.add(notification.id);
+        setProminentActionNotification(null);
+        setProminentActionError("");
+    }
+
+    async function planFirstTripFromWelcome() {
+        if (!onboardingProgress) return;
+        setIsSubmittingOnboarding(true);
+        const supabase = createClient();
+        const { error } = await markOnboardingStepCompleted({
+            supabase,
+            userId: onboardingProgress.user_id,
+            step: "welcome",
+            nextStep: "create_trip",
+        });
+        setIsSubmittingOnboarding(false);
+
+        if (error) {
+            console.warn("Could not update onboarding progress:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+            });
+            return;
+        }
+
+        setIsOnboardingWelcomeOpen(false);
+        router.push("/trips/new?onboarding=1");
+    }
+
+    async function dismissWelcomeOnboarding() {
+        if (!onboardingProgress) {
+            setIsOnboardingWelcomeOpen(false);
+            return;
+        }
+
+        setIsSubmittingOnboarding(true);
+        const supabase = createClient();
+        const { error } = await dismissOnboarding(
+            supabase,
+            onboardingProgress.user_id
+        );
+        setIsSubmittingOnboarding(false);
+
+        if (error) {
+            console.warn("Could not dismiss onboarding:", {
+                message: error.message,
+                code: error.code,
+                details: error.details,
+            });
+        }
+
+        setIsOnboardingWelcomeOpen(false);
+        router.refresh();
+    }
+
+    const prominentActionCopy = prominentActionNotification
+        ? getProminentActionCopy(prominentActionNotification)
+        : null;
+    const prominentPassportStamp =
+        prominentActionNotification?.type === "passport_stamp_share_received"
+            ? prominentPassportSharePreview?.source_stamp || null
+            : null;
+    const prominentPassportSenderName =
+        prominentActionNotification?.type === "passport_stamp_share_received"
+            ? prominentPassportSharePreview?.sender?.displayName ||
+              getNotificationMetadataString(
+                  prominentActionNotification,
+                  "senderName"
+              ) ||
+              "A friend"
+            : "";
+    const prominentPassportSenderAvatarUrl =
+        prominentActionNotification?.type === "passport_stamp_share_received"
+            ? prominentPassportSharePreview?.sender?.avatarUrl ||
+              getNotificationMetadataString(
+                  prominentActionNotification,
+                  "senderAvatarUrl"
+              )
+            : "";
+
     return (
         <>
             {previewRole ? (
@@ -369,6 +741,249 @@ export default function AppTopActionBar({
                         </button>
                     </div>
                 </div>
+            ) : null}
+            {prominentActionNotification && prominentActionCopy ? (
+                <Portal>
+                    <AnimatedModal
+                        onClose={() =>
+                            handleProminentRemindLater(prominentActionNotification)
+                        }
+                        className="z-[130] items-center bg-slate-950/70"
+                        panelClassName="max-w-lg overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/70"
+                        labelledBy="prominent-action-notification-title"
+                    >
+                        {() => (
+                            <div className="space-y-5 p-6">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-lime-300/25 bg-lime-300/10 text-sm font-black uppercase text-lime-100 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.18)]">
+                                            {prominentActionNotification.type ===
+                                                "passport_stamp_share_received" &&
+                                            prominentPassportSenderAvatarUrl ? (
+                                                <img
+                                                    src={prominentPassportSenderAvatarUrl}
+                                                    alt=""
+                                                    className="h-full w-full rounded-full object-cover"
+                                                />
+                                            ) : prominentActionNotification.type ===
+                                              "passport_stamp_share_received" ? (
+                                                getInitials(prominentPassportSenderName)
+                                            ) : (
+                                                getProminentActionInitial(
+                                                    prominentActionNotification
+                                                )
+                                            )}
+                                        </span>
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                                {prominentActionCopy.eyebrow}
+                                            </p>
+                                            <h2
+                                                id="prominent-action-notification-title"
+                                                className="mt-1 text-2xl font-black"
+                                            >
+                                                {prominentActionCopy.title}
+                                            </h2>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleProminentRemindLater(
+                                                prominentActionNotification
+                                            )
+                                        }
+                                        disabled={isSubmittingProminentAction}
+                                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.1] disabled:opacity-50"
+                                        aria-label="Remind me later"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+
+                                <p className="text-sm font-semibold leading-6 text-slate-300">
+                                    {prominentActionCopy.body}
+                                </p>
+
+                                {prominentActionNotification.type ===
+                                "passport_stamp_share_received" ? (
+                                    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-4 shadow-xl shadow-black/20">
+                                        <div className="flex items-center gap-3">
+                                            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-lime-300/25 bg-slate-950 text-sm font-black uppercase text-lime-100 shadow-xl shadow-black/25">
+                                                {prominentPassportSenderAvatarUrl ? (
+                                                    <img
+                                                        src={
+                                                            prominentPassportSenderAvatarUrl
+                                                        }
+                                                        alt=""
+                                                        className="h-full w-full object-cover"
+                                                    />
+                                                ) : (
+                                                    getInitials(
+                                                        prominentPassportSenderName
+                                                    )
+                                                )}
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-black text-white">
+                                                    {prominentPassportSenderName}
+                                                </p>
+                                                <p className="text-xs font-semibold text-slate-400">
+                                                    sent you this stamp
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 flex justify-center">
+                                            {isLoadingProminentPassportPreview ? (
+                                                <div className="flex h-40 w-40 items-center justify-center rounded-full border border-lime-300/20 bg-slate-950/70 text-center text-xs font-black uppercase tracking-[0.18em] text-lime-100">
+                                                    Loading stamp
+                                                </div>
+                                            ) : prominentPassportStamp ? (
+                                                <PassportStampCard
+                                                    countryName={
+                                                        prominentPassportStamp.stamp_display_country_name ||
+                                                        prominentPassportStamp.country_name ||
+                                                        prominentPassportStamp.country_code
+                                                    }
+                                                    countryCode={
+                                                        prominentPassportStamp.country_code
+                                                    }
+                                                    flagEmoji={
+                                                        prominentPassportStamp.stamp_display_flag ||
+                                                        prominentPassportStamp.flag_emoji ||
+                                                        ""
+                                                    }
+                                                    firstVisitYear={getYearFromDate(
+                                                        prominentPassportStamp.first_visited_on
+                                                    )}
+                                                    welcomeLabel={
+                                                        prominentPassportStamp.welcome_label_snapshot ||
+                                                        prominentPassportStamp.arrival_label_snapshot ||
+                                                        "WELCOME"
+                                                    }
+                                                    airportCode={
+                                                        prominentPassportStamp.first_entry_iata_code ||
+                                                        prominentPassportStamp.first_entry_icao_code
+                                                    }
+                                                    airportCity={
+                                                        prominentPassportStamp.visit_city ||
+                                                        prominentPassportStamp.first_entry_city
+                                                    }
+                                                    portOfEntryLabel={
+                                                        prominentPassportStamp.port_of_entry_name ||
+                                                        prominentPassportStamp.first_entry_airport_name
+                                                    }
+                                                    size="sm"
+                                                />
+                                            ) : (
+                                                <div className="flex h-40 w-40 items-center justify-center rounded-full border border-lime-300/20 bg-slate-950/70 p-5 text-center text-xs font-bold leading-5 text-slate-300">
+                                                    Stamp preview will appear when
+                                                    you review.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {prominentActionError ? (
+                                    <p className="rounded-2xl border border-red-300/30 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100">
+                                        {prominentActionError}
+                                    </p>
+                                ) : null}
+
+                                <div className="grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-3">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleProminentRemindLater(
+                                                prominentActionNotification
+                                            )
+                                        }
+                                        disabled={isSubmittingProminentAction}
+                                        className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
+                                    >
+                                        Remind me later
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleProminentDecline(
+                                                prominentActionNotification
+                                            )
+                                        }
+                                        disabled={isSubmittingProminentAction}
+                                        className="rounded-full border border-red-300/30 px-4 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/10 disabled:opacity-50"
+                                    >
+                                        {isSubmittingProminentAction
+                                            ? "Saving..."
+                                            : "Decline"}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleProminentAccept(
+                                                prominentActionNotification
+                                            )
+                                        }
+                                        disabled={isSubmittingProminentAction}
+                                        className="rounded-full bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:opacity-50"
+                                    >
+                                        {prominentActionCopy.acceptLabel}
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </AnimatedModal>
+                </Portal>
+            ) : null}
+            {isOnboardingWelcomeOpen && !prominentActionNotification ? (
+                <Portal>
+                    <AnimatedModal
+                        onClose={() => void dismissWelcomeOnboarding()}
+                        className="z-[120] items-center bg-slate-950/70"
+                        panelClassName="max-w-lg overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/70"
+                        labelledBy="onboarding-welcome-title"
+                    >
+                        {() => (
+                            <div className="space-y-5 p-6">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200">
+                                        Welcome to VAIVIA
+                                    </p>
+                                    <h2
+                                        id="onboarding-welcome-title"
+                                        className="mt-3 text-3xl font-black tracking-tight"
+                                    >
+                                        Your whole trip, finally in one place.
+                                    </h2>
+                                    <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+                                        Save ideas, build the plan, keep bookings
+                                        together, and travel with your people.
+                                    </p>
+                                </div>
+                                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                                    <button
+                                        type="button"
+                                        onClick={() => void planFirstTripFromWelcome()}
+                                        disabled={isSubmittingOnboarding}
+                                        className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:opacity-60"
+                                    >
+                                        Plan my first trip
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void dismissWelcomeOnboarding()}
+                                        disabled={isSubmittingOnboarding}
+                                        className="rounded-full border border-white/10 px-5 py-3 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-60"
+                                    >
+                                        Explore on my own
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </AnimatedModal>
+                </Portal>
             ) : null}
             <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-[calc(1rem+var(--safe-area-right))] pt-[calc(1rem+var(--safe-area-top))] md:left-24 md:px-8 md:pt-6">
                 <div

@@ -151,7 +151,9 @@ function getPendingInvitationLabel(invitation: Record<string, unknown>) {
     const labelCandidates = [
         invitation.invitee_identifier,
         invitation.invitee_email,
+        invitation.invited_email,
         invitation.invitee_username,
+        invitation.invited_username,
         invitation.email,
         invitation.username,
         invitation.target_email,
@@ -741,6 +743,10 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         created_at:
             typeof invitation.created_at === "string"
                 ? invitation.created_at
+                : null,
+        invited_by:
+            typeof invitation.invited_by === "string"
+                ? invitation.invited_by
                 : null,
     }));
     const audienceOptions: TripAudienceOption[] = [

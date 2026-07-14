@@ -14,6 +14,7 @@ import type { MoveTargetTrip } from "@/lib/tripMove";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
+import type { OnboardingProgress } from "@/lib/onboarding";
 
 type ItineraryTabsProps = {
     tripId: string;
@@ -43,6 +44,7 @@ type ItineraryTabsProps = {
     addedJourneyScenarioId?: string | null;
     addedJourneyTransportationId?: string | null;
     initialJourneyPlanningScenarios?: unknown[] | null;
+    onboardingProgress?: OnboardingProgress | null;
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
@@ -91,6 +93,7 @@ export default function ItineraryTabs({
     addedJourneyScenarioId = null,
     addedJourneyTransportationId = null,
     initialJourneyPlanningScenarios = null,
+    onboardingProgress = null,
 }: ItineraryTabsProps) {
     const activeTab = initialTab;
     const [quickAddDate, setQuickAddDate] = useState(() =>
@@ -221,6 +224,7 @@ export default function ItineraryTabs({
                 audienceOptions={audienceOptions}
                 currentUserTripMemberId={currentUserTripMemberId}
                 initialAction={initialQuickAddAction}
+                onboardingProgress={onboardingProgress}
             />
         </section>
     );

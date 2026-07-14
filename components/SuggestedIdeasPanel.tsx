@@ -1,6 +1,8 @@
 "use client";
 
 import { Check, Lock } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import {
     IDEA_TIME_EXACT_WINDOWS,
@@ -295,7 +297,13 @@ function IdeaSuggestionCard({
     toggleReactionAction?: (formData: FormData) => Promise<void>;
     toggleAttendedAction?: (formData: FormData) => Promise<void>;
 }) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const firstTime = idea.time_of_day[0] || "Afternoon";
+    const returnTo = useMemo(() => {
+        const query = searchParams.toString();
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
 
     return (
         <article
@@ -432,6 +440,7 @@ function IdeaSuggestionCard({
                 </summary>
                 <form action={promoteIdeaAction} className="mt-2 space-y-2">
                     <input type="hidden" name="trip_id" value={tripId} />
+                    <input type="hidden" name="return_to" value={returnTo} />
                     <input type="hidden" name="idea_id" value={idea.id} />
                     <input type="hidden" name="title" value={idea.title} />
                     <input type="hidden" name="category" value="activity" />

@@ -12,6 +12,11 @@ import { IdeaForm } from "@/components/IdeasTab";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import TransportationForm from "@/components/TransportationForm";
 import type { UserCategory } from "@/lib/itineraryCategories";
+import {
+    completeOnboarding,
+    type OnboardingProgress,
+} from "@/lib/onboarding";
+import { createClient } from "@/lib/supabase/client";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
 
@@ -26,6 +31,7 @@ type ItineraryQuickAddProps = {
     audienceOptions?: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
     initialAction?: QuickAddInitialAction | null;
+    onboardingProgress?: OnboardingProgress | null;
 };
 
 type QuickAddInitialAction = "transportation" | "scheduled" | "idea";
@@ -41,6 +47,7 @@ export default function ItineraryQuickAdd({
     audienceOptions = [],
     currentUserTripMemberId = null,
     initialAction = null,
+    onboardingProgress = null,
 }: ItineraryQuickAddProps) {
     const pathname = usePathname();
     const router = useRouter();
@@ -54,8 +61,27 @@ export default function ItineraryQuickAdd({
     const [isAccommodationOpen, setIsAccommodationOpen] = useState(false);
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
+    const [isOnboardingPromptHidden, setIsOnboardingPromptHidden] =
+        useState(false);
+    const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(
+        () =>
+            onboardingProgress?.status === "in_progress" &&
+            onboardingProgress.current_step === "complete"
+    );
+    const [isShowingAround, setIsShowingAround] = useState(false);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const handledInitialActionRef = useRef<string | null>(null);
+    const shouldShowFirstItemPrompt =
+        onboardingProgress?.status === "in_progress" &&
+        onboardingProgress.current_step === "add_first_item" &&
+        !isOnboardingPromptHidden;
+
+    useEffect(() => {
+        setIsCompletionModalOpen(
+            onboardingProgress?.status === "in_progress" &&
+                onboardingProgress.current_step === "complete"
+        );
+    }, [onboardingProgress]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -79,6 +105,30 @@ export default function ItineraryQuickAdd({
         setItemSubmitLabel(label);
         setItemOpenSignal((signal) => signal + 1);
         setIsOpen(false);
+    }
+
+    async function finishOnboarding({ showAround = false } = {}) {
+        if (onboardingProgress) {
+            const supabase = createClient();
+            const { error } = await completeOnboarding(
+                supabase,
+                onboardingProgress.user_id
+            );
+            if (error) {
+                console.warn("Could not complete onboarding:", {
+                    message: error.message,
+                    code: error.code,
+                    details: error.details,
+                });
+            }
+        }
+
+        setIsCompletionModalOpen(false);
+        if (showAround) {
+            setIsShowingAround(true);
+            window.setTimeout(() => setIsShowingAround(false), 2200);
+        }
+        router.refresh();
     }
 
     useEffect(() => {
@@ -181,11 +231,132 @@ export default function ItineraryQuickAdd({
             {isSuggestionOpen ? (
                 <FeatureSuggestionModal onClose={() => setIsSuggestionOpen(false)} />
             ) : null}
+            {isCompletionModalOpen ? (
+                <AnimatedModal
+                    onClose={() => void finishOnboarding()}
+                    panelClassName="max-w-lg"
+                    labelledBy="onboarding-complete-title"
+                >
+                    {({ requestClose }) => (
+                        <>
+                            <div className="vaivia-modal-header">
+                                <p className="vaivia-modal-eyebrow">
+                                    You&apos;re ready
+                                </p>
+                                <h2
+                                    id="onboarding-complete-title"
+                                    className="vaivia-modal-title"
+                                >
+                                    Your trip is underway.
+                                </h2>
+                                <p className="vaivia-modal-subtitle">
+                                    Keep planning here, or explore budget, stays,
+                                    food, and journey options whenever you need
+                                    them.
+                                </p>
+                            </div>
+                            <div className="vaivia-modal-footer grid gap-2 sm:grid-cols-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        requestClose();
+                                        void finishOnboarding();
+                                    }}
+                                    className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                >
+                                    Continue planning
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        requestClose();
+                                        void finishOnboarding({ showAround: true });
+                                    }}
+                                    className="rounded-full border border-white/10 px-5 py-3 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
+                                >
+                                    Show me around
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </AnimatedModal>
+            ) : null}
 
             <div
                 ref={quickAddRef}
                 className="fixed bottom-[calc(1rem+var(--safe-area-bottom))] left-1/2 z-[60] flex -translate-x-1/2 flex-col items-center md:bottom-6 md:left-auto md:right-6 md:z-40 md:translate-x-0 md:items-end"
             >
+                {shouldShowFirstItemPrompt ? (
+                    <div className="mb-3 w-[min(92vw,28rem)] rounded-[1.5rem] border border-lime-300/25 bg-slate-950/90 p-4 text-white shadow-2xl shadow-black/40 backdrop-blur-xl md:w-96">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200">
+                                    First plan
+                                </p>
+                                <h2 className="mt-1 text-lg font-black">
+                                    What do you know so far?
+                                </h2>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsOnboardingPromptHidden(true)}
+                                className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 text-slate-300 transition hover:bg-white/10 hover:text-white"
+                                aria-label="Hide onboarding prompt"
+                            >
+                                <X className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="mt-4 grid gap-2">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    openItineraryForm(
+                                        "Add scheduled activity/event"
+                                    )
+                                }
+                                className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-left transition hover:border-lime-300/35 hover:bg-white/[0.1]"
+                            >
+                                <span className="block text-sm font-black">
+                                    Add a plan
+                                </span>
+                                <span className="mt-0.5 block text-xs font-semibold text-slate-400">
+                                    Something happening on a date
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsTransportationOpen(true);
+                                    setIsOpen(false);
+                                }}
+                                className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-left transition hover:border-lime-300/35 hover:bg-white/[0.1]"
+                            >
+                                <span className="block text-sm font-black">
+                                    Add transportation
+                                </span>
+                                <span className="mt-0.5 block text-xs font-semibold text-slate-400">
+                                    A flight, train, drive, or other journey
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (createIdeaAction) setIsIdeaOpen(true);
+                                    setIsOpen(false);
+                                }}
+                                disabled={!createIdeaAction}
+                                className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-left transition hover:border-lime-300/35 hover:bg-white/[0.1] disabled:opacity-50"
+                            >
+                                <span className="block text-sm font-black">
+                                    Save an idea
+                                </span>
+                                <span className="mt-0.5 block text-xs font-semibold text-slate-400">
+                                    Somewhere you might go
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                ) : null}
                 {isOpen && (
                     <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
                         <Link
@@ -275,7 +446,11 @@ export default function ItineraryQuickAdd({
                     <button
                         type="button"
                         onClick={() => setIsOpen((current) => !current)}
-                        className="vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                        className={`vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] ${
+                            isShowingAround
+                                ? "ring-4 ring-lime-200/80 ring-offset-4 ring-offset-slate-950"
+                                : ""
+                        }`}
                         aria-label={
                             isOpen
                                 ? "Close itinerary quick add menu"

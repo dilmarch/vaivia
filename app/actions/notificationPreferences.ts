@@ -61,7 +61,8 @@ export async function saveNotificationPreferences(formData: FormData) {
 
 export async function savePushSubscription(
     subscription: PushSubscriptionPayload,
-    userAgent?: string
+    userAgent?: string,
+    options?: { enablePushPreferences?: boolean }
 ) {
     const supabase = await createClient();
     const {
@@ -103,6 +104,33 @@ export async function savePushSubscription(
             hint: error.hint,
         });
         return { ok: false, error: "Could not save push subscription." };
+    }
+
+    if (options?.enablePushPreferences) {
+        const preferenceRows = NOTIFICATION_TYPES.map((notificationType) => ({
+            user_id: user.id,
+            notification_type: notificationType,
+            push_enabled: true,
+            updated_at: now,
+        }));
+        const { error: preferenceError } = await (supabase.from as any)(
+            "user_notification_preferences"
+        ).upsert(preferenceRows, {
+            onConflict: "user_id,notification_type",
+        });
+
+        if (preferenceError) {
+            console.error("Could not enable push notification preferences:", {
+                message: preferenceError.message,
+                code: preferenceError.code,
+                details: preferenceError.details,
+                hint: preferenceError.hint,
+            });
+            return {
+                ok: false,
+                error: "Push was enabled for this device, but VAIVIA could not update notification preferences.",
+            };
+        }
     }
 
     return { ok: true };

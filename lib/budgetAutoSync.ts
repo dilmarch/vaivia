@@ -83,7 +83,11 @@ function participantColumns(participant: {
 }
 
 function getSplitMethod(value?: FormDataEntryValue | string | null): SplitMethod {
-    return value === "exact" || value === "percentage" ? value : "equal";
+    return value === "just_me" ||
+        value === "exact" ||
+        value === "percentage"
+        ? value
+        : "equal";
 }
 
 function roundMoney(value: number) {
@@ -161,16 +165,20 @@ async function replaceAutoExpenseSplits({
             .filter((participant): participant is NonNullable<typeof participant> =>
                 Boolean(participant)
             ) || [];
-    const selectedParticipants =
-        formParticipants.length > 0
-            ? formParticipants
-            : [{ kind: "member" as BudgetParticipantKind, id: `user:${userId}` }];
     const splitMethod = getSplitMethod(formData?.get("split_method"));
+    const selectedParticipants =
+        splitMethod === "just_me"
+            ? [{ kind: "member" as BudgetParticipantKind, id: `user:${userId}` }]
+            : formParticipants.length > 0
+              ? formParticipants
+              : [{ kind: "member" as BudgetParticipantKind, id: `user:${userId}` }];
 
     let splitAmounts: number[] = [];
     let splitPercentages: Array<number | null> = selectedParticipants.map(() => null);
 
-    if (splitMethod === "equal") {
+    if (splitMethod === "just_me") {
+        splitAmounts = [amount];
+    } else if (splitMethod === "equal") {
         splitAmounts = splitEvenly(amount, selectedParticipants.length);
     } else if (splitMethod === "exact") {
         splitAmounts = selectedParticipants.map((participant) =>
@@ -334,10 +342,13 @@ export async function syncAutoBudgetExpense({
         tripId,
         sourceType,
     });
-    const paidBy = parseParticipantValue(formData?.get("paid_by")) || {
-        kind: "member" as BudgetParticipantKind,
-        id: `user:${userId}`,
-    };
+    const paidBy =
+        getSplitMethod(formData?.get("split_method")) === "just_me"
+            ? { kind: "member" as BudgetParticipantKind, id: `user:${userId}` }
+            : parseParticipantValue(formData?.get("paid_by")) || {
+                  kind: "member" as BudgetParticipantKind,
+                  id: `user:${userId}`,
+              };
 
     const payload: Record<string, unknown> = {
         trip_id: tripId,

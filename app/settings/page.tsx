@@ -14,6 +14,7 @@ import SettingsSecurityClient from "@/components/SettingsSecurityClient";
 import { ALL_CURRENCY_OPTIONS, normalizeCurrencyCode } from "@/lib/currency";
 import { isCountdownUnit, type CountdownUnit } from "@/lib/countdownDisplay";
 import { mergeNotificationPreferences } from "@/lib/notificationTypes";
+import { replayOnboarding } from "@/lib/onboarding";
 import { createClient } from "@/lib/supabase/server";
 import {
     sortCategoriesByName,
@@ -356,6 +357,33 @@ async function updateFinanceSettings(formData: FormData) {
     revalidatePath("/trips/[tripId]/budget", "page");
     revalidatePath("/trips/[tripId]/budget/expenses", "page");
     redirect("/settings?section=financial");
+}
+
+async function replayOnboardingAction() {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const { error } = await replayOnboarding(supabase, user.id);
+
+    if (error) {
+        console.error("Error replaying onboarding:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            userId: user.id,
+        });
+        throw new Error("Could not replay onboarding");
+    }
+
+    revalidatePath("/settings");
+    redirect("/");
 }
 
 async function updateCountdownDisplayMode(formData: FormData) {
@@ -807,6 +835,30 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             <PinkModeToggle
                                 initialThemeMode={themeMode}
                             />
+                            <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-5">
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                    <div>
+                                        <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200/80">
+                                            Help
+                                        </p>
+                                        <h2 className="mt-2 text-2xl font-black text-white">
+                                            Replay onboarding
+                                        </h2>
+                                        <p className="mt-1 text-sm font-semibold leading-6 text-slate-400">
+                                            Reopen the short setup guide for creating a
+                                            trip and adding your first useful item.
+                                        </p>
+                                    </div>
+                                    <form action={replayOnboardingAction}>
+                                        <button
+                                            type="submit"
+                                            className="inline-flex min-h-11 items-center justify-center rounded-full bg-lime-300 px-5 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                        >
+                                            Replay onboarding
+                                        </button>
+                                    </form>
+                                </div>
+                            </section>
                             {isSuperAdmin ? (
                             <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-5">
                                 <div>
