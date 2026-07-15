@@ -90,6 +90,10 @@ const DEFAULT_ENTRY_FIT: ArcTextFit = {
     letterSpacing: "0.14em",
 };
 
+const MIN_COUNTRY_ARC_FONT_SIZE = 4.25;
+const MIN_ENTRY_ARC_FONT_SIZE = 4;
+const MIN_ARC_LETTER_SPACING = 0;
+
 const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
     BE: "WELKOM",
     BG: "ДОБРЕ ДОШЛИ",
@@ -201,12 +205,16 @@ function getFallbackArcFit(
     const characterCount = Math.max(Array.from(label).length, 1);
     const estimatedFontSize = Math.max(
         minFontSize,
-        Math.min(maxFontSize, 88 / (characterCount * 0.78))
+        Math.min(maxFontSize, 98 / (characterCount * 0.82))
+    );
+    const estimatedLetterSpacing = Math.max(
+        MIN_ARC_LETTER_SPACING,
+        baseLetterSpacing - Math.max(0, characterCount - 12) * 0.009
     );
 
     return {
         fontSize: estimatedFontSize,
-        letterSpacing: `${Math.max(0.04, baseLetterSpacing - characterCount * 0.003)}em`,
+        letterSpacing: `${estimatedLetterSpacing}em`,
     };
 }
 
@@ -239,8 +247,12 @@ function fitSvgTextToPath({
             0,
             pathElement.getTotalLength() - ARC_SAFETY_PADDING
         );
+        const characterCount = Math.max(Array.from(label).length, 1);
         let fontSize = maxFontSize;
-        let letterSpacing = baseLetterSpacing;
+        let letterSpacing = Math.max(
+            MIN_ARC_LETTER_SPACING,
+            baseLetterSpacing - Math.max(0, characterCount - 12) * 0.006
+        );
 
         textElement.removeAttribute("textLength");
         textElement.removeAttribute("lengthAdjust");
@@ -261,11 +273,19 @@ function fitSvgTextToPath({
         }
 
         while (
-            letterSpacing > 0.02 &&
+            letterSpacing > MIN_ARC_LETTER_SPACING &&
             textElement.getComputedTextLength() > usableLength
         ) {
-            letterSpacing = Math.max(0.02, letterSpacing - 0.01);
+            letterSpacing = Math.max(MIN_ARC_LETTER_SPACING, letterSpacing - 0.01);
             applyTextStyle();
+        }
+
+        if (textElement.getComputedTextLength() > usableLength) {
+            return {
+                fontSize,
+                letterSpacing: `${letterSpacing}em`,
+                textLength: usableLength,
+            };
         }
 
         return {
@@ -356,7 +376,7 @@ export default function PassportStamp({
             pathElement: topPathRef.current,
             label: countryName,
             maxFontSize: 10,
-            minFontSize: 6,
+            minFontSize: MIN_COUNTRY_ARC_FONT_SIZE,
             baseLetterSpacing: 0.16,
         });
         const nextEntryFit = fitSvgTextToPath({
@@ -364,7 +384,7 @@ export default function PassportStamp({
             pathElement: bottomPathRef.current,
             label: entryLabel,
             maxFontSize: 8.5,
-            minFontSize: 5.8,
+            minFontSize: MIN_ENTRY_ARC_FONT_SIZE,
             baseLetterSpacing: 0.14,
         });
 
@@ -422,7 +442,7 @@ export default function PassportStamp({
                     className="fill-current font-black uppercase"
                     style={countryArcTextStyle}
                     textLength={countryArcFit.textLength}
-                    lengthAdjust={countryArcFit.textLength ? "spacingAndGlyphs" : undefined}
+                    lengthAdjust={countryArcFit.textLength ? "spacing" : undefined}
                 >
                     <textPath href={`#${topPathId}`} startOffset="50%" textAnchor="middle">
                         {countryName}
@@ -433,7 +453,7 @@ export default function PassportStamp({
                     className="fill-current font-black uppercase opacity-90"
                     style={entryArcTextStyle}
                     textLength={entryArcFit.textLength}
-                    lengthAdjust={entryArcFit.textLength ? "spacingAndGlyphs" : undefined}
+                    lengthAdjust={entryArcFit.textLength ? "spacing" : undefined}
                 >
                     <textPath href={`#${bottomPathId}`} startOffset="50%" textAnchor="middle">
                         {entryLabel}
