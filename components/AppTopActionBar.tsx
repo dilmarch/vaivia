@@ -62,6 +62,12 @@ type MobileTourStep = {
     title: string;
     description: string;
     icon: LucideIcon;
+    placement:
+        | "top-right"
+        | "calendar-section"
+        | "task-section"
+        | "bottom-right"
+        | "bottom-left";
 };
 
 type ProminentSharedStamp = {
@@ -189,18 +195,21 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
             description:
                 "Use Trips at the top to jump between upcoming trips without digging around.",
             icon: Briefcase,
+            placement: "top-right",
         },
         {
             title: "See your calendar",
             description:
                 "Your dashboard keeps the near-term trip calendar close so plans and dates stay visible.",
             icon: CalendarDays,
+            placement: "calendar-section",
         },
         {
             title: "Track essentials",
             description:
                 "Use your reminders and task list for accommodations, transportation, and the little things that make trips easier.",
             icon: ListChecks,
+            placement: "task-section",
         },
     ],
     "trip-overview": [
@@ -209,18 +218,21 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
             description:
                 "Tap the green + button to add transportation, activities, ideas, accommodations, and more.",
             icon: Plus,
+            placement: "bottom-right",
         },
         {
             title: "Open trip apps",
             description:
                 "Tap the ^ button to jump into itinerary, budget, accommodations, journey planning, food, and ideas.",
             icon: ChevronsUp,
+            placement: "bottom-left",
         },
         {
             title: "Toggle trips",
             description:
                 "Use Trips at the top to switch between your trips from anywhere.",
             icon: Briefcase,
+            placement: "top-right",
         },
     ],
 };
@@ -235,6 +247,60 @@ function getMobileTourForPath(pathname: string | null): MobileTourKind | null {
     if (pathname === "/") return "home";
     if (getTripOverviewRoute(pathname)) return "trip-overview";
     return null;
+}
+
+function getMobileTourCardClass(placement: MobileTourStep["placement"]) {
+    const base =
+        "fixed z-[125] w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-[1.5rem] border border-lime-300/25 bg-[#050712]/95 text-white shadow-2xl shadow-black/70 backdrop-blur-2xl md:hidden";
+
+    switch (placement) {
+        case "top-right":
+            return `${base} right-[calc(1rem+var(--safe-area-right))] top-[calc(4.75rem+var(--safe-area-top))]`;
+        case "calendar-section":
+            return `${base} left-4 top-[calc(48vh+var(--safe-area-top))]`;
+        case "task-section":
+            return `${base} right-4 top-[calc(58vh+var(--safe-area-top))]`;
+        case "bottom-left":
+            return `${base} left-4 bottom-[calc(6.35rem+var(--safe-area-bottom))]`;
+        case "bottom-right":
+        default:
+            return `${base} right-4 bottom-[calc(6.35rem+var(--safe-area-bottom))]`;
+    }
+}
+
+function getMobileTourPointerClass(placement: MobileTourStep["placement"]) {
+    switch (placement) {
+        case "top-right":
+            return "absolute -top-3 right-10 h-6 w-6 rotate-45 border-l border-t border-lime-300/25 bg-[#050712]/95";
+        case "bottom-left":
+            return "absolute -bottom-3 left-12 h-6 w-6 rotate-45 border-b border-r border-lime-300/25 bg-[#050712]/95";
+        case "bottom-right":
+            return "absolute -bottom-3 right-12 h-6 w-6 rotate-45 border-b border-r border-lime-300/25 bg-[#050712]/95";
+        case "calendar-section":
+            return "absolute -top-3 left-12 h-6 w-6 rotate-45 border-l border-t border-lime-300/25 bg-[#050712]/95";
+        case "task-section":
+        default:
+            return "absolute -top-3 right-12 h-6 w-6 rotate-45 border-l border-t border-lime-300/25 bg-[#050712]/95";
+    }
+}
+
+function getMobileTourPingClass(placement: MobileTourStep["placement"]) {
+    const base =
+        "pointer-events-none fixed z-[124] h-14 w-14 rounded-full border-2 border-lime-300/70 bg-lime-300/10 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.45)] md:hidden";
+
+    switch (placement) {
+        case "top-right":
+            return `${base} right-[calc(1rem+var(--safe-area-right))] top-[calc(1rem+var(--safe-area-top))]`;
+        case "bottom-left":
+            return `${base} left-[calc(50%_-_5.35rem)] bottom-[calc(0.75rem+var(--safe-area-bottom))]`;
+        case "bottom-right":
+            return `${base} right-[calc(50%_-_5.35rem)] bottom-[calc(0.75rem+var(--safe-area-bottom))]`;
+        case "calendar-section":
+            return `${base} left-5 top-[calc(42vh+var(--safe-area-top))]`;
+        case "task-section":
+        default:
+            return `${base} right-5 top-[calc(52vh+var(--safe-area-top))]`;
+    }
 }
 
 function getTripSwitchHref({
@@ -1053,115 +1119,139 @@ export default function AppTopActionBar({
             ) : null}
             {activeMobileTour && activeMobileTourStep ? (
                 <Portal>
-                    <AnimatedModal
-                        onClose={() => completeMobileTour(activeMobileTour)}
-                        className="z-[125] items-center bg-slate-950/70 md:hidden"
-                        panelClassName="max-w-sm overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/70"
-                        labelledBy="mobile-context-tour-title"
-                    >
-                        {() => {
-                            const Icon = activeMobileTourStep.icon;
-                            const isFirst = activeMobileTourIndex === 0;
-                            const isLast =
-                                activeMobileTourIndex ===
-                                activeMobileTourSteps.length - 1;
+                    {(() => {
+                        const Icon = activeMobileTourStep.icon;
+                        const isFirst = activeMobileTourIndex === 0;
+                        const isLast =
+                            activeMobileTourIndex ===
+                            activeMobileTourSteps.length - 1;
 
-                            return (
-                                <div className="space-y-5 p-6">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="flex items-center gap-3">
-                                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.16)]">
-                                                <Icon
-                                                    className="h-6 w-6"
-                                                    aria-hidden="true"
-                                                />
-                                            </span>
-                                            <div>
-                                                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
-                                                    Quick tour{" "}
-                                                    {activeMobileTourIndex + 1} of{" "}
-                                                    {activeMobileTourSteps.length}
-                                                </p>
-                                                <h2
-                                                    id="mobile-context-tour-title"
-                                                    className="mt-1 text-2xl font-black"
-                                                >
-                                                    {activeMobileTourStep.title}
-                                                </h2>
+                        return (
+                            <>
+                                <div
+                                    className={getMobileTourPingClass(
+                                        activeMobileTourStep.placement
+                                    )}
+                                    aria-hidden="true"
+                                />
+                                <aside
+                                    className={getMobileTourCardClass(
+                                        activeMobileTourStep.placement
+                                    )}
+                                    role="dialog"
+                                    aria-modal="false"
+                                    aria-labelledby="mobile-context-tour-title"
+                                >
+                                    <span
+                                        className={getMobileTourPointerClass(
+                                            activeMobileTourStep.placement
+                                        )}
+                                        aria-hidden="true"
+                                    />
+                                    <div className="relative z-10 space-y-4 p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                                                    <Icon
+                                                        className="h-5 w-5"
+                                                        aria-hidden="true"
+                                                    />
+                                                </span>
+                                                <div>
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-200">
+                                                        Quick tour{" "}
+                                                        {activeMobileTourIndex + 1} of{" "}
+                                                        {activeMobileTourSteps.length}
+                                                    </p>
+                                                    <h2
+                                                        id="mobile-context-tour-title"
+                                                        className="mt-1 text-xl font-black"
+                                                    >
+                                                        {activeMobileTourStep.title}
+                                                    </h2>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                completeMobileTour(activeMobileTour)
-                                            }
-                                            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.1]"
-                                            aria-label="Close tour"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-
-                                    <p className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
-                                        {activeMobileTourStep.description}
-                                    </p>
-
-                                    <div className="flex justify-center gap-2">
-                                        {activeMobileTourSteps.map((step, index) => (
                                             <button
-                                                key={step.title}
                                                 type="button"
                                                 onClick={() =>
-                                                    setActiveMobileTourIndex(index)
-                                                }
-                                                className={`h-2.5 rounded-full transition-all ${
-                                                    index === activeMobileTourIndex
-                                                        ? "w-8 bg-lime-300"
-                                                        : "w-2.5 bg-white/20"
-                                                }`}
-                                                aria-label={`Show tour step ${
-                                                    index + 1
-                                                }`}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-4">
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setActiveMobileTourIndex((current) =>
-                                                    Math.max(current - 1, 0)
-                                                )
-                                            }
-                                            disabled={isFirst}
-                                            className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-                                        >
-                                            Back
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                if (isLast) {
                                                     completeMobileTour(
                                                         activeMobileTour
-                                                    );
-                                                    return;
+                                                    )
                                                 }
+                                                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.1]"
+                                                aria-label="Close tour"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
 
-                                                setActiveMobileTourIndex(
-                                                    (current) => current + 1
-                                                );
-                                            }}
-                                            className="rounded-full bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-lime-200"
-                                        >
-                                            {isLast ? "Finish" : "Next"}
-                                        </button>
+                                        <p className="rounded-[1.15rem] border border-white/10 bg-white/[0.05] p-3 text-sm font-semibold leading-6 text-slate-300">
+                                            {activeMobileTourStep.description}
+                                        </p>
+
+                                        <div className="flex justify-center gap-2">
+                                            {activeMobileTourSteps.map(
+                                                (step, index) => (
+                                                    <button
+                                                        key={step.title}
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setActiveMobileTourIndex(
+                                                                index
+                                                            )
+                                                        }
+                                                        className={`h-2.5 rounded-full transition-all ${
+                                                            index ===
+                                                            activeMobileTourIndex
+                                                                ? "w-8 bg-lime-300"
+                                                                : "w-2.5 bg-white/20"
+                                                        }`}
+                                                        aria-label={`Show tour step ${
+                                                            index + 1
+                                                        }`}
+                                                    />
+                                                )
+                                            )}
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setActiveMobileTourIndex(
+                                                        (current) =>
+                                                            Math.max(current - 1, 0)
+                                                    )
+                                                }
+                                                disabled={isFirst}
+                                                className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                                Back
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (isLast) {
+                                                        completeMobileTour(
+                                                            activeMobileTour
+                                                        );
+                                                        return;
+                                                    }
+
+                                                    setActiveMobileTourIndex(
+                                                        (current) => current + 1
+                                                    );
+                                                }}
+                                                className="rounded-full bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                            >
+                                                {isLast ? "Finish" : "Next"}
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            );
-                        }}
-                    </AnimatedModal>
+                                </aside>
+                            </>
+                        );
+                    })()}
                 </Portal>
             ) : null}
             <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-[calc(1rem+var(--safe-area-right))] pt-[calc(1rem+var(--safe-area-top))] md:left-24 md:px-8 md:pt-6">

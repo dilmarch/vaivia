@@ -70,7 +70,7 @@ const yearPositionClasses = {
 
 const STAMP_CENTER = 80;
 const ARC_RADIUS = 72.5;
-const ARC_SAFETY_PADDING = 12;
+const ARC_SAFETY_PADDING = 22;
 const TOP_ARC_PATH = getArcPath(218, 322, 1, 69.25);
 const BOTTOM_ARC_PATH = getArcPath(142, 38, 0);
 
@@ -91,19 +91,28 @@ const DEFAULT_ENTRY_FIT: ArcTextFit = {
 };
 
 const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
+    BE: "WELKOM",
+    BG: "ДОБРЕ ДОШЛИ",
     BR: "BEM-VINDO",
     CA: "WELCOME",
     CN: "欢迎",
+    CU: "BIENVENIDO",
     DE: "WILLKOMMEN",
     ES: "BIENVENIDO",
     FR: "BIENVENUE",
     GB: "WELCOME",
     GR: "ΚΑΛΩΣ ΗΡΘΑΤΕ",
+    GT: "BIENVENIDO",
+    HK: "歡迎",
+    HR: "DOBRODOŠLI",
+    HU: "ÜDVÖZÖLJÜK",
+    ID: "SELAMAT DATANG",
     IT: "BENVENUTO",
     JP: "ようこそ",
     KR: "환영합니다",
     MX: "BIENVENIDO",
     NL: "WELKOM",
+    PE: "BIENVENIDO",
     PT: "BEM-VINDO",
     TH: "ยินดีต้อนรับ",
     TR: "HOŞ GELDİNİZ",
@@ -192,7 +201,7 @@ function getFallbackArcFit(
     const characterCount = Math.max(Array.from(label).length, 1);
     const estimatedFontSize = Math.max(
         minFontSize,
-        Math.min(maxFontSize, 98 / (characterCount * 0.78))
+        Math.min(maxFontSize, 88 / (characterCount * 0.78))
     );
 
     return {
@@ -259,12 +268,9 @@ function fitSvgTextToPath({
             applyTextStyle();
         }
 
-        const stillTooLong = textElement.getComputedTextLength() > usableLength;
-
         return {
             fontSize,
             letterSpacing: `${letterSpacing}em`,
-            textLength: stillTooLong ? usableLength : undefined,
         };
     } catch {
         return getFallbackArcFit(

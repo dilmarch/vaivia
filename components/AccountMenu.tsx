@@ -16,6 +16,7 @@ import {
     Plus,
     Settings,
     Stamp,
+    Trash2,
     UserRound,
     UsersRound,
     X,
@@ -363,19 +364,28 @@ function getCountryName(countryCode: string) {
 }
 
 const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
+    BE: "WELKOM",
+    BG: "ДОБРЕ ДОШЛИ",
     BR: "BEM-VINDO",
     CA: "WELCOME",
     CN: "欢迎",
+    CU: "BIENVENIDO",
     DE: "WILLKOMMEN",
     ES: "BIENVENIDO",
     FR: "BIENVENUE",
     GB: "WELCOME",
     GR: "ΚΑΛΩΣ ΗΡΘΑΤΕ",
+    GT: "BIENVENIDO",
+    HK: "歡迎",
+    HR: "DOBRODOŠLI",
+    HU: "ÜDVÖZÖLJÜK",
+    ID: "SELAMAT DATANG",
     IT: "BENVENUTO",
     JP: "ようこそ",
     KR: "환영합니다",
     MX: "BIENVENIDO",
     NL: "WELKOM",
+    PE: "BIENVENIDO",
     PT: "BEM-VINDO",
     TH: "ยินดีต้อนรับ",
     TR: "HOŞ GELDİNİZ",
@@ -3263,7 +3273,7 @@ export default function AccountMenu({
     }
 
     async function handleDeletePassportStamp(stamp: PassportStamp) {
-        if (stamp.source !== "manual" || !stamp.id) return;
+        if (stamp.source !== "manual" || !stamp.id) return false;
 
         const supabase = createClient();
         setIsSavingStamp(true);
@@ -3288,6 +3298,7 @@ export default function AccountMenu({
                         )
                 ),
             }));
+            return true;
         } catch (error) {
             console.error("Could not delete passport stamp:", {
                 ...getErrorDetails(error),
@@ -3295,6 +3306,7 @@ export default function AccountMenu({
                 userId,
             });
             setErrorMessage("Could not remove passport stamp.");
+            return false;
         } finally {
             setIsSavingStamp(false);
         }
@@ -4174,7 +4186,10 @@ export default function AccountMenu({
                 </div>
 
                 <div className="space-y-5 p-5 sm:p-6">
-                    <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20">
+                    <section
+                        id="passport-stamps"
+                        className="scroll-mt-28 rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20"
+                    >
                         <div className="flex flex-wrap items-end justify-between gap-3">
                             <div>
                                 <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
@@ -4426,8 +4441,6 @@ export default function AccountMenu({
                                             setIsEditingPassportStamp(false);
                                             setSelectedPassportStamp(stamp);
                                         }}
-                                        removable={stamp.source === "manual"}
-                                        onRemove={() => handleDeletePassportStamp(stamp)}
                                     />
                                 ))}
                             </div>
@@ -6745,7 +6758,34 @@ export default function AccountMenu({
                                                             codes when available.
                                                         </p>
                                                     </div>
-                                                    <div className="flex flex-wrap justify-end gap-2">
+                                                    <div className="flex flex-wrap justify-between gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            onClick={async () => {
+                                                                const deleted =
+                                                                    await handleDeletePassportStamp(
+                                                                        selectedPassportStamp
+                                                                    );
+                                                                if (deleted) {
+                                                                    setIsEditingPassportStamp(
+                                                                        false
+                                                                    );
+                                                                    setSelectedPassportStamp(
+                                                                        null
+                                                                    );
+                                                                }
+                                                            }}
+                                                            disabled={isSavingStamp}
+                                                            className="border-red-300/30 bg-red-400/10 text-red-100 hover:bg-red-400/20 hover:text-red-50"
+                                                        >
+                                                            <Trash2
+                                                                className="h-4 w-4"
+                                                                aria-hidden="true"
+                                                            />
+                                                            Delete stamp
+                                                        </Button>
+                                                        <div className="flex flex-wrap justify-end gap-2">
                                                         <Button
                                                             type="button"
                                                             variant="outline"
@@ -6770,24 +6810,49 @@ export default function AccountMenu({
                                                                 ? "Saving..."
                                                                 : "Save changes"}
                                                         </Button>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        beginEditPassportStamp(
-                                                            selectedPassportStamp
-                                                        )
-                                                    }
-                                                    className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200"
-                                                >
-                                                    <Pencil
-                                                        className="h-4 w-4"
-                                                        aria-hidden="true"
-                                                    />
-                                                    Edit stamp
-                                                </button>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={async () => {
+                                                            const deleted =
+                                                                await handleDeletePassportStamp(
+                                                                    selectedPassportStamp
+                                                                );
+                                                            if (deleted) {
+                                                                setSelectedPassportStamp(
+                                                                    null
+                                                                );
+                                                            }
+                                                        }}
+                                                        disabled={isSavingStamp}
+                                                        className="inline-flex items-center gap-2 rounded-full border border-red-300/30 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                                    >
+                                                        <Trash2
+                                                            className="h-4 w-4"
+                                                            aria-hidden="true"
+                                                        />
+                                                        Delete stamp
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            beginEditPassportStamp(
+                                                                selectedPassportStamp
+                                                            )
+                                                        }
+                                                        className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                                    >
+                                                        <Pencil
+                                                            className="h-4 w-4"
+                                                            aria-hidden="true"
+                                                        />
+                                                        Edit stamp
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     ) : null}

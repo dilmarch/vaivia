@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
+  type DashboardPassportStamp,
   type DashboardTrip,
 } from "@/components/TripDashboardClient";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
@@ -61,6 +62,13 @@ type DashboardCountdownTarget = {
 function getDateTimeIso(date?: string | null, time?: string | null) {
   if (!date) return null;
   return `${date}T${time || "00:00"}:00`;
+}
+
+function getYearFromDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return String(date.getFullYear());
 }
 
 function isFutureIso(value: string, now = new Date()) {
@@ -573,6 +581,47 @@ async function TripsDashboard() {
     supabase,
     dashboardTrips
   );
+  const { data: passportStampRows, error: passportStampError } = await supabase
+    .from("user_passport_stamps")
+    .select(
+      "id,country_code,country_name,flag_emoji,first_visited_on,stamped_at,created_at,first_entry_iata_code,first_entry_icao_code,first_entry_city,first_entry_airport_name,welcome_label_snapshot,arrival_label_snapshot,stamp_display_country_name,stamp_display_flag,port_of_entry_name"
+    )
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(2);
+
+  if (passportStampError) {
+    console.warn("Could not load dashboard passport stamps:", {
+      message: passportStampError.message,
+      code: passportStampError.code,
+      details: passportStampError.details,
+      hint: passportStampError.hint,
+      userId: user.id,
+    });
+  }
+
+  const dashboardPassportStamps: DashboardPassportStamp[] = (
+    passportStampRows || []
+  ).map((stamp) => ({
+    id: String(stamp.id),
+    countryCode: String(stamp.country_code || "").trim().toUpperCase(),
+    countryName:
+      stamp.stamp_display_country_name ||
+      stamp.country_name ||
+      String(stamp.country_code || "Passport"),
+    flagEmoji: stamp.stamp_display_flag || stamp.flag_emoji || null,
+    firstVisitYear:
+      getYearFromDate(stamp.first_visited_on) ||
+      getYearFromDate(stamp.stamped_at) ||
+      getYearFromDate(stamp.created_at),
+    welcomeLabel:
+      stamp.welcome_label_snapshot || stamp.arrival_label_snapshot || null,
+    airportCode:
+      stamp.first_entry_iata_code || stamp.first_entry_icao_code || null,
+    airportCity: stamp.first_entry_city || null,
+    portOfEntryName:
+      stamp.port_of_entry_name || stamp.first_entry_airport_name || null,
+  }));
 
   return (
     <main className="min-h-screen bg-[#0c0115] text-white">
@@ -586,6 +635,7 @@ async function TripsDashboard() {
         <div className="mx-4 md:mx-8">
           <TripDashboardClient
             trips={dashboardTrips}
+            passportStamps={dashboardPassportStamps}
             currentUserId={user.id}
             updateTripAction={updateTrip}
             deleteTripAction={deleteTrip}

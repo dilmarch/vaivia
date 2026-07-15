@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Stamp, X } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
 import PassportStampCard from "@/components/PassportStamp";
@@ -135,6 +136,7 @@ export default function PassportStampShareReviewModal({
     onOpenChange,
     onHandled,
 }: PassportStampShareReviewModalProps) {
+    const router = useRouter();
     const [share, setShare] = useState<ShareDetails | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -241,6 +243,9 @@ export default function PassportStampShareReviewModal({
             }
             onHandled?.();
             onOpenChange(false);
+            if (nextStatus === "accepted") {
+                router.push("/profile#passport-stamps");
+            }
         }
 
         setIsSubmitting(false);

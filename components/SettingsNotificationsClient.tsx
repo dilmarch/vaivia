@@ -46,6 +46,35 @@ export default function SettingsNotificationsClient({
     preferences,
     vapidPublicKey,
 }: SettingsNotificationsClientProps) {
+    const initialSelections = useMemo(() => {
+        const preferencesByType = new Map(
+            preferences.map((preference) => [
+                preference.notificationType,
+                preference,
+            ])
+        );
+
+        return {
+            in_app: new Set<string>(
+                NOTIFICATION_TYPE_OPTIONS.filter(
+                    (option) =>
+                        preferencesByType.get(option.type)?.inAppEnabled ?? true
+                ).map((option) => option.type)
+            ),
+            push: new Set<string>(
+                NOTIFICATION_TYPE_OPTIONS.filter(
+                    (option) =>
+                        preferencesByType.get(option.type)?.pushEnabled ?? false
+                ).map((option) => option.type)
+            ),
+            email: new Set<string>(
+                NOTIFICATION_TYPE_OPTIONS.filter(
+                    (option) =>
+                        preferencesByType.get(option.type)?.emailEnabled ?? true
+                ).map((option) => option.type)
+            ),
+        };
+    }, [preferences]);
     const [permission, setPermission] = useState<NotificationPermission | "unknown">(
         "unknown"
     );
@@ -53,17 +82,77 @@ export default function SettingsNotificationsClient({
     const [isSubscribed, setIsSubscribed] = useState(false);
     const [statusMessage, setStatusMessage] = useState("");
     const [isPending, startTransition] = useTransition();
-    const isConfigured = Boolean(vapidPublicKey);
-    const preferencesByType = useMemo(
-        () =>
-            new Map(
-                preferences.map((preference) => [
-                    preference.notificationType,
-                    preference,
-                ])
-            ),
-        [preferences]
+    const [selectedInAppTypes, setSelectedInAppTypes] = useState(
+        () => initialSelections.in_app
     );
+    const [selectedPushTypes, setSelectedPushTypes] = useState(
+        () => initialSelections.push
+    );
+    const [selectedEmailTypes, setSelectedEmailTypes] = useState(
+        () => initialSelections.email
+    );
+    const isConfigured = Boolean(vapidPublicKey);
+    const allNotificationTypes = useMemo(
+        () => NOTIFICATION_TYPE_OPTIONS.map((option) => option.type),
+        []
+    );
+    const channelSelections = {
+        in_app: selectedInAppTypes,
+        push: selectedPushTypes,
+        email: selectedEmailTypes,
+    };
+    const channelSetters = {
+        in_app: setSelectedInAppTypes,
+        push: setSelectedPushTypes,
+        email: setSelectedEmailTypes,
+    };
+    const channelControls = [
+        {
+            key: "in_app" as const,
+            label: "In-app",
+            icon: Bell,
+        },
+        {
+            key: "push" as const,
+            label: "Push",
+            icon: MonitorSmartphone,
+        },
+        {
+            key: "email" as const,
+            label: "Email",
+            icon: Mail,
+        },
+    ];
+
+    useEffect(() => {
+        setSelectedInAppTypes(initialSelections.in_app);
+        setSelectedPushTypes(initialSelections.push);
+        setSelectedEmailTypes(initialSelections.email);
+    }, [initialSelections]);
+
+    function setChannelValue(
+        channel: keyof typeof channelSelections,
+        notificationType: string,
+        checked: boolean
+    ) {
+        channelSetters[channel]((current) => {
+            const next = new Set(current);
+            if (checked) {
+                next.add(notificationType);
+            } else {
+                next.delete(notificationType);
+            }
+            return next;
+        });
+    }
+
+    function toggleChannelAll(channel: keyof typeof channelSelections) {
+        const current = channelSelections[channel];
+        const shouldSelectAll = current.size !== allNotificationTypes.length;
+        channelSetters[channel](
+            shouldSelectAll ? new Set(allNotificationTypes) : new Set()
+        );
+    }
 
     useEffect(() => {
         const supported =
@@ -227,17 +316,46 @@ export default function SettingsNotificationsClient({
                             Choose how VAIVIA contacts you for each notification.
                         </p>
                     </div>
-                    <div className="hidden grid-cols-3 gap-2 text-center text-xs font-black uppercase tracking-[0.12em] text-lime-200 md:grid md:w-72">
-                        <span>In-app</span>
-                        <span>Push</span>
-                        <span>Email</span>
+                    <div className="grid w-full grid-cols-3 gap-2 text-center text-xs font-black uppercase tracking-[0.12em] text-lime-200 md:w-72">
+                        {channelControls.map((channel) => {
+                            const Icon = channel.icon;
+                            const isAllSelected =
+                                channelSelections[channel.key].size ===
+                                allNotificationTypes.length;
+
+                            return (
+                                <button
+                                    key={channel.key}
+                                    type="button"
+                                    onClick={() => toggleChannelAll(channel.key)}
+                                    className={`flex min-h-11 flex-col items-center justify-center gap-1 rounded-2xl border px-2 py-2 transition ${
+                                        isAllSelected
+                                            ? "border-lime-300/45 bg-lime-300 text-slate-950"
+                                            : "border-white/10 bg-white/[0.04] text-lime-100 hover:border-lime-300/30 hover:bg-white/[0.08]"
+                                    }`}
+                                    aria-pressed={isAllSelected}
+                                    aria-label={`${
+                                        isAllSelected ? "Clear all" : "Select all"
+                                    } ${channel.label} notifications`}
+                                >
+                                    <span className="flex items-center gap-1">
+                                        <Icon
+                                            className="h-3.5 w-3.5"
+                                            aria-hidden="true"
+                                        />
+                                        {channel.label}
+                                    </span>
+                                    <span className="text-[9px] font-black uppercase tracking-[0.1em]">
+                                        {isAllSelected ? "Clear all" : "Select all"}
+                                    </span>
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
                 <div className="mt-5 space-y-3">
                     {NOTIFICATION_TYPE_OPTIONS.map((option) => {
-                        const preference = preferencesByType.get(option.type);
-
                         return (
                             <div
                                 key={option.type}
@@ -257,8 +375,15 @@ export default function SettingsNotificationsClient({
                                             type="checkbox"
                                             name="in_app"
                                             value={option.type}
-                                            defaultChecked={
-                                                preference?.inAppEnabled ?? true
+                                            checked={selectedInAppTypes.has(
+                                                option.type
+                                            )}
+                                            onChange={(event) =>
+                                                setChannelValue(
+                                                    "in_app",
+                                                    option.type,
+                                                    event.target.checked
+                                                )
                                             }
                                             className="h-4 w-4 accent-lime-300"
                                         />
@@ -270,8 +395,15 @@ export default function SettingsNotificationsClient({
                                             type="checkbox"
                                             name="push"
                                             value={option.type}
-                                            defaultChecked={
-                                                preference?.pushEnabled ?? false
+                                            checked={selectedPushTypes.has(
+                                                option.type
+                                            )}
+                                            onChange={(event) =>
+                                                setChannelValue(
+                                                    "push",
+                                                    option.type,
+                                                    event.target.checked
+                                                )
                                             }
                                             className="h-4 w-4 accent-lime-300"
                                         />
@@ -283,8 +415,15 @@ export default function SettingsNotificationsClient({
                                             type="checkbox"
                                             name="email"
                                             value={option.type}
-                                            defaultChecked={
-                                                preference?.emailEnabled ?? true
+                                            checked={selectedEmailTypes.has(
+                                                option.type
+                                            )}
+                                            onChange={(event) =>
+                                                setChannelValue(
+                                                    "email",
+                                                    option.type,
+                                                    event.target.checked
+                                                )
                                             }
                                             className="h-4 w-4 accent-lime-300"
                                         />

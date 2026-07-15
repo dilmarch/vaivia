@@ -11,11 +11,13 @@ import {
     Pencil,
     Plane,
     Share2,
+    Stamp,
     Trash2,
     X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
+import PassportStampCard from "@/components/PassportStamp";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
 import { useTripCoverImage } from "@/components/TripCoverImage";
@@ -72,8 +74,21 @@ export type DashboardTrip = {
     };
 };
 
+export type DashboardPassportStamp = {
+    id: string;
+    countryCode: string;
+    countryName: string;
+    flagEmoji?: string | null;
+    firstVisitYear?: string | null;
+    welcomeLabel?: string | null;
+    airportCode?: string | null;
+    airportCity?: string | null;
+    portOfEntryName?: string | null;
+};
+
 type TripDashboardClientProps = {
     trips: DashboardTrip[];
+    passportStamps: DashboardPassportStamp[];
     currentUserId?: string | null;
     updateTripAction: (formData: FormData) => Promise<void>;
     deleteTripAction: (formData: FormData) => Promise<void>;
@@ -1155,8 +1170,86 @@ function DashboardTaskList({ trips }: { trips: DashboardTrip[] }) {
     );
 }
 
+function DashboardPassportStampsWidget({
+    passportStamps,
+}: {
+    passportStamps: DashboardPassportStamp[];
+}) {
+    const recentStamps = passportStamps.slice(0, 2);
+
+    return (
+        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
+                        Passport stamps
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black text-white">
+                        Places visited
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-400">
+                        Add all the places you have visited and keep them close.
+                    </p>
+                </div>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                    <Stamp className="h-5 w-5" aria-hidden="true" />
+                </span>
+            </div>
+
+            {recentStamps.length > 0 ? (
+                <>
+                    <div className="mt-5 grid grid-cols-2 justify-items-center gap-3">
+                        {recentStamps.map((stamp) => (
+                            <PassportStampCard
+                                key={stamp.id}
+                                countryName={stamp.countryName}
+                                countryCode={stamp.countryCode}
+                                flagEmoji={stamp.flagEmoji}
+                                firstVisitYear={stamp.firstVisitYear}
+                                welcomeLabel={stamp.welcomeLabel}
+                                airportCode={stamp.airportCode}
+                                airportCity={stamp.airportCity}
+                                portOfEntryLabel={stamp.portOfEntryName}
+                                size="sm"
+                            />
+                        ))}
+                    </div>
+                    <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                        <p className="text-xs font-semibold text-slate-400">
+                            Showing your latest {recentStamps.length}.
+                        </p>
+                        <Link
+                            href="/profile#passport-stamps"
+                            className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
+                        >
+                            See all passports
+                        </Link>
+                    </div>
+                </>
+            ) : (
+                <div className="mt-5 rounded-[1.5rem] border border-lime-300/20 bg-lime-300/[0.08] p-4">
+                    <p className="text-sm font-black text-lime-100">
+                        Your passport wall is waiting.
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-slate-300">
+                        Start with one country, city, or port of entry and VAIVIA
+                        will keep your stamps together on your profile.
+                    </p>
+                    <Link
+                        href="/profile#passport-stamps"
+                        className="mt-4 inline-flex rounded-full bg-lime-300 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
+                    >
+                        Add passport stamps
+                    </Link>
+                </div>
+            )}
+        </section>
+    );
+}
+
 export default function TripDashboardClient({
     trips,
+    passportStamps,
     currentUserId,
     updateTripAction,
     deleteTripAction,
@@ -1204,9 +1297,10 @@ export default function TripDashboardClient({
                     onEditTrip={openEditModal}
                     onShareTrip={setShareTrip}
                 />
-                <div className="grid gap-6 lg:grid-cols-2">
+                <div className="grid gap-6 lg:grid-cols-3">
                     <DashboardMonthCalendar trips={trips} />
                     <DashboardTaskList trips={trips} />
+                    <DashboardPassportStampsWidget passportStamps={passportStamps} />
                 </div>
             </div>
 
