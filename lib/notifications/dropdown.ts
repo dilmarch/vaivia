@@ -9,6 +9,13 @@ const ACTION_REQUIRED_NOTIFICATION_TYPES = new Set([
     "trip_invite_received",
     "friend_request_received",
     "passport_stamp_share_received",
+    "profile_onboarding_prompt",
+    "theme_exploration_prompt",
+]);
+
+const ACTION_REQUIRED_UNTIL_READ_TYPES = new Set([
+    "profile_onboarding_prompt",
+    "theme_exploration_prompt",
 ]);
 
 type NotificationRow = Pick<
@@ -59,6 +66,13 @@ export function isBaseActiveDropdownNotification(
     >
 ) {
     if (notification.archived_at) return false;
+    if (
+        notification.type &&
+        ACTION_REQUIRED_UNTIL_READ_TYPES.has(notification.type)
+    ) {
+        return !notification.read_at;
+    }
+
     if (isActionRequiredNotification(notification)) return true;
 
     return !notification.read_at;
@@ -189,7 +203,7 @@ export async function loadActiveDropdownNotifications(
             .eq("user_id", userId)
             .is("archived_at", null)
             .or(
-                "read_at.is.null,type.in.(trip_invite_received,friend_request_received,passport_stamp_share_received)"
+                "read_at.is.null,type.in.(trip_invite_received,friend_request_received,passport_stamp_share_received,profile_onboarding_prompt,theme_exploration_prompt)"
             )
             .order("created_at", { ascending: false }),
         supabase

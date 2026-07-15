@@ -364,6 +364,7 @@ function getCountryName(countryCode: string) {
 }
 
 const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
+    AT: "WILLKOMMEN",
     BE: "WELKOM",
     BG: "ДОБРЕ ДОШЛИ",
     BR: "BEM-VINDO",
@@ -371,6 +372,7 @@ const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
     CN: "欢迎",
     CU: "BIENVENIDO",
     DE: "WILLKOMMEN",
+    DO: "BIENVENIDO",
     ES: "BIENVENIDO",
     FR: "BIENVENUE",
     GB: "WELCOME",
@@ -380,10 +382,14 @@ const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
     HR: "DOBRODOŠLI",
     HU: "ÜDVÖZÖLJÜK",
     ID: "SELAMAT DATANG",
+    IE: "FÁILTE",
+    IL: "ברוכים הבאים",
     IT: "BENVENUTO",
     JP: "ようこそ",
     KR: "환영합니다",
+    MN: "ТАВТАЙ МОРИЛНО УУ",
     MX: "BIENVENIDO",
+    MY: "SELAMAT DATANG",
     NL: "WELKOM",
     PE: "BIENVENIDO",
     PT: "BEM-VINDO",
@@ -424,6 +430,10 @@ const FALLBACK_MULTILINGUAL_STAMP_LANGUAGES: Record<
     IN: [
         { code: "hin", name: "Hindi", welcomeLabel: "स्वागत है" },
         { code: "eng", name: "English", welcomeLabel: "WELCOME" },
+    ],
+    IL: [
+        { code: "heb", name: "Hebrew", welcomeLabel: "ברוכים הבאים" },
+        { code: "ara", name: "Arabic", welcomeLabel: "أهلاً وسهلاً" },
     ],
     LU: [
         { code: "ltz", name: "Luxembourgish", welcomeLabel: "WËLLKOMM" },

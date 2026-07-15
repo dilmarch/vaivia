@@ -218,12 +218,8 @@ function travelInputProps() {
     };
 }
 
-function getEditButtonPosition(index: number) {
-    return index % 3 === 1 ? "bottom-9 left-14" : "bottom-10 right-16";
-}
-
-function getInfoButtonPosition(index: number) {
-    return index % 3 === 1 ? "bottom-9 left-[6.8rem]" : "bottom-10 right-5";
+function getTripActionClusterPosition(index: number) {
+    return index % 3 === 1 ? "bottom-9 left-14" : "bottom-10 right-5";
 }
 
 function getMemberDisplayName(
@@ -504,16 +500,12 @@ export function DashboardTripCard({
     isGoogleReady,
     currentUserId,
     disableHoverTransform = false,
-    isSummaryOpen = false,
-    onSummaryClose,
 }: {
     trip: DashboardTrip;
     index: number;
     isGoogleReady: boolean;
     currentUserId?: string | null;
     disableHoverTransform?: boolean;
-    isSummaryOpen?: boolean;
-    onSummaryClose?: () => void;
 }) {
     const coverImageUrl = useTripCoverImage(trip, isGoogleReady);
     const [hasImageLoadError, setHasImageLoadError] = useState(false);
@@ -528,8 +520,6 @@ export function DashboardTripCard({
     );
     const accent = fallbackAccentColors[index % fallbackAccentColors.length];
     const variant = tripCardVariants[index % tripCardVariants.length];
-    const transportationSummary = getTripTransportationSummary(trip);
-    const accommodationSummary = getTripAccommodationSummary(trip);
     const maskStyle = {
         WebkitMaskImage: `url(${variant.mask})`,
         maskImage: `url(${variant.mask})`,
@@ -573,192 +563,186 @@ export function DashboardTripCard({
             } ${variant.transform}`}
             style={{
                 filter: `drop-shadow(0 28px 70px ${accent}24)`,
-                perspective: "1200px",
             }}
         >
-            <div
-                className="absolute inset-0 transition-transform duration-700 [transform-style:preserve-3d]"
-                style={{
-                    transform: isSummaryOpen ? "rotateY(180deg)" : "rotateY(0deg)",
-                }}
+            <Link
+                href={getTripHref(trip)}
+                className="absolute inset-0 block"
+                aria-label={`Open ${trip.title || "trip"}`}
             >
-                <Link
-                    href={getTripHref(trip)}
-                    className="absolute inset-0 block [backface-visibility:hidden]"
-                    aria-label={`Open ${trip.title || "trip"}`}
-                >
-                    <div
-                        className="vaivia-trip-card-accent pointer-events-none absolute inset-0 opacity-90"
-                        style={{
-                            backgroundColor: accent,
-                            boxShadow: `0 28px 90px ${accent}2E, inset 0 0 0 1.4px ${accent}88`,
-                            ...maskStyle,
-                        }}
-                    />
-
-                    <div className="absolute inset-px overflow-hidden" style={maskStyle}>
-                        {coverImageUrl && !hasImageLoadError ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                                src={coverImageUrl}
-                                alt=""
-                                className="vaivia-trip-card-image absolute inset-0 h-full w-full object-cover brightness-[0.88] contrast-[1.25] saturate-[1.45] transition duration-700 group-hover:scale-110 group-hover:brightness-100 group-hover:saturate-[1.65]"
-                                onError={() => setHasImageLoadError(true)}
-                            />
-                        ) : (
-                            <div
-                                className="vaivia-trip-card-fallback-bg absolute inset-0"
-                                style={{
-                                    background: `radial-gradient(circle at 30% 20%, ${accent}66, transparent 36%), linear-gradient(145deg, #17051f, #05050c 58%, #0c0115)`,
-                                }}
-                            />
-                        )}
-
-                        <div
-                            className="absolute inset-0"
-                            style={{
-                                background:
-                                    "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.16) 35%, rgba(0,0,0,0.88) 100%)",
-                            }}
-                        />
-                        <div
-                            className="vaivia-trip-card-color-wash absolute inset-0 opacity-55"
-                            style={{
-                                background: `radial-gradient(circle at 24% 12%, ${accent}66, transparent 30%), linear-gradient(135deg, ${accent}2F, transparent 52%)`,
-                                mixBlendMode: "overlay",
-                            }}
-                        />
-                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_42%,rgba(0,0,0,0.55)_100%)]" />
-                    </div>
-
-                    <div
-                        className={`absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
-                        style={{ backgroundColor: accent }}
-                    >
-                        <span className="text-xl font-black leading-none">
-                            {days || "-"}
-                        </span>
-                        <span className="mt-1 flex flex-col items-center text-[9px] font-black uppercase leading-[0.92] tracking-[0.08em] sm:mt-0.5 sm:text-[8px]">
-                            <span>Day</span>
-                            <span>Duration</span>
-                        </span>
-                    </div>
-
-                    <TripMemberAvatarStack members={otherMemberProfiles} />
-
-                    <div
-                        className={`vaivia-trip-card-copy absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
-                    >
-                        <h3
-                            className="vaivia-trip-card-title max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
-                            style={{
-                                color: accent,
-                                fontSize:
-                                    getPrimaryDestinationFontSize(primaryDestination),
-                                letterSpacing:
-                                    getPrimaryDestinationLetterSpacing(
-                                        primaryDestination
-                                    ),
-                            }}
-                        >
-                            {primaryDestination}
-                        </h3>
-
-                        {secondLineDestinations.length > 0 ? (
-                            <p
-                                className="vaivia-trip-card-title mt-2 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
-                                style={{ color: accent }}
-                            >
-                                {formatDestinationPair(secondLineDestinations)}
-                            </p>
-                        ) : null}
-
-                        {thirdLineDestinations.length > 0 ? (
-                            <p
-                                className="vaivia-trip-card-title mt-1 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
-                                style={{ color: accent }}
-                            >
-                                {formatDestinationPair(thirdLineDestinations)}
-                            </p>
-                        ) : null}
-
-                        <p
-                            className={`vaivia-trip-card-date mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}
-                        >
-                            {formatTripDateRange(trip.start_date, trip.end_date)}
-                        </p>
-                    </div>
-                </Link>
-
-                <button
-                    type="button"
-                    onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onSummaryClose?.();
+                <div
+                    className="vaivia-trip-card-accent pointer-events-none absolute inset-0 opacity-90"
+                    style={{
+                        backgroundColor: accent,
+                        boxShadow: `0 28px 90px ${accent}2E, inset 0 0 0 1.4px ${accent}88`,
+                        ...maskStyle,
                     }}
-                    className="absolute inset-0 block overflow-hidden text-left [backface-visibility:hidden] [transform:rotateY(180deg)] focus:outline-none focus:ring-2 focus:ring-lime-300/60"
-                    style={maskStyle}
-                    aria-label={`Hide ${trip.title || "trip"} summary`}
-                >
+                />
+
+                <div className="absolute inset-px overflow-hidden" style={maskStyle}>
+                    {coverImageUrl && !hasImageLoadError ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={coverImageUrl}
+                            alt=""
+                            className="vaivia-trip-card-image absolute inset-0 h-full w-full object-cover brightness-[0.88] contrast-[1.25] saturate-[1.45] transition duration-700 group-hover:scale-110 group-hover:brightness-100 group-hover:saturate-[1.65]"
+                            onError={() => setHasImageLoadError(true)}
+                        />
+                    ) : (
+                        <div
+                            className="vaivia-trip-card-fallback-bg absolute inset-0"
+                            style={{
+                                background: `radial-gradient(circle at 30% 20%, ${accent}66, transparent 36%), linear-gradient(145deg, #17051f, #05050c 58%, #0c0115)`,
+                            }}
+                        />
+                    )}
+
                     <div
                         className="absolute inset-0"
                         style={{
-                            background: `radial-gradient(circle at 16% 0%, ${accent}55, transparent 32%), linear-gradient(145deg, #050712 0%, #0c0115 58%, #02030a 100%)`,
+                            background:
+                                "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.16) 35%, rgba(0,0,0,0.88) 100%)",
                         }}
                     />
-                    <div className="absolute inset-0 border border-white/10 bg-white/[0.03]" />
-                    <div className="relative z-10 flex h-full flex-col justify-between p-9 text-white">
-                        <div className="space-y-5">
-                            <div>
-                                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-lime-200">
-                                    Quick info
-                                </p>
-                                <h3 className="mt-2 text-3xl font-black leading-none tracking-tight">
-                                    {trip.title || primaryDestination}
-                                </h3>
-                                <p className="mt-2 text-sm font-bold text-slate-300">
-                                    {formatTripDateRange(
-                                        trip.start_date,
-                                        trip.end_date
-                                    )}
-                                </p>
-                            </div>
+                    <div
+                        className="vaivia-trip-card-color-wash absolute inset-0 opacity-55"
+                        style={{
+                            background: `radial-gradient(circle at 24% 12%, ${accent}66, transparent 30%), linear-gradient(135deg, ${accent}2F, transparent 52%)`,
+                            mixBlendMode: "overlay",
+                        }}
+                    />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_42%,rgba(0,0,0,0.55)_100%)]" />
+                </div>
 
-                            <div className="grid gap-3">
-                                <TripSummaryRow
-                                    icon={
-                                        <Plane
-                                            className="h-4 w-4"
-                                            aria-hidden="true"
-                                        />
-                                    }
-                                    label="Transport"
-                                    value={transportationSummary}
-                                />
-                                <TripSummaryRow
-                                    icon={
-                                        <Hotel
-                                            className="h-4 w-4"
-                                            aria-hidden="true"
-                                        />
-                                    }
-                                    label="Hotels"
-                                    value={accommodationSummary}
-                                />
-                            </div>
-                        </div>
+                <div
+                    className={`absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
+                    style={{ backgroundColor: accent }}
+                >
+                    <span className="text-xl font-black leading-none">
+                        {days || "-"}
+                    </span>
+                    <span className="mt-1 flex flex-col items-center text-[9px] font-black uppercase leading-[0.92] tracking-[0.08em] sm:mt-0.5 sm:text-[8px]">
+                        <span>Day</span>
+                        <span>Duration</span>
+                    </span>
+                </div>
 
+                <TripMemberAvatarStack members={otherMemberProfiles} />
+
+                <div
+                    className={`vaivia-trip-card-copy absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
+                >
+                    <h3
+                        className="vaivia-trip-card-title max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
+                        style={{
+                            color: accent,
+                            fontSize:
+                                getPrimaryDestinationFontSize(primaryDestination),
+                            letterSpacing:
+                                getPrimaryDestinationLetterSpacing(
+                                    primaryDestination
+                                ),
+                        }}
+                    >
+                        {primaryDestination}
+                    </h3>
+
+                    {secondLineDestinations.length > 0 ? (
                         <p
-                            className="rounded-2xl border border-lime-300/20 bg-lime-300/10 px-4 py-3 text-xs font-bold leading-5 text-lime-50"
-                            style={{ boxShadow: `0 0 28px ${accent}20` }}
+                            className="vaivia-trip-card-title mt-2 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
+                            style={{ color: accent }}
                         >
-                            Click anywhere on this side to return to the cover.
+                            {formatDestinationPair(secondLineDestinations)}
+                        </p>
+                    ) : null}
+
+                    {thirdLineDestinations.length > 0 ? (
+                        <p
+                            className="vaivia-trip-card-title mt-1 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
+                            style={{ color: accent }}
+                        >
+                            {formatDestinationPair(thirdLineDestinations)}
+                        </p>
+                    ) : null}
+
+                    <p
+                        className={`vaivia-trip-card-date mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}
+                    >
+                        {formatTripDateRange(trip.start_date, trip.end_date)}
+                    </p>
+                </div>
+            </Link>
+        </article>
+    );
+}
+
+export function TripQuickInfoPanel({
+    trip,
+    onClose,
+}: {
+    trip: DashboardTrip;
+    onClose: () => void;
+}) {
+    const destinations = getTripDestinationNames(trip);
+    const primaryDestination = destinations[0] ?? getPrimaryDestination(trip);
+    const transportationSummary = getTripTransportationSummary(trip);
+    const accommodationSummary = getTripAccommodationSummary(trip);
+
+    return (
+        <div className="mt-4 w-[300px] overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85 text-white shadow-2xl shadow-black/40 backdrop-blur-xl md:w-[330px] lg:w-[355px]">
+            <div className="space-y-4 p-4">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.22em] text-lime-200">
+                            Quick info
+                        </p>
+                        <h3 className="mt-1 line-clamp-2 text-lg font-black leading-tight">
+                            {trip.title || primaryDestination}
+                        </h3>
+                        <p className="mt-1 text-xs font-bold text-slate-300">
+                            {formatTripDateRange(trip.start_date, trip.end_date)}
                         </p>
                     </div>
-                </button>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200 transition hover:bg-white/[0.12] hover:text-white"
+                        aria-label={`Close quick info for ${trip.title || "trip"}`}
+                    >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                </div>
+
+                <div className="grid gap-3">
+                    <TripSummaryRow
+                        icon={<Plane className="h-4 w-4" aria-hidden="true" />}
+                        label="Transport"
+                        value={transportationSummary}
+                    />
+                    <TripSummaryRow
+                        icon={<Hotel className="h-4 w-4" aria-hidden="true" />}
+                        label="Hotels"
+                        value={accommodationSummary}
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-full border border-white/10 px-3 py-2 text-xs font-black text-slate-200 transition hover:bg-white/[0.08] hover:text-white"
+                    >
+                        Close
+                    </button>
+                    <Link
+                        href={getTripHref(trip)}
+                        className="rounded-full bg-lime-300 px-3 py-2 text-center text-xs font-black text-slate-950 transition hover:bg-lime-200"
+                    >
+                        Visit trip
+                    </Link>
+                </div>
             </div>
-        </article>
+        </div>
     );
 }
 
@@ -931,56 +915,58 @@ function TripsGrid({
                                 isGoogleReady={isGoogleReady}
                                 currentUserId={currentUserId}
                                 disableHoverTransform
-                                isSummaryOpen={summaryTripId === trip.id}
-                                onSummaryClose={() => setSummaryTripId(null)}
                             />
-                            <button
-                                type="button"
-                                onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    onEditTrip(trip);
-                                }}
-                                className={`absolute z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950 ${getEditButtonPosition(
+                            <div
+                                className={`absolute z-30 flex items-center gap-2 ${getTripActionClusterPosition(
                                     index
                                 )}`}
-                                aria-label={`Edit ${trip.title || "trip"}`}
                             >
-                                <Pencil className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    setSummaryTripId((current) =>
-                                        current === trip.id ? null : trip.id
-                                    );
-                                }}
-                                className={`absolute z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950 ${getInfoButtonPosition(
-                                    index
-                                )}`}
-                                aria-label={`Show quick info for ${trip.title || "trip"}`}
-                                aria-pressed={summaryTripId === trip.id}
-                            >
-                                <Info className="h-4 w-4" aria-hidden="true" />
-                            </button>
-                            <button
-                                type="button"
-                                onClick={(event) => {
-                                    event.preventDefault();
-                                    event.stopPropagation();
-                                    onShareTrip(trip);
-                                }}
-                                className={`absolute z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/55 text-slate-100 shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15 ${
-                                    index % 3 === 1
-                                        ? "bottom-9 left-[10rem]"
-                                        : "bottom-10 right-[7.3rem]"
-                                }`}
-                                aria-label={`Share ${trip.title || "trip"}`}
-                            >
-                                <Share2 className="h-4 w-4" aria-hidden="true" />
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onEditTrip(trip);
+                                    }}
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                                    aria-label={`Edit ${trip.title || "trip"}`}
+                                >
+                                    <Pencil className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        setSummaryTripId((current) =>
+                                            current === trip.id ? null : trip.id
+                                        );
+                                    }}
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                                    aria-label={`Show quick info for ${trip.title || "trip"}`}
+                                    aria-pressed={summaryTripId === trip.id}
+                                >
+                                    <Info className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onShareTrip(trip);
+                                    }}
+                                    className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                                    aria-label={`Share ${trip.title || "trip"}`}
+                                >
+                                    <Share2 className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                            {summaryTripId === trip.id ? (
+                                <TripQuickInfoPanel
+                                    trip={trip}
+                                    onClose={() => setSummaryTripId(null)}
+                                />
+                            ) : null}
                         </div>
                     ))}
                 </div>

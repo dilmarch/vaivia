@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 import {
     useId,
     useLayoutEffect,
@@ -70,7 +70,7 @@ const yearPositionClasses = {
 
 const STAMP_CENTER = 80;
 const ARC_RADIUS = 72.5;
-const ARC_SAFETY_PADDING = 22;
+const ARC_SAFETY_PADDING = 32;
 const TOP_ARC_PATH = getArcPath(218, 322, 1, 69.25);
 const BOTTOM_ARC_PATH = getArcPath(142, 38, 0);
 
@@ -90,11 +90,12 @@ const DEFAULT_ENTRY_FIT: ArcTextFit = {
     letterSpacing: "0.14em",
 };
 
-const MIN_COUNTRY_ARC_FONT_SIZE = 4.25;
-const MIN_ENTRY_ARC_FONT_SIZE = 4;
+const MIN_COUNTRY_ARC_FONT_SIZE = 3.25;
+const MIN_ENTRY_ARC_FONT_SIZE = 3.1;
 const MIN_ARC_LETTER_SPACING = 0;
 
 const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
+    AT: "WILLKOMMEN",
     BE: "WELKOM",
     BG: "ДОБРЕ ДОШЛИ",
     BR: "BEM-VINDO",
@@ -102,6 +103,7 @@ const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
     CN: "欢迎",
     CU: "BIENVENIDO",
     DE: "WILLKOMMEN",
+    DO: "BIENVENIDO",
     ES: "BIENVENIDO",
     FR: "BIENVENUE",
     GB: "WELCOME",
@@ -111,10 +113,14 @@ const WELCOME_LABEL_BY_COUNTRY_CODE: Record<string, string> = {
     HR: "DOBRODOŠLI",
     HU: "ÜDVÖZÖLJÜK",
     ID: "SELAMAT DATANG",
+    IE: "FÁILTE",
+    IL: "ברוכים הבאים",
     IT: "BENVENUTO",
     JP: "ようこそ",
     KR: "환영합니다",
+    MN: "ТАВТАЙ МОРИЛНО УУ",
     MX: "BIENVENIDO",
+    MY: "SELAMAT DATANG",
     NL: "WELKOM",
     PE: "BIENVENIDO",
     PT: "BEM-VINDO",
@@ -203,9 +209,20 @@ function getFallbackArcFit(
     baseLetterSpacing: number
 ): ArcTextFit {
     const characterCount = Math.max(Array.from(label).length, 1);
+    const longestWordLength = Math.max(
+        ...label
+            .split(/\s+/)
+            .map((word) => Array.from(word).length)
+            .filter(Boolean),
+        1
+    );
     const estimatedFontSize = Math.max(
         minFontSize,
-        Math.min(maxFontSize, 98 / (characterCount * 0.82))
+        Math.min(
+            maxFontSize,
+            88 / (characterCount * 0.92),
+            42 / (longestWordLength * 0.82)
+        )
     );
     const estimatedLetterSpacing = Math.max(
         MIN_ARC_LETTER_SPACING,
@@ -248,7 +265,21 @@ function fitSvgTextToPath({
             pathElement.getTotalLength() - ARC_SAFETY_PADDING
         );
         const characterCount = Math.max(Array.from(label).length, 1);
-        let fontSize = maxFontSize;
+        const longestWordLength = Math.max(
+            ...label
+                .split(/\s+/)
+                .map((word) => Array.from(word).length)
+                .filter(Boolean),
+            1
+        );
+        let fontSize = Math.max(
+            minFontSize,
+            Math.min(
+                maxFontSize,
+                usableLength / (characterCount * 0.76),
+                usableLength / (longestWordLength * 1.3)
+            )
+        );
         let letterSpacing = Math.max(
             MIN_ARC_LETTER_SPACING,
             baseLetterSpacing - Math.max(0, characterCount - 12) * 0.006
@@ -355,45 +386,70 @@ export default function PassportStamp({
         airportCity,
         portOfEntryLabel
     );
-    const countryArcTextStyle = useMemo(
+    const countryArcTextStyle = useMemo<CSSProperties>(
         () => ({
             fontSize: `${countryArcFit.fontSize}px`,
             letterSpacing: countryArcFit.letterSpacing,
+            textRendering: "geometricPrecision",
         }),
         [countryArcFit.fontSize, countryArcFit.letterSpacing]
     );
-    const entryArcTextStyle = useMemo(
+    const entryArcTextStyle = useMemo<CSSProperties>(
         () => ({
             fontSize: `${entryArcFit.fontSize}px`,
             letterSpacing: entryArcFit.letterSpacing,
+            textRendering: "geometricPrecision",
         }),
         [entryArcFit.fontSize, entryArcFit.letterSpacing]
     );
 
     useLayoutEffect(() => {
-        const nextCountryFit = fitSvgTextToPath({
-            textElement: countryTextRef.current,
-            pathElement: topPathRef.current,
-            label: countryName,
-            maxFontSize: 10,
-            minFontSize: MIN_COUNTRY_ARC_FONT_SIZE,
-            baseLetterSpacing: 0.16,
-        });
-        const nextEntryFit = fitSvgTextToPath({
-            textElement: entryTextRef.current,
-            pathElement: bottomPathRef.current,
-            label: entryLabel,
-            maxFontSize: 8.5,
-            minFontSize: MIN_ENTRY_ARC_FONT_SIZE,
-            baseLetterSpacing: 0.14,
+        let isActive = true;
+        let frameId: number | null = null;
+        let secondFrameId: number | null = null;
+
+        const measureArcText = () => {
+            if (!isActive) return;
+
+            const nextCountryFit = fitSvgTextToPath({
+                textElement: countryTextRef.current,
+                pathElement: topPathRef.current,
+                label: countryName,
+                maxFontSize: 10,
+                minFontSize: MIN_COUNTRY_ARC_FONT_SIZE,
+                baseLetterSpacing: 0.16,
+            });
+            const nextEntryFit = fitSvgTextToPath({
+                textElement: entryTextRef.current,
+                pathElement: bottomPathRef.current,
+                label: entryLabel,
+                maxFontSize: 8.5,
+                minFontSize: MIN_ENTRY_ARC_FONT_SIZE,
+                baseLetterSpacing: 0.14,
+            });
+
+            setCountryArcFit((current) =>
+                areArcFitsEqual(current, nextCountryFit) ? current : nextCountryFit
+            );
+            setEntryArcFit((current) =>
+                areArcFitsEqual(current, nextEntryFit) ? current : nextEntryFit
+            );
+        };
+
+        measureArcText();
+        frameId = window.requestAnimationFrame(() => {
+            secondFrameId = window.requestAnimationFrame(measureArcText);
         });
 
-        setCountryArcFit((current) =>
-            areArcFitsEqual(current, nextCountryFit) ? current : nextCountryFit
-        );
-        setEntryArcFit((current) =>
-            areArcFitsEqual(current, nextEntryFit) ? current : nextEntryFit
-        );
+        document.fonts?.ready.then(measureArcText).catch(() => undefined);
+
+        return () => {
+            isActive = false;
+            if (frameId !== null) window.cancelAnimationFrame(frameId);
+            if (secondFrameId !== null) {
+                window.cancelAnimationFrame(secondFrameId);
+            }
+        };
     }, [countryName, entryLabel]);
 
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -442,7 +498,7 @@ export default function PassportStamp({
                     className="fill-current font-black uppercase"
                     style={countryArcTextStyle}
                     textLength={countryArcFit.textLength}
-                    lengthAdjust={countryArcFit.textLength ? "spacing" : undefined}
+                    lengthAdjust={countryArcFit.textLength ? "spacingAndGlyphs" : undefined}
                 >
                     <textPath href={`#${topPathId}`} startOffset="50%" textAnchor="middle">
                         {countryName}
@@ -453,7 +509,7 @@ export default function PassportStamp({
                     className="fill-current font-black uppercase opacity-90"
                     style={entryArcTextStyle}
                     textLength={entryArcFit.textLength}
-                    lengthAdjust={entryArcFit.textLength ? "spacing" : undefined}
+                    lengthAdjust={entryArcFit.textLength ? "spacingAndGlyphs" : undefined}
                 >
                     <textPath href={`#${bottomPathId}`} startOffset="50%" textAnchor="middle">
                         {entryLabel}

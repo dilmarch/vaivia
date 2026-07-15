@@ -122,7 +122,8 @@ function isProminentActionNotification(notification: AppNotification) {
     return (
         notification.type === "trip_invite_received" ||
         notification.type === "friend_request_received" ||
-        notification.type === "passport_stamp_share_received"
+        notification.type === "passport_stamp_share_received" ||
+        notification.type === "profile_onboarding_prompt"
     );
 }
 
@@ -135,6 +136,8 @@ function getProminentActionCopy(notification: AppNotification) {
                 notification.body ||
                 "Someone invited you to join a trip on VAIVIA.",
             acceptLabel: "Review invite",
+            remindLabel: "Remind me later",
+            showDecline: true,
         };
     }
 
@@ -146,6 +149,34 @@ function getProminentActionCopy(notification: AppNotification) {
                 notification.body ||
                 "Someone added you as a friend on VAIVIA.",
             acceptLabel: "Review request",
+            remindLabel: "Remind me later",
+            showDecline: true,
+        };
+    }
+
+    if (notification.type === "profile_onboarding_prompt") {
+        return {
+            eyebrow: "Profile",
+            title: notification.title || "Make your profile feel travelled-in",
+            body:
+                notification.body ||
+                "Update your profile, collect digital passport stamps, scratch countries off your map, and create a wishlist of places you want to go.",
+            acceptLabel: "Take me to profile",
+            remindLabel: "Maybe later",
+            showDecline: false,
+        };
+    }
+
+    if (notification.type === "theme_exploration_prompt") {
+        return {
+            eyebrow: "Themes",
+            title: notification.title || "Explore VAIVIA themes",
+            body:
+                notification.body ||
+                "Try the different VAIVIA themes and choose the travel mood that feels most like you.",
+            acceptLabel: "Review themes",
+            remindLabel: "Maybe later",
+            showDecline: false,
         };
     }
 
@@ -161,7 +192,21 @@ function getProminentActionCopy(notification: AppNotification) {
             : "A friend sent you a passport stamp",
         body: notification.body || "A friend sent you a passport stamp to review.",
         acceptLabel: "Review stamp",
+        remindLabel: "Remind me later",
+        showDecline: true,
     };
+}
+
+function getNotificationActionHref(notification: AppNotification) {
+    if (notification.type === "profile_onboarding_prompt") {
+        return "/profile#passport-stamps";
+    }
+
+    if (notification.type === "theme_exploration_prompt") {
+        return "/settings";
+    }
+
+    return "";
 }
 
 function getYearFromDate(value?: string | null) {
@@ -184,8 +229,8 @@ function getProminentActionInitial(notification: AppNotification) {
 }
 
 const MOBILE_TOUR_STORAGE_KEYS: Record<MobileTourKind, string> = {
-    home: "vaivia:mobile-tour:home:v1",
-    "trip-overview": "vaivia:mobile-tour:trip-overview:v1",
+    home: "vaivia:mobile-tour:home:v3",
+    "trip-overview": "vaivia:mobile-tour:trip-overview:v3",
 };
 
 const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
@@ -458,6 +503,24 @@ export default function AppTopActionBar({
     }, []);
 
     useEffect(() => {
+        function handleNotificationsChanged() {
+            void refreshNotifications();
+        }
+
+        window.addEventListener(
+            "vaivia:notifications-changed",
+            handleNotificationsChanged
+        );
+
+        return () => {
+            window.removeEventListener(
+                "vaivia:notifications-changed",
+                handleNotificationsChanged
+            );
+        };
+    }, []);
+
+    useEffect(() => {
         if (
             !hasSyncedNotifications ||
             prominentActionNotification ||
@@ -698,6 +761,23 @@ export default function AppTopActionBar({
     }
 
     async function handleNotificationClick(notification: AppNotification) {
+        const actionHref = getNotificationActionHref(notification);
+        if (actionHref) {
+            const didMarkRead = await markNotificationRead(notification);
+            if (!didMarkRead) return;
+
+            setVisibleNotifications((current) =>
+                current.filter(
+                    (currentNotification) =>
+                        currentNotification.id !== notification.id
+                )
+            );
+            setOpenMenu(null);
+            router.push(actionHref);
+            router.refresh();
+            return;
+        }
+
         if (notification.type === "trip_invite_received") {
             setActiveInviteNotification(notification);
             return;
@@ -1024,7 +1104,13 @@ export default function AppTopActionBar({
                                     </p>
                                 ) : null}
 
-                                <div className="grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-3">
+                                <div
+                                    className={`grid gap-2 border-t border-white/10 pt-4 ${
+                                        prominentActionCopy.showDecline === false
+                                            ? "sm:grid-cols-2"
+                                            : "sm:grid-cols-3"
+                                    }`}
+                                >
                                     <button
                                         type="button"
                                         onClick={() =>
@@ -1035,22 +1121,25 @@ export default function AppTopActionBar({
                                         disabled={isSubmittingProminentAction}
                                         className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08] disabled:opacity-50"
                                     >
-                                        Remind me later
+                                        {prominentActionCopy.remindLabel ||
+                                            "Remind me later"}
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() =>
-                                            handleProminentDecline(
-                                                prominentActionNotification
-                                            )
-                                        }
-                                        disabled={isSubmittingProminentAction}
-                                        className="rounded-full border border-red-300/30 px-4 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/10 disabled:opacity-50"
-                                    >
-                                        {isSubmittingProminentAction
-                                            ? "Saving..."
-                                            : "Decline"}
-                                    </button>
+                                    {prominentActionCopy.showDecline === false ? null : (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleProminentDecline(
+                                                    prominentActionNotification
+                                                )
+                                            }
+                                            disabled={isSubmittingProminentAction}
+                                            className="rounded-full border border-red-300/30 px-4 py-2.5 text-sm font-black text-red-100 transition hover:bg-red-400/10 disabled:opacity-50"
+                                        >
+                                            {isSubmittingProminentAction
+                                                ? "Saving..."
+                                                : "Decline"}
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         onClick={() =>

@@ -95,6 +95,16 @@ export const NOTIFICATION_TYPE_OPTIONS = [
         label: "Terms acceptance required",
         description: "When a major Terms update requires your acceptance.",
     },
+    {
+        type: "profile_onboarding_prompt",
+        label: "Profile reminders",
+        description: "Tips to complete your travel profile and passport area.",
+    },
+    {
+        type: "theme_exploration_prompt",
+        label: "Theme reminders",
+        description: "Tips to explore VAIVIA's visual themes.",
+    },
 ] as const;
 
 export const NOTIFICATION_TYPES = NOTIFICATION_TYPE_OPTIONS.map(
@@ -113,11 +123,16 @@ export function isKnownNotificationType(value: unknown): value is string {
 export function getDefaultNotificationPreference(
     notificationType: string
 ): NotificationPreference {
+    const notificationCentreOnlyTypes = new Set([
+        "profile_onboarding_prompt",
+        "theme_exploration_prompt",
+    ]);
+
     return {
         notificationType,
         inAppEnabled: true,
         pushEnabled: false,
-        emailEnabled: true,
+        emailEnabled: !notificationCentreOnlyTypes.has(notificationType),
     };
 }
 
