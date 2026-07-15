@@ -8,14 +8,17 @@ import {
     ChevronLeft,
     ChevronRight,
     Hotel,
+    Info,
     Pencil,
     Plane,
     Share2,
     Stamp,
     Trash2,
+    UserRound,
+    Wand2,
     X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import PassportStampCard from "@/components/PassportStamp";
 import ShareTripModal from "@/components/ShareTripModal";
@@ -86,9 +89,29 @@ export type DashboardPassportStamp = {
     portOfEntryName?: string | null;
 };
 
+export type DashboardProfileSummary = {
+    name: string;
+    username?: string | null;
+    email?: string | null;
+    avatarUrl?: string | null;
+};
+
+export type DashboardWishlistItem = {
+    id: string;
+    placeLabel: string;
+    city?: string | null;
+    region?: string | null;
+    countryName?: string | null;
+    flagEmoji?: string | null;
+    status: "in_progress" | "completed";
+    completedAt?: string | null;
+};
+
 type TripDashboardClientProps = {
     trips: DashboardTrip[];
     passportStamps: DashboardPassportStamp[];
+    profile: DashboardProfileSummary;
+    wishlistItems: DashboardWishlistItem[];
     currentUserId?: string | null;
     updateTripAction: (formData: FormData) => Promise<void>;
     deleteTripAction: (formData: FormData) => Promise<void>;
@@ -197,6 +220,10 @@ function travelInputProps() {
 
 function getEditButtonPosition(index: number) {
     return index % 3 === 1 ? "bottom-9 left-14" : "bottom-10 right-16";
+}
+
+function getInfoButtonPosition(index: number) {
+    return index % 3 === 1 ? "bottom-9 left-[6.8rem]" : "bottom-10 right-5";
 }
 
 function getMemberDisplayName(
@@ -477,12 +504,16 @@ export function DashboardTripCard({
     isGoogleReady,
     currentUserId,
     disableHoverTransform = false,
+    isSummaryOpen = false,
+    onSummaryClose,
 }: {
     trip: DashboardTrip;
     index: number;
     isGoogleReady: boolean;
     currentUserId?: string | null;
     disableHoverTransform?: boolean;
+    isSummaryOpen?: boolean;
+    onSummaryClose?: () => void;
 }) {
     const coverImageUrl = useTripCoverImage(trip, isGoogleReady);
     const [hasImageLoadError, setHasImageLoadError] = useState(false);
@@ -497,6 +528,8 @@ export function DashboardTripCard({
     );
     const accent = fallbackAccentColors[index % fallbackAccentColors.length];
     const variant = tripCardVariants[index % tripCardVariants.length];
+    const transportationSummary = getTripTransportationSummary(trip);
+    const accommodationSummary = getTripAccommodationSummary(trip);
     const maskStyle = {
         WebkitMaskImage: `url(${variant.mask})`,
         maskImage: `url(${variant.mask})`,
@@ -533,115 +566,286 @@ export function DashboardTripCard({
     }, [coverImageUrl, hasImageLoadError]);
 
     return (
-        <Link
-            href={getTripHref(trip)}
+        <article
             data-image-tone={imageTone}
             className={`vaivia-trip-card group relative block h-[500px] min-w-[300px] snap-start transition-all duration-500 ease-out md:h-[535px] md:min-w-[330px] lg:h-[560px] lg:min-w-[355px] ${
                 disableHoverTransform ? "" : "hover:-translate-y-3 hover:scale-110"
             } ${variant.transform}`}
             style={{
                 filter: `drop-shadow(0 28px 70px ${accent}24)`,
+                perspective: "1200px",
             }}
         >
             <div
-                className="vaivia-trip-card-accent pointer-events-none absolute inset-0 opacity-90"
+                className="absolute inset-0 transition-transform duration-700 [transform-style:preserve-3d]"
                 style={{
-                    backgroundColor: accent,
-                    boxShadow: `0 28px 90px ${accent}2E, inset 0 0 0 1.4px ${accent}88`,
-                    ...maskStyle,
+                    transform: isSummaryOpen ? "rotateY(180deg)" : "rotateY(0deg)",
                 }}
-            />
-
-            <div className="absolute inset-px overflow-hidden" style={maskStyle}>
-                {coverImageUrl && !hasImageLoadError ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                        src={coverImageUrl}
-                        alt=""
-                        className="vaivia-trip-card-image absolute inset-0 h-full w-full object-cover brightness-[0.88] contrast-[1.25] saturate-[1.45] transition duration-700 group-hover:scale-110 group-hover:brightness-100 group-hover:saturate-[1.65]"
-                        onError={() => setHasImageLoadError(true)}
-                    />
-                ) : (
+            >
+                <Link
+                    href={getTripHref(trip)}
+                    className="absolute inset-0 block [backface-visibility:hidden]"
+                    aria-label={`Open ${trip.title || "trip"}`}
+                >
                     <div
-                        className="vaivia-trip-card-fallback-bg absolute inset-0"
+                        className="vaivia-trip-card-accent pointer-events-none absolute inset-0 opacity-90"
                         style={{
-                            background: `radial-gradient(circle at 30% 20%, ${accent}66, transparent 36%), linear-gradient(145deg, #17051f, #05050c 58%, #0c0115)`,
+                            backgroundColor: accent,
+                            boxShadow: `0 28px 90px ${accent}2E, inset 0 0 0 1.4px ${accent}88`,
+                            ...maskStyle,
                         }}
                     />
-                )}
 
-                <div
-                    className="absolute inset-0"
-                    style={{
-                        background:
-                            "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.16) 35%, rgba(0,0,0,0.88) 100%)",
+                    <div className="absolute inset-px overflow-hidden" style={maskStyle}>
+                        {coverImageUrl && !hasImageLoadError ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={coverImageUrl}
+                                alt=""
+                                className="vaivia-trip-card-image absolute inset-0 h-full w-full object-cover brightness-[0.88] contrast-[1.25] saturate-[1.45] transition duration-700 group-hover:scale-110 group-hover:brightness-100 group-hover:saturate-[1.65]"
+                                onError={() => setHasImageLoadError(true)}
+                            />
+                        ) : (
+                            <div
+                                className="vaivia-trip-card-fallback-bg absolute inset-0"
+                                style={{
+                                    background: `radial-gradient(circle at 30% 20%, ${accent}66, transparent 36%), linear-gradient(145deg, #17051f, #05050c 58%, #0c0115)`,
+                                }}
+                            />
+                        )}
+
+                        <div
+                            className="absolute inset-0"
+                            style={{
+                                background:
+                                    "linear-gradient(to bottom, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.16) 35%, rgba(0,0,0,0.88) 100%)",
+                            }}
+                        />
+                        <div
+                            className="vaivia-trip-card-color-wash absolute inset-0 opacity-55"
+                            style={{
+                                background: `radial-gradient(circle at 24% 12%, ${accent}66, transparent 30%), linear-gradient(135deg, ${accent}2F, transparent 52%)`,
+                                mixBlendMode: "overlay",
+                            }}
+                        />
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_42%,rgba(0,0,0,0.55)_100%)]" />
+                    </div>
+
+                    <div
+                        className={`absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
+                        style={{ backgroundColor: accent }}
+                    >
+                        <span className="text-xl font-black leading-none">
+                            {days || "-"}
+                        </span>
+                        <span className="mt-1 flex flex-col items-center text-[9px] font-black uppercase leading-[0.92] tracking-[0.08em] sm:mt-0.5 sm:text-[8px]">
+                            <span>Day</span>
+                            <span>Duration</span>
+                        </span>
+                    </div>
+
+                    <TripMemberAvatarStack members={otherMemberProfiles} />
+
+                    <div
+                        className={`vaivia-trip-card-copy absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
+                    >
+                        <h3
+                            className="vaivia-trip-card-title max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
+                            style={{
+                                color: accent,
+                                fontSize:
+                                    getPrimaryDestinationFontSize(primaryDestination),
+                                letterSpacing:
+                                    getPrimaryDestinationLetterSpacing(
+                                        primaryDestination
+                                    ),
+                            }}
+                        >
+                            {primaryDestination}
+                        </h3>
+
+                        {secondLineDestinations.length > 0 ? (
+                            <p
+                                className="vaivia-trip-card-title mt-2 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
+                                style={{ color: accent }}
+                            >
+                                {formatDestinationPair(secondLineDestinations)}
+                            </p>
+                        ) : null}
+
+                        {thirdLineDestinations.length > 0 ? (
+                            <p
+                                className="vaivia-trip-card-title mt-1 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
+                                style={{ color: accent }}
+                            >
+                                {formatDestinationPair(thirdLineDestinations)}
+                            </p>
+                        ) : null}
+
+                        <p
+                            className={`vaivia-trip-card-date mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}
+                        >
+                            {formatTripDateRange(trip.start_date, trip.end_date)}
+                        </p>
+                    </div>
+                </Link>
+
+                <button
+                    type="button"
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSummaryClose?.();
                     }}
-                />
-                <div
-                    className="vaivia-trip-card-color-wash absolute inset-0 opacity-55"
-                    style={{
-                        background: `radial-gradient(circle at 24% 12%, ${accent}66, transparent 30%), linear-gradient(135deg, ${accent}2F, transparent 52%)`,
-                        mixBlendMode: "overlay",
-                    }}
-                />
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_42%,rgba(0,0,0,0.55)_100%)]" />
-            </div>
-
-            <div
-                className={`absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
-                style={{ backgroundColor: accent }}
-            >
-                <span className="text-xl font-black leading-none">
-                    {days || "-"}
-                </span>
-                <span className="mt-1 flex flex-col items-center text-[9px] font-black uppercase leading-[0.92] tracking-[0.08em] sm:mt-0.5 sm:text-[8px]">
-                    <span>Day</span>
-                    <span>Duration</span>
-                </span>
-            </div>
-
-            <TripMemberAvatarStack members={otherMemberProfiles} />
-
-            <div
-                className={`vaivia-trip-card-copy absolute bottom-24 z-20 py-6 [text-shadow:0_2px_18px_rgba(0,0,0,0.65)] ${variant.contentClass}`}
-            >
-                <h3
-                    className="vaivia-trip-card-title max-w-full overflow-visible font-black uppercase leading-[0.78] tracking-[-0.08em]"
-                    style={{
-                        color: accent,
-                        fontSize: getPrimaryDestinationFontSize(primaryDestination),
-                        letterSpacing:
-                            getPrimaryDestinationLetterSpacing(primaryDestination),
-                    }}
+                    className="absolute inset-0 block overflow-hidden text-left [backface-visibility:hidden] [transform:rotateY(180deg)] focus:outline-none focus:ring-2 focus:ring-lime-300/60"
+                    style={maskStyle}
+                    aria-label={`Hide ${trip.title || "trip"} summary`}
                 >
-                    {primaryDestination}
-                </h3>
+                    <div
+                        className="absolute inset-0"
+                        style={{
+                            background: `radial-gradient(circle at 16% 0%, ${accent}55, transparent 32%), linear-gradient(145deg, #050712 0%, #0c0115 58%, #02030a 100%)`,
+                        }}
+                    />
+                    <div className="absolute inset-0 border border-white/10 bg-white/[0.03]" />
+                    <div className="relative z-10 flex h-full flex-col justify-between p-9 text-white">
+                        <div className="space-y-5">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-lime-200">
+                                    Quick info
+                                </p>
+                                <h3 className="mt-2 text-3xl font-black leading-none tracking-tight">
+                                    {trip.title || primaryDestination}
+                                </h3>
+                                <p className="mt-2 text-sm font-bold text-slate-300">
+                                    {formatTripDateRange(
+                                        trip.start_date,
+                                        trip.end_date
+                                    )}
+                                </p>
+                            </div>
 
-                {secondLineDestinations.length > 0 ? (
-                    <p
-                        className="vaivia-trip-card-title mt-2 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
-                        style={{ color: accent }}
-                    >
-                        {formatDestinationPair(secondLineDestinations)}
-                    </p>
-                ) : null}
+                            <div className="grid gap-3">
+                                <TripSummaryRow
+                                    icon={
+                                        <Plane
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                    }
+                                    label="Transport"
+                                    value={transportationSummary}
+                                />
+                                <TripSummaryRow
+                                    icon={
+                                        <Hotel
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                    }
+                                    label="Hotels"
+                                    value={accommodationSummary}
+                                />
+                            </div>
+                        </div>
 
-                {thirdLineDestinations.length > 0 ? (
-                    <p
-                        className="vaivia-trip-card-title mt-1 whitespace-nowrap text-[2rem] font-black uppercase leading-none tracking-[-0.06em]"
-                        style={{ color: accent }}
-                    >
-                        {formatDestinationPair(thirdLineDestinations)}
-                    </p>
-                ) : null}
+                        <p
+                            className="rounded-2xl border border-lime-300/20 bg-lime-300/10 px-4 py-3 text-xs font-bold leading-5 text-lime-50"
+                            style={{ boxShadow: `0 0 28px ${accent}20` }}
+                        >
+                            Click anywhere on this side to return to the cover.
+                        </p>
+                    </div>
+                </button>
+            </div>
+        </article>
+    );
+}
 
-                <p className={`vaivia-trip-card-date mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}>
-                    {formatTripDateRange(trip.start_date, trip.end_date)}
+function TripSummaryRow({
+    icon,
+    label,
+    value,
+}: {
+    icon: ReactNode;
+    label: string;
+    value: string;
+}) {
+    return (
+        <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] p-4">
+            <div className="flex items-center gap-2 text-lime-200">
+                {icon}
+                <p className="text-[10px] font-black uppercase tracking-[0.2em]">
+                    {label}
                 </p>
             </div>
-
-        </Link>
+            <p className="mt-2 line-clamp-3 text-sm font-bold leading-5 text-white">
+                {value}
+            </p>
+        </div>
     );
+}
+
+function titleCase(value: string) {
+    return value
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatPlacePair(start?: string | null, end?: string | null) {
+    const departure = start?.trim();
+    const arrival = end?.trim();
+
+    if (departure && arrival) return `${departure} > ${arrival}`;
+    return departure || arrival || "";
+}
+
+function getTripTransportationSummary(trip: DashboardTrip) {
+    const items = trip.planning?.transportation || [];
+    const bookedItems = items.filter((item) =>
+        /book|confirm|ticket/i.test(item.status || "")
+    );
+    const priorityItems = bookedItems.length > 0 ? bookedItems : items;
+
+    if (priorityItems.length === 0) return "No transport saved yet.";
+
+    return priorityItems
+        .slice(0, 2)
+        .map((item) => {
+            const type = titleCase(item.transport_type || "Transport");
+            const route = formatPlacePair(
+                item.departure_location,
+                item.arrival_location
+            );
+            const status = item.status ? ` (${titleCase(item.status)})` : "";
+            return `${type}${route ? `: ${route}` : ""}${status}`;
+        })
+        .join(" • ");
+}
+
+function getTripAccommodationSummary(trip: DashboardTrip) {
+    const stays = trip.planning?.accommodations || [];
+    const bookedStays = stays.filter((stay) =>
+        /book|confirm|reserved/i.test(stay.status || "")
+    );
+    const priorityStays = bookedStays.length > 0 ? bookedStays : stays;
+
+    if (priorityStays.length === 0) return "No hotels saved yet.";
+
+    return priorityStays
+        .slice(0, 2)
+        .map((stay) => {
+            const place = [stay.city, stay.region, stay.country]
+                .filter(Boolean)
+                .join(", ");
+            const dateRange =
+                stay.check_in_date || stay.check_out_date
+                    ? formatTripDateRange(stay.check_in_date, stay.check_out_date)
+                    : "";
+            const status = stay.status ? ` (${titleCase(stay.status)})` : "";
+            return `${place || "Stay"}${dateRange ? `, ${dateRange}` : ""}${status}`;
+        })
+        .join(" • ");
 }
 
 function TripsGrid({
@@ -657,6 +861,25 @@ function TripsGrid({
     onEditTrip: (trip: DashboardTrip) => void;
     onShareTrip: (trip: DashboardTrip) => void;
 }) {
+    const [summaryTripId, setSummaryTripId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!summaryTripId) return;
+
+        function closeOnOutsideClick(event: MouseEvent) {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest("[data-trip-card-shell]")) return;
+            setSummaryTripId(null);
+        }
+
+        document.addEventListener("mousedown", closeOnOutsideClick);
+
+        return () => {
+            document.removeEventListener("mousedown", closeOnOutsideClick);
+        };
+    }, [summaryTripId]);
+
     if (trips.length === 0) {
         return (
             <div className="rounded-[2rem] border border-dashed border-white/20 bg-white/[0.03] p-8 text-center">
@@ -699,6 +922,7 @@ function TripsGrid({
                     {trips.slice(0, 3).map((trip, index) => (
                         <div
                             key={trip.id}
+                            data-trip-card-shell
                             className="relative transition-all duration-500 ease-out hover:-translate-y-3 hover:scale-110"
                         >
                             <DashboardTripCard
@@ -707,6 +931,8 @@ function TripsGrid({
                                 isGoogleReady={isGoogleReady}
                                 currentUserId={currentUserId}
                                 disableHoverTransform
+                                isSummaryOpen={summaryTripId === trip.id}
+                                onSummaryClose={() => setSummaryTripId(null)}
                             />
                             <button
                                 type="button"
@@ -727,11 +953,28 @@ function TripsGrid({
                                 onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
+                                    setSummaryTripId((current) =>
+                                        current === trip.id ? null : trip.id
+                                    );
+                                }}
+                                className={`absolute z-30 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950 ${getInfoButtonPosition(
+                                    index
+                                )}`}
+                                aria-label={`Show quick info for ${trip.title || "trip"}`}
+                                aria-pressed={summaryTripId === trip.id}
+                            >
+                                <Info className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
                                     onShareTrip(trip);
                                 }}
                                 className={`absolute z-30 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/55 text-slate-100 shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15 ${
                                     index % 3 === 1
-                                        ? "bottom-9 left-[6.8rem]"
+                                        ? "bottom-9 left-[10rem]"
                                         : "bottom-10 right-[7.3rem]"
                                 }`}
                                 aria-label={`Share ${trip.title || "trip"}`}
@@ -1175,10 +1418,11 @@ function DashboardPassportStampsWidget({
 }: {
     passportStamps: DashboardPassportStamp[];
 }) {
-    const recentStamps = passportStamps.slice(0, 2);
+    const recentStamps = passportStamps.slice(0, 4);
+    const visibleStampCountLabel = passportStamps.length >= 4 ? "a few" : recentStamps.length;
 
     return (
-        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+        <section className="flex h-full w-full flex-col rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
             <div className="flex items-start justify-between gap-4">
                 <div>
                     <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
@@ -1197,35 +1441,39 @@ function DashboardPassportStampsWidget({
             </div>
 
             {recentStamps.length > 0 ? (
-                <>
-                    <div className="mt-5 grid grid-cols-2 justify-items-center gap-3">
-                        {recentStamps.map((stamp) => (
-                            <PassportStampCard
+                <div className="flex flex-1 flex-col">
+                    <div className="mt-5 grid flex-1 grid-cols-2 content-center justify-items-center gap-3">
+                        {recentStamps.map((stamp, index) => (
+                            <div
                                 key={stamp.id}
-                                countryName={stamp.countryName}
-                                countryCode={stamp.countryCode}
-                                flagEmoji={stamp.flagEmoji}
-                                firstVisitYear={stamp.firstVisitYear}
-                                welcomeLabel={stamp.welcomeLabel}
-                                airportCode={stamp.airportCode}
-                                airportCity={stamp.airportCity}
-                                portOfEntryLabel={stamp.portOfEntryName}
-                                size="sm"
-                            />
+                                className={index > 1 ? "hidden xl:block" : ""}
+                            >
+                                <PassportStampCard
+                                    countryName={stamp.countryName}
+                                    countryCode={stamp.countryCode}
+                                    flagEmoji={stamp.flagEmoji}
+                                    firstVisitYear={stamp.firstVisitYear}
+                                    welcomeLabel={stamp.welcomeLabel}
+                                    airportCode={stamp.airportCode}
+                                    airportCity={stamp.airportCity}
+                                    portOfEntryLabel={stamp.portOfEntryName}
+                                    size="sm"
+                                />
+                            </div>
                         ))}
                     </div>
                     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
                         <p className="text-xs font-semibold text-slate-400">
-                            Showing your latest {recentStamps.length}.
+                            Showing {visibleStampCountLabel} from your passport wall.
                         </p>
                         <Link
                             href="/profile#passport-stamps"
-                            className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
+                            className="inline-flex items-center self-center rounded-full bg-lime-300 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
                         >
                             See all passports
                         </Link>
                     </div>
-                </>
+                </div>
             ) : (
                 <div className="mt-5 rounded-[1.5rem] border border-lime-300/20 bg-lime-300/[0.08] p-4">
                     <p className="text-sm font-black text-lime-100">
@@ -1247,9 +1495,166 @@ function DashboardPassportStampsWidget({
     );
 }
 
+function DashboardProfileWidget({
+    profile,
+    passportCount,
+    wishlistCount,
+}: {
+    profile: DashboardProfileSummary;
+    passportCount: number;
+    wishlistCount: number;
+}) {
+    const initials = profile.name
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+
+    return (
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-4">
+                    <span className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-lime-300/25 bg-slate-950 text-lg font-black text-lime-200 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                        {profile.avatarUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                                src={profile.avatarUrl}
+                                alt=""
+                                className="h-full w-full object-cover"
+                            />
+                        ) : (
+                            initials || "V"
+                        )}
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
+                            Profile
+                        </p>
+                        <h2 className="mt-2 truncate text-2xl font-black text-white">
+                            {profile.name}
+                        </h2>
+                        <p className="mt-1 truncate text-sm text-slate-400">
+                            {profile.username ? `@${profile.username}` : profile.email}
+                        </p>
+                    </div>
+                </div>
+                <span className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.16)] sm:flex">
+                    <UserRound className="h-5 w-5" aria-hidden="true" />
+                </span>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+                <div className="rounded-[1.35rem] border border-white/10 bg-[#03030a]/70 p-4">
+                    <p className="text-2xl font-black text-white">{passportCount}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Passport stamps
+                    </p>
+                </div>
+                <div className="rounded-[1.35rem] border border-white/10 bg-[#03030a]/70 p-4">
+                    <p className="text-2xl font-black text-white">{wishlistCount}</p>
+                    <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-400">
+                        Wishlist places
+                    </p>
+                </div>
+            </div>
+
+            <Link
+                href="/profile"
+                className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-lime-300 px-4 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
+            >
+                Open profile
+            </Link>
+        </section>
+    );
+}
+
+function DashboardWishlistWidget({
+    wishlistItems,
+}: {
+    wishlistItems: DashboardWishlistItem[];
+}) {
+    const inProgressItems = wishlistItems.filter(
+        (item) => item.status === "in_progress"
+    );
+    const completedItems = wishlistItems.filter((item) => item.status === "completed");
+    const visibleItems = inProgressItems.slice(0, 4);
+
+    return (
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+            <div className="flex items-start justify-between gap-4">
+                <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
+                        Travel wishlist
+                    </p>
+                    <h2 className="mt-2 text-2xl font-black text-white">
+                        Places calling
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-400">
+                        Keep dream destinations close to the trips you are planning.
+                    </p>
+                </div>
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.16)]">
+                    <Wand2 className="h-5 w-5" aria-hidden="true" />
+                </span>
+            </div>
+
+            {visibleItems.length > 0 ? (
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {visibleItems.map((item) => (
+                        <Link
+                            key={item.id}
+                            href="/profile#bucket-list"
+                            className="group flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-[#03030a]/70 p-3 transition hover:border-lime-300/30 hover:bg-white/[0.08]"
+                        >
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-2xl">
+                                {item.flagEmoji || "✦"}
+                            </span>
+                            <span className="min-w-0">
+                                <span className="block truncate text-sm font-black text-white">
+                                    {item.placeLabel}
+                                </span>
+                                <span className="mt-1 block truncate text-xs font-semibold text-slate-400">
+                                    {[item.city, item.region, item.countryName]
+                                        .filter(Boolean)
+                                        .join(", ") || "Wishlist place"}
+                                </span>
+                            </span>
+                        </Link>
+                    ))}
+                </div>
+            ) : (
+                <div className="mt-5 rounded-[1.5rem] border border-lime-300/20 bg-lime-300/[0.08] p-4">
+                    <p className="text-sm font-black text-lime-100">
+                        Your future map is wide open.
+                    </p>
+                    <p className="mt-2 text-sm font-semibold text-slate-300">
+                        Add cities, regions, or countries you want to visit and
+                        VAIVIA will keep them on your profile.
+                    </p>
+                </div>
+            )}
+
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                <p className="text-xs font-semibold text-slate-400">
+                    {inProgressItems.length} in progress · {completedItems.length} completed
+                </p>
+                <Link
+                    href="/profile#bucket-list"
+                    className="inline-flex items-center rounded-full bg-lime-300 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
+                >
+                    See wishlist
+                </Link>
+            </div>
+        </section>
+    );
+}
+
 export default function TripDashboardClient({
     trips,
     passportStamps,
+    profile,
+    wishlistItems,
     currentUserId,
     updateTripAction,
     deleteTripAction,
@@ -1301,6 +1706,14 @@ export default function TripDashboardClient({
                     <DashboardMonthCalendar trips={trips} />
                     <DashboardTaskList trips={trips} />
                     <DashboardPassportStampsWidget passportStamps={passportStamps} />
+                </div>
+                <div className="grid gap-6 lg:grid-cols-2">
+                    <DashboardProfileWidget
+                        profile={profile}
+                        passportCount={passportStamps.length}
+                        wishlistCount={wishlistItems.length}
+                    />
+                    <DashboardWishlistWidget wishlistItems={wishlistItems} />
                 </div>
             </div>
 

@@ -2,12 +2,14 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import {
     BedDouble,
     CalendarCheck,
-    Map as MapIcon,
+    Flag,
+    ListChecks,
     PiggyBank,
+    Route,
     Sparkles,
     Utensils,
     type LucideIcon,
@@ -103,11 +105,11 @@ type TripRoutePageRecord = SharedTrip & {
     title: string;
 };
 
-type MobileTripAppLink = {
+type MobileOverviewPerson = {
+    id: string;
     label: string;
-    description: string;
-    href: string;
-    icon: LucideIcon;
+    avatarUrl?: string | null;
+    initial: string;
 };
 
 type ItineraryItemPayload = {
@@ -1127,6 +1129,223 @@ function formatTripDate(dateString?: string | null) {
         day: "numeric",
         year: "numeric",
     });
+}
+
+function formatCompactTripDate(dateString?: string | null) {
+    const date = parseTripDate(dateString);
+    if (!date) return "Not set";
+
+    return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    });
+}
+
+function getInitialFromLabel(label?: string | null) {
+    return (label || "?").trim()[0]?.toUpperCase() || "?";
+}
+
+function getMemberName(member: TripHeaderMember) {
+    return (
+        [member.first_name, member.last_name].filter(Boolean).join(" ").trim() ||
+        member.username ||
+        member.email ||
+        "Trip member"
+    );
+}
+
+function getMobileFlagEmojis(destination?: string | null) {
+    return Array.from(
+        (destination || "").matchAll(/[\u{1F1E6}-\u{1F1FF}]{2}/gu),
+        (match) => match[0]
+    );
+}
+
+function toMobileMemberPerson(member: TripHeaderMember): MobileOverviewPerson {
+    const label = getMemberName(member);
+
+    return {
+        id: member.user_id,
+        label,
+        avatarUrl: member.avatar_url,
+        initial: label
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase(),
+    };
+}
+
+function toMobileFamilyPerson(
+    member: TripHeaderFamilyMember
+): MobileOverviewPerson {
+    return {
+        id: member.id,
+        label: member.name,
+        avatarUrl: member.avatar_url,
+        initial: member.name
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase(),
+    };
+}
+
+function toMobileInvitationPerson(
+    invitation: TripHeaderInvitation
+): MobileOverviewPerson {
+    return {
+        id: invitation.id,
+        label: invitation.label,
+        initial: getInitialFromLabel(invitation.label),
+    };
+}
+
+function MobilePeopleSummary({
+    title,
+    people,
+    emptyText,
+}: {
+    title: string;
+    people: MobileOverviewPerson[];
+    emptyText: string;
+}) {
+    const visiblePeople = people.slice(0, 5);
+    const hiddenCount = Math.max(people.length - visiblePeople.length, 0);
+
+    return (
+        <div className="min-w-0 rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-3 text-white shadow-xl shadow-black/15">
+            <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
+                    {title}
+                </p>
+                <span className="text-xs font-black text-slate-400">
+                    {people.length}
+                </span>
+            </div>
+            {people.length > 0 ? (
+                <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+                    {visiblePeople.map((person) => (
+                        <span
+                            key={person.id}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-950 text-[10px] font-black uppercase text-lime-200 shadow-lg shadow-black/20"
+                            title={person.label}
+                        >
+                            {person.avatarUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                    src={person.avatarUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                />
+                            ) : (
+                                person.initial
+                            )}
+                        </span>
+                    ))}
+                    {hiddenCount > 0 ? (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-[10px] font-black text-lime-100">
+                            +{hiddenCount}
+                        </span>
+                    ) : null}
+                </div>
+            ) : (
+                <p className="mt-3 text-xs font-semibold leading-5 text-slate-400">
+                    {emptyText}
+                </p>
+            )}
+        </div>
+    );
+}
+
+function MobileOverviewTile({
+    title,
+    description,
+    href,
+    icon: Icon,
+    buttonLabel,
+    children,
+    disabled = false,
+}: {
+    title: string;
+    description: string;
+    href?: string;
+    icon: LucideIcon;
+    buttonLabel: string;
+    children?: ReactNode;
+    disabled?: boolean;
+}) {
+    const content = (
+        <>
+            <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/75 text-lime-200 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)]">
+                    <Icon className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span className="min-w-0">
+                    <span className="block text-sm font-black text-white">
+                        {title}
+                    </span>
+                    <span className="mt-1 block text-[11px] font-semibold leading-4 text-slate-400">
+                        {description}
+                    </span>
+                </span>
+            </div>
+            {children ? <div className="mt-3">{children}</div> : null}
+            <span
+                className={`mt-4 inline-flex w-full items-center justify-center rounded-full px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.12em] transition ${
+                    disabled
+                        ? "border border-white/10 bg-white/[0.04] text-slate-500"
+                        : "bg-lime-300 text-slate-950 group-hover:bg-lime-200"
+                }`}
+            >
+                {buttonLabel}
+            </span>
+        </>
+    );
+
+    const className =
+        "group flex min-h-40 flex-col justify-between rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45";
+
+    if (href && !disabled) {
+        return (
+            <Link href={href} className={className} prefetch>
+                {content}
+            </Link>
+        );
+    }
+
+    return <div className={className}>{content}</div>;
+}
+
+function formatTransportationMode(mode?: string | null) {
+    return (mode || "Transportation")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getTransportationSummary(item: ItineraryCalendarItem) {
+    const route =
+        [item.departure_location, item.arrival_location].filter(Boolean).join(" → ") ||
+        item.location ||
+        item.title;
+
+    return `${formatTransportationMode(item.transportation_mode)}: ${route}`;
+}
+
+function getAccommodationSummary(accommodation: CalendarAccommodation) {
+    const location = [accommodation.city, accommodation.region, accommodation.country]
+        .filter(Boolean)
+        .join(", ");
+    const dateRange = `${formatCompactTripDate(
+        accommodation.check_in_date
+    )} - ${formatCompactTripDate(accommodation.check_out_date)}`;
+
+    return [accommodation.hotel_name, location || null, dateRange]
+        .filter(Boolean)
+        .join(" · ");
 }
 
 async function createItineraryItem(formData: FormData) {
@@ -3993,46 +4212,25 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 "string"
               ? tripCountdownRecord.countdown_target_itinerary_item_id
               : null;
-    const mobileTripAppLinks: MobileTripAppLink[] = [
-        {
-            label: "Itinerary",
-            description: "Schedule events and transportation during your trip.",
-            href: getTripHref(trip, "?tab=itinerary"),
-            icon: CalendarCheck,
-        },
-        {
-            label: "Ideas",
-            description:
-                "Suggest activities to do while you're away without scheduling them.",
-            href: getTripHref(trip, "?tab=ideas"),
-            icon: Sparkles,
-        },
-        {
-            label: "Budget",
-            description: "Track expenses and plan a trip budget.",
-            href: getTripHref(trip, "/budget"),
-            icon: PiggyBank,
-        },
-        {
-            label: "Journey",
-            description:
-                "Plan plane, train, and other transportation from start to finish.",
-            href: getTripHref(trip, "?tab=journey"),
-            icon: MapIcon,
-        },
-        {
-            label: "Food",
-            description: "List foods to try and restaurants you want to visit.",
-            href: getTripHref(trip, "/food"),
-            icon: Utensils,
-        },
-        {
-            label: "Accommodations",
-            description: "Add hotels, home stays, or other trip accommodations.",
-            href: getTripHref(trip, "/accommodations"),
-            icon: BedDouble,
-        },
+    const mobileFlags = getMobileFlagEmojis(trip.destination);
+    const mobileGoingPeople = [
+        ...tripMembers.map(toMobileMemberPerson),
+        ...tripFamilyMembers.map(toMobileFamilyPerson),
     ];
+    const mobileInvitedPeople = pendingInvitations.map(toMobileInvitationPerson);
+    const shouldStackGoingOnMobile = mobileInvitedPeople.length > 2;
+    const mobileTransportationItems = calendarItems
+        .filter(
+            (item) =>
+                item.source_table === "transportation_items" ||
+                item.category === "transportation"
+        )
+        .slice(0, 3);
+    const mobileAccommodationItems = (
+        (accommodationRows || []) as CalendarAccommodation[]
+    )
+        .filter((accommodation) => accommodation.status !== "cancelled")
+        .slice(0, 2);
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripDocumentTitle
@@ -4123,45 +4321,202 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
             <div className="mx-auto max-w-7xl px-4 sm:px-6">
                 {!hasExplicitTripTab ? (
-                    <section className="space-y-4 pb-8 sm:hidden">
-                        <div>
-                            <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
-                                Trip apps
-                            </p>
-                            <h2 className="mt-2 text-3xl font-black tracking-tight text-white">
-                                Choose where to go next
-                            </h2>
+                    <section className="space-y-3 pb-8 sm:hidden">
+                        <div className="grid grid-cols-[0.85fr_1.15fr] gap-3">
+                            <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-white shadow-xl shadow-black/15">
+                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
+                                    Flags
+                                </p>
+                                <div className="mt-3 flex min-h-10 flex-wrap items-center gap-2">
+                                    {mobileFlags.length > 0 ? (
+                                        mobileFlags.slice(0, 5).map((flag, index) => (
+                                            <span
+                                                key={`${flag}-${index}`}
+                                                className="text-3xl leading-none"
+                                            >
+                                                {flag}
+                                            </span>
+                                        ))
+                                    ) : (
+                                        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-lime-200">
+                                            <Flag className="h-5 w-5" aria-hidden="true" />
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-2 rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-white shadow-xl shadow-black/15">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
+                                        Departing
+                                    </p>
+                                    <p className="mt-1 text-sm font-black">
+                                        {formatCompactTripDate(trip.start_date)}
+                                    </p>
+                                </div>
+                                <div className="border-t border-white/10 pt-2">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
+                                        Returning
+                                    </p>
+                                    <p className="mt-1 text-sm font-black">
+                                        {formatCompactTripDate(trip.end_date)}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="grid gap-3">
-                            {mobileTripAppLinks.map((appLink) => {
-                                const Icon = appLink.icon;
-
-                                return (
-                                    <Link
-                                        key={appLink.label}
-                                        href={appLink.href}
-                                        className="group flex items-center gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 text-left text-white shadow-2xl shadow-black/20 transition hover:border-lime-300/35 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45"
-                                        prefetch
-                                    >
-                                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/70 text-lime-200 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.14)] transition group-hover:border-lime-300/45 group-hover:bg-lime-300 group-hover:text-slate-950">
-                                            <Icon
-                                                className="h-5 w-5"
-                                                aria-hidden="true"
-                                            />
-                                        </span>
-                                        <span className="min-w-0">
-                                            <span className="block text-base font-black">
-                                                {appLink.label}
-                                            </span>
-                                            <span className="mt-1 block text-xs font-semibold leading-5 text-slate-400">
-                                                {appLink.description}
-                                            </span>
-                                        </span>
-                                    </Link>
-                                );
-                            })}
+                        <div
+                            className={`grid gap-3 ${
+                                shouldStackGoingOnMobile ? "grid-cols-1" : "grid-cols-2"
+                            }`}
+                        >
+                            <MobilePeopleSummary
+                                title="Invited"
+                                people={mobileInvitedPeople}
+                                emptyText="No pending invites"
+                            />
+                            {!shouldStackGoingOnMobile ? (
+                                <MobilePeopleSummary
+                                    title="Going"
+                                    people={mobileGoingPeople}
+                                    emptyText="Just you for now"
+                                />
+                            ) : null}
                         </div>
+
+                        {shouldStackGoingOnMobile ? (
+                            <MobilePeopleSummary
+                                title="Going"
+                                people={mobileGoingPeople}
+                                emptyText="Just you for now"
+                            />
+                        ) : null}
+
+                        <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.22)]">
+                            <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
+                            <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
+                            <TripCountdown
+                                tripId={trip.id}
+                                startDate={trip.start_date}
+                                selectedTargetId={selectedCountdownTargetId}
+                                selectedTargetType={selectedCountdownTargetType}
+                                targets={countdownTargetOptions}
+                                updateCountdownTargetAction={updateTripCountdownTarget}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <MobileOverviewTile
+                                title="Itinerary"
+                                description="Schedule the days, tickets, and timed plans."
+                                href={getTripHref(trip, "?tab=itinerary")}
+                                icon={CalendarCheck}
+                                buttonLabel="Open"
+                            />
+                            <MobileOverviewTile
+                                title="Ideas"
+                                description={`${ideas.length} unscheduled ideas to compare.`}
+                                href={getTripHref(trip, "?tab=ideas")}
+                                icon={Sparkles}
+                                buttonLabel="Open"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <MobileOverviewTile
+                                title="Journey"
+                                description="Transportation from start to finish."
+                                href={getTripHref(trip, "?tab=journey")}
+                                icon={Route}
+                                buttonLabel="Open"
+                            >
+                                <div className="space-y-2">
+                                    {mobileTransportationItems.length > 0 ? (
+                                        mobileTransportationItems.map((item) => (
+                                            <div
+                                                key={item.id}
+                                                className="relative pl-4 text-[11px] font-semibold leading-4 text-slate-300 before:absolute before:left-0 before:top-1.5 before:h-2 before:w-2 before:rounded-full before:bg-lime-300 after:absolute after:bottom-[-0.65rem] after:left-[3px] after:top-4 after:w-px after:bg-lime-300/25 last:after:hidden"
+                                            >
+                                                {getTransportationSummary(item)}
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-[11px] font-semibold leading-4 text-slate-400">
+                                            No transportation yet
+                                        </p>
+                                    )}
+                                </div>
+                            </MobileOverviewTile>
+
+                            <MobileOverviewTile
+                                title="Stays"
+                                description="Booked hotels, homes, or places to sleep."
+                                href={getTripHref(trip, "/accommodations")}
+                                icon={BedDouble}
+                                buttonLabel="Open"
+                            >
+                                <div className="space-y-2">
+                                    {mobileAccommodationItems.length > 0 ? (
+                                        mobileAccommodationItems.map((accommodation) => (
+                                            <p
+                                                key={accommodation.id}
+                                                className="text-[11px] font-semibold leading-4 text-slate-300"
+                                            >
+                                                {getAccommodationSummary(accommodation)}
+                                            </p>
+                                        ))
+                                    ) : (
+                                        <p className="text-[11px] font-semibold leading-4 text-slate-400">
+                                            None booked yet
+                                        </p>
+                                    )}
+                                </div>
+                            </MobileOverviewTile>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <Link
+                                href={getTripHref(trip, "?tab=journey-planning")}
+                                className="rounded-[1.35rem] border border-lime-300/25 bg-lime-300 p-4 text-center text-sm font-black leading-5 text-slate-950 shadow-[0_0_32px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/45"
+                                prefetch
+                            >
+                                Plan out your journey
+                                <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-800/75">
+                                    Add flights to compare
+                                </span>
+                            </Link>
+                            <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 text-center text-sm font-black leading-5 text-slate-500 shadow-xl shadow-black/15">
+                                Plan out accommodations
+                                <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em]">
+                                    Coming soon
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <MobileOverviewTile
+                                title="Restaurants"
+                                description="Add places you want to check out."
+                                href={getTripHref(trip, "/food?tab=places")}
+                                icon={Utensils}
+                                buttonLabel="Open"
+                            />
+                            <MobileOverviewTile
+                                title="Foods"
+                                description="Track foods you want to try."
+                                href={getTripHref(trip, "/food?tab=foods")}
+                                icon={ListChecks}
+                                buttonLabel="Open"
+                            />
+                        </div>
+
+                        <MobileOverviewTile
+                            title="Budget"
+                            description="Track budgets, paid expenses, and splits."
+                            href={getTripHref(trip, "/budget")}
+                            icon={PiggyBank}
+                            buttonLabel="Open budget"
+                        />
                     </section>
                 ) : null}
 

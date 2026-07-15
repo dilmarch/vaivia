@@ -5,7 +5,9 @@ import { Suspense } from "react";
 import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
   type DashboardPassportStamp,
+  type DashboardProfileSummary,
   type DashboardTrip,
+  type DashboardWishlistItem,
 } from "@/components/TripDashboardClient";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import {
@@ -69,6 +71,20 @@ function getYearFromDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return String(date.getFullYear());
+}
+
+function shuffleDashboardItems<TItem>(items: TItem[]) {
+  const shuffledItems = [...items];
+
+  for (let index = shuffledItems.length - 1; index > 0; index -= 1) {
+    const randomIndex = Math.floor(Math.random() * (index + 1));
+    [shuffledItems[index], shuffledItems[randomIndex]] = [
+      shuffledItems[randomIndex],
+      shuffledItems[index],
+    ];
+  }
+
+  return shuffledItems;
 }
 
 function isFutureIso(value: string, now = new Date()) {
@@ -526,7 +542,7 @@ async function TripsDashboard() {
 
   const { data: profile, error: profileError } = await supabase
     .from("user_profiles")
-    .select("first_name,last_name,username,email")
+    .select("first_name,last_name,username,email,avatar_url")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -558,7 +574,7 @@ async function TripsDashboard() {
 
   const authProfileDefaults = getUserProfileDefaults(user);
   const dashboardName =
-    profile?.first_name ||
+    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() ||
     authProfileDefaults.first_name ||
     profile?.username ||
     authProfileDefaults.username ||
@@ -588,7 +604,7 @@ async function TripsDashboard() {
     )
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-    .limit(2);
+    .limit(50);
 
   if (passportStampError) {
     console.warn("Could not load dashboard passport stamps:", {
@@ -600,28 +616,70 @@ async function TripsDashboard() {
     });
   }
 
-  const dashboardPassportStamps: DashboardPassportStamp[] = (
-    passportStampRows || []
-  ).map((stamp) => ({
-    id: String(stamp.id),
-    countryCode: String(stamp.country_code || "").trim().toUpperCase(),
-    countryName:
-      stamp.stamp_display_country_name ||
-      stamp.country_name ||
-      String(stamp.country_code || "Passport"),
-    flagEmoji: stamp.stamp_display_flag || stamp.flag_emoji || null,
-    firstVisitYear:
-      getYearFromDate(stamp.first_visited_on) ||
-      getYearFromDate(stamp.stamped_at) ||
-      getYearFromDate(stamp.created_at),
-    welcomeLabel:
-      stamp.welcome_label_snapshot || stamp.arrival_label_snapshot || null,
-    airportCode:
-      stamp.first_entry_iata_code || stamp.first_entry_icao_code || null,
-    airportCity: stamp.first_entry_city || null,
-    portOfEntryName:
-      stamp.port_of_entry_name || stamp.first_entry_airport_name || null,
-  }));
+  const { data: wishlistRows, error: wishlistError } = await supabase
+    .from("user_travel_bucket_list")
+    .select(
+      "id,place_label,city,region,country_name,country_code,flag_emoji,status,completed_at,created_at"
+    )
+    .eq("user_id", user.id)
+    .order("status", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(12);
+
+  if (wishlistError) {
+    console.warn("Could not load dashboard travel wishlist:", {
+      message: wishlistError.message,
+      code: wishlistError.code,
+      details: wishlistError.details,
+      hint: wishlistError.hint,
+      userId: user.id,
+    });
+  }
+
+  const dashboardPassportStamps: DashboardPassportStamp[] =
+    shuffleDashboardItems(passportStampRows || []).map((stamp) => ({
+      id: String(stamp.id),
+      countryCode: String(stamp.country_code || "").trim().toUpperCase(),
+      countryName:
+        stamp.stamp_display_country_name ||
+        stamp.country_name ||
+        String(stamp.country_code || "Passport"),
+      flagEmoji: stamp.stamp_display_flag || stamp.flag_emoji || null,
+      firstVisitYear:
+        getYearFromDate(stamp.first_visited_on) ||
+        getYearFromDate(stamp.stamped_at) ||
+        getYearFromDate(stamp.created_at),
+      welcomeLabel:
+        stamp.welcome_label_snapshot || stamp.arrival_label_snapshot || null,
+      airportCode:
+        stamp.first_entry_iata_code || stamp.first_entry_icao_code || null,
+      airportCity: stamp.first_entry_city || null,
+      portOfEntryName:
+        stamp.port_of_entry_name || stamp.first_entry_airport_name || null,
+    }));
+
+  const dashboardProfile: DashboardProfileSummary = {
+    name: dashboardName,
+    username: profile?.username || authProfileDefaults.username || null,
+    email: profile?.email || authProfileDefaults.email || null,
+    avatarUrl: profile?.avatar_url || authProfileDefaults.avatar_url || null,
+  };
+
+  const dashboardWishlistItems: DashboardWishlistItem[] = (wishlistRows || []).map(
+    (item) => ({
+      id: String(item.id),
+      placeLabel:
+        item.place_label ||
+        [item.city, item.region, item.country_name].filter(Boolean).join(", ") ||
+        "Wishlist place",
+      city: item.city || null,
+      region: item.region || null,
+      countryName: item.country_name || item.country_code || null,
+      flagEmoji: item.flag_emoji || null,
+      status: item.status === "completed" ? "completed" : "in_progress",
+      completedAt: item.completed_at || null,
+    })
+  );
 
   return (
     <main className="min-h-screen bg-[#0c0115] text-white">
@@ -636,6 +694,8 @@ async function TripsDashboard() {
           <TripDashboardClient
             trips={dashboardTrips}
             passportStamps={dashboardPassportStamps}
+            profile={dashboardProfile}
+            wishlistItems={dashboardWishlistItems}
             currentUserId={user.id}
             updateTripAction={updateTrip}
             deleteTripAction={deleteTrip}

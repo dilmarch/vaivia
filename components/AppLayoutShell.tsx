@@ -27,8 +27,8 @@ export default function AppLayoutShell({ children, nav }: AppLayoutShellProps) {
                 <TermsFooterLink
                     className={
                         isAuthRoute
-                            ? "-mt-8 pb-8"
-                            : "pb-[calc(1rem+var(--safe-area-bottom))] md:pb-0"
+                            ? "mt-10 pb-8"
+                            : "mt-10 pb-[calc(1rem+var(--safe-area-bottom))] md:mt-12 md:pb-0"
                     }
                 />
             </div>
