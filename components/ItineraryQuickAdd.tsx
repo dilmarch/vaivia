@@ -659,6 +659,7 @@ export default function ItineraryQuickAdd({
                     <button
                         type="button"
                         onClick={() => setIsOpen((current) => !current)}
+                        data-vaivia-mobile-tour-target="quick-add"
                         className="vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
                         aria-label={
                             isOpen

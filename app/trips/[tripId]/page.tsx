@@ -126,6 +126,11 @@ type MobileOverviewPerson = {
     avatarUrl?: string | null;
     initial: string;
     detail?: string | null;
+    kind?: "user" | "family" | "invitation";
+    userId?: string | null;
+    isCurrentUser?: boolean;
+    friendStatus?: "pending" | "accepted" | "cancelled" | "declined" | "blocked" | null;
+    friendRequesterUserId?: string | null;
 };
 
 type ItineraryItemPayload = {
@@ -1327,14 +1332,33 @@ function getMobileSettlementSummaries({
     return settlements;
 }
 
-function toMobileMemberPerson(member: TripHeaderMember): MobileOverviewPerson {
+type MobileFriendshipSummary = {
+    requester_user_id: string;
+    addressee_user_id: string | null;
+    status: "pending" | "accepted" | "cancelled" | "declined" | "blocked";
+};
+
+function toMobileMemberPerson({
+    member,
+    currentUserId,
+    friendship,
+}: {
+    member: TripHeaderMember;
+    currentUserId: string;
+    friendship?: MobileFriendshipSummary | null;
+}): MobileOverviewPerson {
     const label = getMemberName(member);
 
     return {
         id: member.user_id,
+        kind: "user",
+        userId: member.user_id,
         label,
         avatarUrl: member.avatar_url,
         detail: member.email || member.username || null,
+        isCurrentUser: member.user_id === currentUserId,
+        friendStatus: friendship?.status || null,
+        friendRequesterUserId: friendship?.requester_user_id || null,
         initial: label
             .split(/\s+/)
             .map((part) => part[0])
@@ -1349,6 +1373,7 @@ function toMobileFamilyPerson(
 ): MobileOverviewPerson {
     return {
         id: member.id,
+        kind: "family",
         label: member.name,
         avatarUrl: member.avatar_url,
         detail: "Family",
@@ -1366,10 +1391,26 @@ function toMobileInvitationPerson(
 ): MobileOverviewPerson {
     return {
         id: invitation.id,
+        kind: "invitation",
         label: invitation.label,
-        detail: invitation.label,
+        detail: null,
         initial: getInitialFromLabel(invitation.label),
     };
+}
+
+function getMobileFriendActionLabel(person: MobileOverviewPerson) {
+    if (person.kind !== "user" || person.isCurrentUser) return null;
+    if (person.friendStatus === "accepted" || person.friendStatus === "blocked") {
+        return null;
+    }
+    if (
+        person.friendStatus === "pending" ||
+        person.friendStatus === "declined"
+    ) {
+        return "Invited";
+    }
+
+    return "Add friend";
 }
 
 function MobilePersonAvatar({
@@ -1449,12 +1490,29 @@ function MobilePeopleSummary({
                                     </div>
                                 </div>
                                 {showAddFriendAction ? (
-                                    <Link
-                                        href="/profile?modal=friends"
-                                        className="shrink-0 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
-                                    >
-                                        Add friend
-                                    </Link>
+                                    (() => {
+                                        const actionLabel =
+                                            getMobileFriendActionLabel(person);
+
+                                        if (!actionLabel) return null;
+
+                                        if (actionLabel === "Invited") {
+                                            return (
+                                                <span className="shrink-0 rounded-full border border-lime-300/25 bg-lime-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100">
+                                                    Invited
+                                                </span>
+                                            );
+                                        }
+
+                                        return (
+                                            <Link
+                                                href="/profile?modal=friends"
+                                                className="shrink-0 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
+                                            >
+                                                Add friend
+                                            </Link>
+                                        );
+                                    })()
                                 ) : null}
                             </div>
                         ))}
@@ -1467,16 +1525,12 @@ function MobilePeopleSummary({
             }
         >
             <div className="flex items-center justify-between gap-2">
-                {inviteMode ? (
-                    <span className="flex items-center gap-2 text-lime-300">
+                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
+                    {inviteMode ? (
                         <UserPlus className="h-4 w-4" aria-hidden="true" />
-                        <span className="sr-only">{title}</span>
-                    </span>
-                ) : (
-                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                        {title}
-                    </p>
-                )}
+                    ) : null}
+                    <span>{title}</span>
+                </p>
                 <span className="text-xs font-black text-slate-400">
                     {people.length}
                 </span>
@@ -1509,6 +1563,7 @@ function MobileOverviewTile({
     buttonLabel,
     children,
     disabled = false,
+    alignTop = false,
 }: {
     title: string;
     description: string;
@@ -1517,6 +1572,7 @@ function MobileOverviewTile({
     buttonLabel: string;
     children?: ReactNode;
     disabled?: boolean;
+    alignTop?: boolean;
 }) {
     const content = (
         <>
@@ -1547,7 +1603,9 @@ function MobileOverviewTile({
     );
 
     const className =
-        "group flex min-h-40 flex-col justify-between rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45";
+        `group flex min-h-40 flex-col ${
+            alignTop ? "justify-start" : "justify-between"
+        } rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45`;
 
     if (href && !disabled) {
         return (
@@ -1580,7 +1638,64 @@ function getCompactRouteLocationLabel(location?: string | null) {
     const cleanLocation = (location || "").trim();
     if (!cleanLocation) return "";
     const airportCode = getIataAirportCode(cleanLocation);
-    return airportCode ? `${airportCode} ${cleanLocation}` : cleanLocation;
+    if (!airportCode) return cleanLocation;
+
+    const addressParts = cleanLocation
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+    const airportishPattern =
+        /\b(airport|terminal|aerodrome|airfield|international|regional)\b/i;
+    const roadwayPattern =
+        /\b(road|rd|street|st|avenue|ave|boulevard|blvd|drive|dr|parkway|pkwy|way)\b/i;
+    const cityName = addressParts.find(
+        (part, index) =>
+            index > 0 &&
+            !airportishPattern.test(part) &&
+            !roadwayPattern.test(part) &&
+            !/^[A-Z]{2,3}$/i.test(part)
+    );
+
+    if (cityName) return `${airportCode} ${cityName}`;
+
+    const codePrefixCity = cleanLocation
+        .replace(new RegExp(`\\b${airportCode}\\b`, "i"), "")
+        .trim();
+
+    if (codePrefixCity && !airportishPattern.test(codePrefixCity)) {
+        return `${airportCode} ${codePrefixCity}`;
+    }
+
+    return airportCode;
+}
+
+function getMobileTransportationIdentity(item: ItineraryCalendarItem) {
+    const flightNumber = (item.flight_number || "").trim().toUpperCase();
+    const airlineCode = (item.airline_code || "").trim().toUpperCase();
+    const itemDate = (item.item_date || "").trim();
+
+    if (flightNumber && itemDate) {
+        return [
+            airlineCode,
+            flightNumber,
+            itemDate,
+            item.departure_location || "",
+            item.arrival_location || "",
+        ]
+            .join("|")
+            .toUpperCase();
+    }
+
+    return [
+        item.transportation_mode || "",
+        item.item_date || "",
+        item.start_time || "",
+        item.departure_location || "",
+        item.arrival_location || "",
+        item.title || "",
+    ]
+        .join("|")
+        .toUpperCase();
 }
 
 function getTransportationSummary(item: ItineraryCalendarItem) {
@@ -4480,20 +4595,72 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 "string"
               ? tripCountdownRecord.countdown_target_itinerary_item_id
               : null;
+    const mobileFriendCandidateIds = tripMembers
+        .map((member) => member.user_id)
+        .filter(
+            (memberUserId): memberUserId is string =>
+                Boolean(memberUserId && memberUserId !== user.id)
+        );
+    const mobileFriendshipsByUserId = new Map<string, MobileFriendshipSummary>();
+
+    if (mobileFriendCandidateIds.length > 0) {
+        const { data: mobileFriendshipRows, error: mobileFriendshipError } =
+            await supabase
+                .from("user_friendships")
+                .select("requester_user_id,addressee_user_id,status")
+                .or(
+                    `requester_user_id.eq.${user.id},addressee_user_id.eq.${user.id}`
+                );
+
+        if (mobileFriendshipError) {
+            console.warn("Could not load mobile trip friend statuses:", {
+                message: mobileFriendshipError.message,
+                code: mobileFriendshipError.code,
+                details: mobileFriendshipError.details,
+                hint: mobileFriendshipError.hint,
+                tripId,
+            });
+        } else {
+            const candidateSet = new Set(mobileFriendCandidateIds);
+            ((mobileFriendshipRows || []) as MobileFriendshipSummary[]).forEach(
+                (friendship) => {
+                    const otherUserId =
+                        friendship.requester_user_id === user.id
+                            ? friendship.addressee_user_id
+                            : friendship.requester_user_id;
+
+                    if (otherUserId && candidateSet.has(otherUserId)) {
+                        mobileFriendshipsByUserId.set(otherUserId, friendship);
+                    }
+                }
+            );
+        }
+    }
+
     const mobileFlags = getMobileFlagEmojis(trip.destination);
     const mobileGoingPeople = [
-        ...tripMembers.map(toMobileMemberPerson),
+        ...tripMembers.map((member) =>
+            toMobileMemberPerson({
+                member,
+                currentUserId: user.id,
+                friendship: mobileFriendshipsByUserId.get(member.user_id),
+            })
+        ),
         ...tripFamilyMembers.map(toMobileFamilyPerson),
     ];
     const mobileInvitedPeople = pendingInvitations.map(toMobileInvitationPerson);
     const shouldStackGoingOnMobile = mobileInvitedPeople.length > 2;
-    const mobileTransportationItems = calendarItems
-        .filter(
-            (item) =>
-                item.source_table === "transportation_items" ||
-                item.category === "transportation"
-        )
-        .slice(0, 3);
+    const mobileTransportationItems = Array.from(
+        new Map(
+            calendarItems
+                .filter(
+                    (item) =>
+                        item.source_table === "transportation_items" ||
+                        item.category === "transportation"
+                )
+                .map((item) => [getMobileTransportationIdentity(item), item])
+        ).values()
+    ).slice(0, 3);
     const mobileAccommodationItems = (
         (accommodationRows || []) as CalendarAccommodation[]
     )
@@ -4507,6 +4674,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const mobileBudgetTotal = Number(
         mobileBudgetData.budget?.total_budget_amount || 0
     );
+    const hasMobileBudget = Boolean(mobileBudgetData.budget);
     const mobileExpenseTotal = mobileExpenseData.expenses.reduce(
         (sum, expense) =>
             sum +
@@ -4795,6 +4963,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 href={getTripHref(trip, "/accommodations")}
                                 icon={BedDouble}
                                 buttonLabel="Visit stays"
+                                alignTop
                             >
                                 <div className="space-y-2">
                                     {mobileAccommodationItems.length > 0 ? (
@@ -4855,7 +5024,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             <MobileOverviewTile
                                 title="Budget"
                                 description={
-                                    mobileBudgetTotal > 0
+                                    hasMobileBudget
                                         ? `${formatMoneyAmount(
                                               mobileBudgetTotal,
                                               mobileBudgetCurrency
@@ -4868,7 +5037,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 href={getTripHref(trip, "/budget")}
                                 icon={PiggyBank}
                                 buttonLabel={
-                                    mobileBudgetTotal > 0
+                                    hasMobileBudget
                                         ? "Visit budget"
                                         : "Add budget"
                                 }

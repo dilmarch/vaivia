@@ -62,12 +62,22 @@ type MobileTourStep = {
     title: string;
     description: string;
     icon: LucideIcon;
+    targetSelector: string;
+    highlightShape?: "circle" | "rounded";
+    scrollIntoView?: boolean;
     placement:
         | "top-right"
         | "calendar-section"
         | "task-section"
         | "bottom-right"
         | "bottom-left";
+};
+
+type MobileTourHighlightRect = {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
 };
 
 type ProminentSharedStamp = {
@@ -229,8 +239,8 @@ function getProminentActionInitial(notification: AppNotification) {
 }
 
 const MOBILE_TOUR_STORAGE_KEYS: Record<MobileTourKind, string> = {
-    home: "vaivia:mobile-tour:home:v3",
-    "trip-overview": "vaivia:mobile-tour:trip-overview:v3",
+    home: "vaivia:mobile-tour:home:v4",
+    "trip-overview": "vaivia:mobile-tour:trip-overview:v4",
 };
 
 const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
@@ -238,23 +248,32 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
         {
             title: "Select a trip",
             description:
-                "Use Trips at the top to jump between upcoming trips without digging around.",
+                "Use your trips widget to jump into upcoming plans without digging around.",
             icon: Briefcase,
-            placement: "top-right",
+            targetSelector: '[data-vaivia-mobile-tour-target="home-trips-widget"]',
+            placement: "calendar-section",
+            highlightShape: "rounded",
+            scrollIntoView: true,
         },
         {
             title: "See your calendar",
             description:
                 "Your dashboard keeps the near-term trip calendar close so plans and dates stay visible.",
             icon: CalendarDays,
+            targetSelector: '[data-vaivia-mobile-tour-target="home-calendar"]',
             placement: "calendar-section",
+            highlightShape: "rounded",
+            scrollIntoView: true,
         },
         {
             title: "Track essentials",
             description:
                 "Use your reminders and task list for accommodations, transportation, and the little things that make trips easier.",
             icon: ListChecks,
+            targetSelector: '[data-vaivia-mobile-tour-target="home-tasks"]',
             placement: "task-section",
+            highlightShape: "rounded",
+            scrollIntoView: true,
         },
     ],
     "trip-overview": [
@@ -263,21 +282,27 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
             description:
                 "Tap the green + button to add transportation, activities, ideas, accommodations, and more.",
             icon: Plus,
+            targetSelector: '[data-vaivia-mobile-tour-target="quick-add"]',
             placement: "bottom-right",
+            highlightShape: "circle",
         },
         {
             title: "Open trip apps",
             description:
                 "Tap the ^ button to jump into itinerary, budget, accommodations, journey planning, food, and ideas.",
             icon: ChevronsUp,
+            targetSelector: '[data-vaivia-mobile-tour-target="trip-apps"]',
             placement: "bottom-left",
+            highlightShape: "circle",
         },
         {
             title: "Toggle trips",
             description:
                 "Use Trips at the top to switch between your trips from anywhere.",
             icon: Briefcase,
+            targetSelector: '[data-vaivia-mobile-tour-target="trip-switcher"]',
             placement: "top-right",
+            highlightShape: "rounded",
         },
     ],
 };
@@ -329,23 +354,21 @@ function getMobileTourPointerClass(placement: MobileTourStep["placement"]) {
     }
 }
 
-function getMobileTourPingClass(placement: MobileTourStep["placement"]) {
-    const base =
-        "pointer-events-none fixed z-[124] h-14 w-14 rounded-full border-2 border-lime-300/70 bg-lime-300/10 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.45)] md:hidden";
+function getMobileTourHighlightStyle(
+    rect: MobileTourHighlightRect | null,
+    step: MobileTourStep | null
+) {
+    if (!rect || !step) return undefined;
 
-    switch (placement) {
-        case "top-right":
-            return `${base} right-[calc(1rem+var(--safe-area-right))] top-[calc(1rem+var(--safe-area-top))]`;
-        case "bottom-left":
-            return `${base} left-[calc(50%_-_5.35rem)] bottom-[calc(0.75rem+var(--safe-area-bottom))]`;
-        case "bottom-right":
-            return `${base} right-[calc(50%_-_5.35rem)] bottom-[calc(0.75rem+var(--safe-area-bottom))]`;
-        case "calendar-section":
-            return `${base} left-5 top-[calc(42vh+var(--safe-area-top))]`;
-        case "task-section":
-        default:
-            return `${base} right-5 top-[calc(52vh+var(--safe-area-top))]`;
-    }
+    const padding = step.highlightShape === "circle" ? 7 : 8;
+    return {
+        left: `${Math.max(8, rect.left - padding)}px`,
+        top: `${Math.max(8, rect.top - padding)}px`,
+        width: `${rect.width + padding * 2}px`,
+        height: `${rect.height + padding * 2}px`,
+        borderRadius:
+            step.highlightShape === "circle" ? "9999px" : "1.5rem",
+    };
 }
 
 function getTripSwitchHref({
@@ -429,6 +452,8 @@ export default function AppTopActionBar({
     const [activeMobileTour, setActiveMobileTour] =
         useState<MobileTourKind | null>(null);
     const [activeMobileTourIndex, setActiveMobileTourIndex] = useState(0);
+    const [mobileTourHighlightRect, setMobileTourHighlightRect] =
+        useState<MobileTourHighlightRect | null>(null);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const openMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const previousOpenMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
@@ -458,6 +483,7 @@ export default function AppTopActionBar({
 
         setActiveMobileTour(null);
         setActiveMobileTourIndex(0);
+        setMobileTourHighlightRect(null);
     }
 
     useEffect(() => {
@@ -488,8 +514,33 @@ export default function AppTopActionBar({
         const storageKey = MOBILE_TOUR_STORAGE_KEYS[tourKind];
         if (window.localStorage.getItem(storageKey) === "complete") return;
 
-        setActiveMobileTour(tourKind);
-        setActiveMobileTourIndex(0);
+        let attempt = 0;
+        let timeoutId: number | undefined;
+
+        const tryStartTour = () => {
+            const firstStep = MOBILE_TOUR_STEPS[tourKind][0];
+            const target = document.querySelector(firstStep.targetSelector);
+            const loadingScreen = document.querySelector(".vaivia-loading-screen");
+
+            if (target && !loadingScreen) {
+                setActiveMobileTour(tourKind);
+                setActiveMobileTourIndex(0);
+                return;
+            }
+
+            attempt += 1;
+            if (attempt < 24) {
+                timeoutId = window.setTimeout(tryStartTour, 250);
+            }
+        };
+
+        timeoutId = window.setTimeout(tryStartTour, 450);
+
+        return () => {
+            if (timeoutId) {
+                window.clearTimeout(timeoutId);
+            }
+        };
     }, [
         activeMobileTour,
         isOnboardingWelcomeOpen,
@@ -497,6 +548,66 @@ export default function AppTopActionBar({
         pathname,
         prominentActionNotification,
     ]);
+
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        if (!activeMobileTourStep) {
+            setMobileTourHighlightRect(null);
+            return;
+        }
+
+        const prefersReducedMotion = window.matchMedia(
+            "(prefers-reduced-motion: reduce)"
+        ).matches;
+
+        function measureTarget({ scroll }: { scroll: boolean }) {
+            const target = document.querySelector<HTMLElement>(
+                activeMobileTourStep.targetSelector
+            );
+
+            if (!target) {
+                setMobileTourHighlightRect(null);
+                return;
+            }
+
+            if (scroll && activeMobileTourStep.scrollIntoView) {
+                target.scrollIntoView({
+                    behavior: prefersReducedMotion ? "auto" : "smooth",
+                    block: "center",
+                    inline: "nearest",
+                });
+            }
+
+            window.requestAnimationFrame(() => {
+                const nextRect = target.getBoundingClientRect();
+                setMobileTourHighlightRect({
+                    left: nextRect.left,
+                    top: nextRect.top,
+                    width: nextRect.width,
+                    height: nextRect.height,
+                });
+            });
+        }
+
+        const handleViewportChange = () => measureTarget({ scroll: false });
+
+        measureTarget({ scroll: true });
+        const settleTimeout = window.setTimeout(
+            handleViewportChange,
+            activeMobileTourStep.scrollIntoView ? 420 : 80
+        );
+
+        window.addEventListener("resize", handleViewportChange);
+        window.addEventListener("scroll", handleViewportChange, {
+            passive: true,
+        });
+
+        return () => {
+            window.clearTimeout(settleTimeout);
+            window.removeEventListener("resize", handleViewportChange);
+            window.removeEventListener("scroll", handleViewportChange);
+        };
+    }, [activeMobileTourStep]);
 
     useEffect(() => {
         void refreshNotifications();
@@ -1218,8 +1329,10 @@ export default function AppTopActionBar({
                         return (
                             <>
                                 <div
-                                    className={getMobileTourPingClass(
-                                        activeMobileTourStep.placement
+                                    className="pointer-events-none fixed z-[124] border-2 border-lime-300/75 bg-lime-300/10 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.45)] transition-[left,top,width,height,border-radius] duration-300 md:hidden"
+                                    style={getMobileTourHighlightStyle(
+                                        mobileTourHighlightRect,
+                                        activeMobileTourStep
                                     )}
                                     aria-hidden="true"
                                 />
@@ -1368,6 +1481,7 @@ export default function AppTopActionBar({
                     <button
                         type="button"
                         onClick={() => toggleMenu("trips")}
+                        data-vaivia-mobile-tour-target="trip-switcher"
                         className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_16px_34px_rgba(0,0,0,0.36),0_0_28px_rgba(var(--vaivia-neon-rgb),0.26)] transition hover:-translate-y-0.5 hover:bg-lime-200 hover:shadow-[0_18px_40px_rgba(0,0,0,0.42),0_0_34px_rgba(var(--vaivia-neon-rgb),0.34)] focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
                         aria-label="Open trips menu"
                         aria-haspopup="menu"

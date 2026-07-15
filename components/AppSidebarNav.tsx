@@ -564,6 +564,7 @@ export default function AppSidebarNav({
                                     current === "view" ? null : "view"
                                 )
                             }
+                            data-vaivia-mobile-tour-target="trip-apps"
                             className="pointer-events-auto relative z-10 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
                             aria-label="Open trip views"
                             aria-expanded={mobileMenu === "view"}

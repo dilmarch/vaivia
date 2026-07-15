@@ -882,7 +882,10 @@ function TripsGrid({
     }
 
     return (
-        <section className="relative min-h-[620px] w-full overflow-hidden rounded-[2rem] bg-[#03030a] px-6 py-8 text-white md:px-8 md:py-9">
+        <section
+            data-vaivia-mobile-tour-target="home-trips-widget"
+            className="relative min-h-[620px] w-full overflow-hidden rounded-[2rem] bg-[#03030a] px-6 py-8 text-white md:px-8 md:py-9"
+        >
             <div className="pointer-events-none absolute inset-0">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_12%,rgba(255,54,190,0.24),transparent_24%),radial-gradient(circle_at_8%_88%,rgba(var(--vaivia-neon-soft-rgb),0.16),transparent_26%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)]" />
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),transparent_22%,rgba(0,0,0,0.3))]" />
@@ -1014,7 +1017,10 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
     }
 
     return (
-        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+        <section
+            data-vaivia-mobile-tour-target="home-calendar"
+            className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl"
+        >
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
@@ -1330,7 +1336,10 @@ function DashboardTaskList({ trips }: { trips: DashboardTrip[] }) {
     const tasks = useMemo(() => getDashboardTasks(trips), [trips]);
 
     return (
-        <section className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl">
+        <section
+            data-vaivia-mobile-tour-target="home-tasks"
+            className="w-full rounded-[2rem] border border-white/10 bg-white/[0.04] p-5 text-white shadow-2xl shadow-black/30 backdrop-blur-xl"
+        >
             <div className="mb-5 flex items-start justify-between gap-4">
                 <div>
                     <p className="text-xs font-bold uppercase tracking-[0.35em] text-lime-300">
