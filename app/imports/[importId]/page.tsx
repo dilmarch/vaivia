@@ -1,8 +1,10 @@
 import { FileText, Inbox, Paperclip, Plane, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { Json } from "@/src/types/supabase";
 import { createClient } from "@/lib/supabase/server";
+import { processTravelEmailImport } from "@/lib/travelEmailImportProcessor";
 
 type ImportPageProps = {
     params: Promise<{
@@ -44,6 +46,8 @@ type TravelEmailImportItemRow = {
     item_type: string;
 };
 
+const STALE_PROCESSING_MINUTES = 15;
+
 function formatDate(value?: string | null) {
     if (!value) return "Not processed yet";
 
@@ -83,6 +87,16 @@ function getUserFacingExtractionError(value?: string | null) {
     return "VAIVIA received your email, but could not finish processing it yet. Please try again later.";
 }
 
+function canRetryImport(status: string, processedAt?: string | null) {
+    if (status === "received" || status === "failed") return true;
+    if (status !== "processing" || !processedAt) return false;
+
+    return (
+        Date.now() - new Date(processedAt).getTime() >
+        STALE_PROCESSING_MINUTES * 60 * 1000
+    );
+}
+
 function getItemTitle(item: TravelEmailImportItemRow) {
     const data = item.extracted_data;
     if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -97,6 +111,55 @@ function getItemTitle(item: TravelEmailImportItemRow) {
         data.booking_reference;
 
     return typeof title === "string" && title.trim() ? title : item.item_type;
+}
+
+async function retryTravelEmailImport(formData: FormData) {
+    "use server";
+
+    const importId = String(formData.get("import_id") || "");
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const { data: importRow, error } = await supabase
+        .from("travel_email_imports")
+        .select("id,status,processed_at")
+        .eq("id", importId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (error) {
+        console.error("Could not verify travel email retry ownership:", {
+            importId,
+            userId: user.id,
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+        });
+        throw new Error("Could not retry travel email import");
+    }
+
+    if (!importRow) notFound();
+    if (!canRetryImport(importRow.status, importRow.processed_at)) {
+        redirect(`/imports/${importId}`);
+    }
+
+    try {
+        await processTravelEmailImport(importId);
+    } catch (error) {
+        console.error("Could not retry travel email import:", {
+            importId,
+            userId: user.id,
+            error,
+        });
+    }
+
+    revalidatePath(`/imports/${importId}`);
+    redirect(`/imports/${importId}`);
 }
 
 export default async function ImportReviewPage({ params }: ImportPageProps) {
@@ -160,6 +223,10 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
     const reviewImport = importRow as TravelEmailImportRow;
     const reviewAttachments = (attachments || []) as TravelEmailImportAttachmentRow[];
     const reviewItems = (items || []) as TravelEmailImportItemRow[];
+    const retryAvailable = canRetryImport(
+        reviewImport.status,
+        reviewImport.processed_at
+    );
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-4 pb-10 pt-[calc(8rem+var(--safe-area-top))] text-white md:py-10 md:pl-28">
@@ -179,12 +246,29 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                     the details below for review.
                                 </p>
                             </div>
-                            <Link
-                                href="/settings?section=communications"
-                                className="rounded-full border border-white/10 px-4 py-2 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
-                            >
-                                Email import settings
-                            </Link>
+                            <div className="flex flex-wrap items-center gap-3">
+                                {retryAvailable ? (
+                                    <form action={retryTravelEmailImport}>
+                                        <input
+                                            type="hidden"
+                                            name="import_id"
+                                            value={reviewImport.id}
+                                        />
+                                        <button
+                                            type="submit"
+                                            className="rounded-full bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                        >
+                                            Retry processing
+                                        </button>
+                                    </form>
+                                ) : null}
+                                <Link
+                                    href="/settings?section=communications"
+                                    className="rounded-full border border-white/10 px-4 py-2 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
+                                >
+                                    Email import settings
+                                </Link>
+                            </div>
                         </div>
                     </div>
 
@@ -234,6 +318,21 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                 reviewImport.extraction_error
                             )}
                         </p>
+                        {retryAvailable ? (
+                            <form action={retryTravelEmailImport} className="mt-4">
+                                <input
+                                    type="hidden"
+                                    name="import_id"
+                                    value={reviewImport.id}
+                                />
+                                <button
+                                    type="submit"
+                                    className="rounded-full bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                >
+                                    Retry processing
+                                </button>
+                            </form>
+                        ) : null}
                     </section>
                 ) : null}
 
