@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import { saveAccountThemeMode } from "@/app/actions/theme";
 import {
+    clearGlobalVaiviaThemeStorage,
+    getStoredVaiviaThemeMode,
     isVaiviaThemeMode,
     setVaiviaThemeMode,
     syncVaiviaThemeMode,
@@ -29,12 +31,30 @@ export default function AccountThemeSync({
             return;
         }
 
-        const accountMode: VaiviaThemeMode = isVaiviaThemeMode(themeMode)
+        const hasSavedAccountMode = isVaiviaThemeMode(themeMode);
+        const accountMode: VaiviaThemeMode = hasSavedAccountMode
             ? themeMode
-            : "dark";
+            : getStoredVaiviaThemeMode(userId);
 
         confirmedModeRef.current = accountMode;
         syncVaiviaThemeMode(accountMode, userId);
+        clearGlobalVaiviaThemeStorage();
+
+        if (!hasSavedAccountMode) {
+            const saveId = latestSaveIdRef.current + 1;
+            latestSaveIdRef.current = saveId;
+
+            saveAccountThemeMode(accountMode)
+                .then((result) => {
+                    if (saveId !== latestSaveIdRef.current) return;
+                    if (result?.ok && result.themeMode === accountMode) {
+                        confirmedModeRef.current = accountMode;
+                    }
+                })
+                .catch((error) => {
+                    console.error("Could not initialize account theme mode:", error);
+                });
+        }
     }, [themeMode, userId]);
 
     useEffect(() => {
@@ -77,6 +97,7 @@ export default function AccountThemeSync({
                                 source: "sync",
                                 userId,
                             });
+                            clearGlobalVaiviaThemeStorage();
                             return;
                         }
 
@@ -89,6 +110,7 @@ export default function AccountThemeSync({
                             source: "sync",
                             userId,
                         });
+                        clearGlobalVaiviaThemeStorage();
                         window.dispatchEvent(
                             new CustomEvent("vaivia:theme-save-error", {
                                 detail: {

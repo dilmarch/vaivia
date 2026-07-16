@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Suspense, type ReactNode } from "react";
 import {
+    ArrowRight,
     BedDouble,
     CalendarCheck,
     Flag,
@@ -101,6 +102,7 @@ import type {
     TripExpense,
     TripExpenseSplit,
 } from "@/lib/budget";
+import { calculateBudgetTotals } from "@/lib/budget";
 
 type PageProps = {
     params: Promise<{
@@ -1171,7 +1173,6 @@ function getMemberName(member: TripHeaderMember) {
     return (
         [member.first_name, member.last_name].filter(Boolean).join(" ").trim() ||
         member.username ||
-        member.email ||
         "Trip member"
     );
 }
@@ -1355,7 +1356,7 @@ function toMobileMemberPerson({
         userId: member.user_id,
         label,
         avatarUrl: member.avatar_url,
-        detail: member.email || member.username || null,
+        detail: member.username ? `@${member.username}` : null,
         isCurrentUser: member.user_id === currentUserId,
         friendStatus: friendship?.status || null,
         friendRequesterUserId: friendship?.requester_user_id || null,
@@ -1447,6 +1448,7 @@ function MobilePeopleSummary({
     modalEyebrow,
     inviteMode = false,
     showAddFriendAction = false,
+    inviteHref,
 }: {
     title: string;
     people: MobileOverviewPerson[];
@@ -1455,6 +1457,7 @@ function MobilePeopleSummary({
     modalEyebrow?: string;
     inviteMode?: boolean;
     showAddFriendAction?: boolean;
+    inviteHref?: string;
 }) {
     const visiblePeople = people.slice(0, 5);
     const hiddenCount = Math.max(people.length - visiblePeople.length, 0);
@@ -1516,19 +1519,36 @@ function MobilePeopleSummary({
                                 ) : null}
                             </div>
                         ))}
+                        {inviteHref ? (
+                            <Link
+                                href={inviteHref}
+                                className="flex items-center justify-center gap-2 rounded-full border border-lime-300/30 bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
+                            >
+                                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                                Invite
+                            </Link>
+                        ) : null}
                     </div>
                 ) : (
-                    <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
-                        {emptyText}
-                    </p>
+                    <div className="space-y-3">
+                        <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
+                            {emptyText}
+                        </p>
+                        {inviteHref ? (
+                            <Link
+                                href={inviteHref}
+                                className="flex items-center justify-center gap-2 rounded-full border border-lime-300/30 bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
+                            >
+                                <UserPlus className="h-4 w-4" aria-hidden="true" />
+                                Invite
+                            </Link>
+                        ) : null}
+                    </div>
                 )
             }
         >
             <div className="flex items-center justify-between gap-2">
                 <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                    {inviteMode ? (
-                        <UserPlus className="h-4 w-4" aria-hidden="true" />
-                    ) : null}
                     <span>{title}</span>
                 </p>
                 <span className="text-xs font-black text-slate-400">
@@ -1536,7 +1556,16 @@ function MobilePeopleSummary({
                 </span>
             </div>
             {people.length > 0 ? (
-                <div className="mt-3 flex min-w-0 flex-wrap gap-1.5">
+                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
+                    {inviteMode && inviteHref ? (
+                        <Link
+                            href={inviteHref}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/30 bg-lime-300/10 text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
+                            aria-label="Invite someone"
+                        >
+                            <UserPlus className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                    ) : null}
                     {visiblePeople.map((person) => (
                         <MobilePersonAvatar key={person.id} person={person} />
                     ))}
@@ -1547,8 +1576,17 @@ function MobilePeopleSummary({
                     ) : null}
                 </div>
             ) : (
-                <p className="mt-3 text-xs font-semibold leading-5 text-slate-400">
-                    {emptyText}
+                <p className="mt-3 flex items-center gap-2 text-xs font-semibold leading-5 text-slate-400">
+                    {inviteMode && inviteHref ? (
+                        <Link
+                            href={inviteHref}
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/30 bg-lime-300/10 text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
+                            aria-label="Invite someone"
+                        >
+                            <UserPlus className="h-4 w-4" aria-hidden="true" />
+                        </Link>
+                    ) : null}
+                    <span>{emptyText}</span>
                 </p>
             )}
         </MobileOverviewLongPressCard>
@@ -1705,24 +1743,244 @@ function getTransportationSummary(item: ItineraryCalendarItem) {
             getCompactRouteLocationLabel(item.arrival_location),
         ]
             .filter(Boolean)
-            .join(" > ") ||
+            .join(" → ") ||
         item.location ||
         item.title;
 
     return `${getTransportationModeEmoji(item.transportation_mode)} ${route}`;
 }
 
-function getAccommodationSummary(accommodation: CalendarAccommodation) {
+function getMobileTransportationRouteParts(item: ItineraryCalendarItem) {
+    return [
+        getCompactRouteLocationLabel(item.departure_location),
+        getCompactRouteLocationLabel(item.arrival_location),
+    ].filter(Boolean);
+}
+
+function formatMobileJourneyTime(time?: string | null) {
+    const cleanTime = (time || "").trim();
+    if (!cleanTime) return "";
+
+    const [hours, minutes] = cleanTime.split(":");
+    if (!hours || !minutes) return cleanTime;
+
+    return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
+}
+
+function getMobileJourneyTimezoneLabel(
+    timezone?: string | null,
+    date?: string | null,
+    time?: string | null
+) {
+    const cleanTimezone = (timezone || "").trim();
+    if (!cleanTimezone) return "";
+
+    try {
+        const dateTime = new Date(
+            `${date || "2026-01-01"}T${formatMobileJourneyTime(time) || "12:00"}:00`
+        );
+        const timezoneName = new Intl.DateTimeFormat("en-US", {
+            timeZone: cleanTimezone,
+            timeZoneName: "short",
+        })
+            .formatToParts(dateTime)
+            .find((part) => part.type === "timeZoneName")?.value;
+
+        if (timezoneName) return timezoneName;
+    } catch {
+        // Fall back to the stored timezone string below.
+    }
+
+    return cleanTimezone.split("/").pop()?.replace(/_/g, " ") || cleanTimezone;
+}
+
+function getMobileJourneyFlightLabel(item: ItineraryCalendarItem) {
+    const airlineCode = (item.airline_code || "").trim().toUpperCase();
+    const flightNumber = (item.flight_number || "").trim().toUpperCase();
+
+    if (!flightNumber) return "";
+    if (airlineCode && !flightNumber.startsWith(airlineCode)) {
+        return `${airlineCode} ${flightNumber}`;
+    }
+
+    return flightNumber;
+}
+
+function getMobileJourneyDetail(item: ItineraryCalendarItem) {
+    return [
+        formatMobileJourneyTime(item.start_time),
+        getMobileJourneyTimezoneLabel(
+            item.departure_timezone || item.timezone,
+            item.item_date,
+            item.start_time
+        ),
+        getMobileJourneyFlightLabel(item),
+    ]
+        .filter(Boolean)
+        .join(" · ");
+}
+
+function getMobileJourneyDateTime(
+    date?: string | null,
+    time?: string | null,
+    endOfDay = false
+) {
+    if (!date) return null;
+
+    const cleanTime = formatMobileJourneyTime(time);
+    return new Date(`${date}T${cleanTime || (endOfDay ? "23:59" : "00:00")}:00`);
+}
+
+function getMobileJourneyPauseLabel(
+    currentItem: ItineraryCalendarItem,
+    nextItem: ItineraryCalendarItem
+) {
+    const currentEnd = getMobileJourneyDateTime(
+        currentItem.end_date || currentItem.item_date,
+        currentItem.end_time,
+        true
+    );
+    const nextStart = getMobileJourneyDateTime(
+        nextItem.item_date,
+        nextItem.start_time,
+        false
+    );
+
+    if (!currentEnd || !nextStart) return "";
+
+    const diffMs = nextStart.getTime() - currentEnd.getTime();
+    if (diffMs <= 0) return "";
+
+    const totalHours = Math.round(diffMs / (1000 * 60 * 60));
+    if (totalHours <= 0) return "";
+
+    const location =
+        getCompactRouteLocationLabel(currentItem.arrival_location) ||
+        currentItem.arrival_location ||
+        currentItem.location ||
+        "your connection";
+    const duration =
+        totalHours >= 24
+            ? `${Math.max(1, Math.round(totalHours / 24))} day${
+                  Math.round(totalHours / 24) === 1 ? "" : "s"
+              }`
+            : `${totalHours} hour${totalHours === 1 ? "" : "s"}`;
+
+    return `${duration} in ${location}`;
+}
+
+type MobileStayTimelineEntry = {
+    id: string;
+    checkInDate: string;
+    checkOutDate: string;
+    label: string;
+    kind: "booked" | "missing" | "tentative";
+    omitCheckIn?: boolean;
+};
+
+function compareDateStrings(left?: string | null, right?: string | null) {
+    return String(left || "").localeCompare(String(right || ""));
+}
+
+function isBookedAccommodationStatus(status?: string | null) {
+    const normalizedStatus = String(status || "").trim().toLowerCase();
+    if (!normalizedStatus) return true;
+
+    return [
+        "booked",
+        "confirmed",
+        "reserved",
+        "paid",
+        "active",
+    ].includes(normalizedStatus);
+}
+
+function getAccommodationTimelineLabel(accommodation: CalendarAccommodation) {
+    const hotelName = (accommodation.hotel_name || "").trim();
     const location = [accommodation.city, accommodation.region, accommodation.country]
         .filter(Boolean)
         .join(", ");
-    const dateRange = `${formatCompactTripDate(
-        accommodation.check_in_date
-    )} - ${formatCompactTripDate(accommodation.check_out_date)}`;
 
-    return [accommodation.hotel_name, location || null, dateRange]
-        .filter(Boolean)
-        .join(" · ");
+    return [hotelName || "Stay", location || null].filter(Boolean).join(" · ");
+}
+
+function buildMobileStayTimeline({
+    accommodations,
+    tripStartDate,
+    tripEndDate,
+}: {
+    accommodations: CalendarAccommodation[];
+    tripStartDate?: string | null;
+    tripEndDate?: string | null;
+}) {
+    const sortedAccommodations = [...accommodations]
+        .filter(
+            (accommodation) =>
+                accommodation.check_in_date && accommodation.check_out_date
+        )
+        .sort((a, b) => {
+            const dateSort = compareDateStrings(a.check_in_date, b.check_in_date);
+            if (dateSort !== 0) return dateSort;
+            return compareDateStrings(a.check_out_date, b.check_out_date);
+        });
+    const entries: MobileStayTimelineEntry[] = [];
+    let cursorDate = tripStartDate || sortedAccommodations[0]?.check_in_date || null;
+
+    sortedAccommodations.forEach((accommodation) => {
+        if (
+            cursorDate &&
+            accommodation.check_in_date &&
+            compareDateStrings(cursorDate, accommodation.check_in_date) < 0
+        ) {
+            entries.push({
+                id: `missing:${cursorDate}:${accommodation.check_in_date}`,
+                checkInDate: cursorDate,
+                checkOutDate: accommodation.check_in_date,
+                label: "nothing booked",
+                kind: "missing",
+                omitCheckIn:
+                    entries[entries.length - 1]?.checkOutDate === cursorDate,
+            });
+        }
+
+        const isBooked = isBookedAccommodationStatus(accommodation.status);
+        entries.push({
+            id: accommodation.id,
+            checkInDate: accommodation.check_in_date,
+            checkOutDate: accommodation.check_out_date,
+            label: isBooked
+                ? getAccommodationTimelineLabel(accommodation)
+                : "tentative, nothing booked",
+            kind: isBooked ? "booked" : "tentative",
+            omitCheckIn:
+                entries[entries.length - 1]?.checkOutDate ===
+                accommodation.check_in_date,
+        });
+
+        if (
+            !cursorDate ||
+            compareDateStrings(cursorDate, accommodation.check_out_date) < 0
+        ) {
+            cursorDate = accommodation.check_out_date;
+        }
+    });
+
+    if (
+        cursorDate &&
+        tripEndDate &&
+        compareDateStrings(cursorDate, tripEndDate) < 0
+    ) {
+        entries.push({
+            id: `missing:${cursorDate}:${tripEndDate}`,
+            checkInDate: cursorDate,
+            checkOutDate: tripEndDate,
+            label: "nothing booked",
+            kind: "missing",
+            omitCheckIn: entries[entries.length - 1]?.checkOutDate === cursorDate,
+        });
+    }
+
+    return entries;
 }
 
 async function createItineraryItem(formData: FormData) {
@@ -3676,8 +3934,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
     if (tripMemberUserIds.length > 0) {
         const { data: profileRows, error: profileRowsError } = await supabase
-            .from("user_profiles")
-            .select("id,first_name,last_name,username,email,avatar_url")
+            .from("connected_public_user_profiles")
+            .select("id,first_name,last_name,username,avatar_url")
             .in("id", tripMemberUserIds);
 
         if (profileRowsError) {
@@ -3695,7 +3953,6 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     first_name?: string | null;
                     last_name?: string | null;
                     username?: string | null;
-                    email?: string | null;
                     avatar_url?: string | null;
                 }>).map((profile) => [profile.id, profile])
             );
@@ -3709,7 +3966,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     first_name: profile?.first_name || null,
                     last_name: profile?.last_name || null,
                     username: profile?.username || null,
-                    email: profile?.email || null,
+                    email: null,
                     avatar_url: profile?.avatar_url || null,
                     joined_at:
                         membership?.created_at ||
@@ -4469,7 +4726,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
         if (reactionUserIds.length > 0) {
             const { data: profileRows, error: profilesError } = await supabase
-                .from("user_profiles")
+                .from("connected_public_user_profiles")
                 .select("id,first_name,last_name,username,avatar_url")
                 .in("id", reactionUserIds);
 
@@ -4664,28 +4921,27 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     const mobileAccommodationItems = (
         (accommodationRows || []) as CalendarAccommodation[]
     )
-        .filter((accommodation) => accommodation.status !== "cancelled")
-        .slice(0, 2);
+        .filter((accommodation) => accommodation.status !== "cancelled");
+    const mobileStayTimeline = buildMobileStayTimeline({
+        accommodations: mobileAccommodationItems,
+        tripStartDate: trip.start_date,
+        tripEndDate: trip.end_date,
+    });
     const mobileBudgetCurrency =
         mobileBudgetData.budget?.reporting_currency ||
+        mobileBudgetData.lineItems[0]?.currency ||
         mobileExpenseData.expenses[0]?.reporting_currency ||
         mobileExpenseData.expenses[0]?.currency ||
         "CAD";
-    const mobileBudgetTotal = Number(
-        mobileBudgetData.budget?.total_budget_amount || 0
-    );
-    const hasMobileBudget = Boolean(mobileBudgetData.budget);
-    const mobileExpenseTotal = mobileExpenseData.expenses.reduce(
-        (sum, expense) =>
-            sum +
-            Number(
-                expense.amount_in_reporting_currency ||
-                    expense.amount ||
-                    expense.original_amount ||
-                    0
-            ),
-        0
-    );
+    const mobileBudgetTotals = calculateBudgetTotals({
+        budget: mobileBudgetData.budget,
+        lineItems: mobileBudgetData.lineItems,
+        expenses: mobileExpenseData.expenses,
+    });
+    const mobileBudgetTotal = mobileBudgetTotals.budgeted;
+    const hasMobileBudget =
+        Boolean(mobileBudgetData.budget) || mobileBudgetData.lineItems.length > 0;
+    const mobileExpenseTotal = mobileBudgetTotals.spent;
     const isMobileGroupTrip =
         mobileGoingPeople.length > 1 || mobileInvitedPeople.length > 0;
     const mobileSettlementSummaries = getMobileSettlementSummaries({
@@ -4714,7 +4970,10 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 </TripHeaderCover>
 
                 <div className="mx-auto max-w-7xl p-5 sm:p-7">
-                    <div className={hideHeaderDetailsOnMobile ? "hidden sm:block" : ""}>
+                    <div
+                        id="trip-invites"
+                        className={`${hideHeaderDetailsOnMobile ? "hidden sm:block" : ""} scroll-mt-28`}
+                    >
                         <TripLegLocationLine
                             tripId={trip.id}
                             revalidatePathname={getTripHref(trip)}
@@ -4877,6 +5136,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 modalTitle="Pending invites"
                                 modalEyebrow="Invited"
                                 inviteMode
+                                inviteHref="#trip-invites"
                             />
                             {!shouldStackGoingOnMobile ? (
                                 <MobilePeopleSummary
@@ -4938,21 +5198,105 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 href={getTripHref(trip, "?tab=journey")}
                                 icon={Route}
                                 buttonLabel="Visit journey"
+                                alignTop
                             >
-                                <div className="space-y-2">
+                                <div>
                                     {mobileTransportationItems.length > 0 ? (
-                                        mobileTransportationItems.map((item) => (
-                                            <div
-                                                key={item.id}
-                                                className="relative pl-4 text-[11px] font-semibold leading-4 text-slate-300 before:absolute before:left-0 before:top-1.5 before:h-2 before:w-2 before:rounded-full before:bg-lime-300 after:absolute after:bottom-[-0.65rem] after:left-[3px] after:top-4 after:w-px after:bg-lime-300/25 last:after:hidden"
-                                            >
-                                                {getTransportationSummary(item)}
-                                            </div>
-                                        ))
+                                        <div className="relative space-y-2.5 pl-5 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:border-l before:border-dotted before:border-lime-300/45">
+                                            {mobileTransportationItems.map(
+                                                (item, index) => {
+                                                    const routeParts =
+                                                        getMobileTransportationRouteParts(
+                                                            item
+                                                        );
+                                                    const detail =
+                                                        getMobileJourneyDetail(item);
+                                                    const pauseLabel =
+                                                        mobileTransportationItems[
+                                                            index + 1
+                                                        ]
+                                                            ? getMobileJourneyPauseLabel(
+                                                                  item,
+                                                                  mobileTransportationItems[
+                                                                      index + 1
+                                                                  ]
+                                                              )
+                                                            : "";
+
+                                                    return (
+                                                        <div
+                                                            key={item.id}
+                                                            className="space-y-1.5 text-[11px] font-semibold leading-4 text-slate-300"
+                                                        >
+                                                            <div className="relative rounded-xl border border-white/10 bg-slate-950/45 px-2.5 py-2 text-slate-200">
+                                                                <span
+                                                                    className="absolute -left-[19px] top-3 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
+                                                                    aria-hidden="true"
+                                                                >
+                                                                    <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
+                                                                </span>
+                                                                {routeParts.length >= 2 ? (
+                                                                    <p className="flex flex-wrap items-center gap-1.5 font-black text-slate-100">
+                                                                        <span>
+                                                                            {getTransportationModeEmoji(
+                                                                                item.transportation_mode
+                                                                            )}
+                                                                        </span>
+                                                                        <span>
+                                                                            {
+                                                                                routeParts[0]
+                                                                            }
+                                                                        </span>
+                                                                        <ArrowRight
+                                                                            className="h-3 w-3 shrink-0 text-lime-200"
+                                                                            aria-hidden="true"
+                                                                        />
+                                                                        <span>
+                                                                            {
+                                                                                routeParts[1]
+                                                                            }
+                                                                        </span>
+                                                                    </p>
+                                                                ) : (
+                                                                    <p className="font-black text-slate-100">
+                                                                        {getTransportationSummary(
+                                                                            item
+                                                                        )}
+                                                                    </p>
+                                                                )}
+                                                                {detail ? (
+                                                                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                                                                        {detail}
+                                                                    </p>
+                                                                ) : null}
+                                                            </div>
+                                                            {pauseLabel ? (
+                                                                <p className="pl-2 text-[10px] font-bold uppercase tracking-[0.08em] text-lime-100/80">
+                                                                    {pauseLabel}
+                                                                </p>
+                                                            ) : null}
+                                                        </div>
+                                                    );
+                                                }
+                                            )}
+                                        </div>
                                     ) : (
-                                        <p className="text-[11px] font-semibold leading-4 text-slate-400">
-                                            No transportation yet
-                                        </p>
+                                        <div className="relative pl-5">
+                                            <div className="relative rounded-xl border border-white/10 bg-slate-950/45 px-2.5 py-2 text-[11px] font-semibold leading-4 text-slate-300">
+                                                <span
+                                                    className="absolute -left-[19px] top-3 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
+                                                    aria-hidden="true"
+                                                >
+                                                    <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
+                                                </span>
+                                                <p className="font-black text-slate-100">
+                                                    nothing booked
+                                                </p>
+                                                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                                                    add a transportation item to the itinerary
+                                                </p>
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
                             </MobileOverviewTile>
@@ -4965,16 +5309,55 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 buttonLabel="Visit stays"
                                 alignTop
                             >
-                                <div className="space-y-2">
-                                    {mobileAccommodationItems.length > 0 ? (
-                                        mobileAccommodationItems.map((accommodation) => (
-                                            <p
-                                                key={accommodation.id}
-                                                className="text-[11px] font-semibold leading-4 text-slate-300"
-                                            >
-                                                {getAccommodationSummary(accommodation)}
-                                            </p>
-                                        ))
+                                <div>
+                                    {mobileStayTimeline.length > 0 ? (
+                                        <div className="relative space-y-2 pl-5 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:border-l before:border-dotted before:border-lime-300/45">
+                                            {mobileStayTimeline.map((entry) => (
+                                                <div
+                                                    key={entry.id}
+                                                    className="space-y-1.5 text-[11px] font-semibold leading-4 text-slate-300"
+                                                >
+                                                    {!entry.omitCheckIn ? (
+                                                        <p className="relative flex items-start">
+                                                            <span
+                                                                className="absolute -left-[19px] top-1 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
+                                                                aria-hidden="true"
+                                                            >
+                                                                <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
+                                                            </span>
+                                                            <span>
+                                                                {formatCompactTripDate(
+                                                                    entry.checkInDate
+                                                                )}
+                                                            </span>
+                                                        </p>
+                                                    ) : null}
+                                                    <p className="rounded-xl border border-white/10 bg-slate-950/45 px-2.5 py-2 text-slate-200">
+                                                        <span className="mr-1.5">
+                                                            {entry.kind === "booked"
+                                                                ? "🏨"
+                                                                : entry.kind === "tentative"
+                                                                  ? "⚠️"
+                                                                  : "❗"}
+                                                        </span>
+                                                        <span>{entry.label}</span>
+                                                    </p>
+                                                    <p className="relative flex items-start">
+                                                        <span
+                                                            className="absolute -left-[19px] top-1 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
+                                                            aria-hidden="true"
+                                                        >
+                                                            <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
+                                                        </span>
+                                                        <span>
+                                                            {formatCompactTripDate(
+                                                                entry.checkOutDate
+                                                            )}
+                                                        </span>
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
                                     ) : (
                                         <p className="text-[11px] font-semibold leading-4 text-slate-400">
                                             None booked yet

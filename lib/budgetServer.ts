@@ -298,8 +298,8 @@ export async function loadBudgetParticipants(tripId: string, userId: string) {
     let profiles = new Map<string, Record<string, unknown>>();
     if (memberUserIds.length > 0) {
         const { data: profileRows } = await supabase
-            .from("user_profiles")
-            .select("id,first_name,last_name,username,avatar_url,email")
+            .from("connected_public_user_profiles")
+            .select("id,first_name,last_name,username,avatar_url")
             .in("id", memberUserIds);
         profiles = new Map(
             ((profileRows || []) as Record<string, unknown>[]).map((profile) => [
@@ -321,7 +321,7 @@ export async function loadBudgetParticipants(tripId: string, userId: string) {
                 .filter(Boolean)
                 .join(" ")
                 .trim() ||
-            String(profile?.username || profile?.email || "Trip member");
+            String(profile?.username || "Trip member");
 
         return {
             id: member?.id || `owner:${memberUserId}`,

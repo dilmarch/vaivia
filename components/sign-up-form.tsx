@@ -18,6 +18,11 @@ import {
 } from "@/lib/onboarding";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import {
+  getUsernameValidationError,
+  isUsernameConflictError,
+  normalizeUsername,
+} from "@/lib/usernames";
 
 type SignupStep = "account" | "photo" | "invites" | "start";
 
@@ -201,7 +206,7 @@ export function SignUpForm({
         id: nextUserId,
         first_name: firstName.trim() || null,
         last_name: lastName.trim() || null,
-        username: username.trim() || null,
+        username: normalizeUsername(username),
         email: email.trim() || null,
         avatar_url: avatarUrl,
         join_date: now,
@@ -237,15 +242,21 @@ export function SignUpForm({
     setStatusMessage(null);
 
     const cleanEmail = email.trim();
-    const cleanUsername = username.trim();
+    const cleanUsername = normalizeUsername(username);
     const passwordError = getPasswordValidationError({
       password,
       email: cleanEmail,
       username: cleanUsername,
     });
+    const usernameError = getUsernameValidationError(cleanUsername);
 
     if (passwordError) {
       setError(passwordError);
+      return;
+    }
+
+    if (usernameError) {
+      setError(usernameError);
       return;
     }
 
@@ -312,7 +323,11 @@ export function SignUpForm({
 
       setStep("photo");
     } catch (error) {
-      setError(getErrorMessage(error));
+      setError(
+        isUsernameConflictError(error)
+          ? "That username is already taken. Try another one."
+          : getErrorMessage(error)
+      );
     } finally {
       setIsLoading(false);
     }
@@ -690,6 +705,7 @@ export function SignUpForm({
                 <input
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
+                  onBlur={() => setUsername((current) => normalizeUsername(current))}
                   required
                   className="mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/90 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-lime-300/55"
                   placeholder="dilmarch"

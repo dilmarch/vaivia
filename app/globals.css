@@ -682,7 +682,7 @@
   :root[data-vaivia-theme="brat"] .bg-slate-900\/50,
   :root[data-vaivia-theme="brat"] .bg-slate-900\/70,
   :root[data-vaivia-theme="brat"] .bg-slate-900\/90 {
-    background-color: rgb(138 206 0 / 0.9) !important;
+    background-color: #5f9200 !important;
     color: #111111 !important;
   }
 
@@ -692,7 +692,7 @@
   :root[data-vaivia-theme="brat"] .bg-white\/\[0\.08\],
   :root[data-vaivia-theme="brat"] .bg-white\/10,
   :root[data-vaivia-theme="brat"] .bg-white\/15 {
-    background-color: rgb(138 206 0 / 0.72) !important;
+    background-color: #6faa00 !important;
     color: #111111 !important;
   }
 
@@ -736,7 +736,7 @@
   :root[data-vaivia-theme="brat"] .bg-white\/10 *,
   :root[data-vaivia-theme="brat"] .bg-white\/15 * {
     color: #111111 !important;
-    border-color: rgb(0 0 0 / 0.22) !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
   }
 
   :root[data-vaivia-theme="brat"] input::placeholder,
@@ -917,7 +917,6 @@
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content > p,
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content h1,
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-hero-content h1 span,
-  :root[data-vaivia-theme="brat"] .vaivia-loading-title,
   :root[data-vaivia-theme="brat"] .vaivia-trip-hero-title {
     background: none !important;
     color: #8ace00 !important;
@@ -927,17 +926,17 @@
 
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget {
     background:
-      radial-gradient(circle at 15% 12%, rgb(138 206 0 / 0.14), transparent 34%),
-      linear-gradient(180deg, rgb(0 0 0 / 0.92), rgb(0 0 0 / 0.86)) !important;
-    border-color: rgb(138 206 0 / 0.28) !important;
-    color: #8ace00 !important;
+      radial-gradient(circle at 15% 12%, rgb(255 255 255 / 0.18), transparent 34%),
+      linear-gradient(180deg, #6faa00, #5f9200) !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget *,
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget [class*="text-lime"],
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget [class*="text-slate"],
   :root[data-vaivia-theme="brat"] .vaivia-dashboard-countdown-widget .text-white {
-    color: #8ace00 !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-trip-countdown,
@@ -949,18 +948,18 @@
 
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar {
     background:
-      radial-gradient(circle at 85% 0%, rgb(138 206 0 / 0.14), transparent 28%),
-      linear-gradient(180deg, #050505, #000000) !important;
-    border-color: rgb(138 206 0 / 0.24) !important;
-    color: #8ace00 !important;
+      radial-gradient(circle at 85% 0%, rgb(255 255 255 / 0.16), transparent 28%),
+      linear-gradient(180deg, #6faa00, #5f9200) !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar *,
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [class*="text-lime"],
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [class*="text-slate"],
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .text-white {
-    color: #8ace00 !important;
-    border-color: rgb(138 206 0 / 0.24) !important;
+    color: #111111 !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar .bg-lime-300,
@@ -981,7 +980,53 @@
 
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar button:not(.bg-lime-300):not(.bg-lime-200):not(.bg-lime-100),
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar a:not(.bg-lime-300):not(.bg-lime-200):not(.bg-lime-100) {
-    color: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector {
+    background: #5f9200 !important;
+    border-color: rgb(17 17 17 / 0.24) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector :is(p, h2) {
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-loading-screen {
+    background: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-loading-screen > .absolute {
+    background: #8ace00 !important;
+    opacity: 1 !important;
+    mix-blend-mode: normal !important;
+    backdrop-filter: none !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-loading-backdrop-image {
+    display: none !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-loading-card {
+    background: #5f9200 !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
+    box-shadow: 0 28px 80px rgb(17 17 17 / 0.34) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-loading-card *,
+  :root[data-vaivia-theme="brat"] .vaivia-loading-title {
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+    text-shadow: none !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-loading-chip {
+    background: #6faa00 !important;
+    border-color: rgb(17 17 17 / 0.28) !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="pride"],
@@ -1279,20 +1324,26 @@
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button,
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button *,
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-label {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-theme-selector {
+    background: #8ace00 !important;
+    border-color: rgb(17 17 17 / 0.28) !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button {
-    background: #000000 !important;
-    border-color: rgb(255 255 255 / 0.22) !important;
+    background: #79b900 !important;
+    border-color: rgb(17 17 17 / 0.22) !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button:hover,
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button[aria-pressed="true"] {
-    background: #111111 !important;
-    border-color: rgb(255 255 255 / 0.44) !important;
-    color: #ffffff !important;
+    background: #a7f000 !important;
+    border-color: rgb(17 17 17 / 0.42) !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector .vaivia-theme-mode-button > span:first-child {

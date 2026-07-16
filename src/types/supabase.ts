@@ -1135,6 +1135,60 @@ export type Database = {
           },
         ]
       }
+      travel_email_imports: {
+        Row: {
+          attachment_count: number
+          created_at: string
+          extraction_error: string | null
+          id: string
+          message_id: string | null
+          processed_at: string | null
+          provider: string
+          provider_email_id: string
+          raw_html: string | null
+          raw_text: string | null
+          recipient_email: string | null
+          sender_email: string | null
+          status: Database["public"]["Enums"]["travel_email_import_status"]
+          subject: string | null
+          user_id: string
+        }
+        Insert: {
+          attachment_count?: number
+          created_at?: string
+          extraction_error?: string | null
+          id?: string
+          message_id?: string | null
+          processed_at?: string | null
+          provider?: string
+          provider_email_id: string
+          raw_html?: string | null
+          raw_text?: string | null
+          recipient_email?: string | null
+          sender_email?: string | null
+          status?: Database["public"]["Enums"]["travel_email_import_status"]
+          subject?: string | null
+          user_id: string
+        }
+        Update: {
+          attachment_count?: number
+          created_at?: string
+          extraction_error?: string | null
+          id?: string
+          message_id?: string | null
+          processed_at?: string | null
+          provider?: string
+          provider_email_id?: string
+          raw_html?: string | null
+          raw_text?: string | null
+          recipient_email?: string | null
+          sender_email?: string | null
+          status?: Database["public"]["Enums"]["travel_email_import_status"]
+          subject?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       trip_accommodations: {
         Row: {
           accommodation_type: Database["public"]["Enums"]["accommodation_type"]
@@ -2745,6 +2799,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_email_import_addresses: {
+        Row: {
+          created_at: string
+          id: string
+          inbound_token: string
+          is_active: boolean
+          rotated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          inbound_token: string
+          is_active?: boolean
+          rotated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          inbound_token?: string
+          is_active?: boolean
+          rotated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_family_members: {
         Row: {
           avatar_url: string | null
@@ -3431,6 +3512,39 @@ export type Database = {
       }
     }
     Views: {
+      connected_public_user_profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          first_name: string | null
+          id: string | null
+          join_date: string | null
+          last_name: string | null
+          role: string | null
+          username: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          id?: string | null
+          join_date?: string | null
+          last_name?: string | null
+          role?: string | null
+          username?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          first_name?: string | null
+          id?: string | null
+          join_date?: string | null
+          last_name?: string | null
+          role?: string | null
+          username?: string | null
+        }
+        Relationships: []
+      }
       trip_item_participants_display: {
         Row: {
           avatar_url: string | null
@@ -3833,6 +3947,23 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      rotate_user_email_import_address: {
+        Args: { new_inbound_token: string; target_user_id: string }
+        Returns: {
+          created_at: string
+          id: string
+          inbound_token: string
+          is_active: boolean
+          rotated_at: string | null
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "user_email_import_addresses"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       seed_default_user_categories: {
         Args: { target_user_id: string }
         Returns: undefined
@@ -3888,6 +4019,14 @@ export type Database = {
         | "hostel"
         | "friend_family"
         | "other"
+      travel_email_import_status:
+        | "received"
+        | "processing"
+        | "needs_review"
+        | "ready"
+        | "imported"
+        | "rejected"
+        | "failed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -4023,6 +4162,15 @@ export const Constants = {
         "hostel",
         "friend_family",
         "other",
+      ],
+      travel_email_import_status: [
+        "received",
+        "processing",
+        "needs_review",
+        "ready",
+        "imported",
+        "rejected",
+        "failed",
       ],
     },
   },

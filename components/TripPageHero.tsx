@@ -649,8 +649,8 @@ export default async function TripPageHero({
 
     if (tripMemberUserIds.length > 0) {
         const { data: profileRows } = await supabase
-            .from("user_profiles")
-            .select("id,first_name,last_name,username,email,avatar_url")
+            .from("connected_public_user_profiles")
+            .select("id,first_name,last_name,username,avatar_url")
             .in("id", tripMemberUserIds);
 
         const profilesById = new Map(
@@ -659,7 +659,6 @@ export default async function TripPageHero({
                 first_name?: string | null;
                 last_name?: string | null;
                 username?: string | null;
-                email?: string | null;
                 avatar_url?: string | null;
             }>).map((profile) => [profile.id, profile])
         );
@@ -673,7 +672,7 @@ export default async function TripPageHero({
                 first_name: profile?.first_name || null,
                 last_name: profile?.last_name || null,
                 username: profile?.username || null,
-                email: profile?.email || null,
+                email: null,
                 avatar_url: profile?.avatar_url || null,
                 joined_at:
                     membership?.created_at ||

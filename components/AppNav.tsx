@@ -7,6 +7,7 @@ import AppSidebarNav from "@/components/AppSidebarNav";
 import AppTopActionBar, { type AppNotification } from "@/components/AppTopActionBar";
 import GlobalQuickAdd from "@/components/GlobalQuickAdd";
 import TermsConsentGate from "@/components/TermsConsentGate";
+import UsernameRequiredGate from "@/components/UsernameRequiredGate";
 import MobilePushPrompt from "@/components/pwa/MobilePushPrompt";
 import { loadActiveDropdownNotifications } from "@/lib/notifications/dropdown";
 import {
@@ -183,6 +184,13 @@ export default async function AppNav() {
         <>
             {user ? <AuthenticatedActivityRecorder /> : null}
             {user ? <TermsConsentGate userId={user.id} /> : null}
+            {user ? (
+                <UsernameRequiredGate
+                    userId={user.id}
+                    email={user.email}
+                    initialUsername={profile?.username || null}
+                />
+            ) : null}
             <AccountThemeSync
                 userId={user?.id || null}
                 themeMode={preferences?.theme_mode || null}

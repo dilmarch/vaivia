@@ -7,9 +7,11 @@ import PinkModeToggle from "@/components/PinkModeToggle";
 import type { VaiviaThemeMode } from "@/components/PinkModeProvider";
 import SettingsCategoriesClient from "@/components/SettingsCategoriesClient";
 import SettingsDataClient from "@/components/SettingsDataClient";
+import SettingsEmailImportClient from "@/components/SettingsEmailImportClient";
 import SettingsFamilyMembersClient from "@/components/SettingsFamilyMembersClient";
 import SettingsFinancialClient from "@/components/SettingsFinancialClient";
 import SettingsNotificationsClient from "@/components/SettingsNotificationsClient";
+import SettingsProfileDetailsClient from "@/components/SettingsProfileDetailsClient";
 import SettingsSecurityClient from "@/components/SettingsSecurityClient";
 import { ALL_CURRENCY_OPTIONS, normalizeCurrencyCode } from "@/lib/currency";
 import { isCountdownUnit, type CountdownUnit } from "@/lib/countdownDisplay";
@@ -26,6 +28,11 @@ import {
     normalizeFamilyMemberPayload,
     type FamilyMember,
 } from "@/lib/travelers";
+import {
+    getUsernameValidationError,
+    isUsernameConflictError,
+    normalizeUsername,
+} from "@/lib/usernames";
 
 type SettingsPageProps = {
     searchParams?: Promise<{
@@ -103,6 +110,109 @@ function normalizeThemeMode(value: unknown): VaiviaThemeMode {
 
 function normalizeNewsFeedMode(value: unknown): "integrated" | "widget" {
     return value === "widget" ? "widget" : "integrated";
+}
+
+function isValidEmail(value: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function getCurrentAuthProviders(user: {
+    identities?: Array<{ provider?: string | null }> | null;
+    app_metadata?: { provider?: unknown } | null;
+}) {
+    const identityProviders = new Set<string>();
+    for (const identity of user.identities || []) {
+        if (identity.provider) identityProviders.add(identity.provider);
+    }
+    const fallbackProvider =
+        typeof user.app_metadata?.provider === "string"
+            ? user.app_metadata.provider
+            : "";
+    if (fallbackProvider) identityProviders.add(fallbackProvider);
+
+    return identityProviders;
+}
+
+function hasSocialAuthProvider(providers: Set<string>) {
+    return Array.from(providers).some((provider) => provider !== "email");
+}
+
+async function updateProfileDetails(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const firstName = String(formData.get("first_name") || "").trim();
+    const lastName = String(formData.get("last_name") || "").trim();
+    const username = normalizeUsername(String(formData.get("username") || ""));
+    const usernameError = getUsernameValidationError(username);
+
+    if (usernameError) {
+        redirect(
+            `/settings?section=profile&message=${
+                username ? "username-invalid" : "username-required"
+            }`
+        );
+    }
+
+    const authProviders = getCurrentAuthProviders(user);
+    const canChangeEmail = !hasSocialAuthProvider(authProviders);
+    const rawEmail = String(formData.get("email") || "").trim();
+    const nextEmail = canChangeEmail ? rawEmail : user.email || "";
+
+    if (canChangeEmail && nextEmail && !isValidEmail(nextEmail)) {
+        redirect("/settings?section=profile&message=email-invalid");
+    }
+
+    if (!canChangeEmail && rawEmail && rawEmail !== (user.email || "")) {
+        redirect("/settings?section=profile&message=email-unavailable");
+    }
+
+    try {
+        if (canChangeEmail && nextEmail && nextEmail !== user.email) {
+            const { error: authError } = await supabase.auth.updateUser({
+                email: nextEmail,
+            });
+
+            if (authError) throw authError;
+        }
+
+        const now = new Date().toISOString();
+        const payload = {
+            id: user.id,
+            first_name: firstName || null,
+            last_name: lastName || null,
+            username,
+            email: nextEmail || user.email || null,
+            join_date: user.created_at || now,
+            updated_at: now,
+        };
+
+        const { error } = await supabase
+            .from("user_profiles")
+            .upsert(payload, { onConflict: "id" });
+
+        if (error) throw error;
+    } catch (error) {
+        console.error("Error updating profile details:", {
+            error,
+            userId: user.id,
+        });
+        redirect(
+            `/settings?section=profile&message=${
+                isUsernameConflictError(error) ? "username-taken" : "error"
+            }`
+        );
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/profile");
+    redirect("/settings?section=profile&message=saved");
 }
 
 async function addFamilyMember(formData: FormData) {
@@ -600,7 +710,9 @@ async function updateSecuritySettings(formData: FormData) {
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
     const params = searchParams ? await searchParams : {};
     const activeSection =
-        params.section === "categories"
+        params.section === "profile"
+            ? "profile"
+            : params.section === "categories"
             ? "categories"
             : params.section === "family"
               ? "family"
@@ -661,7 +773,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         supabase
             .from("user_profiles")
             .select(
-                "biometric_login_enabled,role,marketing_emails_consent,marketing_emails_consent_decided_at,account_deletion_requested_at,data_center_preference"
+                "first_name,last_name,username,email,biometric_login_enabled,role,marketing_emails_consent,marketing_emails_consent_decided_at,account_deletion_requested_at,data_center_preference"
             )
             .eq("id", user.id)
             .maybeSingle(),
@@ -706,18 +818,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         name: currency.name,
         symbol: currency.symbol,
     }));
-    const identityProviders = new Set(
-        (user.identities || [])
-            .map((identity) => identity.provider)
-            .filter(Boolean)
-    );
-    const fallbackProvider =
-        typeof user.app_metadata?.provider === "string"
-            ? user.app_metadata.provider
-            : "";
-    if (fallbackProvider) identityProviders.add(fallbackProvider);
+    const identityProviders = getCurrentAuthProviders(user);
+    const hasSsoProvider = hasSocialAuthProvider(identityProviders);
+    const canChangeEmail = !hasSsoProvider;
     const canChangePassword =
-        identityProviders.has("email") || identityProviders.size === 0;
+        !hasSsoProvider &&
+        (identityProviders.has("email") || identityProviders.size === 0);
     const socialProviderLabels = Array.from(identityProviders)
         .filter((provider) => provider !== "email")
         .map(getAuthProviderLabel);
@@ -743,6 +849,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             }`}
                         >
                             General
+                        </Link>
+                        <Link
+                            href="/settings?section=profile"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "profile"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Profile Details
                         </Link>
                         <Link
                             href="/settings?section=time-date"
@@ -916,6 +1032,30 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             </section>
                             ) : null}
                         </div>
+                    ) : activeSection === "profile" ? (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Profile Details
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Profile details
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Update your name, username, and account email.
+                                    SSO accounts keep their email managed by their
+                                    sign-in provider.
+                                </p>
+                            </div>
+                            <SettingsProfileDetailsClient
+                                profile={userProfile}
+                                authEmail={user.email}
+                                canChangeEmail={canChangeEmail}
+                                authProviderLabels={authProviderLabels}
+                                message={params.message}
+                                updateAction={updateProfileDetails}
+                            />
+                        </div>
                     ) : activeSection === "time-date" ? (
                         <div className="space-y-6">
                             <div>
@@ -1060,6 +1200,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                     />
                                 </div>
                             </section>
+                            <SettingsEmailImportClient />
                             <SettingsNotificationsClient
                                 preferences={notificationPreferences}
                                 vapidPublicKey={

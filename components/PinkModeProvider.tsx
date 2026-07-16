@@ -43,6 +43,13 @@ function getThemeStorageKey(userId?: string | null) {
     return userId ? `${VAIVIA_THEME_USER_STORAGE_PREFIX}${userId}` : null;
 }
 
+export function clearGlobalVaiviaThemeStorage() {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.removeItem(VAIVIA_THEME_STORAGE_KEY);
+    window.localStorage.removeItem(PINK_MODE_STORAGE_KEY);
+}
+
 export function setVaiviaThemeMode(
     mode: VaiviaThemeMode,
     options: SetVaiviaThemeModeOptions = {}
@@ -53,8 +60,10 @@ export function setVaiviaThemeMode(
     document.documentElement.dataset.pinkMode = mode === "pink" ? "true" : "false";
     const userStorageKey = getThemeStorageKey(options.userId);
     if (userStorageKey) window.localStorage.setItem(userStorageKey, mode);
-    window.localStorage.setItem(VAIVIA_THEME_STORAGE_KEY, mode);
-    window.localStorage.setItem(PINK_MODE_STORAGE_KEY, mode === "pink" ? "true" : "false");
+    if (!options.userId) {
+        window.localStorage.setItem(VAIVIA_THEME_STORAGE_KEY, mode);
+        window.localStorage.setItem(PINK_MODE_STORAGE_KEY, mode === "pink" ? "true" : "false");
+    }
     window.dispatchEvent(
         new CustomEvent("vaivia:theme-mode-change", {
             detail: { mode, source: options.source || "user" },

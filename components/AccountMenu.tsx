@@ -318,7 +318,6 @@ function getFriendDisplayName(friend: FriendProfile) {
     return (
         [friend.firstName, friend.lastName].filter(Boolean).join(" ").trim() ||
         friend.username ||
-        friend.email ||
         "VAIVIA friend"
     );
 }
@@ -1934,9 +1933,9 @@ export default function AccountMenu({
                 const friendProfilesResult =
                     acceptedFriendIds.length > 0
                         ? await supabase
-                              .from("user_profiles")
+                              .from("connected_public_user_profiles")
                               .select(
-                                  "id,first_name,last_name,username,email,avatar_url,role,join_date,created_at"
+                                  "id,first_name,last_name,username,avatar_url,role,join_date,created_at"
                               )
                               .in("id", acceptedFriendIds)
                         : { data: [], error: null };
@@ -1979,7 +1978,6 @@ export default function AccountMenu({
                     first_name?: string | null;
                     last_name?: string | null;
                     username?: string | null;
-                    email?: string | null;
                     avatar_url?: string | null;
                     role?: string | null;
                     join_date?: string | null;
@@ -1989,7 +1987,7 @@ export default function AccountMenu({
                     firstName: friend.first_name || null,
                     lastName: friend.last_name || null,
                     username: friend.username || null,
-                    email: friend.email || null,
+                    email: null,
                     avatarUrl: friend.avatar_url || null,
                     role: friend.role || null,
                     themeMode: friendThemesById.get(friend.id) || null,
@@ -4167,7 +4165,7 @@ export default function AccountMenu({
                     <div className="relative mt-6 flex flex-wrap gap-3">
                         {isProfilePage ? (
                             <Link
-                                href="/settings"
+                                href="/settings?section=profile"
                                 className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
                             >
                                 <Pencil className="h-4 w-4" aria-hidden="true" />
@@ -4779,7 +4777,7 @@ export default function AccountMenu({
                                 <p className="mt-2 text-sm font-semibold text-slate-300">
                                     {friend.username
                                         ? `@${friend.username}`
-                                        : friend.email || "VAIVIA traveller"}
+                                        : "VAIVIA traveller"}
                                 </p>
                                 <div className="mt-3 flex flex-wrap gap-2">
                                     <span className="inline-flex rounded-full border border-lime-300/35 bg-lime-300/[0.12] px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-lime-100 shadow-xl shadow-black/20">

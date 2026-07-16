@@ -25,10 +25,9 @@ function getFriendDisplayName(profile: Record<string, unknown>) {
     const firstName = String(profile.first_name || "").trim();
     const lastName = String(profile.last_name || "").trim();
     const username = String(profile.username || "").trim();
-    const email = String(profile.email || "").trim();
     const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
 
-    return fullName || username || email || "Friend";
+    return fullName || username || "Friend";
 }
 
 export default async function FriendScratchMapPage({

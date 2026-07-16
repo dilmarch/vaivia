@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Pencil, Trash2, X } from "lucide-react";
+import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
@@ -109,6 +109,24 @@ function LocationTile({
     );
 }
 
+function AddLegTile({ onClick }: { onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="group/leg relative flex h-30 w-24 flex-col items-center justify-start gap-2 rounded-[1.25rem] border border-lime-300/25 bg-lime-300/10 px-3 py-3 text-left shadow-xl shadow-black/20 transition hover:-translate-y-0.5 hover:border-lime-300/45 hover:bg-lime-300/15 sm:h-32 sm:w-28"
+            aria-label="Add leg to your trip"
+        >
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-lime-300/35 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)] transition group-hover/leg:bg-lime-200 sm:h-12 sm:w-12">
+                <Plus className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span className="min-w-0 text-center text-sm font-black leading-tight text-lime-100">
+                Add leg to your trip
+            </span>
+        </button>
+    );
+}
+
 function MemberButton({
     member,
     selected,
@@ -159,6 +177,7 @@ export default function TripLegLocationLine({
     const [selectedLocationId, setSelectedLocationId] = useState<string | null>(
         null
     );
+    const [isAddingLeg, setIsAddingLeg] = useState(false);
     const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(
         () => new Set(memberOptions.map((member) => member.id))
     );
@@ -169,6 +188,7 @@ export default function TripLegLocationLine({
         null;
 
     function openEditor(location: TripLegLocation) {
+        setIsAddingLeg(false);
         setSelectedLocationId(getLocationKey(location));
         setSelectedMemberIds(
             new Set(
@@ -177,6 +197,13 @@ export default function TripLegLocationLine({
                     : memberOptions.map((member) => member.id)
             )
         );
+        setIsOpen(true);
+    }
+
+    function openAddLeg() {
+        setSelectedLocationId(null);
+        setIsAddingLeg(true);
+        setSelectedMemberIds(new Set(memberOptions.map((member) => member.id)));
         setIsOpen(true);
     }
 
@@ -266,7 +293,129 @@ export default function TripLegLocationLine({
                             </section>
                         ) : null}
 
-                        {selectedLocation ? (
+                        {isAddingLeg ? (
+                            <form
+                                action={(formData) => runAction(upsertLegAction, formData)}
+                                className="space-y-5 rounded-2xl border border-lime-300/20 bg-slate-950/80 p-5 sm:p-6"
+                            >
+                                <input type="hidden" name="trip_id" value={tripId} />
+                                <input
+                                    type="hidden"
+                                    name="revalidate_path"
+                                    value={revalidatePathname || ""}
+                                />
+                                {Array.from(selectedMemberIds).map((memberId) => (
+                                    <input
+                                        key={memberId}
+                                        type="hidden"
+                                        name="trip_member_ids"
+                                        value={memberId}
+                                    />
+                                ))}
+
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-5">
+                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                        Add leg to your trip
+                                    </p>
+                                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">
+                                        Add a destination, dates, and who is joining
+                                        this part of the trip.
+                                    </p>
+                                </div>
+
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <label className="block sm:col-span-2">
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            Destination
+                                        </span>
+                                        <input
+                                            name="name"
+                                            type="text"
+                                            required
+                                            placeholder="Paris, Tokyo, home..."
+                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            City name
+                                        </span>
+                                        <input
+                                            name="city_name"
+                                            type="text"
+                                            placeholder="Optional"
+                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            Country code
+                                        </span>
+                                        <input
+                                            name="country_code"
+                                            type="text"
+                                            maxLength={2}
+                                            placeholder="DE"
+                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold uppercase text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            Start date
+                                        </span>
+                                        <input
+                                            name="start_date"
+                                            type="date"
+                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                            End date
+                                        </span>
+                                        <input
+                                            name="end_date"
+                                            type="date"
+                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
+                                        />
+                                    </label>
+                                </div>
+
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                        Going on this leg
+                                    </p>
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                        {memberOptions.length > 0 ? (
+                                            memberOptions.map((member) => (
+                                                <MemberButton
+                                                    key={member.id}
+                                                    member={member}
+                                                    selected={selectedMemberIds.has(
+                                                        member.id
+                                                    )}
+                                                    onToggle={() => toggleMember(member.id)}
+                                                />
+                                            ))
+                                        ) : (
+                                            <p className="text-sm font-semibold text-slate-400">
+                                                No active trip members are available yet.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end border-t border-white/10 pt-4">
+                                    <button
+                                        type="submit"
+                                        className="rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200 disabled:opacity-60"
+                                        disabled={isPending}
+                                    >
+                                        {isPending ? "Saving..." : "Save leg"}
+                                    </button>
+                                </div>
+                            </form>
+                        ) : selectedLocation ? (
                             <form
                                 action={(formData) => runAction(upsertLegAction, formData)}
                                 className="space-y-5 rounded-2xl border border-lime-300/20 bg-slate-950/80 p-5 sm:p-6"
@@ -447,6 +596,7 @@ export default function TripLegLocationLine({
                         onClick={() => openEditor(location)}
                     />
                 ))}
+                <AddLegTile onClick={openAddLeg} />
                 {children}
             </div>
             {isOpen ? renderModal() : null}

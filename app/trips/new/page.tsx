@@ -32,6 +32,12 @@ type TripPayload = {
     cover_image_photographer_url?: string | null;
 };
 
+type TripMatrixLeg = {
+    name: string;
+    startDate: string | null;
+    endDate: string | null;
+};
+
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
     const message = error.message?.toLowerCase() || "";
 
@@ -69,6 +75,85 @@ function removeTripCoverColumn(payload: TripPayload) {
     return fallbackPayload;
 }
 
+function normalizeMatrixValue(value: FormDataEntryValue | null) {
+    return String(value || "").trim();
+}
+
+function getTripDateDestinationMatrix(formData: FormData) {
+    const dateMode = normalizeMatrixValue(formData.get("date_mode"));
+    const knowsDates = dateMode === "known";
+
+    if (!knowsDates) {
+        return {
+            knowsDates,
+            destination: normalizeMatrixValue(formData.get("destination")),
+            startDate: "",
+            endDate: "",
+            legs: [] as TripMatrixLeg[],
+        };
+    }
+
+    const startDestination = normalizeMatrixValue(
+        formData.get("matrix_start_destination")
+    );
+    const startDate = normalizeMatrixValue(formData.get("matrix_start_date"));
+    const nextRows = Array.from({ length: 6 }, (_, index) => {
+        const name = normalizeMatrixValue(
+            formData.get(`matrix_next_destination_${index}`)
+        );
+        const arrivalDate = normalizeMatrixValue(
+            formData.get(`matrix_next_arrival_date_${index}`)
+        );
+
+        return {
+            name,
+            arrivalDate,
+        };
+    }).filter((row) => row.name || row.arrivalDate);
+    const returnDestination =
+        normalizeMatrixValue(formData.get("matrix_return_destination")) ||
+        startDestination;
+    const returnDate = normalizeMatrixValue(formData.get("matrix_return_date"));
+    const timelineRows = [
+        {
+            name: startDestination,
+            date: startDate,
+        },
+        ...nextRows.map((row) => ({
+            name: row.name,
+            date: row.arrivalDate,
+        })),
+        {
+            name: returnDestination,
+            date: returnDate,
+        },
+    ].filter((row) => row.name || row.date);
+    const destination = timelineRows
+        .map((row) => row.name)
+        .filter(Boolean)
+        .filter((name, index, values) => values.indexOf(name) === index)
+        .join(", ");
+    const legs = timelineRows
+        .filter((row) => row.name)
+        .map((row, index): TripMatrixLeg => {
+            const nextDate = timelineRows[index + 1]?.date || null;
+
+            return {
+                name: row.name,
+                startDate: row.date || null,
+                endDate: nextDate,
+            };
+        });
+
+    return {
+        knowsDates,
+        destination,
+        startDate,
+        endDate: returnDate,
+        legs,
+    };
+}
+
 async function createTrip(
     _state: CreateTripFormState,
     formData: FormData
@@ -96,9 +181,10 @@ async function createTrip(
         nextTripNumber
     );
     const slugWasManual = String(formData.get("slug_was_manual") || "") === "true";
-    const destination = formData.get("destination") as string;
-    const startDate = formData.get("start_date") as string;
-    const endDate = formData.get("end_date") as string;
+    const matrix = getTripDateDestinationMatrix(formData);
+    const destination = matrix.destination;
+    const startDate = matrix.startDate;
+    const endDate = matrix.endDate;
     const notes = formData.get("notes") as string;
 
     if (!title) {
@@ -205,6 +291,32 @@ async function createTrip(
     }
 
     if (createdTrip?.id) {
+        if (matrix.legs.length > 0) {
+            const now = new Date().toISOString();
+            const { error: legsError } = await supabase.from("trip_legs").insert(
+                matrix.legs.map((leg) => ({
+                    trip_id: createdTrip.id,
+                    name: leg.name,
+                    city_name: leg.name,
+                    start_date: leg.startDate,
+                    end_date: leg.endDate,
+                    leg_type: "custom",
+                    created_by: user.id,
+                    updated_at: now,
+                }))
+            );
+
+            if (legsError) {
+                console.error("Error creating trip date matrix legs:", {
+                    message: legsError.message,
+                    code: legsError.code,
+                    details: legsError.details,
+                    hint: legsError.hint,
+                    tripId: createdTrip.id,
+                });
+            }
+        }
+
         let uploadedStoragePath: string | null | undefined = null;
         try {
             const coverResult = await buildTripCoverPayloadFromForm({

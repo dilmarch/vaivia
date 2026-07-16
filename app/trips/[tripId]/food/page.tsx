@@ -566,7 +566,7 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
 
     if (profileUserIds.length > 0) {
         const { data: profileRows } = await supabase
-            .from("user_profiles")
+            .from("connected_public_user_profiles")
             .select("id,first_name,last_name,username,avatar_url")
             .in("id", profileUserIds);
 

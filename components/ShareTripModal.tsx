@@ -12,7 +12,6 @@ type QuickAddFriend = {
     id: string;
     name: string;
     username?: string | null;
-    email?: string | null;
     avatarUrl?: string | null;
 };
 
@@ -101,7 +100,8 @@ export default function ShareTripModal({
                 if (!user) return;
 
                 const { data: friendships, error: friendshipsError } =
-                    await (supabase.from as any)("user_friendships")
+                    await supabase
+                        .from("user_friendships")
                         .select(
                             "requester_user_id,addressee_user_id,status"
                         )
@@ -132,9 +132,9 @@ export default function ShareTripModal({
                 const { data: profiles, error: profilesError } =
                     friendIds.length > 0
                         ? await supabase
-                              .from("user_profiles")
+                              .from("connected_public_user_profiles")
                               .select(
-                                  "id,first_name,last_name,username,email,avatar_url"
+                                  "id,first_name,last_name,username,avatar_url"
                               )
                               .in("id", friendIds)
                         : { data: [], error: null };
@@ -148,7 +148,6 @@ export default function ShareTripModal({
                             first_name?: string | null;
                             last_name?: string | null;
                             username?: string | null;
-                            email?: string | null;
                             avatar_url?: string | null;
                         }>).map((friend) => {
                             const name =
@@ -157,14 +156,12 @@ export default function ShareTripModal({
                                     .join(" ")
                                     .trim() ||
                                 friend.username ||
-                                friend.email ||
                                 "VAIVIA friend";
 
                             return {
                                 id: friend.id,
                                 name,
                                 username: friend.username || null,
-                                email: friend.email || null,
                                 avatarUrl: friend.avatar_url || null,
                             };
                         })
@@ -353,13 +350,10 @@ export default function ShareTripModal({
                                                     key={friend.id}
                                                     type="button"
                                                     onClick={() => {
-                                                        setInvitee(
-                                                            friend.username ||
-                                                                friend.email ||
-                                                                ""
-                                                        );
+                                                        setInvitee(friend.username || "");
                                                         setConsentChecked(true);
                                                     }}
+                                                    disabled={!friend.username}
                                                     className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-left text-slate-900 shadow-sm transition hover:border-lime-300 hover:bg-lime-50"
                                                 >
                                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-xs font-black uppercase text-lime-200">

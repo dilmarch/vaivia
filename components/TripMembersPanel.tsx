@@ -69,7 +69,7 @@ function getDisplayName(member: TripHeaderMember) {
 }
 
 function getFriendIdentifier(member: TripHeaderMember) {
-    return member.username || member.email || "";
+    return member.username || "";
 }
 
 function getInitials(member: TripHeaderMember) {
