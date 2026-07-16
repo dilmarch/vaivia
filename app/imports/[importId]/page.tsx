@@ -73,6 +73,16 @@ function stringifyJson(value: Json) {
     return JSON.stringify(value, null, 2);
 }
 
+function getUserFacingExtractionError(value?: string | null) {
+    if (!value) return "";
+
+    if (value === "resend_api_key_requires_full_access") {
+        return "VAIVIA received your email, but email processing is temporarily unavailable. Please try again later.";
+    }
+
+    return "VAIVIA received your email, but could not finish processing it yet. Please try again later.";
+}
+
 function getItemTitle(item: TravelEmailImportItemRow) {
     const data = item.extracted_data;
     if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -220,7 +230,9 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                             Extraction needs attention
                         </p>
                         <p className="mt-2 text-sm font-semibold">
-                            {reviewImport.extraction_error}
+                            {getUserFacingExtractionError(
+                                reviewImport.extraction_error
+                            )}
                         </p>
                     </section>
                 ) : null}
