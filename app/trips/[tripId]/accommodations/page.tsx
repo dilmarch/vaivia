@@ -37,7 +37,10 @@ import {
     getTripSlugErrorMessage,
     isTripSlugConflictError,
 } from "@/lib/tripSlugUpdate";
-import type { TripAudienceOption } from "@/lib/tripAudience";
+import type {
+    TripAudienceOption,
+    TripItemParticipantDisplay,
+} from "@/lib/tripAudience";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
 
@@ -815,6 +818,119 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         });
     }
 
+    const accommodationRows = (accommodations || []) as TripAccommodation[];
+    const accommodationIds = accommodationRows
+        .map((accommodation) => accommodation.id)
+        .filter(Boolean);
+    const accommodationParticipantsById = new Map<
+        string,
+        TripItemParticipantDisplay[]
+    >();
+    const selectedAudienceOptionsByAccommodationId = new Map<
+        string,
+        TripAudienceOption[]
+    >();
+
+    if (accommodationIds.length > 0) {
+        const { data: participantRows, error: participantRowsError } = await supabase
+            .from("trip_item_participants_display")
+            .select("*")
+            .eq("trip_id", tripId)
+            .eq("item_type", "accommodation")
+            .in("item_id", accommodationIds);
+
+        if (participantRowsError) {
+            console.warn("Could not load accommodation participant display rows:", {
+                message: participantRowsError.message,
+                code: participantRowsError.code,
+                details: participantRowsError.details,
+                hint: participantRowsError.hint,
+                tripId,
+            });
+        } else {
+            (participantRows || []).forEach((row) => {
+                if (!row.item_id) return;
+                const current = accommodationParticipantsById.get(row.item_id) || [];
+                current.push({
+                    trip_id: row.trip_id,
+                    item_type: "accommodation",
+                    item_id: row.item_id,
+                    participant_kind: row.participant_kind,
+                    participant_status: row.participant_status,
+                    display_name: row.display_name,
+                    avatar_url: row.avatar_url,
+                });
+                accommodationParticipantsById.set(row.item_id, current);
+            });
+        }
+
+        const audienceOptionsByKey = new Map(
+            audienceOptions.map((option) => [`${option.kind}:${option.id}`, option])
+        );
+        const { data: participantSourceRows, error: participantSourceRowsError } =
+            await supabase
+                .from("trip_item_participants")
+                .select(
+                    "item_id,participant_kind,trip_member_id,invitation_id,family_member_id,guest_name"
+                )
+                .eq("trip_id", tripId)
+                .eq("item_type", "accommodation")
+                .in("item_id", accommodationIds);
+
+        if (participantSourceRowsError) {
+            console.warn("Could not load accommodation participant source rows:", {
+                message: participantSourceRowsError.message,
+                code: participantSourceRowsError.code,
+                details: participantSourceRowsError.details,
+                hint: participantSourceRowsError.hint,
+                tripId,
+            });
+        } else {
+            (participantSourceRows || []).forEach((row) => {
+                const itemId = row.item_id;
+                if (!itemId) return;
+
+                let option: TripAudienceOption | undefined;
+                if (row.participant_kind === "member" && row.trip_member_id) {
+                    option = audienceOptionsByKey.get(`member:${row.trip_member_id}`);
+                } else if (
+                    row.participant_kind === "invitation" &&
+                    row.invitation_id
+                ) {
+                    option = audienceOptionsByKey.get(
+                        `invitation:${row.invitation_id}`
+                    );
+                } else if (
+                    row.participant_kind === "family_member" &&
+                    row.family_member_id
+                ) {
+                    option = audienceOptionsByKey.get(
+                        `family_member:${row.family_member_id}`
+                    );
+                } else if (row.participant_kind === "guest" && row.guest_name) {
+                    option = {
+                        kind: "guest",
+                        id: row.guest_name,
+                        displayName: row.guest_name,
+                        status: "guest",
+                    };
+                }
+
+                if (!option) return;
+                const current = selectedAudienceOptionsByAccommodationId.get(itemId) || [];
+                current.push(option);
+                selectedAudienceOptionsByAccommodationId.set(itemId, current);
+            });
+        }
+    }
+
+    const accommodationsWithParticipants = accommodationRows.map((accommodation) => ({
+        ...accommodation,
+        participants: accommodationParticipantsById.get(accommodation.id) || [],
+        selectedAudienceOptions:
+            selectedAudienceOptionsByAccommodationId.get(accommodation.id) || [],
+    }));
+
     const { data: tripLegRows, error: tripLegsError } = await supabase
         .from("trip_legs")
         .select(
@@ -1085,7 +1201,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
 
                 <AccommodationManager
                     tripId={tripId}
-                    accommodations={(accommodations || []) as TripAccommodation[]}
+                    accommodations={accommodationsWithParticipants}
                     createAction={createAccommodation}
                     updateAction={updateAccommodation}
                     deleteAction={deleteAccommodation}

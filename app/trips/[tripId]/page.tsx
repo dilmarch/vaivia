@@ -1615,8 +1615,11 @@ function MobileOverviewTile({
     const content = (
         <>
             <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/75 text-lime-200 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)]">
-                    <Icon className="h-4 w-4" aria-hidden="true" />
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/75 text-[#bef264] shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)]">
+                    <Icon
+                        className="h-4 w-4 text-[#bef264] [stroke:#bef264]"
+                        aria-hidden="true"
+                    />
                 </span>
                 <span className="min-w-0">
                     <span className="block text-sm font-black text-white">
@@ -5202,7 +5205,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             >
                                 <div>
                                     {mobileTransportationItems.length > 0 ? (
-                                        <div className="relative space-y-2.5 pl-5 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:border-l before:border-dotted before:border-lime-300/45">
+                                        <div className="relative space-y-2.5 pl-5 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:border-l before:border-dotted before:border-[#bef264]/45">
                                             {mobileTransportationItems.map(
                                                 (item, index) => {
                                                     const routeParts =
@@ -5248,7 +5251,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                                                             }
                                                                         </span>
                                                                         <ArrowRight
-                                                                            className="h-3 w-3 shrink-0 text-lime-200"
+                                                                            className="h-3 w-3 shrink-0 text-[#bef264] [stroke:#bef264]"
                                                                             aria-hidden="true"
                                                                         />
                                                                         <span>
@@ -5311,7 +5314,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             >
                                 <div>
                                     {mobileStayTimeline.length > 0 ? (
-                                        <div className="relative space-y-2 pl-5 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:border-l before:border-dotted before:border-lime-300/45">
+                                        <div className="relative space-y-2 pl-5 before:absolute before:bottom-3 before:left-[7px] before:top-3 before:border-l before:border-dotted before:border-[#bef264]/45">
                                             {mobileStayTimeline.map((entry) => (
                                                 <div
                                                     key={entry.id}

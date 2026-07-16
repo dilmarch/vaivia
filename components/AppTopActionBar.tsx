@@ -208,6 +208,19 @@ function getProminentActionCopy(notification: AppNotification) {
 }
 
 function getNotificationActionHref(notification: AppNotification) {
+    const metadataUrl =
+        typeof notification.metadata?.url === "string"
+            ? notification.metadata.url
+            : "";
+
+    if (
+        (notification.type === "travel_email_ready" ||
+            notification.type === "travel_email_needs_review") &&
+        metadataUrl.startsWith("/")
+    ) {
+        return metadataUrl;
+    }
+
     if (notification.type === "profile_onboarding_prompt") {
         return "/profile#passport-stamps";
     }

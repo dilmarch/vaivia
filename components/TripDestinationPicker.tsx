@@ -13,11 +13,16 @@ type TripDestinationPickerProps = {
     tripId?: string | null;
     inputId: string;
     onChange?: () => void;
+    onDestinationsChange?: (
+        destinations: Array<{ label: string; placeId?: string | null }>
+    ) => void;
+    showDestinationField?: boolean;
 };
 
 type DestinationOption = {
     label: string;
     coverImageUrl: string;
+    placeId?: string | null;
 };
 
 type UnsplashResult = {
@@ -79,9 +84,10 @@ export default function TripDestinationPicker({
     initialCoverImageSource,
     initialCoverImageStoragePath,
     initialCoverImageUnsplashId,
-    tripId,
     inputId,
     onChange,
+    onDestinationsChange,
+    showDestinationField = true,
 }: TripDestinationPickerProps) {
     const inputRef = useRef<HTMLInputElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -117,6 +123,15 @@ export default function TripDestinationPicker({
         () => destinations.map((destination) => destination.label).join(", "),
         [destinations]
     );
+
+    useEffect(() => {
+        onDestinationsChange?.(
+            destinations.map((destination) => ({
+                label: destination.label,
+                placeId: destination.placeId || null,
+            }))
+        );
+    }, [destinations, onDestinationsChange]);
     const automaticCoverImageUrl =
         destinations.length > 0
             ? destinations.find((destination) => destination.coverImageUrl)?.coverImageUrl ||
@@ -221,6 +236,7 @@ export default function TripDestinationPicker({
                     {
                         label,
                         coverImageUrl: coverPhotoUrl,
+                        placeId: place.place_id || null,
                     },
                 ];
             });
@@ -335,44 +351,53 @@ export default function TripDestinationPicker({
                 value={initialCoverImageStoragePath || ""}
             />
 
-            <label
-                htmlFor={inputId}
-                className="block text-sm font-medium text-slate-700"
-            >
-                Destination
-            </label>
-            <input
-                id={inputId}
-                ref={inputRef}
-                type="text"
-                autoComplete="off"
-                data-form-type="other"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                placeholder="Search city, province/state, or country..."
-                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-            />
+            {showDestinationField ? (
+                <>
+                    <label
+                        htmlFor={inputId}
+                        className="block text-sm font-medium text-slate-700"
+                    >
+                        Destination
+                    </label>
+                    <input
+                        id={inputId}
+                        ref={inputRef}
+                        type="text"
+                        autoComplete="off"
+                        data-form-type="other"
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        placeholder="Search city, province/state, or country..."
+                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                    />
 
-            {destinations.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                    {destinations.map((destination) => (
-                        <span
-                            key={destination.label}
-                            className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-700"
-                        >
-                            {destination.label}
-                            <button
-                                type="button"
-                                onClick={() => removeDestination(destination.label)}
-                                className="text-slate-500 transition hover:text-slate-900"
-                                aria-label={`Remove ${destination.label}`}
-                            >
-                                <X className="h-3.5 w-3.5" aria-hidden="true" />
-                            </button>
-                        </span>
-                    ))}
-                </div>
-            )}
+                    {destinations.length > 0 && (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {destinations.map((destination) => (
+                                <span
+                                    key={destination.label}
+                                    className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-700"
+                                >
+                                    {destination.label}
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            removeDestination(destination.label)
+                                        }
+                                        className="text-slate-500 transition hover:text-slate-900"
+                                        aria-label={`Remove ${destination.label}`}
+                                    >
+                                        <X
+                                            className="h-3.5 w-3.5"
+                                            aria-hidden="true"
+                                        />
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                </>
+            ) : null}
 
             <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">

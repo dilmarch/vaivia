@@ -26,8 +26,16 @@ export default function NotificationActionButton({
     }
 
     async function handleRoutedAction() {
+        const metadataUrl =
+            typeof notification.metadata?.url === "string"
+                ? notification.metadata.url
+                : "";
         const href =
-            notification.type === "profile_onboarding_prompt"
+            (notification.type === "travel_email_ready" ||
+                notification.type === "travel_email_needs_review") &&
+            metadataUrl.startsWith("/")
+                ? metadataUrl
+                : notification.type === "profile_onboarding_prompt"
                 ? "/profile#passport-stamps"
                 : notification.type === "theme_exploration_prompt"
                   ? "/settings"

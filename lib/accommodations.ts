@@ -1,3 +1,8 @@
+import type {
+    TripAudienceOption,
+    TripItemParticipantDisplay,
+} from "@/lib/tripAudience";
+
 export const ACCOMMODATION_TYPE_OPTIONS = [
     { value: "hotel", label: "Hotel" },
     { value: "motel", label: "Motel" },
@@ -48,6 +53,8 @@ export type TripAccommodation = {
     notes?: string | null;
     trip_leg_id?: string | null;
     audience_mode?: "everyone" | "custom" | "just_me" | null;
+    participants?: TripItemParticipantDisplay[];
+    selectedAudienceOptions?: TripAudienceOption[];
     created_at?: string | null;
     updated_at?: string | null;
 };

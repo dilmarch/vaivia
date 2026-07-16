@@ -33,6 +33,7 @@ import {
 import { COMMON_CURRENCIES, formatCurrency } from "@/lib/budget";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 import type { TripAudienceOption } from "@/lib/tripAudience";
+import { getInitials } from "@/lib/travelers";
 
 type AccommodationManagerProps = {
     tripId: string;
@@ -523,6 +524,9 @@ function AccommodationForm({
                         initialAudienceMode={
                             accommodation?.audience_mode || "everyone"
                         }
+                        initialSelectedOptions={
+                            accommodation?.selectedAudienceOptions || []
+                        }
                         privateSectionId="accommodation-private-section"
                     />
                 </div>
@@ -687,10 +691,12 @@ export function AccommodationCreateModal({
 
 function AccommodationCard({
     accommodation,
+    audienceOptions,
     onEdit,
     onDelete,
 }: {
     accommodation: TripAccommodation;
+    audienceOptions: TripAudienceOption[];
     onEdit: () => void;
     onDelete: () => void;
 }) {
@@ -707,7 +713,7 @@ function AccommodationCard({
 
     return (
         <article
-            className={`rounded-[1.6rem] border border-white/10 bg-[#03030a]/90 p-5 text-white shadow-2xl shadow-black/25 transition hover:-translate-y-0.5 hover:border-lime-300/25 ${
+            className={`relative rounded-[1.6rem] border border-white/10 bg-[#03030a]/90 p-5 pb-14 text-white shadow-2xl shadow-black/25 transition hover:-translate-y-0.5 hover:border-lime-300/25 ${
                 isCancelled ? "opacity-60" : ""
             }`}
         >
@@ -822,7 +828,112 @@ function AccommodationCard({
                     </a>
                 ) : null}
             </div>
+            <AccommodationAvatarStack
+                accommodation={accommodation}
+                audienceOptions={audienceOptions}
+            />
         </article>
+    );
+}
+
+function getAccommodationAudiencePeople({
+    accommodation,
+    audienceOptions,
+}: {
+    accommodation: TripAccommodation;
+    audienceOptions: TripAudienceOption[];
+}) {
+    if (accommodation.participants?.length) {
+        return accommodation.participants.map((participant) => ({
+            key: `${participant.participant_kind || "participant"}:${
+                participant.item_id
+            }:${participant.display_name || ""}`,
+            name: participant.display_name || "Traveller",
+            avatarUrl: participant.avatar_url || null,
+            status: participant.participant_status || null,
+        }));
+    }
+
+    if (accommodation.audience_mode === "everyone") {
+        return audienceOptions
+            .filter(
+                (option) =>
+                    option.kind === "member" || option.kind === "family_member"
+            )
+            .map((option) => ({
+                key: `${option.kind}:${option.id}`,
+                name: option.isCurrentUser ? "You" : option.displayName,
+                avatarUrl: option.avatarUrl || null,
+                status: option.status,
+            }));
+    }
+
+    if (accommodation.audience_mode === "just_me") {
+        const currentUserOption = audienceOptions.find(
+            (option) => option.kind === "member" && option.isCurrentUser
+        );
+        return currentUserOption
+            ? [
+                  {
+                      key: `${currentUserOption.kind}:${currentUserOption.id}`,
+                      name: "You",
+                      avatarUrl: currentUserOption.avatarUrl || null,
+                      status: currentUserOption.status,
+                  },
+              ]
+            : [];
+    }
+
+    return [];
+}
+
+function AccommodationAvatarStack({
+    accommodation,
+    audienceOptions,
+}: {
+    accommodation: TripAccommodation;
+    audienceOptions: TripAudienceOption[];
+}) {
+    const people = getAccommodationAudiencePeople({ accommodation, audienceOptions });
+    if (people.length === 0) return null;
+
+    const visiblePeople = people.slice(0, 4);
+    const overflowCount = people.length - visiblePeople.length;
+    const label = people.map((person) => person.name).join(", ");
+
+    return (
+        <div
+            className="pointer-events-none absolute bottom-4 right-4 z-20 flex items-center justify-end -space-x-2"
+            aria-label={label || "Travellers staying here"}
+        >
+            {visiblePeople.map((person, index) => (
+                <span
+                    key={`${person.key}:${index}`}
+                    className={`flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 text-[10px] font-black uppercase shadow-[0_0_18px_rgba(0,0,0,0.28)] ${
+                        person.status === "invited"
+                            ? "border-amber-200/50 bg-amber-300/15 text-amber-100"
+                            : "border-white/40 bg-slate-950 text-lime-200"
+                    }`}
+                    title={person.name}
+                >
+                    {person.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                            src={person.avatarUrl}
+                            alt=""
+                            className="h-full w-full object-cover"
+                        />
+                    ) : (
+                        getInitials(person.name)
+                    )}
+                </span>
+            ))}
+            {overflowCount > 0 ? (
+                <span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white/40 bg-slate-950 text-[10px] font-black text-lime-200 shadow-[0_0_18px_rgba(0,0,0,0.28)]">
+                    +{overflowCount}
+                </span>
+            ) : null}
+        </div>
     );
 }
 
@@ -916,6 +1027,7 @@ export default function AccommodationManager({
                             <AccommodationCard
                                 key={accommodation.id}
                                 accommodation={accommodation}
+                                audienceOptions={audienceOptions}
                                 onEdit={() =>
                                     setModalMode({
                                         type: "edit",

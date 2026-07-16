@@ -4,7 +4,10 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
-import NewTripForm, { type CreateTripFormState } from "@/components/NewTripForm";
+import NewTripForm, {
+    type CreateTripFormState,
+    type NewTripInviteOption,
+} from "@/components/NewTripForm";
 import {
     buildTripCoverPayloadFromForm,
     cleanupReplacedTripCover,
@@ -37,6 +40,29 @@ type TripMatrixLeg = {
     startDate: string | null;
     endDate: string | null;
 };
+
+function parseInitialInviteIdentifiers(formData: FormData) {
+    return Array.from(
+        new Set(
+            formData
+                .getAll("initial_invites")
+                .flatMap((value) => String(value || "").split(","))
+                .map((value) => value.trim())
+                .filter(Boolean)
+        )
+    );
+}
+
+function parseInitialFamilyMemberIds(formData: FormData) {
+    return Array.from(
+        new Set(
+            formData
+                .getAll("initial_family_member_ids")
+                .map((value) => String(value || "").trim())
+                .filter(Boolean)
+        )
+    );
+}
 
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
     const message = error.message?.toLowerCase() || "";
@@ -90,16 +116,21 @@ function getTripDateDestinationMatrix(formData: FormData) {
             startDate: "",
             endDate: "",
             legs: [] as TripMatrixLeg[],
+            validationError: "",
         };
     }
 
     const startDestination = normalizeMatrixValue(
         formData.get("matrix_start_destination")
     );
+    const startPlaceId = normalizeMatrixValue(formData.get("matrix_start_place_id"));
     const startDate = normalizeMatrixValue(formData.get("matrix_start_date"));
     const nextRows = Array.from({ length: 6 }, (_, index) => {
         const name = normalizeMatrixValue(
             formData.get(`matrix_next_destination_${index}`)
+        );
+        const placeId = normalizeMatrixValue(
+            formData.get(`matrix_next_place_id_${index}`)
         );
         const arrivalDate = normalizeMatrixValue(
             formData.get(`matrix_next_arrival_date_${index}`)
@@ -107,13 +138,22 @@ function getTripDateDestinationMatrix(formData: FormData) {
 
         return {
             name,
+            placeId,
             arrivalDate,
         };
     }).filter((row) => row.name || row.arrivalDate);
     const returnDestination =
         normalizeMatrixValue(formData.get("matrix_return_destination")) ||
         startDestination;
+    const returnPlaceId =
+        normalizeMatrixValue(formData.get("matrix_return_place_id")) ||
+        (returnDestination === startDestination ? startPlaceId : "");
     const returnDate = normalizeMatrixValue(formData.get("matrix_return_date"));
+    const missingValidatedDestination = [
+        { name: startDestination, placeId: startPlaceId },
+        ...nextRows.map((row) => ({ name: row.name, placeId: row.placeId })),
+        { name: returnDestination, placeId: returnPlaceId },
+    ].some((row) => row.name && !row.placeId);
     const timelineRows = [
         {
             name: startDestination,
@@ -151,6 +191,9 @@ function getTripDateDestinationMatrix(formData: FormData) {
         startDate,
         endDate: returnDate,
         legs,
+        validationError: missingValidatedDestination
+            ? "Choose each destination from the Google location list."
+            : "",
     };
 }
 
@@ -192,6 +235,16 @@ async function createTrip(
             fieldErrors: {
                 title: "Add a trip title.",
             },
+            values: {
+                title,
+                slug: requestedSlug,
+            },
+        };
+    }
+
+    if (matrix.validationError) {
+        return {
+            error: matrix.validationError,
             values: {
                 title,
                 slug: requestedSlug,
@@ -317,6 +370,58 @@ async function createTrip(
             }
         }
 
+        const initialInviteIdentifiers = parseInitialInviteIdentifiers(formData);
+        if (initialInviteIdentifiers.length > 0) {
+            for (const inviteeIdentifier of initialInviteIdentifiers) {
+                const { error: inviteError } = await supabase.rpc(
+                    "create_trip_invitation",
+                    {
+                        target_trip_id: createdTrip.id,
+                        invitee_identifier: inviteeIdentifier,
+                        consent_confirmed: true,
+                    }
+                );
+
+                if (inviteError) {
+                    console.warn("Could not create initial trip invite:", {
+                        message: inviteError.message,
+                        code: inviteError.code,
+                        details: inviteError.details,
+                        hint: inviteError.hint,
+                        tripId: createdTrip.id,
+                        inviteeIdentifier,
+                    });
+                }
+            }
+        }
+
+        const initialFamilyMemberIds = parseInitialFamilyMemberIds(formData);
+        if (initialFamilyMemberIds.length > 0) {
+            const { error: familyMembersError } = await supabase
+                .from("trip_family_members")
+                .upsert(
+                    initialFamilyMemberIds.map((familyMemberId) => ({
+                        trip_id: createdTrip.id,
+                        family_member_id: familyMemberId,
+                        added_by: user.id,
+                        status: "going",
+                        updated_at: new Date().toISOString(),
+                    })),
+                    { onConflict: "trip_id,family_member_id" }
+                );
+
+            if (familyMembersError) {
+                console.warn("Could not add initial family members to trip:", {
+                    message: familyMembersError.message,
+                    code: familyMembersError.code,
+                    details: familyMembersError.details,
+                    hint: familyMembersError.hint,
+                    tripId: createdTrip.id,
+                    initialFamilyMemberIds,
+                });
+            }
+        }
+
         let uploadedStoragePath: string | null | undefined = null;
         try {
             const coverResult = await buildTripCoverPayloadFromForm({
@@ -397,6 +502,108 @@ async function NewTripContent() {
     const isOnboardingTripCreate =
         onboardingProgress?.status === "in_progress" &&
         onboardingProgress.current_step === "create_trip";
+    const { data: friendships, error: friendshipsError } = await supabase
+        .from("user_friendships")
+        .select("requester_user_id,addressee_user_id,status")
+        .or(`requester_user_id.eq.${user.id},addressee_user_id.eq.${user.id}`)
+        .eq("status", "accepted");
+
+    if (friendshipsError) {
+        console.warn("Could not load friends for new trip invites:", {
+            message: friendshipsError.message,
+            code: friendshipsError.code,
+            details: friendshipsError.details,
+            hint: friendshipsError.hint,
+            userId: user.id,
+        });
+    }
+
+    const friendIds = Array.from(
+        new Set(
+            ((friendships || []) as Array<{
+                requester_user_id?: string | null;
+                addressee_user_id?: string | null;
+            }>)
+                .map((friendship) =>
+                    friendship.requester_user_id === user.id
+                        ? friendship.addressee_user_id
+                        : friendship.requester_user_id
+                )
+                .filter(
+                    (friendId): friendId is string =>
+                        Boolean(friendId) && friendId !== user.id
+                )
+        )
+    );
+    const { data: friendProfiles, error: friendProfilesError } =
+        friendIds.length > 0
+            ? await supabase
+                  .from("connected_public_user_profiles")
+                  .select("id,first_name,last_name,username,avatar_url")
+                  .in("id", friendIds)
+            : { data: [], error: null };
+
+    if (friendProfilesError) {
+        console.warn("Could not load friend profiles for new trip invites:", {
+            message: friendProfilesError.message,
+            code: friendProfilesError.code,
+            details: friendProfilesError.details,
+            hint: friendProfilesError.hint,
+            userId: user.id,
+        });
+    }
+
+    const friendInviteOptions: NewTripInviteOption[] = (
+        (friendProfiles || []) as Array<{
+            id: string;
+            first_name?: string | null;
+            last_name?: string | null;
+            username?: string | null;
+            avatar_url?: string | null;
+        }>
+    ).map((friend) => {
+        const name =
+            [friend.first_name, friend.last_name].filter(Boolean).join(" ").trim() ||
+            friend.username ||
+            "VAIVIA friend";
+
+        return {
+            id: friend.id,
+            name,
+            secondaryLabel: friend.username ? `@${friend.username}` : null,
+            avatarUrl: friend.avatar_url || null,
+            identifier: friend.username || null,
+        };
+    });
+    const { data: familyMembers, error: familyMembersError } = await supabase
+        .from("user_family_members")
+        .select("id,name,relationship,avatar_url")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: true });
+
+    if (familyMembersError) {
+        console.warn("Could not load family members for new trip invites:", {
+            message: familyMembersError.message,
+            code: familyMembersError.code,
+            details: familyMembersError.details,
+            hint: familyMembersError.hint,
+            userId: user.id,
+        });
+    }
+
+    const familyInviteOptions: NewTripInviteOption[] = (
+        (familyMembers || []) as Array<{
+            id: string;
+            name: string;
+            relationship?: string | null;
+            avatar_url?: string | null;
+        }>
+    ).map((member) => ({
+        id: member.id,
+        name: member.name,
+        secondaryLabel: member.relationship || "Family member",
+        avatarUrl: member.avatar_url || null,
+    }));
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-6 py-10">
@@ -421,6 +628,10 @@ async function NewTripContent() {
                     action={createTrip}
                     nextTripNumber={nextTripNumber}
                     isOnboarding={isOnboardingTripCreate}
+                    inviteOptions={{
+                        friends: friendInviteOptions,
+                        familyMembers: familyInviteOptions,
+                    }}
                 />
             </div>
         </main>

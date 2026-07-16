@@ -15,6 +15,10 @@ import {
     type InboundRecipientMatch,
 } from "@/lib/emailImportInbound";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+    createTravelEmailImportNotification,
+    processTravelEmailImport,
+} from "@/lib/travelEmailImportProcessor";
 
 export const runtime = "nodejs";
 
@@ -27,11 +31,6 @@ type DbError = {
 
 type MaybeSingleResult<T> = Promise<{
     data: T | null;
-    error: DbError | null;
-}>;
-
-type MutationResult = Promise<{
-    data: unknown;
     error: DbError | null;
 }>;
 
@@ -52,7 +51,11 @@ type SelectChain<T> = {
 type EmailImportWebhookSupabase = {
     from: (table: "travel_email_imports") => {
         select: (columns: string) => SelectChain<TravelEmailImportRow>;
-        insert: (values: Record<string, unknown>) => MutationResult;
+        insert: (values: Record<string, unknown>) => {
+            select: (columns: string) => {
+                maybeSingle: () => MaybeSingleResult<TravelEmailImportRow>;
+            };
+        };
     };
 } & {
     from: (table: "user_email_import_addresses") => {
@@ -168,17 +171,21 @@ async function insertTravelEmailImport(
     supabase: EmailImportWebhookSupabase,
     payload: Record<string, unknown>
 ) {
-    const { error } = await supabase.from("travel_email_imports").insert(payload);
+    const { data, error } = await supabase
+        .from("travel_email_imports")
+        .insert(payload)
+        .select("id")
+        .maybeSingle();
 
     if (isUniqueViolation(error)) {
-        return "duplicate" as const;
+        return { status: "duplicate" as const, importId: null };
     }
 
     if (error) {
         throw new Error(error.message || "Could not store travel email import.");
     }
 
-    return "inserted" as const;
+    return { status: "inserted" as const, importId: data?.id || null };
 }
 
 async function insertFailedImport(
@@ -239,11 +246,23 @@ async function handleEmailReceived(
             receiveError || new Error("Resend returned no received email content.")
         );
 
+        if (insertResult.status === "inserted" && insertResult.importId) {
+            await createTravelEmailImportNotification(
+                createServiceRoleClient(),
+                {
+                    id: insertResult.importId,
+                    user_id: recipient.userId,
+                },
+                "failed",
+                null
+            );
+        }
+
         return jsonResponse({
             received: true,
-            stored: insertResult === "inserted",
+            stored: insertResult.status === "inserted",
             status: "failed",
-            alreadyProcessed: insertResult === "duplicate",
+            alreadyProcessed: insertResult.status === "duplicate",
         });
     }
 
@@ -256,10 +275,22 @@ async function handleEmailReceived(
         ...getFetchedEmailMetadata(receivedEmail),
     });
 
+    let processResult: Awaited<ReturnType<typeof processTravelEmailImport>> | null =
+        null;
+
+    if (insertResult.status === "inserted" && insertResult.importId) {
+        processResult = await processTravelEmailImport(
+            insertResult.importId,
+            receivedEmail
+        );
+    }
+
     return jsonResponse({
         received: true,
-        stored: insertResult === "inserted",
-        alreadyProcessed: insertResult === "duplicate",
+        stored: insertResult.status === "inserted",
+        alreadyProcessed: insertResult.status === "duplicate",
+        importId: insertResult.importId,
+        processing: processResult,
     });
 }
 

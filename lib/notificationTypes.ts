@@ -105,6 +105,21 @@ export const NOTIFICATION_TYPE_OPTIONS = [
         label: "Theme reminders",
         description: "Tips to explore VAIVIA's visual themes.",
     },
+    {
+        type: "travel_email_ready",
+        label: "Forwarded confirmations ready",
+        description: "When VAIVIA extracts flight segments from a forwarded email.",
+    },
+    {
+        type: "travel_email_needs_review",
+        label: "Forwarded confirmations needing review",
+        description: "When a forwarded travel email needs a quick check.",
+    },
+    {
+        type: "travel_email_failed",
+        label: "Forwarded confirmation failures",
+        description: "When VAIVIA could not read a forwarded travel email.",
+    },
 ] as const;
 
 export const NOTIFICATION_TYPES = NOTIFICATION_TYPE_OPTIONS.map(
