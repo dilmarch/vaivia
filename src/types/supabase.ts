@@ -1135,12 +1135,95 @@ export type Database = {
           },
         ]
       }
+      travel_email_import_attachments: {
+        Row: {
+          created_at: string
+          filename: string | null
+          id: string
+          import_id: string
+          mime_type: string | null
+          provider_attachment_id: string | null
+          size_bytes: number | null
+          storage_path: string | null
+        }
+        Insert: {
+          created_at?: string
+          filename?: string | null
+          id?: string
+          import_id: string
+          mime_type?: string | null
+          provider_attachment_id?: string | null
+          size_bytes?: number | null
+          storage_path?: string | null
+        }
+        Update: {
+          created_at?: string
+          filename?: string | null
+          id?: string
+          import_id?: string
+          mime_type?: string | null
+          provider_attachment_id?: string | null
+          size_bytes?: number | null
+          storage_path?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_email_import_attachments_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "travel_email_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      travel_email_import_items: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          extracted_data: Json
+          id: string
+          import_id: string
+          item_order: number
+          item_type: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          extracted_data: Json
+          id?: string
+          import_id: string
+          item_order?: number
+          item_type: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          extracted_data?: Json
+          id?: string
+          import_id?: string
+          item_order?: number
+          item_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "travel_email_import_items_import_id_fkey"
+            columns: ["import_id"]
+            isOneToOne: false
+            referencedRelation: "travel_email_imports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       travel_email_imports: {
         Row: {
           attachment_count: number
           created_at: string
+          extracted_data: Json | null
+          extraction_confidence: number | null
           extraction_error: string | null
+          extraction_model: string | null
           id: string
+          import_type: string | null
           message_id: string | null
           processed_at: string | null
           provider: string
@@ -1148,6 +1231,7 @@ export type Database = {
           raw_html: string | null
           raw_text: string | null
           recipient_email: string | null
+          requires_data_review: boolean
           sender_email: string | null
           status: Database["public"]["Enums"]["travel_email_import_status"]
           subject: string | null
@@ -1156,8 +1240,12 @@ export type Database = {
         Insert: {
           attachment_count?: number
           created_at?: string
+          extracted_data?: Json | null
+          extraction_confidence?: number | null
           extraction_error?: string | null
+          extraction_model?: string | null
           id?: string
+          import_type?: string | null
           message_id?: string | null
           processed_at?: string | null
           provider?: string
@@ -1165,6 +1253,7 @@ export type Database = {
           raw_html?: string | null
           raw_text?: string | null
           recipient_email?: string | null
+          requires_data_review?: boolean
           sender_email?: string | null
           status?: Database["public"]["Enums"]["travel_email_import_status"]
           subject?: string | null
@@ -1173,8 +1262,12 @@ export type Database = {
         Update: {
           attachment_count?: number
           created_at?: string
+          extracted_data?: Json | null
+          extraction_confidence?: number | null
           extraction_error?: string | null
+          extraction_model?: string | null
           id?: string
+          import_type?: string | null
           message_id?: string | null
           processed_at?: string | null
           provider?: string
@@ -1182,6 +1275,7 @@ export type Database = {
           raw_html?: string | null
           raw_text?: string | null
           recipient_email?: string | null
+          requires_data_review?: boolean
           sender_email?: string | null
           status?: Database["public"]["Enums"]["travel_email_import_status"]
           subject?: string | null

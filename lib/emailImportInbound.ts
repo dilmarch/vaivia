@@ -76,7 +76,40 @@ export function extractInboundRecipientToken(
 }
 
 export function sanitizeServerError(error: unknown) {
+    const fallback = "Unknown error";
+
     if (!error) return "Unknown error";
+
+    const inspectable =
+        typeof error === "object" && error !== null
+            ? (error as Record<string, unknown>)
+            : null;
+    const errorName =
+        typeof inspectable?.name === "string" ? inspectable.name : "";
+    const errorType =
+        typeof inspectable?.type === "string" ? inspectable.type : "";
+    const errorCode =
+        typeof inspectable?.code === "string" ? inspectable.code : "";
+    const rawMessage =
+        error instanceof Error
+            ? error.message
+            : typeof inspectable?.message === "string"
+              ? inspectable.message
+              : typeof error === "string"
+                ? error
+                : "";
+    const normalizedMessage = rawMessage.toLowerCase();
+
+    if (
+        errorName === "restricted_api_key" ||
+        errorType === "restricted_api_key" ||
+        errorCode === "restricted_api_key" ||
+        normalizedMessage.includes("restricted_api_key") ||
+        (normalizedMessage.includes("api key") &&
+            normalizedMessage.includes("full access"))
+    ) {
+        return "resend_api_key_requires_full_access";
+    }
 
     if (error instanceof Error) {
         return error.message.slice(0, 500);
@@ -89,5 +122,5 @@ export function sanitizeServerError(error: unknown) {
 
     if (typeof error === "string") return error.slice(0, 500);
 
-    return "Unknown error";
+    return fallback;
 }
