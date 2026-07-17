@@ -43,6 +43,7 @@ import TripLegLocationLine, {
 import TripCountdown, {
     type TripCountdownTargetOption,
 } from "@/components/TripCountdown";
+import MobileTripInviteLauncher from "@/components/MobileTripInviteLauncher";
 import TripMembersPanel, {
     type TripHeaderFamilyMember,
     type TripHeaderInvitation,
@@ -1524,7 +1525,7 @@ function MobilePeopleSummary({
     modalEyebrow,
     inviteMode = false,
     showAddFriendAction = false,
-    inviteHref,
+    inviteAction,
 }: {
     title: string;
     people: MobileOverviewPerson[];
@@ -1533,7 +1534,7 @@ function MobilePeopleSummary({
     modalEyebrow?: string;
     inviteMode?: boolean;
     showAddFriendAction?: boolean;
-    inviteHref?: string;
+    inviteAction?: ReactNode;
 }) {
     const visiblePeople = people.slice(0, 5);
     const hiddenCount = Math.max(people.length - visiblePeople.length, 0);
@@ -1595,30 +1596,14 @@ function MobilePeopleSummary({
                                 ) : null}
                             </div>
                         ))}
-                        {inviteHref ? (
-                            <Link
-                                href={inviteHref}
-                                className="flex items-center justify-center gap-2 rounded-full border border-lime-300/30 bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
-                            >
-                                <UserPlus className="h-4 w-4" aria-hidden="true" />
-                                Invite
-                            </Link>
-                        ) : null}
+                        {inviteAction}
                     </div>
                 ) : (
                     <div className="space-y-3">
                         <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
                             {emptyText}
                         </p>
-                        {inviteHref ? (
-                            <Link
-                                href={inviteHref}
-                                className="flex items-center justify-center gap-2 rounded-full border border-lime-300/30 bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
-                            >
-                                <UserPlus className="h-4 w-4" aria-hidden="true" />
-                                Invite
-                            </Link>
-                        ) : null}
+                        {inviteAction}
                     </div>
                 )
             }
@@ -1633,14 +1618,13 @@ function MobilePeopleSummary({
             </div>
             {people.length > 0 ? (
                 <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-                    {inviteMode && inviteHref ? (
-                        <Link
-                            href={inviteHref}
+                    {inviteMode && inviteAction ? (
+                        <span
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/30 bg-lime-300/10 text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
                             aria-label="Invite someone"
                         >
                             <UserPlus className="h-4 w-4" aria-hidden="true" />
-                        </Link>
+                        </span>
                     ) : null}
                     {visiblePeople.map((person) => (
                         <MobilePersonAvatar key={person.id} person={person} />
@@ -1653,14 +1637,13 @@ function MobilePeopleSummary({
                 </div>
             ) : (
                 <p className="mt-3 flex items-center gap-2 text-xs font-semibold leading-5 text-slate-400">
-                    {inviteMode && inviteHref ? (
-                        <Link
-                            href={inviteHref}
+                    {inviteMode && inviteAction ? (
+                        <span
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/30 bg-lime-300/10 text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
                             aria-label="Invite someone"
                         >
                             <UserPlus className="h-4 w-4" aria-hidden="true" />
-                        </Link>
+                        </span>
                     ) : null}
                     <span>{emptyText}</span>
                 </p>
@@ -5509,7 +5492,15 @@ async function TripDetailContent({
                                 modalTitle="Pending invites"
                                 modalEyebrow="Invited"
                                 inviteMode
-                                inviteHref="#trip-invites"
+                                inviteAction={
+                                    <MobileTripInviteLauncher
+                                        tripId={trip.id}
+                                        tripTitle={trip.title}
+                                        familyMembers={tripFamilyMembers}
+                                        availableFamilyMembers={savedFamilyMembers}
+                                        addFamilyMemberAction={addTripFamilyMember}
+                                    />
+                                }
                             />
                             {!shouldStackGoingOnMobile ? (
                                 <MobilePeopleSummary
