@@ -22,6 +22,13 @@ export type TripLegLocation = {
     startDate?: string | null;
     endDate?: string | null;
     memberIds?: string[];
+    memberDatesByMemberId?: Record<
+        string,
+        {
+            startDate?: string | null;
+            endDate?: string | null;
+        }
+    >;
 };
 
 export type TripLegMemberOption = {

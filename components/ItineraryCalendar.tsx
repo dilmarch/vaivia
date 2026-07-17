@@ -1644,12 +1644,26 @@ function getMemberLocationSegments(
         return {
             label: `${matchingLeg.iconEmoji ? `${matchingLeg.iconEmoji} ` : ""}${label}`,
             locationKey: matchingLeg.locationKey || matchingLeg.id,
+            continuesBeforeWeek:
+                Boolean(matchingLeg.startDate || matchingLeg.endDate) &&
+                String(matchingLeg.startDate || matchingLeg.endDate) < weekKeys[0],
+            continuesAfterWeek:
+                Boolean(matchingLeg.endDate || matchingLeg.startDate) &&
+                String(matchingLeg.endDate || matchingLeg.startDate) >
+                    weekKeys[weekKeys.length - 1],
+            showLabel:
+                !matchingLeg.startDate ||
+                !matchingLeg.endDate ||
+                String(matchingLeg.startDate || matchingLeg.endDate) >= weekKeys[0],
         };
     });
 
     const segments: Array<{
         label: string;
         locationKey?: string | null;
+        continuesBeforeWeek: boolean;
+        continuesAfterWeek: boolean;
+        showLabel: boolean;
         startIndex: number;
         endIndex: number;
     }> = [];
@@ -1674,6 +1688,9 @@ function getMemberLocationSegments(
         segments.push({
             label: entry.label,
             locationKey: entry.locationKey,
+            continuesBeforeWeek: entry.continuesBeforeWeek,
+            continuesAfterWeek: entry.continuesAfterWeek,
+            showLabel: entry.showLabel,
             startIndex: index,
             endIndex,
         });
@@ -3348,11 +3365,30 @@ function WeekViewGrid({
                                                 1) /
                                             7) *
                                             100;
+                                        const continuesBefore =
+                                            segment.continuesBeforeWeek &&
+                                            segment.startIndex === 0;
+                                        const continuesAfter =
+                                            segment.continuesAfterWeek &&
+                                            segment.endIndex === 6;
+                                        const horizontalInset =
+                                            (continuesBefore ? 0 : 6) +
+                                            (continuesAfter ? 0 : 6);
+                                        const segmentShapeClass =
+                                            continuesBefore && continuesAfter
+                                                ? "rounded-none border-x-0"
+                                                : continuesBefore
+                                                  ? "rounded-l-none rounded-r-full border-l-0"
+                                                  : continuesAfter
+                                                    ? "rounded-l-full rounded-r-none border-r-0"
+                                                    : "rounded-full";
                                         const segmentClassName =
-                                            "absolute top-3 h-8 rounded-full border border-lime-300/30 bg-lime-300/[0.12] px-3 py-1.5 text-center text-xs font-black uppercase tracking-[0.1em] text-lime-100 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.10)]";
+                                            `absolute top-3 h-8 border border-lime-300/30 bg-lime-300/[0.12] px-3 py-1.5 text-center text-xs font-black uppercase tracking-[0.1em] text-lime-100 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.10)] ${segmentShapeClass}`;
                                         const segmentStyle = {
-                                            left: `calc(${leftPercent}% + 6px)`,
-                                            width: `calc(${widthPercent}% - 12px)`,
+                                            left: `calc(${leftPercent}% + ${
+                                                continuesBefore ? 0 : 6
+                                            }px)`,
+                                            width: `calc(${widthPercent}% - ${horizontalInset}px)`,
                                         };
 
                                         if (
@@ -3373,9 +3409,11 @@ function WeekViewGrid({
                                                     title={`${member.name}: ${segment.label}`}
                                                     aria-label={`Edit ${member.name}'s ${segment.label} leg`}
                                                 >
-                                                    <span className="block truncate">
-                                                        {segment.label}
-                                                    </span>
+                                                    {segment.showLabel ? (
+                                                        <span className="block truncate">
+                                                            {segment.label}
+                                                        </span>
+                                                    ) : null}
                                                 </button>
                                             );
                                         }
@@ -3387,9 +3425,11 @@ function WeekViewGrid({
                                                 style={segmentStyle}
                                                 title={`${member.name}: ${segment.label}`}
                                             >
-                                                <span className="block truncate">
-                                                    {segment.label}
-                                                </span>
+                                                {segment.showLabel ? (
+                                                    <span className="block truncate">
+                                                        {segment.label}
+                                                    </span>
+                                                ) : null}
                                             </div>
                                         );
                                     })

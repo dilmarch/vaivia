@@ -41,7 +41,12 @@ function getLocalDateKey(date: Date) {
 }
 
 function isPastTrip(trip: DashboardTrip, todayKey: string) {
-    const endDate = trip.end_date || trip.start_date;
+    const endDate =
+        (trip.viewerAssignedLegCount || 0) > 0
+            ? trip.viewerEndDate || trip.viewerStartDate
+            : trip.viewerTripMemberId && (trip.memberProfiles || []).length > 0
+              ? null
+              : trip.end_date || trip.start_date;
     return Boolean(endDate && endDate < todayKey);
 }
 

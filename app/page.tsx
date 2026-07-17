@@ -114,6 +114,27 @@ function getFutureCountdownTarget(
   return null;
 }
 
+function getDashboardTripDisplayDateRange(trip: DashboardTrip) {
+  if ((trip.viewerAssignedLegCount || 0) > 0) {
+    return {
+      startDate: trip.viewerStartDate || null,
+      endDate: trip.viewerEndDate || trip.viewerStartDate || null,
+    };
+  }
+
+  if (trip.viewerTripMemberId && (trip.memberProfiles || []).length > 0) {
+    return {
+      startDate: null,
+      endDate: null,
+    };
+  }
+
+  return {
+    startDate: trip.start_date || null,
+    endDate: trip.end_date || trip.start_date || null,
+  };
+}
+
 async function loadDashboardCountdownTarget(
   supabase: Awaited<ReturnType<typeof createClient>>,
   trips: DashboardTrip[]
@@ -180,11 +201,12 @@ async function loadDashboardCountdownTarget(
   const candidates = trips
     .map((trip): DashboardCountdownTarget | null => {
       const tripTitle = trip.title || "Untitled trip";
-      const fallbackTarget = getDateTimeIso(trip.start_date)
+      const displayDateRange = getDashboardTripDisplayDateRange(trip);
+      const fallbackTarget = getDateTimeIso(displayDateRange.startDate)
         ? {
             tripTitle,
             targetTitle: "Trip begins",
-            targetDateIso: getDateTimeIso(trip.start_date) as string,
+            targetDateIso: getDateTimeIso(displayDateRange.startDate) as string,
           }
         : null;
       let preferredTarget: DashboardCountdownTarget | null = null;

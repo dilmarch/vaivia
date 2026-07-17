@@ -83,6 +83,10 @@ function formatTripDate(dateString?: string | null) {
     });
 }
 
+function compareDateStrings(left?: string | null, right?: string | null) {
+    return String(left || "").localeCompare(String(right || ""));
+}
+
 function getFlagEmoji(countryCode?: string | null) {
     const normalized = countryCode?.trim().toUpperCase();
     if (!normalized || !/^[A-Z]{2}$/.test(normalized)) return "";
@@ -928,12 +932,14 @@ export default async function TripPageHero({
         trip_leg_id: string;
         trip_member_id: string;
         is_joining?: boolean | null;
+        start_date?: string | null;
+        end_date?: string | null;
     }> = [];
 
     if (manualTripLegIds.length > 0) {
         const { data: memberLegRows, error: memberLegRowsError } = await supabase
             .from("trip_member_legs")
-            .select("trip_leg_id,trip_member_id,is_joining")
+            .select("trip_leg_id,trip_member_id,is_joining,start_date,end_date")
             .eq("trip_id", tripId)
             .in("trip_leg_id", manualTripLegIds);
 
@@ -956,6 +962,20 @@ export default async function TripPageHero({
         const current = tripMemberIdsByLegId.get(row.trip_leg_id) || [];
         current.push(row.trip_member_id);
         tripMemberIdsByLegId.set(row.trip_leg_id, current);
+    });
+    const tripMemberLegDatesByLegAndMember = new Map<
+        string,
+        { startDate: string | null; endDate: string | null }
+    >();
+    tripMemberLegRows.forEach((row) => {
+        if (!row.is_joining) return;
+        tripMemberLegDatesByLegAndMember.set(
+            `${row.trip_leg_id}:${row.trip_member_id}`,
+            {
+                startDate: row.start_date || null,
+                endDate: row.end_date || row.start_date || null,
+            }
+        );
     });
 
     const { data: accommodationLocationRows, error: accommodationLocationError } =
@@ -1032,6 +1052,26 @@ export default async function TripPageHero({
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
+            memberDatesByMemberId: Object.fromEntries(
+                (tripMemberIdsByLegId.get(leg.id) || []).map((memberId) => {
+                    const memberDates = tripMemberLegDatesByLegAndMember.get(
+                        `${leg.id}:${memberId}`
+                    );
+
+                    return [
+                        memberId,
+                        {
+                            startDate: memberDates?.startDate || leg.start_date || null,
+                            endDate:
+                                memberDates?.endDate ||
+                                memberDates?.startDate ||
+                                leg.end_date ||
+                                leg.start_date ||
+                                null,
+                        },
+                    ];
+                })
+            ),
         }));
 
     const destinationLocations: TripLegLocation[] = parseDestinationList(
@@ -1069,6 +1109,7 @@ export default async function TripPageHero({
                     accommodation.startDate || manualMatch?.startDate || null,
                 endDate: accommodation.endDate || manualMatch?.endDate || null,
                 memberIds: manualMatch?.memberIds || [],
+                memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
             };
         }
     );
@@ -1103,6 +1144,7 @@ export default async function TripPageHero({
                 manualMatch?.endDate ||
                 null,
             memberIds: manualMatch?.memberIds || [],
+            memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
         };
     });
 
@@ -1111,6 +1153,80 @@ export default async function TripPageHero({
             ? [...mergedDestinationLocations, ...unmatchedManualLocations]
             : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
     );
+    const currentUserTripMemberId =
+        memberRowsByUserId.get(user.id)?.id || null;
+    const visibleHeroLocations = heroLocations.filter((location) => {
+        const hasExplicitSavedSelection =
+            location.source === "manual" || Boolean(location.persistedLegId);
+
+        if (!hasExplicitSavedSelection || !currentUserTripMemberId) return true;
+
+        return (location.memberIds || []).includes(currentUserTripMemberId);
+    });
+    const currentUserAssignedLegLocations = currentUserTripMemberId
+        ? heroLocations.filter((location) =>
+              (location.memberIds || []).includes(currentUserTripMemberId)
+          )
+        : [];
+    const currentUserAssignedLegDateRange =
+        currentUserAssignedLegLocations.reduce(
+            (
+                range: {
+                    startDate: string | null;
+                    endDate: string | null;
+                },
+                location
+            ) => {
+                const memberDates = currentUserTripMemberId
+                    ? location.memberDatesByMemberId?.[currentUserTripMemberId]
+                    : null;
+                const startDate =
+                    memberDates?.startDate || location.startDate || null;
+                const endDate =
+                    memberDates?.endDate ||
+                    memberDates?.startDate ||
+                    location.endDate ||
+                    location.startDate ||
+                    null;
+
+                return {
+                    startDate:
+                        startDate &&
+                        (!range.startDate ||
+                            compareDateStrings(startDate, range.startDate) < 0)
+                            ? startDate
+                            : range.startDate,
+                    endDate:
+                        endDate &&
+                        (!range.endDate ||
+                            compareDateStrings(endDate, range.endDate) > 0)
+                            ? endDate
+                            : range.endDate,
+                };
+            },
+            { startDate: null, endDate: null }
+        );
+    const isGroupTripForDateScope =
+        tripMembers.length > 1 ||
+        pendingInvitations.length > 0 ||
+        tripFamilyMembers.length > 0;
+    const displayTripStartDate =
+        currentUserAssignedLegLocations.length > 0
+            ? currentUserAssignedLegDateRange.startDate
+            : isGroupTripForDateScope && currentUserTripMemberId
+              ? null
+              : tripRecord.start_date || null;
+    const displayTripEndDate =
+        currentUserAssignedLegLocations.length > 0
+            ? currentUserAssignedLegDateRange.endDate ||
+              currentUserAssignedLegDateRange.startDate
+            : isGroupTripForDateScope && currentUserTripMemberId
+              ? null
+              : tripRecord.end_date || tripRecord.start_date || null;
+    const missingTripDateLabel =
+        currentUserAssignedLegLocations.length > 0
+            ? "Click to Add Dates"
+            : "Add a leg";
     const tripLegMemberOptions: TripLegMemberOption[] = memberRows
         .filter((member) => Boolean(member.id))
         .map((member) => {
@@ -1150,7 +1266,7 @@ export default async function TripPageHero({
             <TripDocumentTitle
                 title={tripRecord.title}
                 destination={tripRecord.destination}
-                startDate={tripRecord.start_date}
+                startDate={displayTripStartDate}
             />
             <TripHeaderCover
                 trip={trip as Parameters<typeof TripHeaderCover>[0]["trip"]}
@@ -1194,7 +1310,7 @@ export default async function TripPageHero({
                         <TripLegLocationLine
                             tripId={tripRecord.id}
                             revalidatePathname={revalidatePathname}
-                            locations={heroLocations}
+                            locations={visibleHeroLocations}
                             memberOptions={tripLegMemberOptions}
                             upsertLegAction={upsertTripLeg}
                             deleteLegAction={deleteTripLeg}
@@ -1223,7 +1339,9 @@ export default async function TripPageHero({
                             Departing:
                         </p>
                         <p className="mt-2 text-2xl font-black tracking-tight text-white">
-                            {formatTripDate(tripRecord.start_date)}
+                            {displayTripStartDate
+                                ? formatTripDate(displayTripStartDate)
+                                : missingTripDateLabel}
                         </p>
                     </div>
                     <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
@@ -1231,13 +1349,15 @@ export default async function TripPageHero({
                             Returning:
                         </p>
                         <p className="mt-2 text-2xl font-black tracking-tight text-white">
-                            {formatTripDate(tripRecord.end_date)}
+                            {displayTripEndDate
+                                ? formatTripDate(displayTripEndDate)
+                                : missingTripDateLabel}
                         </p>
                     </div>
                     <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
                         <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
                         <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
-                        <TripCountdown startDate={tripRecord.start_date} />
+                        <TripCountdown startDate={displayTripStartDate} />
                     </div>
                 </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { Send, X } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
@@ -13,6 +13,54 @@ type QuickAddFriend = {
     name: string;
     username?: string | null;
     avatarUrl?: string | null;
+};
+
+type InviteWizardStep = "invitee" | "journey" | "accommodations";
+
+type InviteLegOption = {
+    id: string;
+    name: string;
+    city_name?: string | null;
+    country_code?: string | null;
+    icon_emoji?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+};
+
+type InviteJourneyOption = {
+    id: string;
+    title?: string | null;
+    transport_type?: string | null;
+    departure_location?: string | null;
+    arrival_location?: string | null;
+    departure_date?: string | null;
+    transport_number?: string | null;
+    status?: string | null;
+};
+
+type InviteAccommodationOption = {
+    id: string;
+    hotel_name?: string | null;
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+    check_in_date?: string | null;
+    check_out_date?: string | null;
+    status?: string | null;
+};
+
+type ScopedTripInvitationRpcClient = {
+    rpc: (
+        fn: "create_trip_invitation_with_assignments",
+        args: {
+            target_trip_id: string;
+            invitee_identifier: string;
+            consent_confirmed: boolean;
+            target_leg_ids: string[];
+            target_transportation_item_ids: string[];
+            target_accommodation_item_ids: string[];
+        }
+    ) => Promise<{ data: string | null; error: { message?: string } | null }>;
 };
 
 type ShareTripModalProps = {
@@ -61,6 +109,7 @@ export default function ShareTripModal({
 }: ShareTripModalProps) {
     const router = useRouter();
     const [activeTab, setActiveTab] = useState<"invite" | "family">("invite");
+    const [inviteStep, setInviteStep] = useState<InviteWizardStep>("invitee");
     const [invitee, setInvitee] = useState("");
     const [consentChecked, setConsentChecked] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,10 +118,26 @@ export default function ShareTripModal({
     const [successMessage, setSuccessMessage] = useState("");
     const [quickAddFriends, setQuickAddFriends] = useState<QuickAddFriend[]>([]);
     const [isLoadingFriends, setIsLoadingFriends] = useState(false);
+    const [isLoadingAssignments, setIsLoadingAssignments] = useState(false);
+    const [legOptions, setLegOptions] = useState<InviteLegOption[]>([]);
+    const [journeyOptions, setJourneyOptions] = useState<InviteJourneyOption[]>([]);
+    const [accommodationOptions, setAccommodationOptions] = useState<
+        InviteAccommodationOption[]
+    >([]);
+    const [selectedLegIds, setSelectedLegIds] = useState<Set<string>>(
+        () => new Set()
+    );
+    const [selectedJourneyIds, setSelectedJourneyIds] = useState<Set<string>>(
+        () => new Set()
+    );
+    const [selectedAccommodationIds, setSelectedAccommodationIds] = useState<
+        Set<string>
+    >(() => new Set());
     const [selectedFamilyIds, setSelectedFamilyIds] = useState<Set<string>>(
         () => new Set()
     );
-    const canSubmit = invitee.trim() && consentChecked && !isSubmitting;
+    const canContinueInvite = Boolean(invitee.trim() && consentChecked);
+    const canSubmit = canContinueInvite && !isSubmitting;
     const goingFamilyIds = new Set(
         familyMembers.map((member) => member.family_member_id)
     );
@@ -85,7 +150,12 @@ export default function ShareTripModal({
         !isAddingFamily;
 
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            setInviteStep("invitee");
+            setErrorMessage("");
+            setSuccessMessage("");
+            return;
+        }
 
         let isCancelled = false;
 
@@ -182,6 +252,94 @@ export default function ShareTripModal({
         };
     }, [open]);
 
+    useEffect(() => {
+        if (!open || !tripId) return;
+
+        let isCancelled = false;
+
+        async function loadAssignmentOptions() {
+            const supabase = createClient();
+            setIsLoadingAssignments(true);
+
+            try {
+                const [legsResult, journeyResult, accommodationsResult] =
+                    await Promise.all([
+                        supabase
+                            .from("trip_legs")
+                            .select(
+                                "id,name,city_name,country_code,icon_emoji,start_date,end_date,leg_type,sort_order"
+                            )
+                            .eq("trip_id", tripId)
+                            .neq("leg_type", "accommodation")
+                            .order("start_date", {
+                                ascending: true,
+                                nullsFirst: false,
+                            })
+                            .order("sort_order", { ascending: true }),
+                        supabase
+                            .from("transportation_items")
+                            .select(
+                                "id,title,transport_type,departure_location,arrival_location,departure_date,transport_number,status"
+                            )
+                            .eq("trip_id", tripId)
+                            .order("departure_date", {
+                                ascending: true,
+                                nullsFirst: false,
+                            }),
+                        supabase
+                            .from("trip_accommodations")
+                            .select(
+                                "id,hotel_name,city,region,country,check_in_date,check_out_date,status"
+                            )
+                            .eq("trip_id", tripId)
+                            .order("check_in_date", {
+                                ascending: true,
+                                nullsFirst: false,
+                            }),
+                    ]);
+
+                if (legsResult.error) throw legsResult.error;
+                if (journeyResult.error) throw journeyResult.error;
+                if (accommodationsResult.error) throw accommodationsResult.error;
+
+                if (!isCancelled) {
+                    setLegOptions((legsResult.data || []) as InviteLegOption[]);
+                    setJourneyOptions(
+                        ((journeyResult.data || []) as InviteJourneyOption[]).filter(
+                            (item) =>
+                                String(item.status || "").toLowerCase() !==
+                                "cancelled"
+                        )
+                    );
+                    setAccommodationOptions(
+                        (
+                            (accommodationsResult.data || []) as InviteAccommodationOption[]
+                        ).filter(
+                            (stay) =>
+                                String(stay.status || "").toLowerCase() !==
+                                "cancelled"
+                        )
+                    );
+                }
+            } catch (error) {
+                console.warn("Could not load invite assignment options:", error);
+                if (!isCancelled) {
+                    setLegOptions([]);
+                    setJourneyOptions([]);
+                    setAccommodationOptions([]);
+                }
+            } finally {
+                if (!isCancelled) setIsLoadingAssignments(false);
+            }
+        }
+
+        loadAssignmentOptions();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [open, tripId]);
+
     if (!open) return null;
 
     async function sendInvite(event: React.FormEvent<HTMLFormElement>) {
@@ -193,17 +351,27 @@ export default function ShareTripModal({
         setErrorMessage("");
         setSuccessMessage("");
 
-        const { error } = await supabase.rpc("create_trip_invitation", {
-            target_trip_id: tripId,
-            invitee_identifier: invitee.trim(),
-            consent_confirmed: consentChecked,
-        });
+        const { error } = await (supabase as unknown as ScopedTripInvitationRpcClient).rpc(
+            "create_trip_invitation_with_assignments",
+            {
+                target_trip_id: tripId,
+                invitee_identifier: invitee.trim(),
+                consent_confirmed: consentChecked,
+                target_leg_ids: Array.from(selectedLegIds),
+                target_transportation_item_ids: Array.from(selectedJourneyIds),
+                target_accommodation_item_ids: Array.from(selectedAccommodationIds),
+            }
+        );
 
         if (error) {
             setErrorMessage(getInviteErrorMessage(error));
         } else {
             setInvitee("");
             setConsentChecked(false);
+            setInviteStep("invitee");
+            setSelectedLegIds(new Set());
+            setSelectedJourneyIds(new Set());
+            setSelectedAccommodationIds(new Set());
             setSuccessMessage(
                 "If this user exists, they will receive an invitation to join your trip. If this user doesn't have an account, they will be invited to create one."
             );
@@ -246,6 +414,43 @@ export default function ShareTripModal({
             else next.add(familyMemberId);
             return next;
         });
+    }
+
+    function toggleSelectedId(
+        setter: Dispatch<SetStateAction<Set<string>>>,
+        id: string
+    ) {
+        setter((current) => {
+            const next = new Set(current);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    }
+
+    function formatOptionDates(start?: string | null, end?: string | null) {
+        return [start, end].filter(Boolean).join(" - ") || "Dates not set";
+    }
+
+    function getLegLabel(leg: InviteLegOption) {
+        return leg.name || leg.city_name || "Trip leg";
+    }
+
+    function getJourneyLabel(item: InviteJourneyOption) {
+        const type = item.transport_type || "Transportation";
+        const route = [item.departure_location, item.arrival_location]
+            .filter(Boolean)
+            .join(" → ");
+
+        return item.title || item.transport_number || route || type;
+    }
+
+    function getAccommodationLabel(stay: InviteAccommodationOption) {
+        return (
+            stay.hotel_name ||
+            [stay.city, stay.region, stay.country].filter(Boolean).join(", ") ||
+            "Accommodation"
+        );
     }
 
     return (
@@ -306,102 +511,370 @@ export default function ShareTripModal({
                         </div>
 
                         {activeTab === "invite" ? (
-                            <form onSubmit={sendInvite} className="space-y-5">
-                                <p className="text-sm leading-6 text-slate-600">
-                                    Invite a friend to collaborate on this trip. They’ll
-                                    be able to view and update trip details, except for
-                                    activities marked private.
-                                </p>
+                            <form
+                                onSubmit={(event) => {
+                                    if (inviteStep === "accommodations") {
+                                        void sendInvite(event);
+                                        return;
+                                    }
 
-                                <div>
-                                    <label
-                                        htmlFor="tripInvitee"
-                                        className="block text-sm font-semibold text-slate-800"
-                                    >
-                                        Friend’s email or username
-                                    </label>
-                                    <input
-                                        id="tripInvitee"
-                                        value={invitee}
-                                        onChange={(event) =>
-                                            setInvitee(event.target.value)
+                                    event.preventDefault();
+                                    if (!canContinueInvite) return;
+                                    setErrorMessage("");
+                                    setSuccessMessage("");
+                                    setInviteStep(
+                                        inviteStep === "invitee"
+                                            ? "journey"
+                                            : "accommodations"
+                                    );
+                                }}
+                                className="space-y-5"
+                            >
+                                <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                                    <span
+                                        className={
+                                            inviteStep === "invitee"
+                                                ? "text-slate-950"
+                                                : "text-lime-700"
                                         }
-                                        placeholder="name@example.com or username"
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        autoComplete="off"
-                                        data-form-type="other"
-                                        data-lpignore="true"
-                                        data-1p-ignore="true"
-                                    />
+                                    >
+                                        1 Invite
+                                    </span>
+                                    <span>/</span>
+                                    <span
+                                        className={
+                                            inviteStep === "journey"
+                                                ? "text-slate-950"
+                                                : "text-slate-500"
+                                        }
+                                    >
+                                        2 Journey
+                                    </span>
+                                    <span>/</span>
+                                    <span
+                                        className={
+                                            inviteStep === "accommodations"
+                                                ? "text-slate-950"
+                                                : "text-slate-500"
+                                        }
+                                    >
+                                        3 Stays
+                                    </span>
                                 </div>
 
-                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                                        Quick add friends
-                                    </p>
-                                    <div className="mt-3 flex flex-wrap gap-2">
-                                        {isLoadingFriends ? (
-                                            <p className="text-sm font-semibold text-slate-500">
-                                                Loading friends...
+                                {inviteStep === "invitee" ? (
+                                    <>
+                                        <p className="text-sm leading-6 text-slate-600">
+                                            Invite a friend to collaborate on this trip.
+                                            You’ll choose exactly which legs, journey
+                                            items, and stays they are added to before the
+                                            invite is sent.
+                                        </p>
+
+                                        <div>
+                                            <label
+                                                htmlFor="tripInvitee"
+                                                className="block text-sm font-semibold text-slate-800"
+                                            >
+                                                Friend’s email or username
+                                            </label>
+                                            <input
+                                                id="tripInvitee"
+                                                value={invitee}
+                                                onChange={(event) =>
+                                                    setInvitee(event.target.value)
+                                                }
+                                                placeholder="name@example.com or username"
+                                                className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                                autoComplete="off"
+                                                data-form-type="other"
+                                                data-lpignore="true"
+                                                data-1p-ignore="true"
+                                            />
+                                        </div>
+
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                                                Quick add friends
                                             </p>
-                                        ) : quickAddFriends.length > 0 ? (
-                                            quickAddFriends.map((friend) => (
-                                                <button
-                                                    key={friend.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setInvitee(friend.username || "");
-                                                        setConsentChecked(true);
-                                                    }}
-                                                    disabled={!friend.username}
-                                                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-left text-slate-900 shadow-sm transition hover:border-lime-300 hover:bg-lime-50"
-                                                >
-                                                    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-xs font-black uppercase text-lime-200">
-                                                        {friend.avatarUrl ? (
-                                                            // eslint-disable-next-line @next/next/no-img-element
-                                                            <img
-                                                                src={friend.avatarUrl}
-                                                                alt=""
-                                                                className="h-full w-full object-cover"
-                                                            />
-                                                        ) : (
-                                                            getFriendInitials(friend)
-                                                        )}
-                                                    </span>
-                                                    <span className="min-w-0">
-                                                        <span className="block max-w-32 truncate text-sm font-black">
-                                                            {friend.name}
-                                                        </span>
-                                                        {friend.username ? (
-                                                            <span className="block max-w-32 truncate text-xs font-semibold text-slate-500">
-                                                                @{friend.username}
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {isLoadingFriends ? (
+                                                    <p className="text-sm font-semibold text-slate-500">
+                                                        Loading friends...
+                                                    </p>
+                                                ) : quickAddFriends.length > 0 ? (
+                                                    quickAddFriends.map((friend) => (
+                                                        <button
+                                                            key={friend.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setInvitee(
+                                                                    friend.username || ""
+                                                                );
+                                                                setConsentChecked(true);
+                                                            }}
+                                                            disabled={!friend.username}
+                                                            className="flex items-center gap-2 rounded-full border border-slate-200 bg-white py-1.5 pl-1.5 pr-3 text-left text-slate-900 shadow-sm transition hover:border-lime-300 hover:bg-lime-50"
+                                                        >
+                                                            <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-xs font-black uppercase text-lime-200">
+                                                                {friend.avatarUrl ? (
+                                                                    // eslint-disable-next-line @next/next/no-img-element
+                                                                    <img
+                                                                        src={friend.avatarUrl}
+                                                                        alt=""
+                                                                        className="h-full w-full object-cover"
+                                                                    />
+                                                                ) : (
+                                                                    getFriendInitials(friend)
+                                                                )}
                                                             </span>
-                                                        ) : null}
-                                                    </span>
+                                                            <span className="min-w-0">
+                                                                <span className="block max-w-32 truncate text-sm font-black">
+                                                                    {friend.name}
+                                                                </span>
+                                                                {friend.username ? (
+                                                                    <span className="block max-w-32 truncate text-xs font-semibold text-slate-500">
+                                                                        @{friend.username}
+                                                                    </span>
+                                                                ) : null}
+                                                            </span>
+                                                        </button>
+                                                    ))
+                                                ) : (
+                                                    <p className="text-sm font-semibold text-slate-500">
+                                                        Accepted friends will appear here.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                                            <input
+                                                type="checkbox"
+                                                checked={consentChecked}
+                                                onChange={(event) =>
+                                                    setConsentChecked(event.target.checked)
+                                                }
+                                                className="mt-1 h-4 w-4 rounded border-slate-300"
+                                            />
+                                            <span>
+                                                I consent to sharing selected trip details
+                                                with this user, except for any activities
+                                                marked private.
+                                            </span>
+                                        </label>
+                                    </>
+                                ) : null}
+
+                                {inviteStep === "journey" ? (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h3 className="text-lg font-black text-slate-950">
+                                                Add them to trip legs
+                                            </h3>
+                                            <p className="mt-1 text-sm leading-6 text-slate-600">
+                                                If you choose none, they can accept the
+                                                trip but will see blank dates until a leg
+                                                is added for them.
+                                            </p>
+                                        </div>
+
+                                        {isLoadingAssignments ? (
+                                            <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                                                Loading trip details...
+                                            </p>
+                                        ) : legOptions.length > 0 ? (
+                                            <div className="grid gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedLegIds(new Set())}
+                                                    className={`rounded-2xl border p-3 text-left text-sm font-black transition ${
+                                                        selectedLegIds.size === 0
+                                                            ? "border-lime-300 bg-lime-50 text-slate-950"
+                                                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                                    }`}
+                                                >
+                                                    None
                                                 </button>
-                                            ))
+                                                {legOptions.map((leg) => {
+                                                    const selected = selectedLegIds.has(leg.id);
+                                                    return (
+                                                        <button
+                                                            key={leg.id}
+                                                            type="button"
+                                                            onClick={() =>
+                                                                toggleSelectedId(
+                                                                    setSelectedLegIds,
+                                                                    leg.id
+                                                                )
+                                                            }
+                                                            className={`flex items-center justify-between gap-3 rounded-2xl border p-3 text-left transition ${
+                                                                selected
+                                                                    ? "border-lime-300 bg-lime-50 text-slate-950"
+                                                                    : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                                                            }`}
+                                                        >
+                                                            <span>
+                                                                <span className="block text-sm font-black">
+                                                                    {leg.icon_emoji
+                                                                        ? `${leg.icon_emoji} `
+                                                                        : ""}
+                                                                    {getLegLabel(leg)}
+                                                                </span>
+                                                                <span className="block text-xs font-semibold text-slate-500">
+                                                                    {formatOptionDates(
+                                                                        leg.start_date,
+                                                                        leg.end_date
+                                                                    )}
+                                                                </span>
+                                                            </span>
+                                                            <span
+                                                                className={`h-5 w-5 rounded-full border ${
+                                                                    selected
+                                                                        ? "border-slate-950 bg-slate-950 shadow-[inset_0_0_0_5px_#bef264]"
+                                                                        : "border-slate-300 bg-white"
+                                                                }`}
+                                                            />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         ) : (
-                                            <p className="text-sm font-semibold text-slate-500">
-                                                Accepted friends will appear here.
+                                            <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+                                                No trip legs have been added yet.
                                             </p>
                                         )}
-                                    </div>
-                                </div>
 
-                                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-                                    <input
-                                        type="checkbox"
-                                        checked={consentChecked}
-                                        onChange={(event) =>
-                                            setConsentChecked(event.target.checked)
-                                        }
-                                        className="mt-1 h-4 w-4 rounded border-slate-300"
-                                    />
-                                    <span>
-                                        I consent to sharing all trip details with this
-                                        user, except for any activities marked private.
-                                    </span>
-                                </label>
+                                        <div className="border-t border-slate-200 pt-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <h3 className="text-lg font-black text-slate-950">
+                                                        Journey items
+                                                    </h3>
+                                                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                                                        Select flights, trains, buses, or
+                                                        other transportation this invitee
+                                                        should be assigned to.
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedJourneyIds(new Set())}
+                                                    className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-600 transition hover:bg-slate-50"
+                                                >
+                                                    None
+                                                </button>
+                                            </div>
+                                            <div className="mt-3 grid gap-2">
+                                                {journeyOptions.length > 0 ? (
+                                                    journeyOptions.map((item) => {
+                                                        const selected =
+                                                            selectedJourneyIds.has(item.id);
+                                                        return (
+                                                            <button
+                                                                key={item.id}
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    toggleSelectedId(
+                                                                        setSelectedJourneyIds,
+                                                                        item.id
+                                                                    )
+                                                                }
+                                                                className={`rounded-2xl border p-3 text-left transition ${
+                                                                    selected
+                                                                        ? "border-lime-300 bg-lime-50 text-slate-950"
+                                                                        : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                                                                }`}
+                                                            >
+                                                                <span className="block text-sm font-black">
+                                                                    {getJourneyLabel(item)}
+                                                                </span>
+                                                                <span className="mt-1 block text-xs font-semibold text-slate-500">
+                                                                    {[
+                                                                        item.transport_type,
+                                                                        item.departure_date,
+                                                                    ]
+                                                                        .filter(Boolean)
+                                                                        .join(" · ") ||
+                                                                        "No date set"}
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+                                                        No journey items have been added
+                                                        yet.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : null}
+
+                                {inviteStep === "accommodations" ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h3 className="text-lg font-black text-slate-950">
+                                                    Add them to stays
+                                                </h3>
+                                                <p className="mt-1 text-sm leading-6 text-slate-600">
+                                                    Select accommodations this invitee
+                                                    should be assigned to, or choose none.
+                                                </p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setSelectedAccommodationIds(new Set())
+                                                }
+                                                className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-black text-slate-600 transition hover:bg-slate-50"
+                                            >
+                                                None
+                                            </button>
+                                        </div>
+                                        <div className="grid gap-2">
+                                            {accommodationOptions.length > 0 ? (
+                                                accommodationOptions.map((stay) => {
+                                                    const selected =
+                                                        selectedAccommodationIds.has(stay.id);
+                                                    return (
+                                                        <button
+                                                            key={stay.id}
+                                                            type="button"
+                                                            onClick={() =>
+                                                                toggleSelectedId(
+                                                                    setSelectedAccommodationIds,
+                                                                    stay.id
+                                                                )
+                                                            }
+                                                            className={`rounded-2xl border p-3 text-left transition ${
+                                                                selected
+                                                                    ? "border-lime-300 bg-lime-50 text-slate-950"
+                                                                    : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                                                            }`}
+                                                        >
+                                                            <span className="block text-sm font-black">
+                                                                {getAccommodationLabel(stay)}
+                                                            </span>
+                                                            <span className="mt-1 block text-xs font-semibold text-slate-500">
+                                                                {formatOptionDates(
+                                                                    stay.check_in_date,
+                                                                    stay.check_out_date
+                                                                )}
+                                                            </span>
+                                                        </button>
+                                                    );
+                                                })
+                                            ) : (
+                                                <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+                                                    No accommodations have been added yet.
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ) : null}
 
                                 {errorMessage ? (
                                     <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -415,6 +888,21 @@ export default function ShareTripModal({
                                 ) : null}
 
                                 <div className="flex justify-end gap-2 border-t border-slate-200 pt-5">
+                                    {inviteStep !== "invitee" ? (
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setInviteStep(
+                                                    inviteStep === "accommodations"
+                                                        ? "journey"
+                                                        : "invitee"
+                                                )
+                                            }
+                                            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                        >
+                                            Back
+                                        </button>
+                                    ) : null}
                                     <button
                                         type="button"
                                         onClick={requestClose}
@@ -427,8 +915,14 @@ export default function ShareTripModal({
                                         disabled={!canSubmit}
                                         className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
-                                        <Send className="h-4 w-4" aria-hidden="true" />
-                                        {isSubmitting ? "Sending..." : "Send invite"}
+                                        {inviteStep === "accommodations" ? (
+                                            <Send className="h-4 w-4" aria-hidden="true" />
+                                        ) : null}
+                                        {isSubmitting
+                                            ? "Sending..."
+                                            : inviteStep === "accommodations"
+                                              ? "Send invite"
+                                              : "Next"}
                                     </button>
                                 </div>
                             </form>

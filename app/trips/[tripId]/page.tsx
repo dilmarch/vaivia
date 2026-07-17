@@ -4443,12 +4443,14 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         trip_leg_id: string;
         trip_member_id: string;
         is_joining?: boolean | null;
+        start_date?: string | null;
+        end_date?: string | null;
     }> = [];
 
     if (manualTripLegIds.length > 0) {
         const { data: memberLegRows, error: memberLegRowsError } = await supabase
             .from("trip_member_legs")
-            .select("trip_leg_id,trip_member_id,is_joining")
+            .select("trip_leg_id,trip_member_id,is_joining,start_date,end_date")
             .eq("trip_id", tripId)
             .in("trip_leg_id", manualTripLegIds);
 
@@ -4471,6 +4473,20 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         const current = tripMemberIdsByLegId.get(row.trip_leg_id) || [];
         current.push(row.trip_member_id);
         tripMemberIdsByLegId.set(row.trip_leg_id, current);
+    });
+    const tripMemberLegDatesByLegAndMember = new Map<
+        string,
+        { startDate: string | null; endDate: string | null }
+    >();
+    tripMemberLegRows.forEach((row) => {
+        if (!row.is_joining) return;
+        tripMemberLegDatesByLegAndMember.set(
+            `${row.trip_leg_id}:${row.trip_member_id}`,
+            {
+                startDate: row.start_date || null,
+                endDate: row.end_date || row.start_date || null,
+            }
+        );
     });
 
     const accommodationLocations: TripLegLocation[] = (
@@ -4530,6 +4546,26 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
+            memberDatesByMemberId: Object.fromEntries(
+                (tripMemberIdsByLegId.get(leg.id) || []).map((memberId) => {
+                    const memberDates = tripMemberLegDatesByLegAndMember.get(
+                        `${leg.id}:${memberId}`
+                    );
+
+                    return [
+                        memberId,
+                        {
+                            startDate: memberDates?.startDate || leg.start_date || null,
+                            endDate:
+                                memberDates?.endDate ||
+                                memberDates?.startDate ||
+                                leg.end_date ||
+                                leg.start_date ||
+                                null,
+                        },
+                    ];
+                })
+            ),
         }));
 
     const destinationLocations: TripLegLocation[] = parseDestinationList(
@@ -4567,6 +4603,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     accommodation.startDate || manualMatch?.startDate || null,
                 endDate: accommodation.endDate || manualMatch?.endDate || null,
                 memberIds: manualMatch?.memberIds || [],
+                memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
             };
         }
     );
@@ -4601,6 +4638,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 manualMatch?.endDate ||
                 null,
             memberIds: manualMatch?.memberIds || [],
+            memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
         };
     });
 
@@ -4617,6 +4655,70 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
 
         return (location.memberIds || []).includes(currentUserTripMemberId);
     });
+    const currentUserAssignedLegLocations = currentUserTripMemberId
+        ? heroLocations.filter((location) =>
+              (location.memberIds || []).includes(currentUserTripMemberId)
+          )
+        : [];
+    const currentUserAssignedLegDateRange =
+        currentUserAssignedLegLocations.reduce(
+            (
+                range: {
+                    startDate: string | null;
+                    endDate: string | null;
+                },
+                location
+            ) => {
+                const memberDates = currentUserTripMemberId
+                    ? location.memberDatesByMemberId?.[currentUserTripMemberId]
+                    : null;
+                const startDate =
+                    memberDates?.startDate || location.startDate || null;
+                const endDate =
+                    memberDates?.endDate ||
+                    memberDates?.startDate ||
+                    location.endDate ||
+                    location.startDate ||
+                    null;
+
+                return {
+                    startDate:
+                        startDate &&
+                        (!range.startDate ||
+                            compareDateStrings(startDate, range.startDate) < 0)
+                            ? startDate
+                            : range.startDate,
+                    endDate:
+                        endDate &&
+                        (!range.endDate ||
+                            compareDateStrings(endDate, range.endDate) > 0)
+                            ? endDate
+                            : range.endDate,
+                };
+            },
+            { startDate: null, endDate: null }
+        );
+    const isGroupTripForDateScope =
+        tripMembers.length > 1 ||
+        pendingInvitations.length > 0 ||
+        tripFamilyMembers.length > 0;
+    const displayTripStartDate =
+        currentUserAssignedLegLocations.length > 0
+            ? currentUserAssignedLegDateRange.startDate
+            : isGroupTripForDateScope && currentUserTripMemberId
+              ? null
+              : trip.start_date;
+    const displayTripEndDate =
+        currentUserAssignedLegLocations.length > 0
+            ? currentUserAssignedLegDateRange.endDate ||
+              currentUserAssignedLegDateRange.startDate
+            : isGroupTripForDateScope && currentUserTripMemberId
+              ? null
+              : trip.end_date || trip.start_date;
+    const missingTripDateLabel =
+        currentUserAssignedLegLocations.length > 0
+            ? "Click to Add Dates"
+            : "Add a leg";
     const tripLegMemberOptions: TripLegMemberOption[] = memberRows
         .filter((member) => Boolean(member.id))
         .map((member) => {
@@ -4993,8 +5095,8 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         .filter((accommodation) => accommodation.status !== "cancelled");
     const mobileStayTimeline = buildMobileStayTimeline({
         accommodations: mobileAccommodationItems,
-        tripStartDate: trip.start_date,
-        tripEndDate: trip.end_date,
+        tripStartDate: displayTripStartDate,
+        tripEndDate: displayTripEndDate,
     });
     const mobileBudgetCurrency =
         mobileBudgetData.budget?.reporting_currency ||
@@ -5024,7 +5126,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             <TripDocumentTitle
                 title={trip.title}
                 destination={trip.destination}
-                startDate={trip.start_date}
+                startDate={displayTripStartDate}
             />
 
             <header className="mb-8 overflow-hidden border-b border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/40">
@@ -5076,7 +5178,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                     Departing:
                                 </p>
                                 <p className="mt-2 text-2xl font-black tracking-tight text-white">
-                                    {formatTripDate(trip.start_date)}
+                                    {displayTripStartDate
+                                        ? formatTripDate(displayTripStartDate)
+                                        : missingTripDateLabel}
                                 </p>
                             </div>
                             <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
@@ -5084,7 +5188,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                     Returning:
                                 </p>
                                 <p className="mt-2 text-2xl font-black tracking-tight text-white">
-                                    {formatTripDate(trip.end_date)}
+                                    {displayTripEndDate
+                                        ? formatTripDate(displayTripEndDate)
+                                        : missingTripDateLabel}
                                 </p>
                             </div>
                             <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
@@ -5092,7 +5198,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                 <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
                                 <TripCountdown
                                     tripId={trip.id}
-                                    startDate={trip.start_date}
+                                    startDate={displayTripStartDate}
                                     selectedTargetId={selectedCountdownTargetId}
                                     selectedTargetType={selectedCountdownTargetType}
                                     targets={countdownTargetOptions}
@@ -5180,7 +5286,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                         Departing
                                     </p>
                                     <p className="mt-1 text-sm font-black">
-                                        {formatCompactTripDate(trip.start_date)}
+                                        {displayTripStartDate
+                                            ? formatCompactTripDate(displayTripStartDate)
+                                            : missingTripDateLabel}
                                     </p>
                                 </div>
                                 <div className="border-t border-white/10 pt-2">
@@ -5188,7 +5296,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                         Returning
                                     </p>
                                     <p className="mt-1 text-sm font-black">
-                                        {formatCompactTripDate(trip.end_date)}
+                                        {displayTripEndDate
+                                            ? formatCompactTripDate(displayTripEndDate)
+                                            : missingTripDateLabel}
                                     </p>
                                 </div>
                             </div>
@@ -5236,7 +5346,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
                             <TripCountdown
                                 tripId={trip.id}
-                                startDate={trip.start_date}
+                                startDate={displayTripStartDate}
                                 selectedTargetId={selectedCountdownTargetId}
                                 selectedTargetType={selectedCountdownTargetType}
                                 targets={countdownTargetOptions}
@@ -5538,7 +5648,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         tripLegLocations={heroLocations}
                         tripLegMemberOptions={tripLegMemberOptions}
                         ideas={ideas}
-                        tripStartDate={trip.start_date}
+                        tripStartDate={displayTripStartDate}
                         tripDestination={trip.destination}
                         deleteItineraryAction={deleteItineraryItem}
                         upsertTripLegAction={upsertTripLeg}

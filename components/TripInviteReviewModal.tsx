@@ -220,8 +220,16 @@ export default function TripInviteReviewModal({
                                             </p>
                                             <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-500">
                                                 {formatDateRange(
-                                                    trip.start_date,
-                                                    trip.end_date
+                                                    invitation?.invitation_scope ===
+                                                        "selected_legs"
+                                                        ? invitation?.invited_start_date
+                                                        : invitation?.invited_start_date ||
+                                                              trip.start_date,
+                                                    invitation?.invitation_scope ===
+                                                        "selected_legs"
+                                                        ? invitation?.invited_end_date
+                                                        : invitation?.invited_end_date ||
+                                                              trip.end_date
                                                 )}
                                             </p>
                                         </div>

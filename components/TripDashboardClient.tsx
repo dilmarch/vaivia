@@ -48,6 +48,10 @@ export type DashboardTrip = {
     countdown_target_itinerary_item_id?: string | null;
     start_date?: string | null;
     end_date?: string | null;
+    viewerTripMemberId?: string | null;
+    viewerAssignedLegCount?: number;
+    viewerStartDate?: string | null;
+    viewerEndDate?: string | null;
     archived_at?: string | null;
     archived_reason?: string | null;
     notes?: string | null;
@@ -367,7 +371,9 @@ function getUpcomingTrips(trips: DashboardTrip[]) {
     const todayKey = getLocalDateKey(new Date());
 
     return trips.filter((trip) => {
-        const endDate = trip.end_date || trip.start_date;
+        const displayDateRange = getTripDisplayDateRange(trip);
+        const endDate =
+            displayDateRange.endDate || displayDateRange.startDate || trip.end_date || trip.start_date;
         return endDate ? endDate >= todayKey : true;
     });
 }
@@ -408,6 +414,32 @@ function formatTripDateRange(startDate?: string | null, endDate?: string | null)
     if (end) return `${formatter.format(end)}, ${end.getFullYear()}`;
 
     return "Dates coming soon";
+}
+
+function getTripDisplayDateRange(trip: DashboardTrip) {
+    const hasOtherMembers = Boolean(trip.memberProfiles?.length);
+
+    if ((trip.viewerAssignedLegCount || 0) > 0) {
+        return {
+            startDate: trip.viewerStartDate || null,
+            endDate: trip.viewerEndDate || trip.viewerStartDate || null,
+            hasAssignedLegs: true,
+        };
+    }
+
+    if (hasOtherMembers && trip.viewerTripMemberId) {
+        return {
+            startDate: null,
+            endDate: null,
+            hasAssignedLegs: false,
+        };
+    }
+
+    return {
+        startDate: trip.start_date || null,
+        endDate: trip.end_date || trip.start_date || null,
+        hasAssignedLegs: false,
+    };
 }
 
 function getTripDays(startDate?: string | null, endDate?: string | null) {
@@ -455,10 +487,12 @@ function getWeekTripSegments(
 
     return trips
         .map((trip) => {
-            if (!trip.start_date) return null;
+            const displayDateRange = getTripDisplayDateRange(trip);
+            if (!displayDateRange.startDate) return null;
 
-            const tripStartKey = trip.start_date;
-            const tripEndKey = trip.end_date || trip.start_date;
+            const tripStartKey = displayDateRange.startDate;
+            const tripEndKey =
+                displayDateRange.endDate || displayDateRange.startDate;
 
             if (tripEndKey < weekStartKey || tripStartKey > weekEndKey) {
                 return null;
@@ -515,7 +549,11 @@ export function DashboardTripCard({
     const primaryDestination = destinations[0] ?? getPrimaryDestination(trip);
     const secondLineDestinations = destinations.slice(1, 3);
     const thirdLineDestinations = destinations.slice(3, 5);
-    const days = getTripDays(trip.start_date, trip.end_date);
+    const displayDateRange = getTripDisplayDateRange(trip);
+    const days = getTripDays(
+        displayDateRange.startDate,
+        displayDateRange.endDate
+    );
     const [imageTone, setImageTone] = useState<TripCardImageTone>("dark");
     const otherMemberProfiles = (trip.memberProfiles || []).filter(
         (member) => member.id !== currentUserId
@@ -670,7 +708,12 @@ export function DashboardTripCard({
                     <p
                         className={`vaivia-trip-card-date mt-4 text-sm font-bold text-white/95 ${variant.dateClass}`}
                     >
-                        {formatTripDateRange(trip.start_date, trip.end_date)}
+                        {displayDateRange.startDate
+                            ? formatTripDateRange(
+                                  displayDateRange.startDate,
+                                  displayDateRange.endDate
+                              )
+                            : "Add a leg"}
                     </p>
                 </div>
             </Link>
@@ -689,6 +732,7 @@ export function TripQuickInfoPanel({
     const primaryDestination = destinations[0] ?? getPrimaryDestination(trip);
     const transportationSummary = getTripTransportationSummary(trip);
     const accommodationSummary = getTripAccommodationSummary(trip);
+    const displayDateRange = getTripDisplayDateRange(trip);
 
     return (
         <div className="mt-4 w-[300px] overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85 text-white shadow-2xl shadow-black/40 backdrop-blur-xl md:w-[330px] lg:w-[355px]">
@@ -702,7 +746,12 @@ export function TripQuickInfoPanel({
                             {trip.title || primaryDestination}
                         </h3>
                         <p className="mt-1 text-xs font-bold text-slate-300">
-                            {formatTripDateRange(trip.start_date, trip.end_date)}
+                            {displayDateRange.startDate
+                                ? formatTripDateRange(
+                                      displayDateRange.startDate,
+                                      displayDateRange.endDate
+                                  )
+                                : "Add a leg"}
                         </p>
                     </div>
                     <button
@@ -1289,9 +1338,10 @@ function getDashboardTasks(trips: DashboardTrip[]) {
     upcomingTrips.forEach((trip) => {
         const tripTitle = trip.title || getPrimaryDestination(trip);
         const accommodations = trip.planning?.accommodations || [];
+        const displayDateRange = getTripDisplayDateRange(trip);
         const accommodationGap = getDateRangeGap(
-            trip.start_date,
-            trip.end_date,
+            displayDateRange.startDate,
+            displayDateRange.endDate,
             accommodations
         );
 
