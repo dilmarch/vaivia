@@ -21,6 +21,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import type {
     CalendarAccommodation,
+    CalendarMemberLocation,
     ItineraryCalendarItem,
 } from "@/components/ItineraryCalendar";
 import ItineraryTabs from "@/components/ItineraryTabs";
@@ -3165,64 +3166,28 @@ async function deleteTrip(formData: FormData) {
 
     const { data: trip, error: tripError } = await supabase
         .from("trips")
-        .select("id")
+        .select("id,user_id")
         .eq("id", tripId)
+        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
-        console.error("Error finding trip to delete:", tripError);
-        throw new Error("Could not delete trip");
-    }
-
-    const { count: activeMemberCount, error: memberCountError } = await supabase
-        .from("trip_members")
-        .select("id", { count: "exact", head: true })
-        .eq("trip_id", tripId)
-        .eq("status", "active");
-
-    if (!memberCountError && (activeMemberCount || 0) > 1) {
-        throw new Error("Shared trips cannot be deleted. Leave the trip instead.");
-    }
-
-    const { error: itineraryError } = await supabase
-        .from("itinerary_items")
-        .delete()
-        .eq("trip_id", tripId);
-
-    if (itineraryError) {
-        console.error("Error deleting trip itinerary items:", itineraryError);
-        throw new Error("Could not delete trip itinerary items");
-    }
-
-    const { error: transportationError } = await supabase
-        .from("transportation_items")
-        .delete()
-        .eq("trip_id", tripId);
-
-    if (transportationError) {
-        console.error("Error deleting trip transportation items:", transportationError);
-        throw new Error("Could not delete trip transportation items");
-    }
-
-    const { error: ideasError } = await supabase
-        .from("trip_ideas")
-        .delete()
-        .eq("trip_id", tripId);
-
-    if (ideasError) {
-        console.error("Error deleting trip ideas:", ideasError);
-        throw new Error("Could not delete trip ideas");
+        console.error("Error finding trip to archive:", tripError);
+        throw new Error("Could not archive trip");
     }
 
     const { error } = await supabase
         .from("trips")
-        .delete()
+        .update({
+            archived_at: new Date().toISOString(),
+            archived_reason: "user_archived",
+        })
         .eq("id", tripId)
         .eq("user_id", user.id);
 
     if (error) {
-        console.error("Error deleting trip:", error);
-        throw new Error("Could not delete trip");
+        console.error("Error archiving trip:", error);
+        throw new Error("Could not archive trip");
     }
 
     redirect("/");
@@ -4644,6 +4609,14 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
             ? [...mergedDestinationLocations, ...unmatchedManualLocations]
             : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
     );
+    const visibleHeroLocations = heroLocations.filter((location) => {
+        const hasExplicitSavedSelection =
+            location.source === "manual" || Boolean(location.persistedLegId);
+
+        if (!hasExplicitSavedSelection || !currentUserTripMemberId) return true;
+
+        return (location.memberIds || []).includes(currentUserTripMemberId);
+    });
     const tripLegMemberOptions: TripLegMemberOption[] = memberRows
         .filter((member) => Boolean(member.id))
         .map((member) => {
@@ -4675,6 +4648,43 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                 startDate: location.startDate || null,
                 endDate: location.endDate || null,
             }))
+    );
+    const weekMemberLocations: CalendarMemberLocation[] = tripMembers.map(
+        (member) => {
+            const displayName =
+                [member.first_name, member.last_name]
+                    .filter(Boolean)
+                    .join(" ")
+                    .trim() ||
+                member.username ||
+                "Trip member";
+            const tripMemberId = member.trip_member_id || "";
+
+            return {
+                memberId: tripMemberId || `user:${member.user_id}`,
+                name: displayName,
+                avatarUrl: member.avatar_url || null,
+                legs: heroLocations
+                    .filter((location) =>
+                        tripMemberId
+                            ? (location.memberIds || []).includes(tripMemberId)
+                            : false
+                    )
+                    .map((location) => ({
+                        id: location.persistedLegId || location.id,
+                        locationKey: `${location.source}:${location.id}`,
+                        name: location.name,
+                        cityName: location.cityName || null,
+                        countryCode: location.countryCode || null,
+                        iconEmoji:
+                            location.iconEmoji ||
+                            getFlagEmoji(location.countryCode) ||
+                            null,
+                        startDate: location.startDate || null,
+                        endDate: location.endDate || null,
+                    })),
+            };
+        }
     );
 
     const userCategories = await getUserCategories(user.id);
@@ -5036,7 +5046,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         <TripLegLocationLine
                             tripId={trip.id}
                             revalidatePathname={getTripHref(trip)}
-                            locations={heroLocations}
+                            locations={visibleHeroLocations}
                             memberOptions={tripLegMemberOptions}
                             upsertLegAction={upsertTripLeg}
                             deleteLegAction={deleteTripLeg}
@@ -5524,10 +5534,16 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         accommodations={
                             ((accommodationRows || []) as CalendarAccommodation[])
                         }
+                        memberLocations={weekMemberLocations}
+                        tripLegLocations={heroLocations}
+                        tripLegMemberOptions={tripLegMemberOptions}
                         ideas={ideas}
                         tripStartDate={trip.start_date}
                         tripDestination={trip.destination}
                         deleteItineraryAction={deleteItineraryItem}
+                        upsertTripLegAction={upsertTripLeg}
+                        deleteTripLegAction={deleteTripLeg}
+                        tripLegRevalidatePathname={getTripHref(trip)}
                         updateTransportationAction={updateTransportationItem}
                         createItineraryAction={createItineraryItem}
                         createTransportationAction={createTransportationItem}

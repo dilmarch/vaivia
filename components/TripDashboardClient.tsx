@@ -4,6 +4,7 @@ import Link from "next/link";
 import Script from "next/script";
 import {
     AlertTriangle,
+    Archive,
     CheckCircle2,
     ChevronLeft,
     ChevronRight,
@@ -13,7 +14,6 @@ import {
     Plane,
     Share2,
     Stamp,
-    Trash2,
     UserRound,
     Wand2,
     X,
@@ -48,6 +48,8 @@ export type DashboardTrip = {
     countdown_target_itinerary_item_id?: string | null;
     start_date?: string | null;
     end_date?: string | null;
+    archived_at?: string | null;
+    archived_reason?: string | null;
     notes?: string | null;
     memberProfiles?: {
         id: string;
@@ -1899,14 +1901,22 @@ export default function TripDashboardClient({
                             </div>
 
                             <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-between">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowDeleteWarning(true)}
-                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-300 px-4 text-sm font-medium text-red-700 transition hover:bg-red-50"
-                                >
-                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                    Delete
-                                </button>
+                                {!selectedTrip.user_id ||
+                                selectedTrip.user_id === currentUserId ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDeleteWarning(true)}
+                                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 px-4 text-sm font-medium text-amber-700 transition hover:bg-amber-50"
+                                    >
+                                        <Archive
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                        Archive
+                                    </button>
+                                ) : (
+                                    <span />
+                                )}
 
                                 <button
                                     type="submit"
@@ -1923,7 +1933,7 @@ export default function TripDashboardClient({
 
             {showCloseWarning && selectedTrip && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
+                    className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowCloseWarning(false)}
                 >
                     <div
@@ -1979,7 +1989,7 @@ export default function TripDashboardClient({
 
             {showDeleteWarning && selectedTrip && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
+                    className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowDeleteWarning(false)}
                 >
                     <div
@@ -1990,19 +2000,19 @@ export default function TripDashboardClient({
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
-                                <Trash2 className="h-5 w-5" aria-hidden="true" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                <Archive className="h-5 w-5" aria-hidden="true" />
                             </div>
                             <div>
                                 <h2
                                     id="delete-trip-title"
                                     className="text-lg font-semibold text-slate-950"
                                 >
-                                    Delete this trip?
+                                    Archive this trip?
                                 </h2>
                                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                                    This will delete the trip and its itinerary items. This
-                                    cannot be undone.
+                                    This moves the trip out of your active lists and
+                                    into Archive. Nothing inside the trip will be deleted.
                                 </p>
                             </div>
                         </div>
@@ -2023,9 +2033,9 @@ export default function TripDashboardClient({
                                 />
                                 <button
                                     type="submit"
-                                    className="w-full rounded-md bg-red-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-800 sm:w-auto"
+                                    className="w-full rounded-md bg-amber-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-amber-400 sm:w-auto"
                                 >
-                                    Delete trip
+                                    Archive trip
                                 </button>
                             </form>
                         </div>

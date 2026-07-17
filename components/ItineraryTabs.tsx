@@ -5,10 +5,15 @@ import { useMemo, useState } from "react";
 import IdeasTab from "@/components/IdeasTab";
 import ItineraryCalendar, {
     type CalendarAccommodation,
+    type CalendarMemberLocation,
     type ItineraryCalendarItem,
 } from "@/components/ItineraryCalendar";
 import ItineraryQuickAdd from "@/components/ItineraryQuickAdd";
 import JourneyPlanningTab from "@/components/JourneyPlanningTab";
+import TripLegLocationLine, {
+    type TripLegLocation,
+    type TripLegMemberOption,
+} from "@/components/TripLegLocationLine";
 import type { UserCategory } from "@/lib/itineraryCategories";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 import type { TripAudienceOption } from "@/lib/tripAudience";
@@ -20,10 +25,16 @@ type ItineraryTabsProps = {
     tripId: string;
     items: ItineraryCalendarItem[];
     accommodations?: CalendarAccommodation[];
+    memberLocations?: CalendarMemberLocation[];
+    tripLegLocations?: TripLegLocation[];
+    tripLegMemberOptions?: TripLegMemberOption[];
     ideas: TripIdea[];
     tripStartDate?: string | null;
     tripDestination?: string | null;
     deleteItineraryAction: (formData: FormData) => Promise<void>;
+    upsertTripLegAction?: (formData: FormData) => Promise<void>;
+    deleteTripLegAction?: (formData: FormData) => Promise<void>;
+    tripLegRevalidatePathname?: string;
     updateTransportationAction: (formData: FormData) => Promise<void>;
     createItineraryAction: (formData: FormData) => Promise<void>;
     createTransportationAction: (formData: FormData) => Promise<void>;
@@ -69,10 +80,16 @@ export default function ItineraryTabs({
     tripId,
     items,
     accommodations = [],
+    memberLocations = [],
+    tripLegLocations = [],
+    tripLegMemberOptions = [],
     ideas,
     tripStartDate,
     tripDestination,
     deleteItineraryAction,
+    upsertTripLegAction,
+    deleteTripLegAction,
+    tripLegRevalidatePathname,
     updateTransportationAction,
     createItineraryAction,
     createTransportationAction,
@@ -99,6 +116,9 @@ export default function ItineraryTabs({
     const [quickAddDate, setQuickAddDate] = useState(() =>
         getInitialQuickAddDate(tripStartDate)
     );
+    const [requestedLegLocationKey, setRequestedLegLocationKey] = useState<
+        string | null
+    >(null);
     const transportationItems = useMemo(
         () =>
             items.filter(
@@ -116,6 +136,7 @@ export default function ItineraryTabs({
                     tripId={tripId}
                     items={items}
                     accommodations={accommodations}
+                    memberLocations={memberLocations}
                     tripStartDate={tripStartDate}
                     tripDestination={tripDestination}
                     defaultView={defaultItineraryView}
@@ -133,6 +154,7 @@ export default function ItineraryTabs({
                     promoteIdeaAction={createItineraryAction}
                     toggleIdeaReactionAction={toggleIdeaReactionAction}
                     toggleIdeaAttendedAction={toggleIdeaAttendedAction}
+                    onEditMemberLocationLeg={setRequestedLegLocationKey}
                 />
             ) : activeTab === "journey" || activeTab === "journey-planning" ? (
                 <div className="space-y-5">
@@ -212,6 +234,20 @@ export default function ItineraryTabs({
                     toggleAttendedAction={toggleIdeaAttendedAction}
                 />
             )}
+
+            {upsertTripLegAction && deleteTripLegAction ? (
+                <TripLegLocationLine
+                    tripId={tripId}
+                    revalidatePathname={tripLegRevalidatePathname}
+                    locations={tripLegLocations}
+                    memberOptions={tripLegMemberOptions}
+                    upsertLegAction={upsertTripLegAction}
+                    deleteLegAction={deleteTripLegAction}
+                    renderTiles={false}
+                    openLocationKey={requestedLegLocationKey}
+                    onOpenLocationHandled={() => setRequestedLegLocationKey(null)}
+                />
+            ) : null}
 
             <ItineraryQuickAdd
                 tripId={tripId}

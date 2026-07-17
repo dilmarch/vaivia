@@ -321,19 +321,22 @@ async function deleteTrip(formData: FormData) {
 
     const { error } = await supabase
         .from("trips")
-        .delete()
+        .update({
+            archived_at: new Date().toISOString(),
+            archived_reason: "user_archived",
+        })
         .eq("id", tripId)
         .eq("user_id", user.id);
 
     if (error) {
-        console.error("Error deleting trip from shared trip hero:", {
+        console.error("Error archiving trip from shared trip hero:", {
             message: error.message,
             code: error.code,
             details: error.details,
             hint: error.hint,
             tripId,
         });
-        throw new Error("Could not delete trip");
+        throw new Error("Could not archive trip");
     }
 
     redirect("/");

@@ -329,20 +329,18 @@ async function deleteTrip(formData: FormData) {
 
     const tripId = String(formData.get("trip_id") || "");
 
-    await supabase.from("trip_accommodations").delete().eq("trip_id", tripId);
-    await supabase.from("itinerary_items").delete().eq("trip_id", tripId);
-    await supabase.from("transportation_items").delete().eq("trip_id", tripId);
-    await supabase.from("trip_ideas").delete().eq("trip_id", tripId);
-
     const { error } = await supabase
         .from("trips")
-        .delete()
+        .update({
+            archived_at: new Date().toISOString(),
+            archived_reason: "user_archived",
+        })
         .eq("id", tripId)
         .eq("user_id", user.id);
 
     if (error) {
-        console.error("Error deleting trip from accommodations page:", error);
-        throw new Error("Could not delete trip");
+        console.error("Error archiving trip from accommodations page:", error);
+        throw new Error("Could not archive trip");
     }
 
     redirect("/");

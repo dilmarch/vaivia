@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { AlertTriangle, Pencil, Share2, Trash2, X } from "lucide-react";
+import { AlertTriangle, Archive, Pencil, Share2, X } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
@@ -357,10 +357,10 @@ export default function TripHeaderCover({
                                 <button
                                     type="button"
                                     onClick={() => setShowDeleteWarning(true)}
-                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-300 px-4 text-sm font-medium text-red-700 transition hover:bg-red-50"
+                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 px-4 text-sm font-medium text-amber-700 transition hover:bg-amber-50"
                                 >
-                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                    Delete
+                                    <Archive className="h-4 w-4" aria-hidden="true" />
+                                    Archive
                                 </button>
                                 <button
                                     type="submit"
@@ -377,7 +377,7 @@ export default function TripHeaderCover({
 
             {showCloseWarning && (
                 <div
-                    className="fixed inset-0 z-[60] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
+                    className="fixed inset-0 z-[130] flex items-center justify-center bg-[#0c0115]/70 px-4 py-6 backdrop-blur-sm"
                     onClick={() => setShowCloseWarning(false)}
                 >
                     <div
@@ -443,18 +443,19 @@ export default function TripHeaderCover({
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
-                                <Trash2 className="h-5 w-5" aria-hidden="true" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                <Archive className="h-5 w-5" aria-hidden="true" />
                             </div>
                             <div>
                                 <h3
                                     id="delete-trip-title"
                                     className="text-lg font-semibold text-slate-950"
                                 >
-                                    Delete this trip?
+                                    Archive this trip?
                                 </h3>
                                 <p className="mt-1 text-sm text-slate-600">
-                                    This will remove the trip and its itinerary items.
+                                    This moves the trip out of active lists. Nothing
+                                    inside the trip will be deleted.
                                 </p>
                             </div>
                         </div>
@@ -470,9 +471,9 @@ export default function TripHeaderCover({
                                 <input type="hidden" name="trip_id" value={trip.id} />
                                 <button
                                     type="submit"
-                                    className="w-full rounded-xl bg-red-700 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-800 sm:w-auto"
+                                    className="w-full rounded-xl bg-amber-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-amber-400 sm:w-auto"
                                 >
-                                    Delete trip
+                                    Archive trip
                                 </button>
                             </form>
                         </div>

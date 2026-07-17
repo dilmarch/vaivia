@@ -461,7 +461,7 @@ async function updateTrip(formData: FormData) {
   redirect("/");
 }
 
-async function deleteTrip(formData: FormData) {
+async function archiveTrip(formData: FormData) {
   "use server";
 
   const supabase = await createClient();
@@ -478,44 +478,28 @@ async function deleteTrip(formData: FormData) {
 
   const { data: trip, error: tripError } = await supabase
     .from("trips")
-    .select("id")
+    .select("id,user_id")
     .eq("id", tripId)
+    .eq("user_id", user.id)
     .single();
 
   if (tripError || !trip) {
-    console.error("Error finding trip to delete:", tripError);
-    throw new Error("Could not delete trip");
-  }
-
-  const { count: activeMemberCount, error: memberCountError } = await supabase
-    .from("trip_members")
-    .select("id", { count: "exact", head: true })
-    .eq("trip_id", tripId)
-    .eq("status", "active");
-
-  if (!memberCountError && (activeMemberCount || 0) > 1) {
-    throw new Error("Shared trips cannot be deleted. Leave the trip instead.");
-  }
-
-  const { error: itineraryError } = await supabase
-    .from("itinerary_items")
-    .delete()
-    .eq("trip_id", tripId);
-
-  if (itineraryError) {
-    console.error("Error deleting trip itinerary items:", itineraryError);
-    throw new Error("Could not delete trip itinerary items");
+    console.error("Error finding trip to archive:", tripError);
+    throw new Error("Could not archive trip");
   }
 
   const { error } = await supabase
     .from("trips")
-    .delete()
+    .update({
+      archived_at: new Date().toISOString(),
+      archived_reason: "user_archived",
+    })
     .eq("id", tripId)
     .eq("user_id", user.id);
 
   if (error) {
-    console.error("Error deleting trip:", error);
-    throw new Error("Could not delete trip");
+    console.error("Error archiving trip:", error);
+    throw new Error("Could not archive trip");
   }
 
   redirect("/");
@@ -698,7 +682,7 @@ async function TripsDashboard() {
             wishlistItems={dashboardWishlistItems}
             currentUserId={user.id}
             updateTripAction={updateTrip}
-            deleteTripAction={deleteTrip}
+            deleteTripAction={archiveTrip}
           />
         </div>
       </div>

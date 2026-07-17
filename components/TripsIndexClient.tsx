@@ -1,7 +1,7 @@
 "use client";
 
 import Script from "next/script";
-import { AlertTriangle, Info, Pencil, Share2, Trash2, X } from "lucide-react";
+import { AlertTriangle, Archive, Info, Pencil, Share2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
@@ -18,9 +18,10 @@ type TripsIndexClientProps = {
     currentUserId?: string | null;
     updateTripAction: (formData: FormData) => Promise<void>;
     deleteTripAction: (formData: FormData) => Promise<void>;
+    initialFilter?: TripFilter;
 };
 
-type TripFilter = "upcoming" | "past";
+type TripFilter = "upcoming" | "past" | "archive";
 
 function travelInputProps() {
     return {
@@ -57,9 +58,10 @@ export default function TripsIndexClient({
     currentUserId,
     updateTripAction,
     deleteTripAction,
+    initialFilter = "upcoming",
 }: TripsIndexClientProps) {
     const formRef = useRef<HTMLFormElement | null>(null);
-    const [filter, setFilter] = useState<TripFilter>("upcoming");
+    const [filter, setFilter] = useState<TripFilter>(initialFilter);
     const [selectedTrip, setSelectedTrip] = useState<DashboardTrip | null>(null);
     const [shareTrip, setShareTrip] = useState<DashboardTrip | null>(null);
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -72,8 +74,10 @@ export default function TripsIndexClient({
         () =>
             trips.filter((trip) =>
                 filter === "past"
-                    ? isPastTrip(trip, todayKey)
-                    : !isPastTrip(trip, todayKey)
+                    ? !trip.archived_at && isPastTrip(trip, todayKey)
+                    : filter === "archive"
+                      ? Boolean(trip.archived_at)
+                      : !trip.archived_at && !isPastTrip(trip, todayKey)
             ),
         [filter, todayKey, trips]
     );
@@ -139,8 +143,8 @@ export default function TripsIndexClient({
                             </p>
                         </div>
 
-                        <div className="grid w-full max-w-sm grid-cols-2 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
-                            {(["upcoming", "past"] as const).map((option) => (
+                        <div className="grid w-full max-w-md grid-cols-3 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
+                            {(["upcoming", "past", "archive"] as const).map((option) => (
                                 <button
                                     key={option}
                                     type="button"
@@ -152,7 +156,7 @@ export default function TripsIndexClient({
                                     }`}
                                     aria-pressed={filter === option}
                                 >
-                                    {option}
+                                    {option === "archive" ? "Archive" : option}
                                 </button>
                             ))}
                         </div>
@@ -246,7 +250,9 @@ export default function TripsIndexClient({
                             <p className="mt-2 text-sm text-slate-400">
                                 {filter === "upcoming"
                                     ? "Your upcoming trips will appear here."
-                                    : "Past trips will appear here after their return date."}
+                                    : filter === "archive"
+                                      ? "Archived trips will appear here after you archive them."
+                                      : "Past trips will appear here after their return date."}
                             </p>
                         </div>
                     )}
@@ -445,14 +451,23 @@ export default function TripsIndexClient({
                             </div>
 
                             <div className="flex flex-col-reverse gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-between">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowDeleteWarning(true)}
-                                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-300 px-4 text-sm font-bold text-red-700 transition hover:bg-red-50"
-                                >
-                                    <Trash2 className="h-4 w-4" aria-hidden="true" />
-                                    Delete
-                                </button>
+                                {!selectedTrip.archived_at &&
+                                (!selectedTrip.user_id ||
+                                    selectedTrip.user_id === currentUserId) ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDeleteWarning(true)}
+                                        className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 px-4 text-sm font-bold text-amber-700 transition hover:bg-amber-50"
+                                    >
+                                        <Archive
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                        Archive
+                                    </button>
+                                ) : (
+                                    <span />
+                                )}
 
                                 <button
                                     type="submit"
@@ -536,19 +551,19 @@ export default function TripsIndexClient({
                         onClick={(event) => event.stopPropagation()}
                     >
                         <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-700">
-                                <Trash2 className="h-5 w-5" aria-hidden="true" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                                <Archive className="h-5 w-5" aria-hidden="true" />
                             </div>
                             <div>
                                 <h2
                                     id="trips-index-delete-title"
                                     className="text-lg font-black text-slate-950"
                                 >
-                                    Delete this trip?
+                                    Archive this trip?
                                 </h2>
                                 <p className="mt-2 text-sm leading-6 text-slate-600">
-                                    This will delete the trip and its itinerary items.
-                                    This cannot be undone.
+                                    This moves the trip out of your active lists and
+                                    into Archive. Nothing inside the trip will be deleted.
                                 </p>
                             </div>
                         </div>
@@ -569,9 +584,9 @@ export default function TripsIndexClient({
                                 />
                                 <button
                                     type="submit"
-                                    className="w-full rounded-xl bg-red-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-800 sm:w-auto"
+                                    className="w-full rounded-xl bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-amber-400 sm:w-auto"
                                 >
-                                    Delete trip
+                                    Archive trip
                                 </button>
                             </form>
                         </div>

@@ -108,10 +108,29 @@ export type CalendarAccommodation = {
     status?: string | null;
 };
 
+export type CalendarMemberLocationLeg = {
+    id: string;
+    locationKey?: string | null;
+    name: string;
+    cityName?: string | null;
+    countryCode?: string | null;
+    iconEmoji?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
+};
+
+export type CalendarMemberLocation = {
+    memberId: string;
+    name: string;
+    avatarUrl?: string | null;
+    legs: CalendarMemberLocationLeg[];
+};
+
 type ItineraryCalendarProps = {
     tripId: string;
     items: ItineraryCalendarItem[];
     accommodations?: CalendarAccommodation[];
+    memberLocations?: CalendarMemberLocation[];
     tripStartDate?: string | null;
     tripDestination?: string | null;
     title?: string;
@@ -131,6 +150,7 @@ type ItineraryCalendarProps = {
     promoteIdeaAction?: (formData: FormData) => Promise<void>;
     toggleIdeaReactionAction?: (formData: FormData) => Promise<void>;
     toggleIdeaAttendedAction?: (formData: FormData) => Promise<void>;
+    onEditMemberLocationLeg?: (locationKey: string) => void;
 };
 
 type CalendarView = "list" | "day" | "week";
@@ -1587,198 +1607,99 @@ function cleanLocationLabel(value?: string | null) {
         .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "") || "";
 }
 
-function getDayLocationLabel(
-    items: ItineraryCalendarItem[],
-    dateKey: string,
-    fallbackDestination?: string | null,
-    accommodations: CalendarAccommodation[] = []
-) {
-    const stay = accommodations.find(
-        (accommodation) =>
-            accommodation.status !== "cancelled" &&
-            accommodation.check_in_date <= dateKey &&
-            accommodation.check_out_date > dateKey
-    );
-
-    const stayLabel = cleanLocationLabel(
-        stay
-            ? stay.city ||
-                  stay.region ||
-                  stay.country ||
-                  stay.address ||
-                  stay.hotel_name
-            : null
-    );
-
-    if (stayLabel) return stayLabel;
-
-    const dayItems = sortItems(
-        items.filter((item) => itemTouchesDate(item, dateKey))
-    );
-    const arrivingTransportation = dayItems.find(
-        (item) =>
-            item.category === "transportation" &&
-            item.arrival_location &&
-            (item.end_date || item.item_date) <= dateKey
-    );
-    const firstTransportation = dayItems.find(
-        (item) =>
-            item.category === "transportation" &&
-            (item.arrival_location || item.departure_location)
-    );
-    const firstLocatedItem = dayItems.find((item) => item.location);
-
-    return (
-        cleanLocationLabel(arrivingTransportation?.arrival_location) ||
-        cleanLocationLabel(firstTransportation?.arrival_location) ||
-        cleanLocationLabel(firstTransportation?.departure_location) ||
-        cleanLocationLabel(firstLocatedItem?.location) ||
-        cleanLocationLabel(parseDestinationList(fallbackDestination)[0]) ||
-        ""
-    );
+function getMemberLocationLabel(leg: CalendarMemberLocationLeg) {
+    return cleanLocationLabel(leg.cityName || leg.name);
 }
 
-function getWeekLocationSegments(
+function getMemberLocationSegments(
     weekDates: Date[],
-    items: ItineraryCalendarItem[],
-    displayTimezone: string,
-    fallbackDestination?: string | null,
-    accommodations: CalendarAccommodation[] = []
+    legs: CalendarMemberLocationLeg[]
 ) {
-    const segments: Array<{
-        label: string;
-        startIndex: number;
-        endIndex: number;
-        startsAtHalf: boolean;
-        endsAtHalf: boolean;
-        colorClass: string;
-    }> = [];
-    const colors = [
-        "bg-lime-300 text-slate-950",
-        "bg-fuchsia-400 text-white",
-        "bg-cyan-300 text-slate-950",
-        "bg-orange-300 text-slate-950",
-    ];
-
-    const activeAccommodations = accommodations
-        .filter(
-            (accommodation) =>
-                accommodation.status !== "cancelled" &&
-                accommodation.check_in_date &&
-                accommodation.check_out_date
-        )
-        .sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
-
-    if (activeAccommodations.length > 0) {
-        const weekKeys = weekDates.map(getLocalDateKey);
-        const weekStartKey = weekKeys[0];
-        const weekEndKey = weekKeys[weekKeys.length - 1];
-
-        activeAccommodations.forEach((accommodation) => {
-            if (
-                accommodation.check_out_date < weekStartKey ||
-                accommodation.check_in_date > weekEndKey
-            ) {
-                return;
-            }
-
-            const label = cleanLocationLabel(
-                accommodation.city ||
-                    accommodation.region ||
-                    accommodation.country ||
-                    accommodation.address ||
-                    accommodation.hotel_name
+    const weekKeys = weekDates.map(getLocalDateKey);
+    const datedLegs = legs
+        .filter((leg) => leg.startDate || leg.endDate)
+        .sort((a, b) => {
+            const dateSort = String(a.startDate || a.endDate || "").localeCompare(
+                String(b.startDate || b.endDate || "")
             );
-            if (!label) return;
-
-            const rawStartIndex = weekKeys.findIndex(
-                (key) => key >= accommodation.check_in_date
+            if (dateSort !== 0) return dateSort;
+            return getMemberLocationLabel(a).localeCompare(
+                getMemberLocationLabel(b)
             );
-            const startIndex = rawStartIndex === -1 ? 0 : rawStartIndex;
-            const checkoutIndex = weekKeys.findIndex(
-                (key) => key === accommodation.check_out_date
-            );
-            const rawEndIndex =
-                checkoutIndex >= 0
-                    ? checkoutIndex
-                    : weekKeys.findIndex((key) => key > accommodation.check_out_date);
-            const endIndex =
-                rawEndIndex === -1
-                    ? weekKeys.length - 1
-                    : Math.max(startIndex, rawEndIndex);
-            const startsAtHalf = weekKeys[startIndex] === accommodation.check_in_date
-                ? activeAccommodations.some(
-                      (other) =>
-                          other.id !== accommodation.id &&
-                          other.check_out_date === accommodation.check_in_date
-                  )
-                : false;
-            const endsAtHalf =
-                checkoutIndex >= 0 ||
-                activeAccommodations.some(
-                    (other) =>
-                        other.id !== accommodation.id &&
-                        other.check_in_date === accommodation.check_out_date
-                );
-
-            segments.push({
-                label,
-                startIndex,
-                endIndex,
-                startsAtHalf,
-                endsAtHalf,
-                colorClass: colors[segments.length % colors.length],
-            });
         });
 
-        void displayTimezone;
+    const entries = weekKeys.map((dateKey) => {
+        const matchingLeg = datedLegs.find((leg) => {
+            const startDate = leg.startDate || leg.endDate;
+            const endDate = leg.endDate || leg.startDate;
+            if (!startDate || !endDate) return false;
+            return startDate <= dateKey && endDate >= dateKey;
+        });
 
-        return segments;
-    }
+        if (!matchingLeg) return null;
 
-    const labels = weekDates.map((date) =>
-        getDayLocationLabel(
-            items,
-            getLocalDateKey(date),
-            fallbackDestination,
-            accommodations
-        )
-    );
+        const label = getMemberLocationLabel(matchingLeg);
+        if (!label) return null;
 
+        return {
+            label: `${matchingLeg.iconEmoji ? `${matchingLeg.iconEmoji} ` : ""}${label}`,
+            locationKey: matchingLeg.locationKey || matchingLeg.id,
+        };
+    });
+
+    const segments: Array<{
+        label: string;
+        locationKey?: string | null;
+        startIndex: number;
+        endIndex: number;
+    }> = [];
     let index = 0;
-    while (index < labels.length) {
-        const label = labels[index];
-        if (!label) {
+
+    while (index < entries.length) {
+        const entry = entries[index];
+        if (!entry) {
             index += 1;
             continue;
         }
 
         let endIndex = index;
-        while (endIndex + 1 < labels.length && labels[endIndex + 1] === label) {
+        while (
+            endIndex + 1 < entries.length &&
+            entries[endIndex + 1]?.label === entry.label &&
+            entries[endIndex + 1]?.locationKey === entry.locationKey
+        ) {
             endIndex += 1;
         }
 
         segments.push({
-            label,
+            label: entry.label,
+            locationKey: entry.locationKey,
             startIndex: index,
             endIndex,
-            startsAtHalf: Boolean(
-                index > 0 && labels[index - 1] && labels[index - 1] !== label
-            ),
-            endsAtHalf:
-                Boolean(
-                    endIndex < labels.length - 1 &&
-                        labels[endIndex + 1] &&
-                        labels[endIndex + 1] !== label
-                ),
-            colorClass: colors[segments.length % colors.length],
         });
         index = endIndex + 1;
     }
 
-    void displayTimezone;
-
     return segments;
+}
+
+function CalendarMemberAvatar({
+    name,
+    avatarUrl,
+}: {
+    name: string;
+    avatarUrl?: string | null;
+}) {
+    return (
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-lime-300/30 bg-slate-950 text-[10px] font-black uppercase text-lime-200 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.12)]">
+            {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+                getInitials(name)
+            )}
+        </span>
+    );
 }
 
 function segmentsOverlap(
@@ -3314,28 +3235,24 @@ function DayColumn({
 function WeekViewGrid({
     weekDates,
     items,
-    accommodations,
+    memberLocations,
     displayTimezone,
-    tripDestination,
     onOpenItem,
+    onEditMemberLocationLeg,
+    showFixedColumn = true,
 }: {
     weekDates: Date[];
     items: ItineraryCalendarItem[];
-    accommodations: CalendarAccommodation[];
+    memberLocations: CalendarMemberLocation[];
     displayTimezone: string;
-    tripDestination?: string | null;
     onOpenItem: (item: ItineraryCalendarItem) => void;
+    onEditMemberLocationLeg?: (locationKey: string) => void;
+    showFixedColumn?: boolean;
 }) {
-    const locationSegments = getWeekLocationSegments(
-        weekDates,
-        items,
-        displayTimezone,
-        tripDestination,
-        accommodations
-    );
     const timeRailWidth = 64;
     const dayColumnWidth = 176;
-    const minGridWidth = timeRailWidth + dayColumnWidth * 7;
+    const minGridWidth =
+        (showFixedColumn ? timeRailWidth : 0) + dayColumnWidth * 7;
 
     return (
         <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/70 shadow-xl shadow-black/20">
@@ -3343,10 +3260,14 @@ function WeekViewGrid({
                 className="grid"
                 style={{
                     minWidth: minGridWidth,
-                    gridTemplateColumns: `${timeRailWidth}px repeat(7, minmax(${dayColumnWidth}px, 1fr))`,
+                    gridTemplateColumns: showFixedColumn
+                        ? `${timeRailWidth}px repeat(7, minmax(${dayColumnWidth}px, 1fr))`
+                        : `repeat(7, minmax(${dayColumnWidth}px, 1fr))`,
                 }}
             >
-                <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                {showFixedColumn ? (
+                    <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                ) : null}
                 {weekDates.map((date) => (
                     <div
                         key={getLocalDateKey(date)}
@@ -3358,7 +3279,9 @@ function WeekViewGrid({
                     </div>
                 ))}
 
-                <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                {showFixedColumn ? (
+                    <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
+                ) : null}
                 {weekDates.map((date) => {
                     const dateKey = getLocalDateKey(date);
                     const warningMessage = getDayCalendarWarningMessage(
@@ -3394,51 +3317,103 @@ function WeekViewGrid({
                     );
                 })}
 
-                <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
-                <div className="relative col-span-7 min-h-11 border-b border-white/10 bg-slate-900/80">
-                    <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/10" />
-                    {locationSegments.map((segment) => {
-                        const leftPercent =
-                            ((segment.startIndex + (segment.startsAtHalf ? 0.5 : 0)) /
-                                7) *
-                            100;
-                        const rightIndex =
-                            segment.endIndex + (segment.endsAtHalf ? 0.5 : 1);
-                        const widthPercent =
-                            ((rightIndex -
-                                (segment.startIndex +
-                                    (segment.startsAtHalf ? 0.5 : 0))) /
-                                7) *
-                            100;
+                {memberLocations.map((member) => {
+                    const memberSegments = getMemberLocationSegments(
+                        weekDates,
+                        member.legs
+                    );
 
-                        return (
-                            <div
-                                key={`${segment.label}-${segment.startIndex}-${segment.endIndex}`}
-                                className={`absolute top-2 h-7 rounded-full px-3 py-1 text-center text-xs font-black uppercase tracking-[0.12em] shadow-[0_0_20px_rgba(0,0,0,0.22)] ${segment.colorClass}`}
-                                style={{
-                                    left: `calc(${leftPercent}% + 6px)`,
-                                    width: `calc(${widthPercent}% - 12px)`,
-                                }}
-                            >
-                                <span className="block truncate">{segment.label}</span>
-                            </div>
-                        );
-                    })}
-                </div>
+                    return (
+                        <div
+                            key={`${member.memberId}-week-location`}
+                            className="contents"
+                        >
+                            {showFixedColumn ? (
+                                <div className="sticky left-0 z-20 flex min-h-14 items-center justify-center border-b border-r border-white/10 bg-slate-950/95 px-2 py-2">
+                                    <CalendarMemberAvatar
+                                        name={member.name}
+                                        avatarUrl={member.avatarUrl}
+                                    />
+                                </div>
+                            ) : null}
+                            <div className="relative col-span-7 min-h-14 border-b border-white/10 bg-slate-950/55">
+                                <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/10" />
+                                {memberSegments.length > 0 ? (
+                                    memberSegments.map((segment) => {
+                                        const leftPercent =
+                                            (segment.startIndex / 7) * 100;
+                                        const widthPercent =
+                                            ((segment.endIndex -
+                                                segment.startIndex +
+                                                1) /
+                                            7) *
+                                            100;
+                                        const segmentClassName =
+                                            "absolute top-3 h-8 rounded-full border border-lime-300/30 bg-lime-300/[0.12] px-3 py-1.5 text-center text-xs font-black uppercase tracking-[0.1em] text-lime-100 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.10)]";
+                                        const segmentStyle = {
+                                            left: `calc(${leftPercent}% + 6px)`,
+                                            width: `calc(${widthPercent}% - 12px)`,
+                                        };
 
-                <div className="sticky left-0 z-10 border-r border-white/10 bg-slate-950/95">
-                    <div className="relative min-h-[1920px]">
-                        {HOURS.map((hour) => (
-                            <div
-                                key={hour}
-                                className="h-20 border-b border-white/10 px-2 pt-1 text-[11px] font-semibold text-slate-400"
-                            >
-                                {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
-                                {hour >= 12 ? " PM" : " AM"}
+                                        if (
+                                            segment.locationKey &&
+                                            onEditMemberLocationLeg
+                                        ) {
+                                            return (
+                                                <button
+                                                    key={`${member.memberId}-${segment.locationKey}-${segment.startIndex}-${segment.endIndex}`}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        onEditMemberLocationLeg(
+                                                            segment.locationKey as string
+                                                        )
+                                                    }
+                                                    className={`${segmentClassName} transition hover:border-lime-200 hover:bg-lime-300/[0.18] focus:outline-none focus:ring-2 focus:ring-lime-300/60`}
+                                                    style={segmentStyle}
+                                                    title={`${member.name}: ${segment.label}`}
+                                                    aria-label={`Edit ${member.name}'s ${segment.label} leg`}
+                                                >
+                                                    <span className="block truncate">
+                                                        {segment.label}
+                                                    </span>
+                                                </button>
+                                            );
+                                        }
+
+                                        return (
+                                            <div
+                                                key={`${member.memberId}-${segment.label}-${segment.startIndex}-${segment.endIndex}`}
+                                                className={segmentClassName}
+                                                style={segmentStyle}
+                                                title={`${member.name}: ${segment.label}`}
+                                            >
+                                                <span className="block truncate">
+                                                    {segment.label}
+                                                </span>
+                                            </div>
+                                        );
+                                    })
+                                ) : null}
                             </div>
-                        ))}
+                        </div>
+                    );
+                })}
+
+                {showFixedColumn ? (
+                    <div className="sticky left-0 z-10 border-r border-white/10 bg-slate-950/95">
+                        <div className="relative min-h-[1920px]">
+                            {HOURS.map((hour) => (
+                                <div
+                                    key={hour}
+                                    className="h-20 border-b border-white/10 px-2 pt-1 text-[11px] font-semibold text-slate-400"
+                                >
+                                    {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
+                                    {hour >= 12 ? " PM" : " AM"}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                ) : null}
 
                 {weekDates.map((date) => (
                     <div
@@ -3460,10 +3435,51 @@ function WeekViewGrid({
     );
 }
 
+function WeekViewFixedRail({
+    memberLocations,
+}: {
+    memberLocations: CalendarMemberLocation[];
+}) {
+    return (
+        <div
+            className="sticky left-0 z-30 shrink-0 overflow-hidden rounded-[1.25rem] border border-white/10 bg-slate-950/95 shadow-xl shadow-black/30"
+            style={{ width: 64 }}
+            aria-hidden="true"
+        >
+            <div className="border-b border-white/10 bg-slate-950/95 px-3 py-3">
+                <p className="invisible text-sm font-black">Time</p>
+            </div>
+            <div className="min-h-12 border-b border-white/10 bg-slate-900/90" />
+            {memberLocations.map((member) => (
+                <div
+                    key={`${member.memberId}-week-fixed-rail`}
+                    className="flex min-h-14 items-center justify-center border-b border-white/10 bg-slate-950/95 px-2 py-2"
+                >
+                    <CalendarMemberAvatar
+                        name={member.name}
+                        avatarUrl={member.avatarUrl}
+                    />
+                </div>
+            ))}
+            <div className="relative min-h-[1920px]">
+                {HOURS.map((hour) => (
+                    <div
+                        key={hour}
+                        className="h-20 border-b border-white/10 px-2 pt-1 text-[11px] font-semibold text-slate-400"
+                    >
+                        {hour === 0 ? 12 : hour > 12 ? hour - 12 : hour}
+                        {hour >= 12 ? " PM" : " AM"}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
 export default function ItineraryCalendar({
     tripId,
     items,
-    accommodations = [],
+    memberLocations = [],
     tripStartDate,
     tripDestination,
     title = "Itinerary",
@@ -3483,6 +3499,7 @@ export default function ItineraryCalendar({
     promoteIdeaAction,
     toggleIdeaReactionAction,
     toggleIdeaAttendedAction,
+    onEditMemberLocationLeg,
 }: ItineraryCalendarProps) {
     const [view, setView] = useState<CalendarView>(defaultView);
     const effectiveView: CalendarView = listOnly ? "list" : view;
@@ -4056,36 +4073,42 @@ export default function ItineraryCalendar({
                         className="overflow-x-auto rounded-[1.35rem] [scrollbar-color:rgba(var(--vaivia-neon-rgb),0.65)_rgba(15,23,42,0.7)] [scrollbar-width:thin]"
                         aria-label="Scrollable week calendar"
                     >
-                        <div className="flex w-max gap-5 pb-2">
-                            {scrollableWeekStarts.map((scrollWeekStart) => {
-                                const scrollWeekStartKey =
-                                    getLocalDateKey(scrollWeekStart);
-                                const scrollWeekDates = Array.from(
-                                    { length: 7 },
-                                    (_, index) => addDays(scrollWeekStart, index)
-                                );
+                        <div className="flex w-max gap-3 pb-2">
+                            <WeekViewFixedRail memberLocations={memberLocations} />
+                            <div className="flex w-max">
+                                {scrollableWeekStarts.map((scrollWeekStart) => {
+                                    const scrollWeekStartKey =
+                                        getLocalDateKey(scrollWeekStart);
+                                    const scrollWeekDates = Array.from(
+                                        { length: 7 },
+                                        (_, index) => addDays(scrollWeekStart, index)
+                                    );
 
-                                return (
-                                    <div
-                                        key={scrollWeekStartKey}
-                                        data-current-week={
-                                            scrollWeekStartKey === weekStartKey
-                                                ? "true"
-                                                : undefined
-                                        }
-                                        className="w-max shrink-0 scroll-mx-4"
-                                    >
-                                        <WeekViewGrid
-                                            weekDates={scrollWeekDates}
-                                            items={items}
-                                            accommodations={accommodations}
-                                            displayTimezone={displayTimezone}
-                                            tripDestination={tripDestination}
-                                            onOpenItem={setSelectedItem}
-                                        />
-                                    </div>
-                                );
-                            })}
+                                    return (
+                                        <div
+                                            key={scrollWeekStartKey}
+                                            data-current-week={
+                                                scrollWeekStartKey === weekStartKey
+                                                    ? "true"
+                                                    : undefined
+                                            }
+                                            className="w-max shrink-0 scroll-ml-24 scroll-mr-4"
+                                        >
+                                            <WeekViewGrid
+                                                weekDates={scrollWeekDates}
+                                                items={items}
+                                                memberLocations={memberLocations}
+                                                displayTimezone={displayTimezone}
+                                                onOpenItem={setSelectedItem}
+                                                onEditMemberLocationLeg={
+                                                    onEditMemberLocationLeg
+                                                }
+                                                showFixedColumn={false}
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
                         </div>
                     </div>
                 )}

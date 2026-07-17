@@ -49,11 +49,14 @@ function normalizeJoinedTrip(row: Record<string, unknown>) {
     } as SharedTrip;
 }
 
-export async function loadActiveMemberTrips(
+type MemberTripsArchiveMode = "active" | "archived";
+
+async function loadMemberTrips(
     supabase: SupabaseClient,
-    userId: string
+    userId: string,
+    archiveMode: MemberTripsArchiveMode
 ) {
-    const { data, error } = await supabase
+    let memberTripsQuery = supabase
         .from("trip_members")
         .select(
             `
@@ -85,18 +88,30 @@ export async function loadActiveMemberTrips(
         `
         )
         .eq("user_id", userId)
-        .eq("status", "active")
-        .is("trips.archived_at", null);
+        .eq("status", "active");
+
+    memberTripsQuery =
+        archiveMode === "archived"
+            ? memberTripsQuery.not("trips.archived_at", "is", null)
+            : memberTripsQuery.is("trips.archived_at", null);
+
+    const { data, error } = await memberTripsQuery;
 
     const memberTrips = ((data || []) as Record<string, unknown>[])
         .map(normalizeJoinedTrip)
         .filter((trip): trip is SharedTrip => Boolean(trip));
 
-    const { data: ownerTripRows, error: ownerTripsError } = await supabase
+    let ownerTripsQuery = supabase
         .from("trips")
         .select("*")
-        .eq("user_id", userId)
-        .is("archived_at", null);
+        .eq("user_id", userId);
+
+    ownerTripsQuery =
+        archiveMode === "archived"
+            ? ownerTripsQuery.not("archived_at", "is", null)
+            : ownerTripsQuery.is("archived_at", null);
+
+    const { data: ownerTripRows, error: ownerTripsError } = await ownerTripsQuery;
 
     const ownerTrips = ((ownerTripRows || []) as SharedTrip[]).map((trip) => ({
         ...trip,
@@ -193,4 +208,18 @@ export async function loadActiveMemberTrips(
     }
 
     return { trips, error: error || ownerTripsError || null };
+}
+
+export async function loadActiveMemberTrips(
+    supabase: SupabaseClient,
+    userId: string
+) {
+    return loadMemberTrips(supabase, userId, "active");
+}
+
+export async function loadArchivedMemberTrips(
+    supabase: SupabaseClient,
+    userId: string
+) {
+    return loadMemberTrips(supabase, userId, "archived");
 }

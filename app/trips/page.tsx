@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import TripsIndexClient from "@/components/TripsIndexClient";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import type { DashboardTrip } from "@/components/TripDashboardClient";
-import { loadActiveMemberTrips } from "@/lib/sharedTrips";
+import { loadActiveMemberTrips, loadArchivedMemberTrips } from "@/lib/sharedTrips";
 import { createClient } from "@/lib/supabase/server";
 import {
     buildTripCoverPayloadFromForm,
@@ -20,6 +20,12 @@ import {
 
 export const metadata: Metadata = {
     title: "My Trips – VAIVIA",
+};
+
+type PageProps = {
+    searchParams?: Promise<{
+        filter?: string;
+    }>;
 };
 
 type TripUpdatePayload = {
@@ -281,7 +287,7 @@ async function updateTrip(formData: FormData) {
     redirect("/trips");
 }
 
-async function deleteTrip(formData: FormData) {
+async function archiveTrip(formData: FormData) {
     "use server";
 
     const supabase = await createClient();
@@ -297,12 +303,13 @@ async function deleteTrip(formData: FormData) {
 
     const { data: trip, error: tripError } = await supabase
         .from("trips")
-        .select("id")
+        .select("id,user_id")
         .eq("id", tripId)
+        .eq("user_id", user.id)
         .single();
 
     if (tripError || !trip) {
-        console.error("Error finding trip to delete:", {
+        console.error("Error finding trip to archive:", {
             message: tripError?.message,
             code: tripError?.code,
             details: tripError?.details,
@@ -310,50 +317,23 @@ async function deleteTrip(formData: FormData) {
             tripId,
         });
         throw new Error(
-            `Could not delete trip: ${
+            `Could not archive trip: ${
                 tripError?.message ?? "Trip was not found"
-            }`
-        );
-    }
-
-    const { count: activeMemberCount, error: memberCountError } = await supabase
-        .from("trip_members")
-        .select("id", { count: "exact", head: true })
-        .eq("trip_id", tripId)
-        .eq("status", "active");
-
-    if (!memberCountError && (activeMemberCount || 0) > 1) {
-        throw new Error("Shared trips cannot be deleted. Leave the trip instead.");
-    }
-
-    const { error: itineraryError } = await supabase
-        .from("itinerary_items")
-        .delete()
-        .eq("trip_id", tripId);
-
-    if (itineraryError) {
-        console.error("Error deleting trip itinerary items:", {
-            message: itineraryError.message,
-            code: itineraryError.code,
-            details: itineraryError.details,
-            hint: itineraryError.hint,
-            tripId,
-        });
-        throw new Error(
-            `Could not delete trip itinerary items: ${
-                itineraryError.message ?? "Unknown Supabase error"
             }`
         );
     }
 
     const { error } = await supabase
         .from("trips")
-        .delete()
+        .update({
+            archived_at: new Date().toISOString(),
+            archived_reason: "user_archived",
+        })
         .eq("id", tripId)
         .eq("user_id", user.id);
 
     if (error) {
-        console.error("Error deleting trip:", {
+        console.error("Error archiving trip:", {
             message: error.message,
             code: error.code,
             details: error.details,
@@ -361,15 +341,16 @@ async function deleteTrip(formData: FormData) {
             tripId,
         });
         throw new Error(
-            `Could not delete trip: ${error.message ?? "Unknown Supabase error"}`
+            `Could not archive trip: ${error.message ?? "Unknown Supabase error"}`
         );
     }
 
-    redirect("/trips");
+    redirect("/trips?filter=archive");
 }
 
-async function TripsIndexPageContent() {
+async function TripsIndexPageContent({ searchParams }: PageProps) {
     await connection();
+    const resolvedSearchParams = searchParams ? await searchParams : {};
 
     const supabase = await createClient();
     const {
@@ -380,7 +361,12 @@ async function TripsIndexPageContent() {
         redirect("/auth/login");
     }
 
-    const { trips, error } = await loadActiveMemberTrips(supabase, user.id);
+    const { trips: activeTrips, error } = await loadActiveMemberTrips(
+        supabase,
+        user.id
+    );
+    const { trips: archivedTrips, error: archivedError } =
+        await loadArchivedMemberTrips(supabase, user.id);
 
     if (error) {
         console.error("Error loading trips page:", {
@@ -391,10 +377,26 @@ async function TripsIndexPageContent() {
             userId: user.id,
         });
     }
+    if (archivedError) {
+        console.error("Error loading archived trips page:", {
+            message: archivedError.message,
+            code: archivedError.code,
+            details: archivedError.details,
+            hint: archivedError.hint,
+            userId: user.id,
+        });
+    }
+
+    const tripsById = new Map<string, DashboardTrip>();
+    ([...(activeTrips || []), ...(archivedTrips || [])] as DashboardTrip[]).forEach(
+        (trip) => {
+            if (trip.id) tripsById.set(trip.id, trip);
+        }
+    );
 
     const tripsWithPlanning = await addTripsPlanningData(
         supabase,
-        (trips || []) as DashboardTrip[]
+        Array.from(tripsById.values())
     );
 
     return (
@@ -403,13 +405,18 @@ async function TripsIndexPageContent() {
                 trips={tripsWithPlanning}
                 currentUserId={user.id}
                 updateTripAction={updateTrip}
-                deleteTripAction={deleteTrip}
+                deleteTripAction={archiveTrip}
+                initialFilter={
+                    resolvedSearchParams.filter === "archive"
+                        ? "archive"
+                        : undefined
+                }
             />
         </main>
     );
 }
 
-export default function TripsIndexPage() {
+export default function TripsIndexPage({ searchParams }: PageProps) {
     return (
         <Suspense
             fallback={
@@ -419,7 +426,7 @@ export default function TripsIndexPage() {
                 />
             }
         >
-            <TripsIndexPageContent />
+            <TripsIndexPageContent searchParams={searchParams} />
         </Suspense>
     );
 }

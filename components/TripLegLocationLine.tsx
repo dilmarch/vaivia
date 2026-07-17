@@ -3,7 +3,7 @@
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import { getInitials } from "@/lib/travelers";
@@ -39,6 +39,9 @@ type TripLegLocationLineProps = {
     upsertLegAction: (formData: FormData) => Promise<void>;
     deleteLegAction: (formData: FormData) => Promise<void>;
     children?: ReactNode;
+    renderTiles?: boolean;
+    openLocationKey?: string | null;
+    onOpenLocationHandled?: () => void;
 };
 
 function getFlagEmoji(countryCode?: string | null) {
@@ -210,6 +213,9 @@ export default function TripLegLocationLine({
     upsertLegAction,
     deleteLegAction,
     children,
+    renderTiles = true,
+    openLocationKey = null,
+    onOpenLocationHandled,
 }: TripLegLocationLineProps) {
     const router = useRouter();
     const sortedLocations = useMemo(
@@ -253,6 +259,32 @@ export default function TripLegLocationLine({
         );
         setIsOpen(true);
     }
+
+    useEffect(() => {
+        if (!openLocationKey) return;
+
+        const location = locations.find(
+            (candidate) =>
+                getLocationKey(candidate) === openLocationKey ||
+                candidate.persistedLegId === openLocationKey ||
+                candidate.id === openLocationKey
+        );
+
+        if (!location) {
+            onOpenLocationHandled?.();
+            return;
+        }
+
+        setIsAddingLeg(false);
+        setActionError("");
+        setAddLegError("");
+        setSelectedLocationId(getLocationKey(location));
+        setSelectedMemberIds(
+            new Set(getInitialSelectedMemberIds(location, memberOptions))
+        );
+        setIsOpen(true);
+        onOpenLocationHandled?.();
+    }, [locations, memberOptions, onOpenLocationHandled, openLocationKey]);
 
     function openAddLeg() {
         setSelectedLocationId(null);
@@ -326,18 +358,13 @@ export default function TripLegLocationLine({
         runFormAction(upsertLegAction, event.currentTarget);
     }
 
-    if (locations.length === 0 && !children) {
-        return (
-            <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-bold text-slate-300">
-                Add destinations in Edit trip to manage destination days.
-            </p>
-        );
-    }
-
     function renderModal() {
         return (
             <AnimatedModal
-                onClose={() => setIsOpen(false)}
+                onClose={() => {
+                    setIsOpen(false);
+                    onOpenLocationHandled?.();
+                }}
                 panelClassName="max-w-3xl"
                 labelledBy="trip-leg-editor-title"
             >
@@ -732,6 +759,18 @@ export default function TripLegLocationLine({
                     </div>
                 )}
             </AnimatedModal>
+        );
+    }
+
+    if (!renderTiles) {
+        return isOpen ? renderModal() : null;
+    }
+
+    if (locations.length === 0 && !children) {
+        return (
+            <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-bold text-slate-300">
+                Add destinations in Edit trip to manage destination days.
+            </p>
         );
     }
 
