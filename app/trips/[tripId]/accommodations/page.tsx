@@ -3,6 +3,10 @@ import { notFound, redirect } from "next/navigation";
 import { createAccommodation } from "@/app/actions/accommodations";
 import { moveTripItem } from "@/app/actions/moveTripItem";
 import { deleteTripLeg, upsertTripLeg } from "@/app/actions/tripLegs";
+import AccommodationAreaMaps, {
+    type AccommodationAreaMapCity,
+    type AccommodationAreaMapPlace,
+} from "@/components/accommodations/AccommodationAreaMaps";
 import AccommodationManager from "@/components/accommodations/AccommodationManager";
 import TripCountdown from "@/components/TripCountdown";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
@@ -192,6 +196,109 @@ function formatTripDate(dateString?: string | null) {
         day: "numeric",
         year: "numeric",
     });
+}
+
+function formatShortDate(dateString?: string | null) {
+    if (!dateString) return null;
+    const date = new Date(`${dateString}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return null;
+
+    return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+    });
+}
+
+function formatTimeRange(startTime?: string | null, endTime?: string | null) {
+    const formatTime = (value?: string | null) => {
+        if (!value) return null;
+        const [hoursText, minutesText] = value.split(":");
+        const hours = Number(hoursText);
+        const minutes = Number(minutesText);
+        if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+
+        return new Intl.DateTimeFormat("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+        }).format(new Date(2026, 0, 1, hours, minutes));
+    };
+
+    return [formatTime(startTime), formatTime(endTime)].filter(Boolean).join(" - ");
+}
+
+function getAreaMapKey(value?: string | null) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+
+function getCoordinate(value: unknown) {
+    const numberValue = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function isMappableCoordinate(latitude: unknown, longitude: unknown) {
+    return getCoordinate(latitude) !== null && getCoordinate(longitude) !== null;
+}
+
+function buildGoogleMapsUrl(
+    latitude: number,
+    longitude: number,
+    googlePlaceId?: string | null
+) {
+    const params = new URLSearchParams({
+        api: "1",
+        query: `${latitude},${longitude}`,
+    });
+
+    if (googlePlaceId) params.set("query_place_id", googlePlaceId);
+
+    return `https://www.google.com/maps/search/?${params.toString()}`;
+}
+
+type AreaMapGroupAccumulator = AccommodationAreaMapCity & {
+    sortOrder: number;
+    matchLabels: string[];
+};
+
+function findAreaMapGroupKey({
+    tripLegId,
+    labels,
+    legKeyById,
+    groups,
+}: {
+    tripLegId?: string | null;
+    labels: Array<string | null | undefined>;
+    legKeyById: Map<string, string>;
+    groups: Map<string, AreaMapGroupAccumulator>;
+}) {
+    if (tripLegId && legKeyById.has(tripLegId)) {
+        return legKeyById.get(tripLegId) || "";
+    }
+
+    const normalizedLabels = labels.map(getAreaMapKey).filter(Boolean);
+
+    for (const [key, group] of groups.entries()) {
+        const groupLabels = [group.name, group.countryName, ...group.matchLabels]
+            .map(getAreaMapKey)
+            .filter(Boolean);
+
+        const hasMatch = normalizedLabels.some((label) =>
+            groupLabels.some(
+                (groupLabel) =>
+                    label === groupLabel ||
+                    label.includes(groupLabel) ||
+                    groupLabel.includes(label)
+            )
+        );
+
+        if (hasMatch) return key;
+    }
+
+    return normalizedLabels[0] || "";
 }
 
 function isMissingTripCoverColumnError(error: { code?: string; message?: string }) {
@@ -816,6 +923,44 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         });
     }
 
+    const { data: scheduledMapItems, error: scheduledMapItemsError } = await supabase
+        .from("itinerary_items")
+        .select(
+            "id,title,category,status,item_date,start_time,end_time,location,formatted_address,google_place_id,location_lat,location_lng,trip_leg_id"
+        )
+        .eq("trip_id", tripId)
+        .order("item_date", { ascending: true })
+        .order("start_time", { ascending: true });
+
+    if (scheduledMapItemsError) {
+        console.warn("Could not load scheduled items for accommodations map:", {
+            message: scheduledMapItemsError.message,
+            code: scheduledMapItemsError.code,
+            details: scheduledMapItemsError.details,
+            hint: scheduledMapItemsError.hint,
+            tripId,
+        });
+    }
+
+    const { data: ideaMapItems, error: ideaMapItemsError } = await supabase
+        .from("trip_ideas")
+        .select(
+            "id,title,category,location,formatted_address,google_place_id,location_lat,location_lng,location_city,location_region,location_country,trip_leg_id,is_archived"
+        )
+        .eq("trip_id", tripId)
+        .eq("is_archived", false)
+        .order("created_at", { ascending: false });
+
+    if (ideaMapItemsError) {
+        console.warn("Could not load ideas for accommodations map:", {
+            message: ideaMapItemsError.message,
+            code: ideaMapItemsError.code,
+            details: ideaMapItemsError.details,
+            hint: ideaMapItemsError.hint,
+            tripId,
+        });
+    }
+
     const { data: tripLegRows, error: tripLegsError } = await supabase
         .from("trip_legs")
         .select(
@@ -1054,6 +1199,329 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
 
         return (location.memberIds || []).includes(currentUserTripMemberId);
     });
+
+    const areaMapGroups = new Map<string, AreaMapGroupAccumulator>();
+    const areaMapLegKeyById = new Map<string, string>();
+
+    visibleHeroLocations.forEach((location, index) => {
+        const cityName = location.cityName || location.name;
+        const key =
+            getAreaMapKey(
+                [
+                    cityName,
+                    location.countryCode || location.countryName || "",
+                ]
+                    .filter(Boolean)
+                    .join("-")
+            ) || `city-${index}`;
+
+        const matchLabels = [
+            location.name,
+            location.cityName || "",
+            location.countryName || "",
+            location.countryCode || "",
+        ].filter(Boolean);
+        const existingGroup = areaMapGroups.get(key);
+
+        if (existingGroup) {
+            existingGroup.sortOrder = Math.min(existingGroup.sortOrder, index);
+            existingGroup.matchLabels = Array.from(
+                new Set([...existingGroup.matchLabels, ...matchLabels])
+            );
+            existingGroup.countryName =
+                existingGroup.countryName || location.countryName || null;
+            existingGroup.iconEmoji =
+                existingGroup.iconEmoji ||
+                location.iconEmoji ||
+                getFlagEmoji(location.countryCode) ||
+                null;
+        } else {
+            areaMapGroups.set(key, {
+                id: key,
+                name: cityName || location.name,
+                countryName: location.countryName || null,
+                iconEmoji:
+                    location.iconEmoji || getFlagEmoji(location.countryCode) || null,
+                places: [],
+                sortOrder: index,
+                matchLabels,
+            });
+        }
+
+        const group = areaMapGroups.get(key);
+        if (group) {
+            group.matchLabels = Array.from(
+                new Set([
+                    ...group.matchLabels,
+                    location.id || "",
+                    location.persistedLegId || "",
+                ].filter(Boolean))
+            );
+        }
+
+        [
+            location.id && location.source === "manual" ? location.id : null,
+            location.persistedLegId || null,
+        ]
+            .filter(Boolean)
+            .forEach((legId) => areaMapLegKeyById.set(legId as string, key));
+    });
+
+    function ensureAreaMapGroup({
+        key,
+        name,
+        countryName,
+        iconEmoji,
+        matchLabels,
+    }: {
+        key: string;
+        name: string;
+        countryName?: string | null;
+        iconEmoji?: string | null;
+        matchLabels?: string[];
+    }) {
+        const normalizedKey = getAreaMapKey(key) || `city-${areaMapGroups.size}`;
+        const existing = areaMapGroups.get(normalizedKey);
+        if (existing) return existing;
+
+        const group: AreaMapGroupAccumulator = {
+            id: normalizedKey,
+            name,
+            countryName: countryName || null,
+            iconEmoji: iconEmoji || null,
+            places: [],
+            sortOrder: areaMapGroups.size + 100,
+            matchLabels: matchLabels || [name],
+        };
+        areaMapGroups.set(normalizedKey, group);
+        return group;
+    }
+
+    function addPlaceToAreaMap({
+        place,
+        tripLegId,
+        labels,
+        fallbackCityName,
+        countryName,
+    }: {
+        place: AccommodationAreaMapPlace;
+        tripLegId?: string | null;
+        labels: Array<string | null | undefined>;
+        fallbackCityName: string;
+        countryName?: string | null;
+    }) {
+        const matchingKey = findAreaMapGroupKey({
+            tripLegId,
+            labels,
+            legKeyById: areaMapLegKeyById,
+            groups: areaMapGroups,
+        });
+        const group = matchingKey
+            ? areaMapGroups.get(matchingKey) ||
+              ensureAreaMapGroup({
+                  key: matchingKey,
+                  name: fallbackCityName,
+                  countryName,
+                  matchLabels: labels.filter(Boolean) as string[],
+              })
+            : ensureAreaMapGroup({
+                  key: fallbackCityName,
+                  name: fallbackCityName,
+                  countryName,
+                  matchLabels: labels.filter(Boolean) as string[],
+              });
+
+        group.places.push(place);
+    }
+
+    ((accommodations || []) as TripAccommodation[])
+        .filter(
+            (accommodation) =>
+                accommodation.status !== "cancelled" &&
+                isMappableCoordinate(accommodation.latitude, accommodation.longitude)
+        )
+        .forEach((accommodation) => {
+            const latitude = getCoordinate(accommodation.latitude);
+            const longitude = getCoordinate(accommodation.longitude);
+            if (latitude === null || longitude === null) return;
+
+            const fallbackCityName =
+                accommodation.city ||
+                accommodation.region ||
+                accommodation.country ||
+                accommodation.hotel_name;
+            const googleMapsUrl =
+                accommodation.google_maps_url ||
+                buildGoogleMapsUrl(latitude, longitude, accommodation.google_place_id);
+
+            addPlaceToAreaMap({
+                tripLegId: accommodation.trip_leg_id || null,
+                labels: [
+                    accommodation.city,
+                    accommodation.region,
+                    accommodation.country,
+                    accommodation.address,
+                    accommodation.hotel_name,
+                ],
+                fallbackCityName,
+                countryName: accommodation.country || null,
+                place: {
+                    id: `accommodation-${accommodation.id}`,
+                    type: "accommodation",
+                    title: accommodation.hotel_name,
+                    subtitle: "Accommodation",
+                    address: accommodation.address || null,
+                    latitude,
+                    longitude,
+                    dateLabel: [
+                        formatShortDate(accommodation.check_in_date),
+                        formatShortDate(accommodation.check_out_date),
+                    ]
+                        .filter(Boolean)
+                        .join(" - "),
+                    statusLabel: accommodation.status,
+                    googleMapsUrl,
+                },
+            });
+        });
+
+    ((scheduledMapItems || []) as Array<{
+        id: string;
+        title?: string | null;
+        category?: string | null;
+        status?: string | null;
+        item_date?: string | null;
+        start_time?: string | null;
+        end_time?: string | null;
+        location?: string | null;
+        formatted_address?: string | null;
+        google_place_id?: string | null;
+        location_lat?: number | null;
+        location_lng?: number | null;
+        trip_leg_id?: string | null;
+    }>)
+        .filter((item) => isMappableCoordinate(item.location_lat, item.location_lng))
+        .forEach((item) => {
+            const latitude = getCoordinate(item.location_lat);
+            const longitude = getCoordinate(item.location_lng);
+            if (latitude === null || longitude === null) return;
+
+            const fallbackCityName =
+                item.location?.split(",").at(-2)?.trim() ||
+                item.location?.split(",").at(0)?.trim() ||
+                item.title ||
+                "Scheduled item";
+            const timeRange = formatTimeRange(item.start_time, item.end_time);
+
+            addPlaceToAreaMap({
+                tripLegId: item.trip_leg_id || null,
+                labels: [item.location, item.formatted_address, item.title],
+                fallbackCityName,
+                place: {
+                    id: `scheduled-${item.id}`,
+                    type: "scheduled",
+                    title: item.title || "Scheduled activity",
+                    subtitle: item.category || "Activity",
+                    address: item.formatted_address || item.location || null,
+                    latitude,
+                    longitude,
+                    dateLabel: [formatShortDate(item.item_date), timeRange]
+                        .filter(Boolean)
+                        .join(" · "),
+                    statusLabel: item.status || null,
+                    googleMapsUrl: buildGoogleMapsUrl(
+                        latitude,
+                        longitude,
+                        item.google_place_id
+                    ),
+                },
+            });
+        });
+
+    ((ideaMapItems || []) as Array<{
+        id: string;
+        title?: string | null;
+        category?: string | null;
+        location?: string | null;
+        formatted_address?: string | null;
+        google_place_id?: string | null;
+        location_lat?: number | null;
+        location_lng?: number | null;
+        location_city?: string | null;
+        location_region?: string | null;
+        location_country?: string | null;
+        trip_leg_id?: string | null;
+    }>)
+        .filter((idea) => isMappableCoordinate(idea.location_lat, idea.location_lng))
+        .forEach((idea) => {
+            const latitude = getCoordinate(idea.location_lat);
+            const longitude = getCoordinate(idea.location_lng);
+            if (latitude === null || longitude === null) return;
+
+            const fallbackCityName =
+                idea.location_city ||
+                idea.location_region ||
+                idea.location_country ||
+                idea.location?.split(",").at(-2)?.trim() ||
+                idea.title ||
+                "Trip idea";
+
+            addPlaceToAreaMap({
+                tripLegId: idea.trip_leg_id || null,
+                labels: [
+                    idea.location_city,
+                    idea.location_region,
+                    idea.location_country,
+                    idea.location,
+                    idea.formatted_address,
+                    idea.title,
+                ],
+                fallbackCityName,
+                countryName: idea.location_country || null,
+                place: {
+                    id: `idea-${idea.id}`,
+                    type: "idea",
+                    title: idea.title || "Trip idea",
+                    subtitle: idea.category || "Idea",
+                    address: idea.formatted_address || idea.location || null,
+                    latitude,
+                    longitude,
+                    googleMapsUrl: buildGoogleMapsUrl(
+                        latitude,
+                        longitude,
+                        idea.google_place_id
+                    ),
+                },
+            });
+        });
+
+    const accommodationAreaMapCities = Array.from(areaMapGroups.values())
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+        .map(
+            (group) =>
+                ({
+                    id: group.id,
+                    name: group.name,
+                    countryName: group.countryName,
+                    iconEmoji: group.iconEmoji,
+                    places: [...group.places].sort((a, b) => {
+                        const typeSort =
+                            (a.type === "accommodation"
+                                ? 0
+                                : a.type === "scheduled"
+                                  ? 1
+                                  : 2) -
+                            (b.type === "accommodation"
+                                ? 0
+                                : b.type === "scheduled"
+                                  ? 1
+                                  : 2);
+                        if (typeSort !== 0) return typeSort;
+                        return a.title.localeCompare(b.title);
+                    }),
+                }) satisfies AccommodationAreaMapCity
+        );
+
     const tripLegMemberOptions: TripLegMemberOption[] = memberRows
         .filter((member) => Boolean(member.id))
         .map((member) => {
@@ -1191,6 +1659,8 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                     audienceOptions={audienceOptions}
                     currentUserTripMemberId={currentUserTripMemberId}
                 />
+
+                <AccommodationAreaMaps cities={accommodationAreaMapCities} />
             </div>
         </main>
     );
