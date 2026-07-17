@@ -653,6 +653,8 @@ async function createSetupFlightTransportation({
                 itemType: "transportation_item",
                 count: createdTransportationItemIds.length,
             },
+            target_item_type: "transportation",
+            target_item_ids: createdTransportationItemIds,
         });
     }
 }

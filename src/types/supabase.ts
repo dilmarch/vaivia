@@ -3947,6 +3947,8 @@ export type Database = {
           notification_metadata?: Json
           notification_title: string
           notification_type: string
+          target_item_ids?: string[]
+          target_item_type?: string
           target_trip_id: string
         }
         Returns: undefined

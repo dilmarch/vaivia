@@ -2152,6 +2152,8 @@ async function createItineraryItem(formData: FormData) {
             notification_metadata: {
                 itemType: "itinerary_item",
             },
+            target_item_type: "itinerary",
+            target_item_ids: [itineraryItemId],
         });
     }
 
@@ -2791,6 +2793,8 @@ async function createTransportationItem(formData: FormData) {
                 itemType: "transportation_item",
                 count: createdTransportationItemIds.length,
             },
+            target_item_type: "transportation",
+            target_item_ids: createdTransportationItemIds,
         });
     }
 
