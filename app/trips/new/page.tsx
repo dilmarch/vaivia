@@ -717,7 +717,7 @@ async function createTrip(
         }
 
         const tripSlug = trip.slug || trip.id;
-        const tripHref = `/trips/${tripSlug}?tab=itinerary&onboarding=first-item`;
+        const tripHref = `/trips/${tripSlug}/itinerary?onboarding=first-item`;
 
         if (createMode === "save_setup_flight") {
             const { data: ownerMembership, error: ownerMembershipError } =
@@ -1019,7 +1019,7 @@ async function createTrip(
         nextStep: "add_first_item",
     });
 
-    const tripHref = `/trips/${finalSlug}?tab=itinerary&onboarding=first-item`;
+    const tripHref = `/trips/${finalSlug}/itinerary?onboarding=first-item`;
 
     if (createMode === "background" && createdTrip?.id) {
         const { data: ownerMembership, error: ownerMembershipError } =

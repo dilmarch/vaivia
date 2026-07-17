@@ -26,6 +26,7 @@ import {
     isTripSlugConflictError,
 } from "@/lib/tripSlugUpdate";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
+import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
 
 type TripPageHeroProps = {
     tripId: string;
@@ -364,16 +365,7 @@ async function removeTripMember(formData: FormData) {
         throw new Error("Could not remove trip member");
     }
 
-    const { error } = await supabase
-        .from("trip_members")
-        .delete()
-        .eq("trip_id", tripId)
-        .eq("user_id", memberUserId);
-
-    if (error) {
-        console.error("Error removing trip member:", error);
-        throw new Error("Could not remove trip member");
-    }
+    await removeTripMemberAsOwner({ supabase, tripId, memberUserId });
 
     revalidatePath(revalidatePathname || `/trips/${tripId}`);
 }
@@ -1275,12 +1267,12 @@ export default async function TripPageHero({
             >
                 <div className="space-y-3">
                     {pageLabel ? (
-                        <p className="w-fit rounded-full border border-lime-300/30 bg-lime-300 px-5 py-2 text-sm font-black uppercase tracking-[0.32em] text-slate-950 shadow-[0_0_32px_rgba(var(--vaivia-neon-rgb),0.28)]">
-                            {pageLabel}
+                        <p className="text-sm font-black uppercase tracking-[0.3em] text-lime-200 drop-shadow-[0_4px_18px_rgba(0,0,0,0.65)] sm:text-base">
+                            {tripRecord.title || "Untitled trip"}
                         </p>
                     ) : null}
                     <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
-                        {tripRecord.title || "Untitled trip"}
+                        {pageLabel || tripRecord.title || "Untitled trip"}
                     </h1>
                 </div>
             </TripHeaderCover>

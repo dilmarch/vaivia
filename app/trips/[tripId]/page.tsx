@@ -86,13 +86,18 @@ import {
     getTripSlugErrorMessage,
     isTripSlugConflictError,
 } from "@/lib/tripSlugUpdate";
+import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
 import { maybeCreatePassportStampForTransportationArrival } from "@/lib/passportArrivalStamps";
 import {
     resolveTripLegIdForDate,
     resolveTripLegIdForLocation,
 } from "@/lib/tripLegs";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
-import { getTripHref, resolveTripRouteParam } from "@/lib/tripRoutes";
+import {
+    getTripHref,
+    getTripItineraryHref,
+    resolveTripRouteParam,
+} from "@/lib/tripRoutes";
 import MobileOverviewLongPressCard from "@/components/MobileOverviewLongPressCard";
 import { getIataAirportCode } from "@/lib/airportCodes";
 import {
@@ -116,8 +121,11 @@ type PageProps = {
         add?: string;
         addedScenario?: string;
         addedTransportation?: string;
+        _route?: string;
     }>;
 };
+
+type TripDetailRouteMode = "overview" | "itinerary";
 
 type TripRoutePageRecord = SharedTrip & {
     id: string;
@@ -1835,33 +1843,6 @@ function formatMobileJourneyTime(time?: string | null) {
     return `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`;
 }
 
-function getMobileJourneyTimezoneLabel(
-    timezone?: string | null,
-    date?: string | null,
-    time?: string | null
-) {
-    const cleanTimezone = (timezone || "").trim();
-    if (!cleanTimezone) return "";
-
-    try {
-        const dateTime = new Date(
-            `${date || "2026-01-01"}T${formatMobileJourneyTime(time) || "12:00"}:00`
-        );
-        const timezoneName = new Intl.DateTimeFormat("en-US", {
-            timeZone: cleanTimezone,
-            timeZoneName: "short",
-        })
-            .formatToParts(dateTime)
-            .find((part) => part.type === "timeZoneName")?.value;
-
-        if (timezoneName) return timezoneName;
-    } catch {
-        // Fall back to the stored timezone string below.
-    }
-
-    return cleanTimezone.split("/").pop()?.replace(/_/g, " ") || cleanTimezone;
-}
-
 function getMobileJourneyFlightLabel(item: ItineraryCalendarItem) {
     const airlineCode = (item.airline_code || "").trim().toUpperCase();
     const flightNumber = (item.flight_number || "").trim().toUpperCase();
@@ -1874,14 +1855,17 @@ function getMobileJourneyFlightLabel(item: ItineraryCalendarItem) {
     return flightNumber;
 }
 
+function getMobileJourneyTimeRange(item: ItineraryCalendarItem) {
+    const startTime = formatMobileJourneyTime(item.start_time);
+    const endTime = formatMobileJourneyTime(item.end_time);
+
+    if (startTime && endTime) return `${startTime} - ${endTime}`;
+    return startTime || endTime;
+}
+
 function getMobileJourneyDetail(item: ItineraryCalendarItem) {
     return [
-        formatMobileJourneyTime(item.start_time),
-        getMobileJourneyTimezoneLabel(
-            item.departure_timezone || item.timezone,
-            item.item_date,
-            item.start_time
-        ),
+        getMobileJourneyTimeRange(item),
         getMobileJourneyFlightLabel(item),
     ]
         .filter(Boolean)
@@ -2195,7 +2179,7 @@ async function createItineraryItem(formData: FormData) {
         nextStep: "complete",
     });
 
-    redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`));
+    redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}/itinerary`));
 }
 
 async function updateItineraryItem(formData: FormData) {
@@ -2315,7 +2299,7 @@ async function updateItineraryItem(formData: FormData) {
         );
     }
 
-    redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`));
+    redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}/itinerary`));
 }
 
 async function createTransportationItem(formData: FormData) {
@@ -3111,7 +3095,7 @@ async function deleteItineraryItem(formData: FormData) {
     }
 
     redirect(
-        getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`)
+        getTransportationReturnPath(formData, tripId, `/trips/${tripId}/itinerary`)
     );
 }
 
@@ -3407,27 +3391,7 @@ async function removeTripMember(formData: FormData) {
         throw new Error("Trip owner cannot be removed from the trip");
     }
 
-    const { error } = await supabase
-        .from("trip_members")
-        .delete()
-        .eq("trip_id", tripId)
-        .eq("user_id", memberUserId);
-
-    if (error) {
-        console.error("Error removing trip member:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            tripId,
-            memberUserId,
-        });
-        throw new Error(
-            `Could not remove trip member: ${
-                error.message ?? "Unknown Supabase error"
-            }`
-        );
-    }
+    await removeTripMemberAsOwner({ supabase, tripId, memberUserId });
 
     revalidatePath(`/trips/${tripId}`);
 }
@@ -3923,21 +3887,41 @@ async function toggleTripIdeaReaction(formData: FormData) {
     revalidatePath(`/trips/${tripId}`);
 }
 
-async function TripDetailContent({ params, searchParams }: PageProps) {
+async function TripDetailContent({
+    params,
+    searchParams,
+    routeMode = "overview",
+}: PageProps & { routeMode?: TripDetailRouteMode }) {
     await connection();
 
     const { tripId: tripRouteParam } = await params;
     const resolvedSearchParams = searchParams ? await searchParams : {};
+    const isItineraryRoute =
+        routeMode === "itinerary" || resolvedSearchParams._route === "itinerary";
+    const resolvedTab =
+        isItineraryRoute ? "itinerary" : resolvedSearchParams.tab;
     const initialTab =
-        resolvedSearchParams.tab === "ideas"
+        resolvedTab === "ideas"
             ? "ideas"
-            : resolvedSearchParams.tab === "journey-planning"
+            : resolvedTab === "journey-planning"
               ? "journey-planning"
-            : resolvedSearchParams.tab === "journey"
+            : resolvedTab === "journey"
               ? "journey"
               : "itinerary";
-    const hasExplicitTripTab = typeof resolvedSearchParams.tab === "string";
-    const hideHeaderDetailsOnMobile = initialTab !== "itinerary";
+    const hasExplicitTripTab =
+        isItineraryRoute || typeof resolvedSearchParams.tab === "string";
+    const isTripOverviewPage = !hasExplicitTripTab;
+    const tripHeroPageLabel = isTripOverviewPage
+        ? "Trip Overview"
+        : initialTab === "ideas"
+          ? "Ideas"
+        : initialTab === "journey"
+          ? "Journey"
+        : initialTab === "journey-planning"
+          ? "Journey Planning"
+        : "Itinerary";
+    const tripHeaderDetailsClassName = "hidden sm:block";
+    const tripHeaderDateCardsClassName = "hidden sm:grid";
     const initialQuickAddAction =
         resolvedSearchParams.add === "transportation" ||
         resolvedSearchParams.add === "scheduled" ||
@@ -3986,11 +3970,14 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     if (resolvedTrip.shouldRedirect) {
         const query = new URLSearchParams();
         Object.entries(resolvedSearchParams).forEach(([key, value]) => {
+            if (key === "_route") return;
             if (typeof value === "string") query.set(key, value);
         });
         const queryString = query.toString();
         redirect(
             `/trips/${resolvedTrip.routeSegment}${
+                isItineraryRoute ? "/itinerary" : ""
+            }${
                 queryString ? `?${queryString}` : ""
             }`
         );
@@ -5238,7 +5225,6 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
         }
     }
 
-    const mobileFlags = getMobileFlagEmojis(trip.destination);
     const mobileGoingPeople = [
         ...tripMembers.map((member) =>
             toMobileMemberPerson({
@@ -5308,19 +5294,30 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                     updateTripAction={updateTrip}
                     deleteTripAction={deleteTrip}
                 >
-                    <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
-                        {trip.title || "Untitled trip"}
-                    </h1>
+                    <div className="space-y-3">
+                        <p className="text-sm font-black uppercase tracking-[0.3em] text-lime-200 drop-shadow-[0_4px_18px_rgba(0,0,0,0.65)] sm:text-base">
+                            {trip.title || "Untitled trip"}
+                        </p>
+                        <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
+                            {tripHeroPageLabel}
+                        </h1>
+                    </div>
                 </TripHeaderCover>
 
-                <div className="mx-auto max-w-7xl p-5 sm:p-7">
+                <div
+                    className={
+                        isTripOverviewPage
+                            ? "hidden"
+                            : "hidden sm:mx-auto sm:block sm:max-w-7xl sm:p-7"
+                    }
+                >
                     <div
                         id="trip-invites"
-                        className={`${hideHeaderDetailsOnMobile ? "hidden sm:block" : ""} scroll-mt-28`}
+                        className={`${tripHeaderDetailsClassName} scroll-mt-28`}
                     >
                         <TripLegLocationLine
                             tripId={trip.id}
-                            revalidatePathname={getTripHref(trip)}
+                            revalidatePathname={getTripItineraryHref(trip)}
                             locations={visibleHeroLocations}
                             memberOptions={tripLegMemberOptions}
                             upsertLegAction={upsertTripLeg}
@@ -5343,9 +5340,9 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         </TripLegLocationLine>
                     </div>
 
-                        <div className={`mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch ${
-                            hideHeaderDetailsOnMobile ? "hidden sm:grid" : ""
-                        }`}>
+                        <div
+                            className={`mt-6 grid gap-4 lg:grid-cols-[1fr_1fr_minmax(280px,0.9fr)] lg:items-stretch ${tripHeaderDateCardsClassName}`}
+                        >
                             <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/15">
                                 <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
                                     Departing:
@@ -5396,13 +5393,13 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         <div className="grid grid-cols-[0.85fr_1.15fr] gap-3">
                             <MobileOverviewLongPressCard
                                 className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left text-white shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45"
-                                modalTitle="Trip places"
-                                modalEyebrow="Flags"
-                                ariaLabel="Show all trip flag cards"
+                                modalTitle="Trip legs"
+                                modalEyebrow="Trip legs"
+                                ariaLabel="Show all trip legs"
                                 modalContent={
-                                    heroLocations.length > 0 ? (
+                                    visibleHeroLocations.length > 0 ? (
                                         <div className="grid gap-3">
-                                            {heroLocations.map((location) => (
+                                            {visibleHeroLocations.map((location) => (
                                                 <div
                                                     key={location.id}
                                                     className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3"
@@ -5427,28 +5424,51 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                                         </div>
                                     ) : (
                                         <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
-                                            Add destinations to see trip flag cards.
+                                            Add trip legs to see your dates here.
                                         </p>
                                     )
                                 }
                             >
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                                    Flags
+                                    Trip Legs
                                 </p>
-                                <div className="mt-3 flex min-h-10 flex-wrap items-center gap-2">
-                                    {mobileFlags.length > 0 ? (
-                                        mobileFlags.slice(0, 5).map((flag, index) => (
-                                            <span
-                                                key={`${flag}-${index}`}
-                                                className="text-3xl leading-none"
-                                            >
-                                                {flag}
-                                            </span>
-                                        ))
+                                <div className="mt-3 min-h-10 space-y-2">
+                                    {visibleHeroLocations.length > 0 ? (
+                                        <>
+                                            {visibleHeroLocations
+                                                .slice(0, 3)
+                                                .map((location) => (
+                                                    <div
+                                                        key={location.id}
+                                                        className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1.5"
+                                                    >
+                                                        <span className="text-xl leading-none">
+                                                            {getMobileLocationFlag(
+                                                                location
+                                                            )}
+                                                        </span>
+                                                        <span className="truncate text-xs font-black text-slate-100">
+                                                            {location.startDate
+                                                                ? formatCompactTripDate(
+                                                                      location.startDate
+                                                                  )
+                                                                : missingTripDateLabel}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            {visibleHeroLocations.length > 3 ? (
+                                                <p className="pl-1 text-[10px] font-black uppercase tracking-[0.14em] text-lime-100/80">
+                                                    +{visibleHeroLocations.length - 3} more
+                                                </p>
+                                            ) : null}
+                                        </>
                                     ) : (
-                                        <span className="flex h-10 w-10 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-lime-200">
-                                            <Flag className="h-5 w-5" aria-hidden="true" />
-                                        </span>
+                                        <div className="flex items-center gap-2 rounded-full border border-lime-300/20 bg-lime-300/10 px-2.5 py-1.5 text-lime-100">
+                                            <Flag className="h-4 w-4" aria-hidden="true" />
+                                            <span className="truncate text-xs font-black">
+                                                Add a leg
+                                            </span>
+                                        </div>
                                     )}
                                 </div>
                             </MobileOverviewLongPressCard>
@@ -5531,7 +5551,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                             <MobileOverviewTile
                                 title="Itinerary"
                                 description="Schedule the days, tickets, and timed plans."
-                                href={getTripHref(trip, "?tab=itinerary")}
+                                href={getTripItineraryHref(trip)}
                                 icon={CalendarCheck}
                                 buttonLabel="Visit itinerary"
                             />
@@ -5826,7 +5846,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         deleteItineraryAction={deleteItineraryItem}
                         upsertTripLegAction={upsertTripLeg}
                         deleteTripLegAction={deleteTripLeg}
-                        tripLegRevalidatePathname={getTripHref(trip)}
+                        tripLegRevalidatePathname={getTripItineraryHref(trip)}
                         updateTransportationAction={updateTransportationItem}
                         updateItineraryAction={updateItineraryItem}
                         createItineraryAction={createItineraryItem}
@@ -5858,7 +5878,11 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
     );
 }
 
-export default function TripDetailPage({ params, searchParams }: PageProps) {
+function TripDetailPageShell({
+    params,
+    searchParams,
+    routeMode = "overview",
+}: PageProps & { routeMode?: TripDetailRouteMode }) {
     return (
         <Suspense
             fallback={
@@ -5868,7 +5892,21 @@ export default function TripDetailPage({ params, searchParams }: PageProps) {
                 />
             }
         >
-            <TripDetailContent params={params} searchParams={searchParams} />
+            <TripDetailContent
+                params={params}
+                searchParams={searchParams}
+                routeMode={routeMode}
+            />
         </Suspense>
+    );
+}
+
+export default function TripDetailPage({ params, searchParams }: PageProps) {
+    return (
+        <TripDetailPageShell
+            params={params}
+            searchParams={searchParams}
+            routeMode="overview"
+        />
     );
 }

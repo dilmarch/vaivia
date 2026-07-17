@@ -10,6 +10,7 @@ import {
     CalendarCheck,
     ChevronsUp,
     Home,
+    LayoutDashboard,
     Map,
     Megaphone,
     MoreHorizontal,
@@ -55,6 +56,10 @@ function getCurrentTripId(pathname: string) {
 
     if (!tripId || tripId === "new") return null;
     return decodeURIComponent(tripId);
+}
+
+function isExactTripRoute(pathname: string) {
+    return /^\/trips\/[^/?#]+\/?$/.test(pathname);
 }
 
 function getAdminItem(): NavItem {
@@ -147,16 +152,11 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
             : []),
         {
             label: "Itinerary",
-            href: tripHref,
+            href: tripHref ? `${tripHref}/itinerary` : undefined,
             icon: CalendarCheck,
             match: (pathname, tab) =>
                 pathname.startsWith("/trips/") &&
-                !pathname.includes("/accommodations") &&
-                !pathname.includes("/budget") &&
-                !pathname.includes("/food") &&
-                tab !== "ideas" &&
-                tab !== "journey" &&
-                tab !== "journey-planning",
+                (pathname.includes("/itinerary") || tab === "itinerary"),
         },
         {
             label: "Ideas",
@@ -305,17 +305,30 @@ export default function AppSidebarNav({
     const isAdminRoute = pathname.startsWith("/admin");
     const [mobileMenu, setMobileMenu] = useState<"view" | "more" | null>(null);
     const mobileDockRef = useRef<HTMLDivElement | null>(null);
-    const mobileViewItems = navItems.filter((item) =>
-        [
-            "News Feed",
-            "Itinerary",
-            "Budget",
-            "Ideas",
-            "Journey",
-            "Food",
-            "Accommodations",
-        ].includes(item.label)
-    );
+    const currentTripId = getCurrentTripId(pathname);
+    const mobileTripOverviewItem: NavItem | null = currentTripId
+        ? {
+              label: "Trip overview",
+              href: `/trips/${currentTripId}`,
+              icon: LayoutDashboard,
+              match: (currentPathname, currentTab) =>
+                  isExactTripRoute(currentPathname) && !currentTab,
+          }
+        : null;
+    const mobileViewItems = [
+        ...(mobileTripOverviewItem ? [mobileTripOverviewItem] : []),
+        ...navItems.filter((item) =>
+            [
+                "News Feed",
+                "Itinerary",
+                "Budget",
+                "Ideas",
+                "Journey",
+                "Food",
+                "Accommodations",
+            ].includes(item.label)
+        ),
+    ];
     const mobileAdminItems =
         isSuperAdmin && isAdminRoute
             ? [
@@ -454,7 +467,14 @@ export default function AppSidebarNav({
                                 >
                                     <NavItemButton
                                         item={item}
-                                        isActive={item.match?.(pathname, tab) || false}
+                                        isActive={
+                                            item.label === "Itinerary" &&
+                                            mobileTripOverviewItem &&
+                                            isExactTripRoute(pathname) &&
+                                            !tab
+                                                ? false
+                                                : item.match?.(pathname, tab) || false
+                                        }
                                         mobile
                                         onNavigate={() => setMobileMenu(null)}
                                     />

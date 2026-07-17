@@ -526,7 +526,7 @@ export function SignUpForm({
   }
 
   function goToAcceptedTrip(invitation: OnboardingTripInvitation) {
-    void goTo(`${getTripHref(invitation)}?tab=itinerary&onboarding=first-item`);
+    void goTo(`${getTripHref(invitation)}/itinerary?onboarding=first-item`);
   }
 
   async function handlePlanFirstTrip() {

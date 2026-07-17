@@ -17,8 +17,8 @@ export const NOTIFICATION_TYPE_OPTIONS = [
     },
     {
         type: "trip_invite_accepted",
-        label: "Trip invite accepted",
-        description: "When someone accepts your trip invite.",
+        label: "Trip members joined",
+        description: "When someone joins a trip after accepting an invite.",
     },
     {
         type: "trip_invite_declined",

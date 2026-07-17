@@ -42,6 +42,7 @@ import type { TripAudienceOption } from "@/lib/tripAudience";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
+import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
 
 type PageProps = {
     params: Promise<{
@@ -363,16 +364,7 @@ async function removeTripMember(formData: FormData) {
         throw new Error("Could not remove trip member");
     }
 
-    const { error } = await supabase
-        .from("trip_members")
-        .delete()
-        .eq("trip_id", tripId)
-        .eq("user_id", memberUserId);
-
-    if (error) {
-        console.error("Error removing trip member:", error);
-        throw new Error("Could not remove trip member");
-    }
+    await removeTripMemberAsOwner({ supabase, tripId, memberUserId });
 
     revalidatePath(`/trips/${tripId}/accommodations`);
 }
@@ -850,12 +842,14 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         trip_leg_id: string;
         trip_member_id: string;
         is_joining?: boolean | null;
+        start_date?: string | null;
+        end_date?: string | null;
     }> = [];
 
     if (manualTripLegIds.length > 0) {
         const { data: memberLegRows, error: memberLegRowsError } = await supabase
             .from("trip_member_legs")
-            .select("trip_leg_id,trip_member_id,is_joining")
+            .select("trip_leg_id,trip_member_id,is_joining,start_date,end_date")
             .eq("trip_id", tripId)
             .in("trip_leg_id", manualTripLegIds);
 
@@ -878,6 +872,20 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         const current = tripMemberIdsByLegId.get(row.trip_leg_id) || [];
         current.push(row.trip_member_id);
         tripMemberIdsByLegId.set(row.trip_leg_id, current);
+    });
+    const tripMemberLegDatesByLegAndMember = new Map<
+        string,
+        { startDate: string | null; endDate: string | null }
+    >();
+    tripMemberLegRows.forEach((row) => {
+        if (!row.is_joining) return;
+        tripMemberLegDatesByLegAndMember.set(
+            `${row.trip_leg_id}:${row.trip_member_id}`,
+            {
+                startDate: row.start_date || null,
+                endDate: row.end_date || row.start_date || null,
+            }
+        );
     });
 
     const accommodationLocations: TripLegLocation[] = (
@@ -937,6 +945,26 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
+            memberDatesByMemberId: Object.fromEntries(
+                (tripMemberIdsByLegId.get(leg.id) || []).map((memberId) => {
+                    const memberDates = tripMemberLegDatesByLegAndMember.get(
+                        `${leg.id}:${memberId}`
+                    );
+
+                    return [
+                        memberId,
+                        {
+                            startDate: memberDates?.startDate || leg.start_date || null,
+                            endDate:
+                                memberDates?.endDate ||
+                                memberDates?.startDate ||
+                                leg.end_date ||
+                                leg.start_date ||
+                                null,
+                        },
+                    ];
+                })
+            ),
         }));
 
     const destinationLocations: TripLegLocation[] = parseDestinationList(
@@ -974,6 +1002,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                     accommodation.startDate || manualMatch?.startDate || null,
                 endDate: accommodation.endDate || manualMatch?.endDate || null,
                 memberIds: manualMatch?.memberIds || [],
+                memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
             };
         }
     );
@@ -1008,6 +1037,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                 manualMatch?.endDate ||
                 null,
             memberIds: manualMatch?.memberIds || [],
+            memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
         };
     });
 
@@ -1016,6 +1046,14 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
             ? [...mergedDestinationLocations, ...unmatchedManualLocations]
             : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
     );
+    const visibleHeroLocations = heroLocations.filter((location) => {
+        const hasExplicitSavedSelection =
+            location.source === "manual" || Boolean(location.persistedLegId);
+
+        if (!hasExplicitSavedSelection || !currentUserTripMemberId) return true;
+
+        return (location.memberIds || []).includes(currentUserTripMemberId);
+    });
     const tripLegMemberOptions: TripLegMemberOption[] = memberRows
         .filter((member) => Boolean(member.id))
         .map((member) => {
@@ -1063,9 +1101,14 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                     updateTripAction={updateTrip}
                     deleteTripAction={deleteTrip}
                 >
-                    <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
-                        {tripRecord.title || "Untitled trip"}
-                    </h1>
+                    <div className="space-y-3">
+                        <p className="text-sm font-black uppercase tracking-[0.3em] text-lime-200 drop-shadow-[0_4px_18px_rgba(0,0,0,0.65)] sm:text-base">
+                            {tripRecord.title || "Untitled trip"}
+                        </p>
+                        <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
+                            Accommodations
+                        </h1>
+                    </div>
                 </TripHeaderCover>
 
                 <div className="mx-auto max-w-7xl p-5 sm:p-7">
@@ -1076,7 +1119,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                                 tripRecord,
                                 "/accommodations"
                             )}
-                            locations={heroLocations}
+                            locations={visibleHeroLocations}
                             memberOptions={tripLegMemberOptions}
                             upsertLegAction={upsertTripLeg}
                             deleteLegAction={deleteTripLeg}

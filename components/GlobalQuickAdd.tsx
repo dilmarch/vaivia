@@ -69,6 +69,9 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
     const isMainTripDetailRoute =
         currentTripId && pathname === `/trips/${encodeURIComponent(currentTripId)}`;
     const hasTripTab = searchParams.has("tab");
+    const isTripItineraryRoute =
+        currentTripId &&
+        pathname === `/trips/${encodeURIComponent(currentTripId)}/itinerary`;
     const isBaseTripLandingRoute = Boolean(isMainTripDetailRoute && !hasTripTab);
 
     useEffect(() => {
@@ -120,13 +123,13 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
         if (action === "transportation") {
             return `/trips/${tripRouteSegment}?tab=journey&add=transportation`;
         }
-        return `/trips/${tripRouteSegment}?tab=itinerary&add=scheduled`;
+        return `/trips/${tripRouteSegment}/itinerary?add=scheduled`;
     }
 
     const quickAddBubbleClass =
         "animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right";
 
-    if (isMainTripDetailRoute && hasTripTab) return null;
+    if ((isMainTripDetailRoute && hasTripTab) || isTripItineraryRoute) return null;
 
     return (
         <>

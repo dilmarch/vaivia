@@ -404,7 +404,7 @@ function getTimezoneOffsetLabel(
     activeTimezone: string,
     date: Date
 ) {
-    if (targetTimezone === activeTimezone) return "Active time zone";
+    if (targetTimezone === activeTimezone) return "Active";
 
     const differenceMinutes =
         getTimezoneOffsetMinutes(targetTimezone, date) -
@@ -3605,6 +3605,7 @@ export default function ItineraryCalendar({
 }: ItineraryCalendarProps) {
     const [view, setView] = useState<CalendarView>(defaultView);
     const effectiveView: CalendarView = listOnly ? "list" : view;
+    const showHeaderDateSubtitle = title.trim().toLowerCase() !== "journey";
     const [browserTimezone, setBrowserTimezone] = useState("UTC");
     const [activeTimezone, setActiveTimezone] = useState("UTC");
     const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -4031,11 +4032,13 @@ export default function ItineraryCalendar({
                         <h2 className="mt-2 text-3xl font-black text-white">
                             {title}
                         </h2>
-                        <p className="mt-1 text-sm font-semibold text-slate-300">
-                            {effectiveView === "list"
-                                ? formatDateRange(listStartDate, listEndDate)
-                                : formatViewTitle(effectiveView, anchorDate)}
-                        </p>
+                        {showHeaderDateSubtitle && (
+                            <p className="mt-1 text-sm font-semibold text-slate-300">
+                                {effectiveView === "list"
+                                    ? formatDateRange(listStartDate, listEndDate)
+                                    : formatViewTitle(effectiveView, anchorDate)}
+                            </p>
+                        )}
                     </div>
 
                     {!listOnly && (
@@ -4127,19 +4130,19 @@ export default function ItineraryCalendar({
                                 <p className="mb-3 text-sm font-black uppercase tracking-wide text-white">
                                     Viewing time zone
                                 </p>
-                                <div className="grid gap-3 lg:grid-cols-[minmax(220px,280px)_1fr]">
-                                    <section>
-                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                <div className="grid grid-cols-3 gap-2 lg:grid-cols-[minmax(220px,280px)_1fr] lg:gap-3">
+                                    <section className="contents lg:block">
+                                        <p className="mb-2 hidden text-[11px] font-bold uppercase tracking-wide text-slate-400 lg:block">
                                             Current location
                                         </p>
                                         {renderTimezoneCard(currentTimezoneOption)}
                                     </section>
 
-                                    <section>
-                                        <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">
+                                    <section className="contents lg:block">
+                                        <p className="mb-2 hidden text-[11px] font-bold uppercase tracking-wide text-slate-400 lg:block">
                                             Destination time zones
                                         </p>
-                                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                        <div className="contents lg:grid lg:grid-cols-2 lg:gap-2 xl:grid-cols-3">
                                             {destinationTimezoneOptions.map((option) =>
                                                 renderTimezoneCard(option)
                                             )}

@@ -211,6 +211,18 @@
 }
 
 @layer utilities {
+  @media (max-width: 639px) {
+    .vaivia-trip-hero-title {
+      max-width: calc(100vw - 2rem);
+      font-size: clamp(1.75rem, calc((100vw - 2rem) / 8.8), 3rem) !important;
+      line-height: 0.95;
+      letter-spacing: 0;
+      overflow-wrap: normal;
+      white-space: nowrap;
+      word-break: normal;
+    }
+  }
+
   :root[data-pink-mode="true"] .bg-lime-300 {
     --tw-bg-opacity: 1;
     background-color: rgb(255 54 190 / var(--tw-bg-opacity, 1)) !important;
@@ -1368,16 +1380,16 @@
       justify-content: flex-start;
     }
 
-    :root[data-vaivia-standalone="true"] .vaivia-trip-header-cover-media {
+    .vaivia-trip-header-cover-media {
       aspect-ratio: 16 / 14;
-      min-height: calc(22rem + var(--safe-area-top));
+      min-height: calc(28.6rem + var(--safe-area-top));
     }
 
-    :root[data-vaivia-standalone="true"] .vaivia-trip-header-cover-fallback {
-      min-height: calc(36rem + var(--safe-area-top));
+    .vaivia-trip-header-cover-fallback {
+      min-height: calc(46.8rem + var(--safe-area-top));
     }
 
-    :root[data-vaivia-standalone="true"] .vaivia-trip-header-cover-content {
+    .vaivia-trip-header-cover-content {
       bottom: 2rem;
     }
   }
@@ -1555,7 +1567,12 @@
     color: rgb(2 6 23);
   }
 
-  .vaivia-modal-panel .vaivia-transport-detail-light,
+  .vaivia-modal-panel .vaivia-transport-detail-light {
+    background: rgb(248 250 252) !important;
+    border: 1px solid rgb(226 232 240) !important;
+    color: rgb(15 23 42) !important;
+  }
+
   .vaivia-modal-panel .vaivia-transport-detail-light :where(h3, p, dt, dd, span:not(.vaivia-transport-preserve-color)) {
     color: rgb(15 23 42) !important;
   }

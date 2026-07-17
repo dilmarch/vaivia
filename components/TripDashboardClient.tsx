@@ -26,6 +26,7 @@ import TripDestinationPicker from "@/components/TripDestinationPicker";
 import { useTripCoverImage } from "@/components/TripCoverImage";
 import {
     getTripHref,
+    getTripItineraryHref,
     sanitizeTripSlugInput,
     slugifyTripTitle,
 } from "@/lib/tripRoutes";
@@ -455,6 +456,25 @@ function getTripDays(startDate?: string | null, endDate?: string | null) {
     );
 }
 
+function useOpensTripOverviewByDefault() {
+    const [opensOverview, setOpensOverview] = useState(false);
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(max-width: 767px)");
+        const sync = () => setOpensOverview(mediaQuery.matches);
+
+        sync();
+        mediaQuery.addEventListener("change", sync);
+        return () => mediaQuery.removeEventListener("change", sync);
+    }, []);
+
+    return opensOverview;
+}
+
+function getDefaultTripOpenHref(trip: DashboardTrip, opensOverview: boolean) {
+    return opensOverview ? getTripHref(trip) : getTripItineraryHref(trip);
+}
+
 function getPrimaryDestination(trip: DashboardTrip) {
     const destination = parseDestinationList(trip.destination)[0];
     const withoutFlag = stripDestinationFlag(destination || trip.title || "Trip");
@@ -558,6 +578,8 @@ export function DashboardTripCard({
     const otherMemberProfiles = (trip.memberProfiles || []).filter(
         (member) => member.id !== currentUserId
     );
+    const opensOverview = useOpensTripOverviewByDefault();
+    const openTripHref = getDefaultTripOpenHref(trip, opensOverview);
     const accent = fallbackAccentColors[index % fallbackAccentColors.length];
     const variant = tripCardVariants[index % tripCardVariants.length];
     const maskStyle = {
@@ -606,7 +628,7 @@ export function DashboardTripCard({
             }}
         >
             <Link
-                href={getTripHref(trip)}
+                href={openTripHref}
                 className="absolute inset-0 block"
                 aria-label={`Open ${trip.title || "trip"}`}
             >
@@ -733,6 +755,8 @@ export function TripQuickInfoPanel({
     const transportationSummary = getTripTransportationSummary(trip);
     const accommodationSummary = getTripAccommodationSummary(trip);
     const displayDateRange = getTripDisplayDateRange(trip);
+    const opensOverview = useOpensTripOverviewByDefault();
+    const openTripHref = getDefaultTripOpenHref(trip, opensOverview);
 
     return (
         <div className="mt-4 w-[300px] overflow-hidden rounded-[1.5rem] border border-white/10 bg-slate-950/85 text-white shadow-2xl shadow-black/40 backdrop-blur-xl md:w-[330px] lg:w-[355px]">
@@ -786,7 +810,7 @@ export function TripQuickInfoPanel({
                         Close
                     </button>
                     <Link
-                        href={getTripHref(trip)}
+                        href={openTripHref}
                         className="rounded-full bg-lime-300 px-3 py-2 text-center text-xs font-black text-slate-950 transition hover:bg-lime-200"
                     >
                         Visit trip
@@ -1035,6 +1059,7 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
     );
     const upcomingTrips = useMemo(() => getUpcomingTrips(trips), [trips]);
     const todayKey = getLocalDateKey(new Date());
+    const opensOverview = useOpensTripOverviewByDefault();
 
     const visibleDates = useMemo(() => {
         const monthGridStart = startOfMonthGrid(anchorDate);
@@ -1187,7 +1212,10 @@ function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
                                     return (
                                         <Link
                                             key={`${segment.trip.id}-${weekIndex}`}
-                                            href={getTripHref(segment.trip)}
+                                            href={getDefaultTripOpenHref(
+                                                segment.trip,
+                                                opensOverview
+                                            )}
                                             className="absolute z-10 flex h-5 items-center truncate px-2 text-[10px] font-black uppercase leading-none text-slate-950 shadow-[0_0_16px_rgba(0,0,0,0.20)] transition hover:brightness-110"
                                             style={{
                                                 left: `${leftPercent}%`,

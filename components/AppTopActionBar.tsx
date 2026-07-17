@@ -411,17 +411,25 @@ function getTripSwitchHref({
     targetTrip,
     pathname,
     searchParams,
+    opensOverviewByDefault,
 }: {
     targetTrip: TopNavTrip;
     pathname: string;
     searchParams: URLSearchParams;
+    opensOverviewByDefault: boolean;
 }) {
     const baseHref = `/trips/${getTripRouteSegment(targetTrip)}`;
     const match = pathname.match(/^\/trips\/([^/]+)(.*)$/);
 
-    if (!match || match[1] === "new") return baseHref;
+    if (!match || match[1] === "new") {
+        return opensOverviewByDefault ? baseHref : `${baseHref}/itinerary`;
+    }
 
     const suffix = match[2] || "";
+
+    if (suffix.startsWith("/itinerary")) {
+        return `${baseHref}/itinerary`;
+    }
 
     if (suffix.startsWith("/accommodations")) {
         return `${baseHref}/accommodations`;
@@ -440,11 +448,15 @@ function getTripSwitchHref({
     }
 
     const tab = searchParams.get("tab");
+    if (tab === "itinerary") {
+        return `${baseHref}/itinerary`;
+    }
+
     if (tab === "ideas" || tab === "journey" || tab === "journey-planning") {
         return `${baseHref}?tab=${tab}`;
     }
 
-    return baseHref;
+    return opensOverviewByDefault ? baseHref : `${baseHref}/itinerary`;
 }
 
 export default function AppTopActionBar({
@@ -492,6 +504,8 @@ export default function AppTopActionBar({
     const [activeMobileTourIndex, setActiveMobileTourIndex] = useState(0);
     const [mobileTourHighlightRect, setMobileTourHighlightRect] =
         useState<MobileTourHighlightRect | null>(null);
+    const [opensTripOverviewByDefault, setOpensTripOverviewByDefault] =
+        useState(false);
     const wrapperRef = useRef<HTMLDivElement | null>(null);
     const openMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
     const previousOpenMenuRef = useRef<"trips" | "notifications" | null>(openMenu);
@@ -513,6 +527,15 @@ export default function AppTopActionBar({
         setStoredRolePreview(null);
         window.location.reload();
     }
+
+    useEffect(() => {
+        const mediaQuery = window.matchMedia("(max-width: 767px)");
+        const sync = () => setOpensTripOverviewByDefault(mediaQuery.matches);
+
+        sync();
+        mediaQuery.addEventListener("change", sync);
+        return () => mediaQuery.removeEventListener("change", sync);
+    }, []);
 
     function completeMobileTour(tourKind: MobileTourKind | null) {
         if (tourKind && typeof window !== "undefined") {
@@ -1640,6 +1663,8 @@ export default function AppTopActionBar({
                                                     targetTrip: trip,
                                                     pathname,
                                                     searchParams,
+                                                    opensOverviewByDefault:
+                                                        opensTripOverviewByDefault,
                                                 })}
                                                 className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                                                 style={{

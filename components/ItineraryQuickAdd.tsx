@@ -105,7 +105,7 @@ export default function ItineraryQuickAdd({
             title: "Scheduled plans",
             description:
                 "Use this for anything happening on a date: activities, events, tickets, reservations, and transportation you have committed to.",
-            href: `/trips/${tripId}?tab=itinerary`,
+            href: `/trips/${tripId}/itinerary`,
             icon: CalendarCheck,
         },
         {

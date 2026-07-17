@@ -93,6 +93,13 @@ export function getTripHref(
     return segment ? `/trips/${segment}${suffix}` : "/trips";
 }
 
+export function getTripItineraryHref(
+    trip: TripRouteRecord | null | undefined,
+    suffix = ""
+) {
+    return getTripHref(trip, `/itinerary${suffix}`);
+}
+
 export async function resolveTripRouteParam<T extends TripRouteRecord>(
     supabase: SupabaseClient,
     routeParam: string,
