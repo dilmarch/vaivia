@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import Script from "next/script";
 import type { CSSProperties } from "react";
 import {
@@ -47,6 +46,7 @@ import { getInitials } from "@/lib/travelers";
 import {
     FALLBACK_CATEGORY_COLOR,
     FALLBACK_CATEGORY_LABEL,
+    type UserCategory,
 } from "@/lib/itineraryCategories";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type { MoveTargetTrip } from "@/lib/tripMove";
@@ -139,11 +139,13 @@ type ItineraryCalendarProps = {
     deleteAction: (formData: FormData) => Promise<void>;
     createAction: (formData: FormData) => Promise<void>;
     createTransportationAction?: (formData: FormData) => Promise<void>;
+    updateAction: (formData: FormData) => Promise<void>;
     updateTransportationAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
     moveTargetTrips: MoveTargetTrip[];
     travelerOptions?: TransportationTravelerOptions;
     audienceOptions?: TripAudienceOption[];
+    categories?: UserCategory[];
     currentUserTripMemberId?: string | null;
     onQuickAddDateChange?: (dateKey: string) => void;
     ideas?: TripIdea[];
@@ -2530,6 +2532,7 @@ function ItineraryItemModal({
     travelerOptions,
     audienceOptions,
     currentUserTripMemberId,
+    onEditItem,
     onDuplicateItem,
     onDuplicateTransportationItem,
     onClose,
@@ -2543,6 +2546,7 @@ function ItineraryItemModal({
     travelerOptions: TransportationTravelerOptions;
     audienceOptions: TripAudienceOption[];
     currentUserTripMemberId: string | null;
+    onEditItem: (item: ItineraryCalendarItem) => void;
     onDuplicateItem: (item: ItineraryCalendarItem) => void;
     onDuplicateTransportationItem: (item: ItineraryCalendarItem) => void;
     onClose: () => void;
@@ -2892,15 +2896,14 @@ function ItineraryItemModal({
                             EDIT
                         </button>
                     ) : (
-                        <Link
-                            href={`/trips/${tripId}/itinerary/${encodeURIComponent(
-                                item.id
-                            )}/edit`}
+                        <button
+                            type="button"
+                            onClick={() => onEditItem(item)}
                             className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
                         >
                             <Pencil className="h-4 w-4" aria-hidden="true" />
                             EDIT
-                        </Link>
+                        </button>
                     )}
                     {flightDisplay && (
                         <TrackFlightButton
@@ -3549,11 +3552,13 @@ export default function ItineraryCalendar({
     deleteAction,
     createAction,
     createTransportationAction,
+    updateAction,
     updateTransportationAction,
     moveItemAction,
     moveTargetTrips,
     travelerOptions = { users: [], familyMembers: [] },
     audienceOptions = [],
+    categories = [],
     currentUserTripMemberId = null,
     onQuickAddDateChange,
     ideas = [],
@@ -3579,6 +3584,9 @@ export default function ItineraryCalendar({
     const [listDayCount, setListDayCount] = useState(INITIAL_LIST_DAYS);
     const [motionKey, setMotionKey] = useState(0);
     const [selectedItem, setSelectedItem] = useState<ItineraryCalendarItem | null>(
+        null
+    );
+    const [editingItem, setEditingItem] = useState<ItineraryCalendarItem | null>(
         null
     );
     const [duplicatingItem, setDuplicatingItem] =
@@ -4177,6 +4185,10 @@ export default function ItineraryCalendar({
                     travelerOptions={travelerOptions}
                     audienceOptions={audienceOptions}
                     currentUserTripMemberId={currentUserTripMemberId}
+                    onEditItem={(item) => {
+                        setSelectedItem(null);
+                        setEditingItem(item);
+                    }}
                     onDuplicateItem={(item) => {
                         setSelectedItem(null);
                         setDuplicatingItem({
@@ -4189,6 +4201,21 @@ export default function ItineraryCalendar({
                         setDuplicatingTransportationItem(item);
                     }}
                     onClose={() => setSelectedItem(null)}
+                />
+            )}
+            {editingItem && (
+                <ItineraryItemForm
+                    key={`edit-${editingItem.id}`}
+                    tripId={tripId}
+                    itemId={editingItem.id}
+                    submitAction={updateAction}
+                    initialItem={editingItem}
+                    submitLabel="Save changes"
+                    showLauncher={false}
+                    onClose={() => setEditingItem(null)}
+                    categories={categories}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                 />
             )}
             {duplicatingTransportationItem && createTransportationAction ? (
@@ -4217,6 +4244,9 @@ export default function ItineraryCalendar({
                     showLauncher={false}
                     duplicateMode
                     onClose={() => setDuplicatingItem(null)}
+                    categories={categories}
+                    audienceOptions={audienceOptions}
+                    currentUserTripMemberId={currentUserTripMemberId}
                 />
             )}
         </section>

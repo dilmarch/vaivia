@@ -36,6 +36,7 @@ type ItineraryTabsProps = {
     deleteTripLegAction?: (formData: FormData) => Promise<void>;
     tripLegRevalidatePathname?: string;
     updateTransportationAction: (formData: FormData) => Promise<void>;
+    updateItineraryAction: (formData: FormData) => Promise<void>;
     createItineraryAction: (formData: FormData) => Promise<void>;
     createTransportationAction: (formData: FormData) => Promise<void>;
     undoJourneyTransportationAction?: (formData: FormData) => Promise<void>;
@@ -91,6 +92,7 @@ export default function ItineraryTabs({
     deleteTripLegAction,
     tripLegRevalidatePathname,
     updateTransportationAction,
+    updateItineraryAction,
     createItineraryAction,
     createTransportationAction,
     undoJourneyTransportationAction,
@@ -144,11 +146,13 @@ export default function ItineraryTabs({
                     createAction={createItineraryAction}
                     createTransportationAction={createTransportationAction}
                     updateTransportationAction={updateTransportationAction}
+                    updateAction={updateItineraryAction}
                     moveItemAction={moveItemAction}
                     moveTargetTrips={moveTargetTrips}
                     travelerOptions={travelerOptions}
                     audienceOptions={audienceOptions}
                     currentUserTripMemberId={currentUserTripMemberId}
+                    categories={categories}
                     onQuickAddDateChange={setQuickAddDate}
                     ideas={ideas}
                     promoteIdeaAction={createItineraryAction}
@@ -202,11 +206,13 @@ export default function ItineraryTabs({
                             createAction={createItineraryAction}
                             createTransportationAction={createTransportationAction}
                             updateTransportationAction={updateTransportationAction}
+                            updateAction={updateItineraryAction}
                             moveItemAction={moveItemAction}
                             moveTargetTrips={moveTargetTrips}
                             travelerOptions={travelerOptions}
                             audienceOptions={audienceOptions}
                             currentUserTripMemberId={currentUserTripMemberId}
+                            categories={categories}
                             onQuickAddDateChange={setQuickAddDate}
                         />
                     ) : (

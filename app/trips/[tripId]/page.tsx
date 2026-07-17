@@ -711,6 +711,51 @@ async function insertItineraryPayloadWithFallback(
     return { data: null, error: lastError };
 }
 
+async function updateItineraryPayloadWithFallback(
+    payload: ItineraryItemPayload,
+    itemId: string,
+    tripId: string
+) {
+    const supabase = await createClient();
+    const fallbackCategoryPayload = {
+        ...payload,
+        category:
+            payload.category === "transportation"
+                ? "travel"
+                : getLegacyItineraryCategory(payload.category),
+    };
+    const attempts = [
+        payload,
+        removeOptionalLinkColumns(payload),
+        fallbackCategoryPayload,
+        removeOptionalLinkColumns(fallbackCategoryPayload),
+    ];
+
+    let lastError: { code?: string; message?: string } | null = null;
+
+    for (const [index, attempt] of attempts.entries()) {
+        const { error } = await supabase
+            .from("itinerary_items")
+            .update(attempt)
+            .eq("id", itemId)
+            .eq("trip_id", tripId);
+
+        if (!error) return null;
+
+        lastError = error;
+
+        const shouldTryNext =
+            (index < 2 && isMissingOptionalColumnError(error)) ||
+            isCategoryConstraintError(error);
+
+        if (!shouldTryNext) break;
+
+        console.warn(`Itinerary item update fallback ${index + 1} triggered.`, error);
+    }
+
+    return lastError;
+}
+
 function getMissingColumnName(error: { message?: string; details?: string }) {
     const text = `${error.message || ""} ${error.details || ""}`;
     return (
@@ -2141,6 +2186,126 @@ async function createItineraryItem(formData: FormData) {
         step: "add_first_item",
         nextStep: "complete",
     });
+
+    redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`));
+}
+
+async function updateItineraryItem(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = formData.get("trip_id") as string;
+    const itemId = formData.get("item_id") as string;
+    const title = formData.get("title") as string;
+    const categorySelection = await getCategorySelectionForPayload({
+        categoryId: String(formData.get("category_id") || ""),
+        fallbackName: String(formData.get("category") || FALLBACK_CATEGORY_LABEL),
+        userId: user.id,
+    });
+    const status = formData.get("status") as string;
+    const itemDate = formData.get("item_date") as string;
+    const startTime = formData.get("start_time") as string;
+    const endTime = formData.get("end_time") as string;
+    const location = formData.get("location") as string;
+    const formattedAddress = formData.get("formatted_address") as string;
+    const googlePlaceId = formData.get("google_place_id") as string;
+    const locationLat = formData.get("location_lat") as string;
+    const locationLng = formData.get("location_lng") as string;
+    const timezone = formData.get("timezone") as string;
+    const timezoneSource = formData.get("timezone_source") as string;
+    const ticketWebsite = formData.get("ticket_website") as string;
+    const locationWebsite = formData.get("location_website") as string;
+    const coverImageUrl = formData.get("cover_image_url") as string;
+    const url = ticketWebsite || (formData.get("url") as string);
+    const endDate = formData.get("end_date") as string;
+    const notes = formData.get("notes") as string;
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
+    const audience = parseTripAudienceFormData(formData);
+    const tripLegId = await resolveTripLegIdForDate({
+        supabase,
+        tripId,
+        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
+        itemDate,
+    });
+
+    const payload: ItineraryItemPayload = {
+        trip_id: tripId,
+        title,
+        category: categorySelection.category,
+        category_id: categorySelection.category_id,
+        status,
+        item_date: itemDate,
+        end_date: endDate || null,
+        start_time: startTime || null,
+        end_time: endTime || null,
+        location,
+        formatted_address: formattedAddress || null,
+        google_place_id: googlePlaceId || null,
+        location_lat: locationLat ? Number(locationLat) : null,
+        location_lng: locationLng ? Number(locationLng) : null,
+        timezone: timezone || null,
+        timezone_source: timezoneSource || "manual",
+        url: url || null,
+        ticket_website: ticketWebsite || null,
+        location_website: locationWebsite || null,
+        cover_image_url: coverImageUrl || null,
+        is_private: isPrivate,
+        audience_mode: audience.audienceMode,
+        trip_leg_id: tripLegId,
+        notes,
+    };
+
+    const error = await updateItineraryPayloadWithFallback(payload, itemId, tripId);
+
+    if (error) {
+        console.error("Error updating itinerary item:", {
+            authenticatedUserId: user.id,
+            tripId,
+            itemId,
+            message: error.message,
+            code: error.code,
+            payload,
+        });
+        throw new Error(
+            `Could not update itinerary item: ${
+                error.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
+    const participantsError = await replaceTripItemParticipants({
+        tripId,
+        itemType: "itinerary",
+        itemId,
+        formData,
+    });
+
+    if (participantsError) {
+        console.error("Error updating itinerary participants:", {
+            message: participantsError.message,
+            code: participantsError.code,
+            details: participantsError.details,
+            hint: participantsError.hint,
+            tripId,
+            itemId,
+        });
+        throw new Error(
+            `Could not update itinerary participants: ${
+                participantsError.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
 
     redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=itinerary`));
 }
@@ -5655,6 +5820,7 @@ async function TripDetailContent({ params, searchParams }: PageProps) {
                         deleteTripLegAction={deleteTripLeg}
                         tripLegRevalidatePathname={getTripHref(trip)}
                         updateTransportationAction={updateTransportationItem}
+                        updateItineraryAction={updateItineraryItem}
                         createItineraryAction={createItineraryItem}
                         createTransportationAction={createTransportationItem}
                         undoJourneyTransportationAction={undoJourneyTransportationItem}

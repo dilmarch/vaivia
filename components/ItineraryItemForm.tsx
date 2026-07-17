@@ -41,6 +41,7 @@ type InitialItem = {
 
 type ItineraryItemFormProps = {
     tripId: string;
+    itemId?: string;
     submitAction: (formData: FormData) => Promise<void>;
     initialItem?: InitialItem;
     submitLabel?: string;
@@ -219,6 +220,7 @@ function buildTimezoneOptionGroups(dateString: string, currentTimezone: string) 
 
 export default function ItineraryItemForm({
     tripId,
+    itemId,
     submitAction,
     initialItem,
     submitLabel = "Add itinerary item",
@@ -234,6 +236,7 @@ export default function ItineraryItemForm({
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const isEditMode = Boolean(initialItem) && !duplicateMode;
+    const isClosableEditModal = isEditMode && Boolean(onClose);
     const formRef = useRef<HTMLFormElement | null>(null);
     const returnTo = useMemo(() => {
         const query = searchParams.toString();
@@ -537,7 +540,7 @@ export default function ItineraryItemForm({
     }, []);
 
     useEffect(() => {
-        if (!isModalOpen || isEditMode) return;
+        if (!isModalOpen || (isEditMode && !isClosableEditModal)) return;
 
         function closeOnEscape(event: KeyboardEvent) {
             if (event.key === "Escape") requestCloseModal();
@@ -545,7 +548,7 @@ export default function ItineraryItemForm({
 
         document.addEventListener("keydown", closeOnEscape);
         return () => document.removeEventListener("keydown", closeOnEscape);
-    }, [isEditMode, isModalOpen, requestCloseModal]);
+    }, [isClosableEditModal, isEditMode, isModalOpen, requestCloseModal]);
 
     return (
         <>
@@ -570,12 +573,16 @@ export default function ItineraryItemForm({
             {isModalOpen && (
                 <div
                     className={
-                        isEditMode
+                        isEditMode && !isClosableEditModal
                             ? ""
                             : "vaivia-modal-backdrop"
                     }
                     data-vaivia-modal-state={isModalClosing ? "closing" : "open"}
-                    onClick={isEditMode ? undefined : requestCloseModal}
+                    onClick={
+                        isEditMode && !isClosableEditModal
+                            ? undefined
+                            : requestCloseModal
+                    }
                 >
                     <aside
                         className={
@@ -588,7 +595,7 @@ export default function ItineraryItemForm({
                     >
                         <div
                             className={
-                                isEditMode
+                                isEditMode && !isClosableEditModal
                                     ? "vaivia-modal-header"
                                     : "vaivia-modal-header flex items-center justify-between gap-4"
                             }
@@ -604,12 +611,16 @@ export default function ItineraryItemForm({
                                 </h2>
                             </div>
 
-                            {!isEditMode && (
+                            {(!isEditMode || isClosableEditModal) && (
                                 <button
                                     type="button"
                                     onClick={requestCloseModal}
                                     className="vaivia-modal-close"
-                                    aria-label="Close add itinerary item"
+                                    aria-label={
+                                        isEditMode
+                                            ? "Close edit itinerary item"
+                                            : "Close add itinerary item"
+                                    }
                                 >
                                     <X className="h-4 w-4" aria-hidden="true" />
                                 </button>
@@ -623,6 +634,9 @@ export default function ItineraryItemForm({
                             className={FORM_BODY_CLASS}
                         >
                     <input type="hidden" name="trip_id" value={tripId} />
+                    {itemId ? (
+                        <input type="hidden" name="item_id" value={itemId} />
+                    ) : null}
                     <input type="hidden" name="return_to" value={returnTo} />
                     <input type="hidden" name="timezone_source" value={timezoneSource} />
 
@@ -1020,12 +1034,12 @@ export default function ItineraryItemForm({
 
                     <div
                         className={
-                            isEditMode
+                            isEditMode && !isClosableEditModal
                                 ? "space-y-3"
                                 : "flex flex-col-reverse gap-2 border-t border-white/10 pt-5 sm:flex-row sm:justify-end"
                         }
                     >
-                        {!isEditMode && (
+                        {(!isEditMode || isClosableEditModal) && (
                             <button
                                 type="button"
                                 onClick={requestCloseModal}
@@ -1039,7 +1053,7 @@ export default function ItineraryItemForm({
                             type="submit"
                             disabled={Boolean(endTimeIsBeforeStartTime)}
                             className={
-                                isEditMode
+                                isEditMode && !isClosableEditModal
                                     ? `w-full ${PRIMARY_BUTTON_CLASS}`
                                     : PRIMARY_BUTTON_CLASS
                             }
