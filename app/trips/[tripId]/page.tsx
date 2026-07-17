@@ -434,24 +434,39 @@ function removeTripCoverColumn(payload: TripUpdatePayload) {
     return fallbackPayload;
 }
 
-function isMissingOptionalColumnError(error: { code?: string; message?: string }) {
+const REMOVABLE_LEGACY_ITINERARY_COLUMNS = new Set([
+    "ticket_website",
+    "location_website",
+    "cover_image_url",
+    "transportation_mode",
+    "airline_name",
+    "airline_code",
+    "flight_number",
+]);
+
+const PROTECTED_VISIBILITY_COLUMNS = new Set(["is_private", "audience_mode"]);
+
+function isProtectedVisibilityColumn(column: string) {
+    return PROTECTED_VISIBILITY_COLUMNS.has(column);
+}
+
+function isMissingOptionalColumnError(error: {
+    code?: string;
+    message?: string;
+    details?: string;
+}) {
     const message = error.message?.toLowerCase() || "";
+    const missingColumn = getMissingColumnName(error);
+
+    if (missingColumn) {
+        return REMOVABLE_LEGACY_ITINERARY_COLUMNS.has(missingColumn);
+    }
 
     return (
-        error.code === "42703" ||
-        error.code === "PGRST204" ||
-            (message.includes("column") &&
-                (message.includes("ticket_website") ||
-                    message.includes("location_website") ||
-                    message.includes("cover_image_url") ||
-                    message.includes("transportation_mode") ||
-                    message.includes("airline_name") ||
-                    message.includes("airline_code") ||
-                    message.includes("flight_number") ||
-                    message.includes("created_by") ||
-                    message.includes("is_private") ||
-                    message.includes("category_id") ||
-                    message.includes("schema cache")))
+        message.includes("column") &&
+        Array.from(REMOVABLE_LEGACY_ITINERARY_COLUMNS).some((column) =>
+            message.includes(column)
+        )
     );
 }
 
@@ -464,11 +479,6 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
         airline_name,
         airline_code,
         flight_number,
-        created_by,
-        is_private,
-        category_id,
-        audience_mode,
-        trip_leg_id,
         ...fallbackPayload
     } = payload;
 
@@ -479,11 +489,6 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
     void airline_name;
     void airline_code;
     void flight_number;
-    void created_by;
-    void is_private;
-    void category_id;
-    void audience_mode;
-    void trip_leg_id;
 
     return fallbackPayload;
 }
@@ -801,6 +806,7 @@ async function insertTransportationPayloadWithFallback(
 
         const missingColumn = getMissingColumnName(error);
         if (!missingColumn || !(missingColumn in attempt)) break;
+        if (isProtectedVisibilityColumn(missingColumn)) break;
 
         console.warn(
             `Transportation items table is missing optional column "${missingColumn}". Retrying without it.`,
@@ -854,7 +860,6 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
         "age_policy",
         "dress_code",
         "other_notes",
-        "is_private",
         "attended",
     ]);
     let attempt: Record<string, unknown> = { ...payload };
@@ -878,6 +883,7 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
         if (
             !missingColumn ||
             !(missingColumn in attempt) ||
+            isProtectedVisibilityColumn(missingColumn) ||
             !optionalColumns.has(missingColumn)
         ) {
             break;
@@ -925,6 +931,7 @@ async function updateTripIdeaPayloadWithFallback(
 
         const missingColumn = getMissingColumnName(error);
         if (!missingColumn || !(missingColumn in attempt)) break;
+        if (isProtectedVisibilityColumn(missingColumn)) break;
 
         console.warn(
             `Trip ideas table is missing optional column "${missingColumn}". Retrying update without it.`,
@@ -963,6 +970,7 @@ async function updateTransportationPayloadWithFallback(
 
         const missingColumn = getMissingColumnName(error);
         if (!missingColumn || !(missingColumn in attempt)) break;
+        if (isProtectedVisibilityColumn(missingColumn)) break;
 
         console.warn(
             `Transportation items table is missing optional column "${missingColumn}". Retrying update without it.`,

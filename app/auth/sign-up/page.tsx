@@ -3,7 +3,7 @@ import { SignUpForm } from "@/components/sign-up-form";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string }>;
+  searchParams: Promise<{ email?: string; invitation?: string; invite?: string }>;
 }) {
   const params = await searchParams;
 
@@ -15,7 +15,11 @@ export default async function Page({
             VAIVIA
           </p>
         </div>
-        <SignUpForm initialEmail={params.email || ""} />
+        <SignUpForm
+          initialEmail={params.email || ""}
+          initialInvitationId={params.invitation || ""}
+          initialInviteType={params.invite || ""}
+        />
       </div>
     </main>
   );

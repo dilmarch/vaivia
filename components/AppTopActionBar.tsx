@@ -500,6 +500,9 @@ export default function AppTopActionBar({
     const dropdownNotificationCount = hasSyncedNotifications
         ? visibleNotifications.length
         : 0;
+    const hasPendingTripInviteNotification = visibleNotifications.some(
+        (notification) => notification.type === "trip_invite_received"
+    );
     const activeMobileTourSteps = activeMobileTour
         ? MOBILE_TOUR_STEPS[activeMobileTour]
         : [];
@@ -541,6 +544,7 @@ export default function AppTopActionBar({
         if (activeMobileTour) return;
         if (prominentActionNotification) return;
         if (isOnboardingWelcomeOpen) return;
+        if (hasPendingTripInviteNotification) return;
         if (onboardingProgress?.status === "in_progress") return;
 
         const tourKind = getMobileTourForPath(pathname);
@@ -581,6 +585,7 @@ export default function AppTopActionBar({
         };
     }, [
         activeMobileTour,
+        hasPendingTripInviteNotification,
         isOnboardingWelcomeOpen,
         onboardingProgress?.status,
         pathname,
@@ -1397,6 +1402,7 @@ export default function AppTopActionBar({
             ) : null}
             {isOnboardingWelcomeOpen &&
             !prominentActionNotification &&
+            !hasPendingTripInviteNotification &&
             !shouldShowImportPrompt ? (
                 <Portal>
                     <AnimatedModal

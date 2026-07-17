@@ -37,6 +37,7 @@ type InitialItem = {
     formatted_address?: string | null;
     is_private?: boolean | null;
     audience_mode?: TripAudienceMode | null;
+    audience_selected_options?: TripAudienceOption[];
 };
 
 type ItineraryItemFormProps = {
@@ -831,6 +832,9 @@ export default function ItineraryItemForm({
                         options={audienceOptions}
                         currentUserTripMemberId={currentUserTripMemberId}
                         initialAudienceMode={initialItem?.audience_mode || "everyone"}
+                        initialSelectedOptions={
+                            initialItem?.audience_selected_options || []
+                        }
                         privateSectionId="itinerary-private-section"
                     />
 

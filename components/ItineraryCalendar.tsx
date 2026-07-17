@@ -96,6 +96,25 @@ export type ItineraryCalendarItem = {
     audience_mode?: TripAudienceMode | null;
 };
 
+function getAudienceOptionKey(option: Pick<TripAudienceOption, "kind" | "id">) {
+    return `${option.kind}:${option.id}`;
+}
+
+function getItineraryEditFormKey(item: ItineraryCalendarItem) {
+    const selectedAudienceSignature = (item.audience_selected_options || [])
+        .map(getAudienceOptionKey)
+        .sort()
+        .join("|");
+
+    return [
+        "edit",
+        item.id,
+        item.audience_mode || "everyone",
+        item.is_private ? "private" : "shared",
+        selectedAudienceSignature,
+    ].join(":");
+}
+
 export type CalendarAccommodation = {
     id: string;
     hotel_name: string;
@@ -671,17 +690,34 @@ function getTransportationDuplicateInitialValues(
 
 function PrivateLockBadge({
     compact = false,
+    iconOnly = false,
     className = "",
 }: {
     compact?: boolean;
+    iconOnly?: boolean;
     className?: string;
 }) {
+    if (iconOnly) {
+        return (
+            <span
+                className={`inline-flex items-center justify-center rounded-full border border-white/20 bg-slate-950/85 text-lime-200 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.16)] ${
+                    compact ? "h-7 w-7" : "h-8 w-8"
+                } ${className}`}
+                title="Private item"
+                aria-label="Private item"
+            >
+                <Lock className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} aria-hidden="true" />
+            </span>
+        );
+    }
+
     return (
         <span
-            className={`inline-flex items-center gap-1 rounded-full border border-white/20 bg-slate-950/80 font-bold uppercase tracking-[0.12em] text-white shadow-sm ${
+            className={`inline-flex items-center gap-1 rounded-full border border-white/20 bg-slate-950/80 font-bold uppercase tracking-[0.12em] text-lime-100 shadow-sm ${
                 compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-xs"
             } ${className}`}
             title="Private item"
+            aria-label="Private item"
         >
             <Lock className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} aria-hidden="true" />
             Private
@@ -1219,7 +1255,7 @@ function FlightListCard({
             className="relative rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
         >
             <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
-                {item.is_private ? <PrivateLockBadge compact /> : null}
+                {item.is_private ? <PrivateLockBadge compact iconOnly /> : null}
                 <span
                     className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
                         item.status
@@ -1896,7 +1932,7 @@ function EventCard({
                 }`}
             >
                 <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
-                    {item.is_private ? <PrivateLockBadge compact /> : null}
+                    {item.is_private ? <PrivateLockBadge compact iconOnly /> : null}
                     <span
                         className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
                             item.status
@@ -1985,7 +2021,7 @@ function EventCard({
             } relative rounded-[1.25rem] border border-white/10 shadow-[0_18px_45px_rgba(0,0,0,0.28)] transition duration-200 hover:-translate-y-0.5 hover:border-lime-300/20 hover:shadow-[0_24px_60px_rgba(0,0,0,0.38)]`}
         >
             <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
-                {item.is_private ? <PrivateLockBadge compact /> : null}
+                {item.is_private ? <PrivateLockBadge compact iconOnly /> : null}
                 <span
                     className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
                         item.status
@@ -3595,6 +3631,10 @@ export default function ItineraryCalendar({
         useState<ItineraryCalendarItem | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const weekScrollRef = useRef<HTMLDivElement | null>(null);
+    const itemsById = useMemo(
+        () => new Map(items.map((item) => [item.id, item])),
+        [items]
+    );
     const primaryDestination = useMemo(
         () => parseDestinationList(tripDestination)[0] || "",
         [tripDestination]
@@ -3608,6 +3648,18 @@ export default function ItineraryCalendar({
         () => items.filter(isScheduledItineraryItem),
         [items]
     );
+
+    useEffect(() => {
+        setSelectedItem((current) => {
+            if (!current) return current;
+            return itemsById.get(current.id) || null;
+        });
+        setEditingItem((current) => {
+            if (!current) return current;
+            return itemsById.get(current.id) || null;
+        });
+    }, [itemsById]);
+
     const selectedDaySuggestionItems = useMemo(() => {
         const selectedDateKey = getLocalDateKey(anchorDate);
 
@@ -4205,7 +4257,7 @@ export default function ItineraryCalendar({
             )}
             {editingItem && (
                 <ItineraryItemForm
-                    key={`edit-${editingItem.id}`}
+                    key={getItineraryEditFormKey(editingItem)}
                     tripId={tripId}
                     itemId={editingItem.id}
                     submitAction={updateAction}

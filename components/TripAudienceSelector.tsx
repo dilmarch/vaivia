@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Users, UserRoundCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
     TripAudienceMode,
     TripAudienceOption,
@@ -50,6 +50,14 @@ export default function TripAudienceSelector({
     onAudienceModeChange,
 }: TripAudienceSelectorProps) {
     const defaultMode = initialAudienceMode || "everyone";
+    const initialSelectedKeySignature = useMemo(
+        () =>
+            initialSelectedOptions
+                .map(optionKey)
+                .sort()
+                .join("|"),
+        [initialSelectedOptions]
+    );
     const [audienceMode, setAudienceMode] = useState<TripAudienceMode>(defaultMode);
     const currentUserKey = currentUserTripMemberId
         ? `member:${currentUserTripMemberId}`
@@ -61,6 +69,21 @@ export default function TripAudienceSelector({
 
         return new Set(initialSelectedOptions.map(optionKey));
     });
+
+    useEffect(() => {
+        setAudienceMode(defaultMode);
+        setSelectedKeys(() => {
+            if (defaultMode === "just_me" && currentUserKey) {
+                return new Set([currentUserKey]);
+            }
+
+            return new Set(
+                initialSelectedKeySignature
+                    ? initialSelectedKeySignature.split("|")
+                    : []
+            );
+        });
+    }, [currentUserKey, defaultMode, initialSelectedKeySignature]);
     const selectedOptions = useMemo(() => {
         if (audienceMode === "everyone") return [];
         return options.filter((option) => selectedKeys.has(optionKey(option)));

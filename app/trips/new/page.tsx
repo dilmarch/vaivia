@@ -304,6 +304,8 @@ function getMissingColumnName(error: { message?: string; details?: string }) {
     );
 }
 
+const PROTECTED_VISIBILITY_COLUMNS = new Set(["is_private", "audience_mode"]);
+
 async function insertSetupTransportationPayloadWithFallback({
     supabase,
     payload,
@@ -334,6 +336,7 @@ async function insertSetupTransportationPayloadWithFallback({
 
         const missingColumn = getMissingColumnName(error);
         if (!missingColumn || !(missingColumn in attempt)) break;
+        if (PROTECTED_VISIBILITY_COLUMNS.has(missingColumn)) break;
 
         console.warn(
             `Setup flight transportation insert is missing optional column "${missingColumn}". Retrying without it.`,

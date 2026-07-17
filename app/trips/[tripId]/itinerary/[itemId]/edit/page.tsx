@@ -46,19 +46,38 @@ type ItineraryItemUpdatePayload = {
 
 type TransportationItemUpdatePayload = Record<string, string | number | boolean | null>;
 
-function isMissingOptionalColumnError(error: { code?: string; message?: string }) {
+const REMOVABLE_LEGACY_ITINERARY_COLUMNS = new Set([
+    "ticket_website",
+    "location_website",
+    "cover_image_url",
+]);
+
+function getMissingColumnName(error: { message?: string; details?: string }) {
+    const text = `${error.message || ""} ${error.details || ""}`;
+    return (
+        text.match(/'([^']+)' column/)?.[1] ||
+        text.match(/column "([^"]+)"/)?.[1] ||
+        ""
+    );
+}
+
+function isMissingOptionalColumnError(error: {
+    code?: string;
+    message?: string;
+    details?: string;
+}) {
     const message = error.message?.toLowerCase() || "";
+    const missingColumn = getMissingColumnName(error);
+
+    if (missingColumn) {
+        return REMOVABLE_LEGACY_ITINERARY_COLUMNS.has(missingColumn);
+    }
 
     return (
-        error.code === "42703" ||
-        error.code === "PGRST204" ||
-        (message.includes("column") &&
-            (message.includes("ticket_website") ||
-                message.includes("location_website") ||
-                message.includes("cover_image_url") ||
-                message.includes("is_private") ||
-                message.includes("category_id") ||
-                message.includes("schema cache")))
+        message.includes("column") &&
+        Array.from(REMOVABLE_LEGACY_ITINERARY_COLUMNS).some((column) =>
+            message.includes(column)
+        )
     );
 }
 
@@ -67,16 +86,12 @@ function removeOptionalLinkColumns(payload: ItineraryItemUpdatePayload) {
         ticket_website,
         location_website,
         cover_image_url,
-        is_private,
-        category_id,
         ...fallbackPayload
     } = payload;
 
     void ticket_website;
     void location_website;
     void cover_image_url;
-    void is_private;
-    void category_id;
 
     return fallbackPayload;
 }

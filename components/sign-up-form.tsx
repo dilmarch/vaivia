@@ -12,6 +12,7 @@ import {
   Upload,
 } from "lucide-react";
 import {
+  completeOnboarding,
   dismissOnboarding,
   ensureNewUserOnboardingProgress,
   markOnboardingStepCompleted,
@@ -120,9 +121,17 @@ function getPasswordValidationError({
 export function SignUpForm({
   className,
   initialEmail = "",
+  initialInvitationId = "",
+  initialInviteType = "",
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { initialEmail?: string }) {
+}: React.ComponentPropsWithoutRef<"div"> & {
+  initialEmail?: string;
+  initialInvitationId?: string;
+  initialInviteType?: string;
+}) {
   const router = useRouter();
+  const isTripInviteSignup =
+    initialInviteType === "trip_invite" || Boolean(initialInvitationId);
   const [step, setStep] = useState<SignupStep>("account");
   const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
@@ -373,9 +382,17 @@ export function SignUpForm({
 
   async function advanceAfterPhoto() {
     const invitations = await loadPendingTripInvitations();
-    setPendingInvitations(invitations);
+    const sortedInvitations = initialInvitationId
+      ? [...invitations].sort((a, b) => {
+          if (a.id === initialInvitationId) return -1;
+          if (b.id === initialInvitationId) return 1;
+          return 0;
+        })
+      : invitations;
+
+    setPendingInvitations(sortedInvitations);
     setAcceptedInvitation(null);
-    setStep(invitations.length > 0 ? "invites" : "start");
+    setStep(sortedInvitations.length > 0 ? "invites" : "start");
   }
 
   async function handlePhotoNext() {
@@ -432,18 +449,22 @@ export function SignUpForm({
       if (error) throw error;
 
       if (userId) {
-        await markOnboardingStepCompleted({
-          supabase,
-          userId,
-          step: "welcome",
-          nextStep: "create_trip",
-        });
-        await markOnboardingStepCompleted({
-          supabase,
-          userId,
-          step: "create_trip",
-          nextStep: "add_first_item",
-        });
+        if (isTripInviteSignup) {
+          await completeOnboarding(supabase, userId);
+        } else {
+          await markOnboardingStepCompleted({
+            supabase,
+            userId,
+            step: "welcome",
+            nextStep: "create_trip",
+          });
+          await markOnboardingStepCompleted({
+            supabase,
+            userId,
+            step: "create_trip",
+            nextStep: "add_first_item",
+          });
+        }
       }
 
       setAcceptedInvitation(invitation);
@@ -451,6 +472,11 @@ export function SignUpForm({
         current.filter((item) => item.id !== invitation.id)
       );
       setStatusMessage(`You joined ${invitation.trip_title}.`);
+
+      if (isTripInviteSignup) {
+        router.refresh();
+        router.push(getTripHref(invitation));
+      }
     } catch (error) {
       setError(getErrorMessage(error));
     } finally {
@@ -628,11 +654,13 @@ export function SignUpForm({
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">
             {step === "account"
               ? "Tell us who you are so your trips feel personal from day one."
-              : step === "photo"
-                ? "Add a profile photo now, or skip it and come back later."
-                : step === "invites"
-                  ? "Review trips you were invited to before choosing where to begin."
-                : `Welcome, ${displayName}. Pick where you want to begin.`}
+                : step === "photo"
+                  ? "Add a profile photo now, or skip it and come back later."
+                  : step === "invites"
+                    ? isTripInviteSignup
+                      ? "Accept your trip invitation to open the trip."
+                      : "Review trips you were invited to before choosing where to begin."
+                  : `Welcome, ${displayName}. Pick where you want to begin.`}
           </p>
         </div>
 
@@ -920,13 +948,15 @@ export function SignUpForm({
                     >
                       Go to trip
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => setStep("start")}
-                      className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
-                    >
-                      Later
-                    </button>
+                    {!isTripInviteSignup ? (
+                      <button
+                        type="button"
+                        onClick={() => setStep("start")}
+                        className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
+                      >
+                        Later
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -977,13 +1007,15 @@ export function SignUpForm({
 
               {error ? <p className="text-sm font-bold text-red-200">{error}</p> : null}
 
-              <button
-                type="button"
-                onClick={() => setStep("start")}
-                className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
-              >
-                Continue to other options
-              </button>
+              {!isTripInviteSignup ? (
+                <button
+                  type="button"
+                  onClick={() => setStep("start")}
+                  className="inline-flex min-h-12 w-full items-center justify-center rounded-full border border-white/10 bg-white/[0.08] px-6 text-sm font-black text-slate-100 transition hover:bg-white/[0.14]"
+                >
+                  Continue to other options
+                </button>
+              ) : null}
             </div>
           ) : null}
 
