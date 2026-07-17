@@ -25,7 +25,7 @@ import {
   normalizeUsername,
 } from "@/lib/usernames";
 
-type SignupStep = "account" | "photo" | "invites" | "start";
+type SignupStep = "account" | "photo" | "confirm" | "invites" | "start";
 
 type OnboardingTripInvitation = {
   id: string;
@@ -381,6 +381,11 @@ export function SignUpForm({
   }
 
   async function advanceAfterPhoto() {
+    if (!hasActiveSession) {
+      setStep("confirm");
+      return;
+    }
+
     const invitations = await loadPendingTripInvitations();
     const sortedInvitations = initialInvitationId
       ? [...invitations].sort((a, b) => {
@@ -647,20 +652,24 @@ export function SignUpForm({
               ? "Create your account"
               : step === "photo"
                 ? "Add your profile photo"
-                : step === "invites"
-                  ? "Trip invitation"
-                : "Get started in VAIVIA"}
+                : step === "confirm"
+                  ? "Confirm your email"
+                  : step === "invites"
+                    ? "Trip invitation"
+                    : "Get started in VAIVIA"}
           </h1>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">
             {step === "account"
               ? "Tell us who you are so your trips feel personal from day one."
                 : step === "photo"
                   ? "Add a profile photo now, or skip it and come back later."
-                  : step === "invites"
-                    ? isTripInviteSignup
-                      ? "Accept your trip invitation to open the trip."
-                      : "Review trips you were invited to before choosing where to begin."
-                  : `Welcome, ${displayName}. Pick where you want to begin.`}
+                  : step === "confirm"
+                    ? "Check your email to confirm your account before continuing."
+                    : step === "invites"
+                      ? isTripInviteSignup
+                        ? "Accept your trip invitation to open the trip."
+                        : "Review trips you were invited to before choosing where to begin."
+                      : `Welcome, ${displayName}. Pick where you want to begin.`}
           </p>
         </div>
 
@@ -917,6 +926,39 @@ export function SignUpForm({
                 >
                   Skip
                 </button>
+              </div>
+            </div>
+          ) : null}
+
+          {step === "confirm" ? (
+            <div className="space-y-5 rounded-[1.75rem] border border-lime-300/20 bg-lime-300/[0.08] p-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200">
+                  Email confirmation
+                </p>
+                <h2 className="mt-3 text-3xl font-black tracking-tight">
+                  Check your inbox before continuing.
+                </h2>
+                <p className="mt-3 text-sm font-semibold leading-6 text-slate-300">
+                  We sent a confirmation link to{" "}
+                  <span className="font-black text-white">{email.trim()}</span>.
+                  Open that email and confirm your account, then sign in to keep
+                  setting up VAIVIA.
+                </p>
+              </div>
+
+              <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/60 p-4 text-sm font-semibold leading-6 text-slate-300">
+                If you were invited to a trip, VAIVIA will show that invite after
+                you confirm your email and sign in.
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href="/auth/login"
+                  className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-lime-300 px-6 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                >
+                  Go to login
+                </Link>
               </div>
             </div>
           ) : null}

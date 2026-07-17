@@ -580,7 +580,7 @@ async function TripsDashboard() {
 
   const authProfileDefaults = getUserProfileDefaults(user);
   const dashboardName =
-    [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() ||
+    profile?.first_name?.trim() ||
     authProfileDefaults.first_name ||
     profile?.username ||
     authProfileDefaults.username ||
