@@ -7,13 +7,32 @@ export const TRAVEL_EMAIL_IMPORT_STATUS_LABELS: Record<string, string> = {
     processing: "Processing",
     needs_review: "Needs review",
     ready: "Ready to add",
-    imported: "Imported",
+    imported: "Added",
     failed: "Could not process",
-    rejected: "Rejected",
+    rejected: "Ignored",
 };
 
 export function getTravelEmailImportStatusLabel(status?: string | null) {
     return status ? TRAVEL_EMAIL_IMPORT_STATUS_LABELS[status] || status : "Received";
+}
+
+export function getTravelEmailImportStatusClasses(status?: string | null) {
+    switch (status) {
+        case "needs_review":
+        case "ready":
+            return "border-amber-300/35 bg-amber-300/15 text-amber-100";
+        case "rejected":
+            return "border-slate-400/25 bg-slate-400/10 text-slate-200";
+        case "imported":
+            return "border-lime-300/40 bg-lime-300/20 text-lime-100";
+        case "failed":
+            return "border-red-300/35 bg-red-400/15 text-red-100";
+        case "processing":
+            return "border-sky-300/35 bg-sky-300/15 text-sky-100";
+        case "received":
+        default:
+            return "border-white/10 bg-white/[0.06] text-slate-200";
+    }
 }
 
 export function isTravelImportReviewSchemaMissingError(error: {

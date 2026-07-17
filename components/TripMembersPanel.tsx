@@ -8,6 +8,7 @@ import ShareTripModal from "@/components/ShareTripModal";
 import { createClient } from "@/lib/supabase/client";
 
 export type TripHeaderMember = {
+    trip_member_id?: string | null;
     user_id: string;
     first_name?: string | null;
     last_name?: string | null;
@@ -16,6 +17,16 @@ export type TripHeaderMember = {
     avatar_url?: string | null;
     joined_at?: string | null;
     role?: string | null;
+};
+
+export type TripHeaderMemberLeg = {
+    memberId: string;
+    name: string;
+    startDate?: string | null;
+    endDate?: string | null;
+    iconEmoji?: string | null;
+    cityName?: string | null;
+    countryCode?: string | null;
 };
 
 export type TripHeaderFamilyMember = {
@@ -43,6 +54,7 @@ type TripMembersPanelProps = {
     familyMembers?: TripHeaderFamilyMember[];
     availableFamilyMembers?: TripHeaderFamilyMember[];
     invitations?: TripHeaderInvitation[];
+    memberLegs?: TripHeaderMemberLeg[];
     currentUserId: string;
     tripOwnerId?: string | null;
     removeMemberAction: (formData: FormData) => Promise<void>;
@@ -91,6 +103,11 @@ function formatJoinedDate(value?: string | null) {
     });
 }
 
+function formatLegDateRange(startDate?: string | null, endDate?: string | null) {
+    if (startDate && endDate) return `${startDate} - ${endDate}`;
+    return startDate || endDate || "Dates not set";
+}
+
 function MemberAvatar({ member }: { member: TripHeaderMember }) {
     return (
         <span className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/15 bg-slate-950 text-xs font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.26)]">
@@ -137,6 +154,7 @@ export default function TripMembersPanel({
     familyMembers = [],
     availableFamilyMembers = [],
     invitations = [],
+    memberLegs = [],
     currentUserId,
     tripOwnerId,
     removeMemberAction,
@@ -248,6 +266,9 @@ export default function TripMembersPanel({
         currentUserId === tripOwnerId &&
         selectedMember?.user_id !== currentUserId &&
         selectedMember?.user_id !== tripOwnerId;
+    const selectedMemberLegs = selectedMember?.trip_member_id
+        ? memberLegs.filter((leg) => leg.memberId === selectedMember.trip_member_id)
+        : [];
 
     async function sendFriendInvite(member: TripHeaderMember) {
         const identifier = getFriendIdentifier(member);
@@ -953,6 +974,41 @@ export default function TripMembersPanel({
                                         </dd>
                                     </div>
                                 </dl>
+
+                                <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                                        Trip legs
+                                    </p>
+                                    {selectedMemberLegs.length > 0 ? (
+                                        <div className="mt-3 space-y-2">
+                                            {selectedMemberLegs.map((leg, index) => (
+                                                <div
+                                                    key={`${leg.memberId}-${leg.name}-${index}`}
+                                                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                                                >
+                                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xl text-lime-200">
+                                                        {leg.iconEmoji || "📍"}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-black text-slate-950">
+                                                            {leg.cityName || leg.name}
+                                                        </p>
+                                                        <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                                                            {formatLegDateRange(
+                                                                leg.startDate,
+                                                                leg.endDate
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                                            No specific legs selected yet.
+                                        </p>
+                                    )}
+                                </section>
 
                                 {confirmingDelete ? (
                                     <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">

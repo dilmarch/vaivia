@@ -137,8 +137,22 @@ export async function resolveActiveDropdownNotifications(
         )
         .map((notification) => getMetadataString(notification, "shareId"))
         .filter((id): id is string => Boolean(id));
+    const travelImportIds = baseNotifications
+        .filter(
+            (notification) =>
+                notification.type === "travel_email_ready" ||
+                notification.type === "travel_email_needs_review" ||
+                notification.type === "travel_email_failed"
+        )
+        .map((notification) => getMetadataString(notification, "importId"))
+        .filter((id): id is string => Boolean(id));
 
-    const [tripInvitesResult, friendshipsResult, passportSharesResult] =
+    const [
+        tripInvitesResult,
+        friendshipsResult,
+        passportSharesResult,
+        travelImportsResult,
+    ] =
         await Promise.all([
             tripInviteIds.length > 0
                 ? supabase
@@ -158,6 +172,12 @@ export async function resolveActiveDropdownNotifications(
                       .select("id,status")
                       .in("id", passportShareIds)
                 : Promise.resolve({ data: [], error: null }),
+            travelImportIds.length > 0
+                ? supabase
+                      .from("travel_email_imports")
+                      .select("id,status")
+                      .in("id", travelImportIds)
+                : Promise.resolve({ data: [], error: null }),
         ]);
 
     const pendingTripInviteIds = new Set(
@@ -174,6 +194,9 @@ export async function resolveActiveDropdownNotifications(
         (passportSharesResult.data || [])
             .filter((row) => row.status === "pending")
             .map((row) => row.id)
+    );
+    const travelImportStatusById = new Map(
+        (travelImportsResult.data || []).map((row) => [row.id, row.status])
     );
 
     return baseNotifications.filter((notification) => {
@@ -192,6 +215,21 @@ export async function resolveActiveDropdownNotifications(
         if (notification.type === "passport_stamp_share_received") {
             const shareId = getMetadataString(notification, "shareId");
             return Boolean(shareId && pendingPassportShareIds.has(shareId));
+        }
+
+        if (
+            notification.type === "travel_email_ready" ||
+            notification.type === "travel_email_needs_review"
+        ) {
+            const importId = getMetadataString(notification, "importId");
+            const status = importId ? travelImportStatusById.get(importId) : "";
+            return status === "needs_review" || status === "ready";
+        }
+
+        if (notification.type === "travel_email_failed") {
+            const importId = getMetadataString(notification, "importId");
+            const status = importId ? travelImportStatusById.get(importId) : "";
+            return status === "failed";
         }
 
         return true;

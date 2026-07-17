@@ -6,12 +6,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 type TripDestinationPickerProps = {
     initialDestination?: string | null;
+    initialDestinations?: Array<{ label: string; placeId?: string | null }>;
     initialCoverImageUrl?: string | null;
     initialCoverImageSource?: string | null;
     initialCoverImageStoragePath?: string | null;
     initialCoverImageUnsplashId?: string | null;
     tripId?: string | null;
     inputId: string;
+    label?: string;
+    placeholder?: string;
     onChange?: () => void;
     onDestinationsChange?: (
         destinations: Array<{ label: string; placeId?: string | null }>
@@ -79,11 +82,14 @@ function isSupportedUpload(file: File) {
 
 export default function TripDestinationPicker({
     initialDestination,
+    initialDestinations,
     initialCoverImageUrl,
     initialCoverImageSource,
     initialCoverImageStoragePath,
     initialCoverImageUnsplashId,
     inputId,
+    label = "Destination",
+    placeholder = "Search city, province/state, or country...",
     onChange,
     onDestinationsChange,
 }: TripDestinationPickerProps) {
@@ -106,7 +112,12 @@ export default function TripDestinationPicker({
     const [isSearchingUnsplash, setIsSearchingUnsplash] = useState(false);
     const [unsplashError, setUnsplashError] = useState("");
     const [destinations, setDestinations] = useState<DestinationOption[]>(() => {
-        const parsedDestinations = parseDestinations(initialDestination);
+        const parsedDestinations =
+            initialDestinations?.map((destination) => ({
+                label: destination.label,
+                placeId: destination.placeId || null,
+                coverImageUrl: "",
+            })) || parseDestinations(initialDestination);
 
         if (parsedDestinations[0] && initialCoverImageUrl) {
             parsedDestinations[0] = {
@@ -129,7 +140,24 @@ export default function TripDestinationPicker({
     const coverImageUrl = coverPreviewUrl || automaticCoverImageUrl;
 
     useEffect(() => {
-        const parsedDestinations = parseDestinations(initialDestination);
+        const hasInitialDestinations = Boolean(initialDestinations?.length);
+        const parsedDestinations = hasInitialDestinations
+            ? initialDestinations!.map((destination) => ({
+                  label: destination.label,
+                  placeId: destination.placeId || null,
+                  coverImageUrl: "",
+              }))
+            : parseDestinations(initialDestination);
+
+        if (!hasInitialDestinations && !initialDestination) {
+            setCoverPreviewUrl(initialCoverImageUrl || "");
+            setSelectedCoverSource(
+                initialCoverImageSource || (initialCoverImageUrl ? "external" : "")
+            );
+            setSelectedUnsplashId(initialCoverImageUnsplashId || "");
+            setCoverRemoveRequested(false);
+            return;
+        }
 
         if (parsedDestinations[0] && initialCoverImageUrl) {
             parsedDestinations[0] = {
@@ -146,6 +174,7 @@ export default function TripDestinationPicker({
         setSelectedUnsplashId(initialCoverImageUnsplashId || "");
         setCoverRemoveRequested(false);
     }, [
+        initialDestinations,
         initialCoverImageSource,
         initialCoverImageUnsplashId,
         initialCoverImageUrl,
@@ -180,6 +209,7 @@ export default function TripDestinationPicker({
             inputRef.current,
             {
                 fields: [
+                    "place_id",
                     "address_components",
                     "name",
                     "formatted_address",
@@ -353,7 +383,7 @@ export default function TripDestinationPicker({
                 htmlFor={inputId}
                 className="block text-sm font-medium text-slate-700"
             >
-                Destination
+                {label}
             </label>
             <input
                 id={inputId}
@@ -363,7 +393,7 @@ export default function TripDestinationPicker({
                 data-form-type="other"
                 data-lpignore="true"
                 data-1p-ignore="true"
-                placeholder="Search city, province/state, or country..."
+                placeholder={placeholder}
                 className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
             />
 

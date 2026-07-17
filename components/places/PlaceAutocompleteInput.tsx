@@ -40,6 +40,32 @@ const PASSWORD_MANAGER_IGNORE_PROPS = {
     "data-1p-ignore": "true",
 };
 
+function buildSafePlaceResult(
+    place: google.maps.places.PlaceResult,
+    details?: google.maps.places.PlaceResult | null
+): google.maps.places.PlaceResult {
+    const source = details || place;
+
+    return {
+        place_id: source.place_id || place.place_id,
+        name: source.name || place.name,
+        formatted_address: source.formatted_address || place.formatted_address,
+        geometry: source.geometry || place.geometry,
+        website: source.website || place.website,
+        url: source.url || place.url,
+        types: source.types || place.types,
+        business_status: source.business_status || place.business_status,
+        opening_hours: source.opening_hours || place.opening_hours,
+        utc_offset_minutes:
+            source.utc_offset_minutes ?? place.utc_offset_minutes ?? undefined,
+        formatted_phone_number:
+            source.formatted_phone_number || place.formatted_phone_number,
+        international_phone_number:
+            source.international_phone_number || place.international_phone_number,
+        address_components: source.address_components || place.address_components,
+    };
+}
+
 const VAIVIA_GOOGLE_PLACES_STYLE_ID = "vaivia-google-places-autocomplete-style";
 
 const VAIVIA_GOOGLE_PLACES_CSS = `
@@ -217,7 +243,7 @@ export default function PlaceAutocompleteInput({
             const placeId = place.place_id;
 
             if (!placeId || !serviceHostRef.current || !window.google?.maps?.places) {
-                onPlaceSelectRef.current(place);
+                onPlaceSelectRef.current(buildSafePlaceResult(place));
                 return;
             }
 
@@ -235,7 +261,9 @@ export default function PlaceAutocompleteInput({
                         status === window.google.maps.places.PlacesServiceStatus.OK &&
                         details
                     ) {
-                        onPlaceSelectRef.current({ ...place, ...details });
+                        onPlaceSelectRef.current(
+                            buildSafePlaceResult(place, details)
+                        );
                         return;
                     }
 
@@ -245,7 +273,7 @@ export default function PlaceAutocompleteInput({
                             status,
                         });
                     }
-                    onPlaceSelectRef.current(place);
+                    onPlaceSelectRef.current(buildSafePlaceResult(place));
                 }
             );
         });

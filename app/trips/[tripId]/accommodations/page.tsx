@@ -14,6 +14,7 @@ import TripLegLocationLine, {
 import TripMembersPanel, {
     type TripHeaderFamilyMember,
     type TripHeaderInvitation,
+    type TripHeaderMemberLeg,
     type TripHeaderMember,
 } from "@/components/TripMembersPanel";
 import {
@@ -40,6 +41,7 @@ import {
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
+import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 
 type PageProps = {
     params: Promise<{
@@ -126,8 +128,8 @@ function locationsMatch(
     const baseCountryCode = String(base.countryCode || "").toUpperCase();
     const candidateCountryCode = String(candidate.countryCode || "").toUpperCase();
 
-    if (baseCountryCode && candidateCountryCode && baseCountryCode === candidateCountryCode) {
-        return true;
+    if (baseCountryCode && candidateCountryCode && baseCountryCode !== candidateCountryCode) {
+        return false;
     }
 
     const baseNames = [base.name, base.cityName, base.countryName]
@@ -137,13 +139,21 @@ function locationsMatch(
         .map(normalizeLocationText)
         .filter(Boolean);
 
-    return baseNames.some((baseName) =>
+    const hasNameMatch = baseNames.some((baseName) =>
         candidateNames.some(
             (candidateName) =>
                 candidateName === baseName ||
                 candidateName.includes(baseName) ||
                 baseName.includes(candidateName)
         )
+    );
+    if (hasNameMatch) return true;
+
+    return (
+        baseNames.length === 0 &&
+        candidateNames.length === 0 &&
+        Boolean(baseCountryCode) &&
+        baseCountryCode === candidateCountryCode
     );
 }
 
@@ -655,6 +665,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
             const membership = memberRowsByUserId.get(memberUserId);
 
             return {
+                trip_member_id: membership?.id || null,
                 user_id: memberUserId,
                 first_name: profile?.first_name || null,
                 last_name: profile?.last_name || null,
@@ -818,7 +829,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
     const { data: tripLegRows, error: tripLegsError } = await supabase
         .from("trip_legs")
         .select(
-            "id,name,city_name,country_code,icon_emoji,start_date,end_date,leg_type,sort_order"
+            "id,name,city_name,country_code,google_place_id,icon_emoji,start_date,end_date,leg_type,sort_order"
         )
         .eq("trip_id", tripId)
         .order("start_date", { ascending: true, nullsFirst: false })
@@ -909,6 +920,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
             name: string;
             city_name?: string | null;
             country_code?: string | null;
+            google_place_id?: string | null;
             icon_emoji?: string | null;
             start_date?: string | null;
             end_date?: string | null;
@@ -922,6 +934,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
             name: leg.name,
             cityName: leg.city_name || null,
             countryCode: leg.country_code || null,
+            googlePlaceId: leg.google_place_id || null,
             iconEmoji: leg.icon_emoji || null,
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
@@ -950,31 +963,61 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         };
     });
 
-    const heroLocations =
-        destinationLocations.length > 0
-            ? destinationLocations.map((destination) => {
-                  const manualMatch = manualLocations.find((location) =>
-                      locationsMatch(destination, location)
-                  );
-                  const accommodationMatch = accommodationLocations.find((location) =>
-                      locationsMatch(destination, location)
-                  );
+    const accommodationLocationsWithManualLegs = accommodationLocations.map(
+        (accommodation) => {
+            const manualMatch = manualLocations.find((location) =>
+                !location.googlePlaceId && locationsMatch(accommodation, location)
+            );
 
-                  return {
-                      ...destination,
-                      persistedLegId: manualMatch?.id || null,
-                      startDate:
-                          accommodationMatch?.startDate ||
-                          manualMatch?.startDate ||
-                          null,
-                      endDate:
-                          accommodationMatch?.endDate ||
-                          manualMatch?.endDate ||
-                          null,
-                      memberIds: manualMatch?.memberIds || [],
-                  };
-              })
-            : [...accommodationLocations, ...manualLocations];
+            return {
+                ...accommodation,
+                persistedLegId: manualMatch?.id || null,
+                startDate:
+                    accommodation.startDate || manualMatch?.startDate || null,
+                endDate: accommodation.endDate || manualMatch?.endDate || null,
+                memberIds: manualMatch?.memberIds || [],
+            };
+        }
+    );
+    const unmatchedManualLocations = manualLocations.filter(
+        (manualLocation) =>
+            Boolean(manualLocation.googlePlaceId) ||
+            (!accommodationLocations.some((accommodation) =>
+                locationsMatch(accommodation, manualLocation)
+            ) &&
+                !destinationLocations.some((destination) =>
+                    locationsMatch(destination, manualLocation)
+                ))
+    );
+
+    const mergedDestinationLocations = destinationLocations.map((destination) => {
+        const manualMatch = manualLocations.find((location) =>
+            !location.googlePlaceId && locationsMatch(destination, location)
+        );
+        const accommodationMatch = accommodationLocations.find((location) =>
+            locationsMatch(destination, location)
+        );
+
+        return {
+            ...destination,
+            persistedLegId: manualMatch?.id || null,
+            startDate:
+                accommodationMatch?.startDate ||
+                manualMatch?.startDate ||
+                null,
+            endDate:
+                accommodationMatch?.endDate ||
+                manualMatch?.endDate ||
+                null,
+            memberIds: manualMatch?.memberIds || [],
+        };
+    });
+
+    const heroLocations = sortTripLegLocations(
+        destinationLocations.length > 0
+            ? [...mergedDestinationLocations, ...unmatchedManualLocations]
+            : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
+    );
     const tripLegMemberOptions: TripLegMemberOption[] = memberRows
         .filter((member) => Boolean(member.id))
         .map((member) => {
@@ -995,6 +1038,18 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                 avatarUrl: profile?.avatar_url || null,
             };
         });
+    const tripHeaderMemberLegs: TripHeaderMemberLeg[] = heroLocations.flatMap(
+        (location) =>
+            (location.memberIds || []).map((memberId) => ({
+                memberId,
+                name: location.name,
+                cityName: location.cityName || null,
+                countryCode: location.countryCode || null,
+                iconEmoji: location.iconEmoji || getFlagEmoji(location.countryCode) || null,
+                startDate: location.startDate || null,
+                endDate: location.endDate || null,
+            }))
+    );
 
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0 text-white">
@@ -1035,6 +1090,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                                 familyMembers={tripFamilyMembers}
                                 availableFamilyMembers={savedFamilyMembers}
                                 invitations={pendingInvitations}
+                                memberLegs={tripHeaderMemberLegs}
                                 currentUserId={user.id}
                                 tripOwnerId={tripRecord.user_id}
                                 removeMemberAction={removeTripMember}

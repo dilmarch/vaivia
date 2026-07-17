@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { Json } from "@/src/types/supabase";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { processTravelEmailImport } from "@/lib/travelEmailImportProcessor";
 import { getTripRouteSegment } from "@/lib/tripRoutes";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/lib/travelEmailImportReview";
 import {
     getTravelEmailImportStatusLabel,
+    getTravelEmailImportStatusClasses,
     isTravelImportReviewSchemaMissingError,
 } from "@/lib/travelEmailImports";
 
@@ -662,6 +664,102 @@ async function retryTravelEmailImport(formData: FormData) {
     redirect(`/imports/${importId}`);
 }
 
+async function ignoreTravelEmailImport(formData: FormData) {
+    "use server";
+
+    const importId = String(formData.get("import_id") || "").trim();
+    if (!importId) throw new Error("Could not ignore this import.");
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const { data: importRow, error: importLookupError } = await supabase
+        .from("travel_email_imports")
+        .select("id,status,user_id")
+        .eq("id", importId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+    if (importLookupError || !importRow) {
+        console.error("travel_email_import_ignore_failed", {
+            importId,
+            userId: user.id,
+            code: importLookupError?.code,
+            message: importLookupError?.message,
+            details: importLookupError?.details,
+            hint: importLookupError?.hint,
+        });
+        throw new Error("Could not ignore this import. Please try again.");
+    }
+
+    if (importRow.status !== "imported") {
+        const serviceSupabase = createServiceRoleClient();
+        const ignoredItemUpdate = {
+            is_excluded: true,
+        } as never;
+        const { error: itemUpdateError } = await serviceSupabase
+            .from("travel_email_import_items")
+            .update(ignoredItemUpdate)
+            .eq("import_id", importId);
+
+        if (
+            itemUpdateError &&
+            !isTravelImportReviewSchemaMissingError(itemUpdateError)
+        ) {
+            console.warn("travel_email_import_ignore_item_update_failed", {
+                importId,
+                userId: user.id,
+                code: itemUpdateError.code,
+            });
+        }
+
+        const { error: importUpdateError } = await serviceSupabase
+            .from("travel_email_imports")
+            .update({ status: "rejected" })
+            .eq("id", importId)
+            .eq("user_id", user.id);
+
+        if (importUpdateError) {
+            console.error("travel_email_import_ignore_status_update_failed", {
+                importId,
+                userId: user.id,
+                code: importUpdateError.code,
+                message: importUpdateError.message,
+                details: importUpdateError.details,
+                hint: importUpdateError.hint,
+            });
+            throw new Error("Could not ignore this import. Please try again.");
+        }
+
+        const { error: notificationUpdateError } = await serviceSupabase
+            .from("notifications")
+            .update({ read_at: new Date().toISOString() })
+            .eq("user_id", user.id)
+            .in("type", [
+                "travel_email_ready",
+                "travel_email_needs_review",
+                "travel_email_failed",
+            ])
+            .eq("metadata->>importId", importId);
+
+        if (notificationUpdateError) {
+            console.warn("travel_email_import_ignore_notification_update_failed", {
+                importId,
+                userId: user.id,
+                code: notificationUpdateError.code,
+            });
+        }
+    }
+
+    revalidatePath(`/imports/${importId}`);
+    revalidatePath("/imports");
+    redirect(`/imports/${importId}`);
+}
+
 function getReviewedFlightField(
     formData: FormData,
     itemId: string,
@@ -737,6 +835,58 @@ function isImportFlightRpcUnavailableError(error: SupabaseActionError) {
         error.code === "42883" ||
         text.includes("import_travel_email_flights") ||
         isTravelImportReviewSchemaMissingError(error)
+    );
+}
+
+async function markTravelEmailImportNotificationsRead({
+    supabase,
+    userId,
+    importId,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    userId: string;
+    importId: string;
+}) {
+    const { data: notifications, error } = await supabase
+        .from("notifications")
+        .select("id,metadata,type")
+        .eq("user_id", userId)
+        .in("type", [
+            "travel_email_ready",
+            "travel_email_needs_review",
+            "travel_email_failed",
+        ]);
+
+    if (error) {
+        console.warn("travel_email_import_notification_lookup_failed", {
+            importId,
+            userId,
+            code: error.code,
+        });
+        return;
+    }
+
+    const notificationIds = ((notifications || []) as Array<{
+        id: string;
+        metadata?: Json | null;
+    }>)
+        .filter((notification) => {
+            const metadata = notification.metadata;
+            return (
+                metadata &&
+                typeof metadata === "object" &&
+                !Array.isArray(metadata) &&
+                metadata.importId === importId
+            );
+        })
+        .map((notification) => notification.id);
+
+    await Promise.all(
+        notificationIds.map((notificationId) =>
+            supabase.rpc("mark_app_alert_read", {
+                alert_id: notificationId,
+            })
+        )
     );
 }
 
@@ -888,6 +1038,7 @@ async function addImportedFlightsUsingTransportationFallback({
         throw new Error("You no longer have permission to edit this trip.");
     }
 
+    const serviceSupabase = createServiceRoleClient();
     const includedItems = submittedItems.filter((item) => item.include);
     if (!includedItems.length) {
         throw new Error("One or more flight details need attention.");
@@ -976,15 +1127,16 @@ async function addImportedFlightsUsingTransportationFallback({
 
         if (existingFlight?.id) {
             createdIds.push(existingFlight.id);
-            const { error: richItemUpdateError } = await supabase
+            const existingImportItemUpdate = {
+                reviewed_data: data as Json,
+                matched_trip_id: tripId,
+                imported_record_id: existingFlight.id,
+                imported_at: new Date().toISOString(),
+                is_excluded: false,
+            } as never;
+            const { error: richItemUpdateError } = await serviceSupabase
                 .from("travel_email_import_items")
-                .update({
-                    reviewed_data: data as Json,
-                    matched_trip_id: tripId,
-                    imported_record_id: existingFlight.id,
-                    imported_at: new Date().toISOString(),
-                    is_excluded: false,
-                } as Record<string, unknown>)
+                .update(existingImportItemUpdate)
                 .eq("id", item.item_id)
                 .eq("import_id", importId);
 
@@ -1084,15 +1236,16 @@ async function addImportedFlightsUsingTransportationFallback({
 
         createdIds.push(insertedFlight.id);
 
-        const { error: richItemUpdateError } = await supabase
+        const insertedImportItemUpdate = {
+            reviewed_data: data as Json,
+            matched_trip_id: tripId,
+            imported_record_id: insertedFlight.id,
+            imported_at: new Date().toISOString(),
+            is_excluded: false,
+        } as never;
+        const { error: richItemUpdateError } = await serviceSupabase
             .from("travel_email_import_items")
-            .update({
-                reviewed_data: data as Json,
-                matched_trip_id: tripId,
-                imported_record_id: insertedFlight.id,
-                imported_at: new Date().toISOString(),
-                is_excluded: false,
-            } as Record<string, unknown>)
+            .update(insertedImportItemUpdate)
             .eq("id", item.item_id)
             .eq("import_id", importId);
 
@@ -1108,13 +1261,14 @@ async function addImportedFlightsUsingTransportationFallback({
         }
     }
 
-    const { error: richImportUpdateError } = await supabase
+    const importStatusUpdate = {
+        status: "imported",
+        matched_trip_id: tripId,
+        imported_at: new Date().toISOString(),
+    } as never;
+    const { error: richImportUpdateError } = await serviceSupabase
         .from("travel_email_imports")
-        .update({
-            status: "imported",
-            matched_trip_id: tripId,
-            imported_at: new Date().toISOString(),
-        } as Record<string, unknown>)
+        .update(importStatusUpdate)
         .eq("id", importId)
         .eq("user_id", userId);
 
@@ -1122,20 +1276,46 @@ async function addImportedFlightsUsingTransportationFallback({
         richImportUpdateError &&
         isTravelImportReviewSchemaMissingError(richImportUpdateError)
     ) {
-        await supabase
-            .from("travel_email_imports")
-            .update({ status: "imported" })
-            .eq("id", importId)
-            .eq("user_id", userId);
-    } else if (richImportUpdateError) {
-        console.warn("travel_email_import_fallback_import_status_update_failed", {
+        console.warn("travel_email_import_rich_tracking_unavailable", {
             importId,
             userId,
             code: richImportUpdateError.code,
         });
+
+        const { error: fallbackImportUpdateError } = await serviceSupabase
+            .from("travel_email_imports")
+            .update({ status: "imported" })
+            .eq("id", importId)
+            .eq("user_id", userId);
+
+        if (fallbackImportUpdateError) {
+            console.error("travel_email_import_status_fallback_failed", {
+                importId,
+                userId,
+                code: fallbackImportUpdateError.code,
+                message: fallbackImportUpdateError.message,
+                details: fallbackImportUpdateError.details,
+                hint: fallbackImportUpdateError.hint,
+            });
+            throw new Error(
+                "The flight was created, but VAIVIA could not mark this import as reviewed. Please try again."
+            );
+        }
+    } else if (richImportUpdateError) {
+        console.error("travel_email_import_fallback_import_status_update_failed", {
+            importId,
+            userId,
+            code: richImportUpdateError.code,
+            message: richImportUpdateError.message,
+            details: richImportUpdateError.details,
+            hint: richImportUpdateError.hint,
+        });
+        throw new Error(
+            "The flight was created, but VAIVIA could not mark this import as reviewed. Please try again."
+        );
     }
 
-    await supabase.from("notifications").insert({
+    await serviceSupabase.from("notifications").insert({
         user_id: userId,
         type: "travel_email_ready",
         title: "Flight added to your trip",
@@ -1298,6 +1478,12 @@ async function addImportedFlightsToTrip(formData: FormData) {
         importResult = data;
     }
 
+    await markTravelEmailImportNotificationsRead({
+        supabase,
+        userId: user.id,
+        importId,
+    });
+
     revalidatePath(`/imports/${importId}`);
     revalidatePath("/imports");
 
@@ -1382,6 +1568,9 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
         reviewImport.status,
         reviewImport.processed_at
     );
+    const isReviewableImport =
+        reviewImport.status === "needs_review" || reviewImport.status === "ready";
+    const isIgnoredImport = reviewImport.status === "rejected";
     const importedRecordIds = reviewItems
         .map((item) => item.imported_record_id)
         .filter((id): id is string => Boolean(id));
@@ -1463,9 +1652,13 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                             <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
                                 Status
                             </p>
-                            <p className="mt-2 text-lg font-black capitalize text-lime-100">
+                            <span
+                                className={`mt-3 inline-flex rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.14em] ${getTravelEmailImportStatusClasses(
+                                    reviewImport.status
+                                )}`}
+                            >
                                 {getTravelEmailImportStatusLabel(reviewImport.status)}
-                            </p>
+                            </span>
                         </div>
                         <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
                             <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
@@ -1609,7 +1802,27 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                         </Link>
                                     </div>
                                 </section>
-                            ) : reviewItems.length ? (
+                            ) : isIgnoredImport ? (
+                                <section className="rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-5">
+                                    <p className="text-xs font-black uppercase tracking-[0.22em] text-slate-400">
+                                        Ignored
+                                    </p>
+                                    <h3 className="mt-2 text-2xl font-black text-white">
+                                        This import has been reviewed
+                                    </h3>
+                                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">
+                                        VAIVIA will keep this confirmation in your
+                                        imports list, but it will no longer appear in
+                                        your notification dropdown or review prompts.
+                                    </p>
+                                    <Link
+                                        href="/imports"
+                                        className="mt-5 inline-flex rounded-full border border-white/10 px-4 py-2 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
+                                    >
+                                        Back to imports
+                                    </Link>
+                                </section>
+                            ) : isReviewableImport && reviewItems.length ? (
                                 <form action={addImportedFlightsToTrip} className="space-y-4">
                                     <input
                                         type="hidden"
@@ -1721,25 +1934,38 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                     )}
 
                                     <div className="sticky bottom-4 z-10 rounded-[1.5rem] border border-white/10 bg-[#050712]/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
-                                        <button
-                                            type="submit"
-                                            disabled={!editableTrips.length}
-                                            className="w-full rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
-                                        >
-                                            {selectedTrip
-                                                ? `Add ${editableFlights.length} flight${
-                                                      editableFlights.length === 1
-                                                          ? ""
-                                                          : "s"
-                                                  } to ${selectedTrip.title}`
-                                                : "Select a trip before continuing"}
-                                        </button>
+                                        <div className="grid gap-2 sm:grid-cols-[auto_1fr]">
+                                            <button
+                                                type="submit"
+                                                formAction={ignoreTravelEmailImport}
+                                                formNoValidate
+                                                className="rounded-full border border-white/10 px-5 py-3 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
+                                            >
+                                                Ignore
+                                            </button>
+                                            <button
+                                                type="submit"
+                                                disabled={!editableTrips.length}
+                                                className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                {selectedTrip
+                                                    ? `Add ${
+                                                          editableFlights.length
+                                                      } flight${
+                                                          editableFlights.length === 1
+                                                              ? ""
+                                                              : "s"
+                                                      } to ${selectedTrip.title}`
+                                                    : "Select a trip before continuing"}
+                                            </button>
+                                        </div>
                                     </div>
                                 </form>
                             ) : (
                                 <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-slate-950/50 p-5 text-sm font-semibold text-slate-400">
-                                    Once processing finishes, VAIVIA will list detected
-                                    flights, stays, receipts, or itinerary details here.
+                                    {reviewImport.status === "failed"
+                                        ? "VAIVIA could not process this confirmation. You can retry processing from the top of the page."
+                                        : "Once processing finishes, VAIVIA will list detected flights, stays, receipts, or itinerary details here."}
                                 </div>
                             )}
                         </div>

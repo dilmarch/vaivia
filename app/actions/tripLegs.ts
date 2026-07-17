@@ -4,6 +4,141 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
+async function syncTripLegMembers({
+    supabase,
+    tripId,
+    tripLegId,
+    tripMemberIds,
+    startDate,
+    endDate,
+    now,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    tripId: string;
+    tripLegId: string;
+    tripMemberIds: string[];
+    startDate: string;
+    endDate: string;
+    now: string;
+}) {
+    const { data: existingRows, error: existingRowsError } = await supabase
+        .from("trip_member_legs")
+        .select("id,trip_member_id")
+        .eq("trip_id", tripId)
+        .eq("trip_leg_id", tripLegId);
+
+    if (existingRowsError) {
+        console.error("Error loading existing trip leg members:", {
+            message: existingRowsError.message,
+            code: existingRowsError.code,
+            details: existingRowsError.details,
+            hint: existingRowsError.hint,
+            tripId,
+            tripLegId,
+        });
+        throw new Error("Could not update trip leg members");
+    }
+
+    const selectedMemberIds = new Set(tripMemberIds);
+    const existingMembers = ((existingRows || []) as Array<{
+        id: string;
+        trip_member_id: string;
+    }>).filter((row) => Boolean(row.id) && Boolean(row.trip_member_id));
+    const existingByMemberId = new Map(
+        existingMembers.map((row) => [row.trip_member_id, row])
+    );
+
+    const rowsToDelete = existingMembers
+        .filter((row) => !selectedMemberIds.has(row.trip_member_id))
+        .map((row) => row.id);
+
+    if (rowsToDelete.length > 0) {
+        const { error: deleteMembersError } = await supabase
+            .from("trip_member_legs")
+            .delete()
+            .eq("trip_id", tripId)
+            .eq("trip_leg_id", tripLegId)
+            .in("id", rowsToDelete);
+
+        if (deleteMembersError) {
+            console.error("Error clearing trip leg members:", {
+                message: deleteMembersError.message,
+                code: deleteMembersError.code,
+                details: deleteMembersError.details,
+                hint: deleteMembersError.hint,
+                tripId,
+                tripLegId,
+                rowsToDelete,
+            });
+            throw new Error("Could not update trip leg members");
+        }
+    }
+
+    const rowsToUpdate = tripMemberIds
+        .map((tripMemberId) => existingByMemberId.get(tripMemberId)?.id)
+        .filter(Boolean) as string[];
+
+    if (rowsToUpdate.length > 0) {
+        const { error: updateMembersError } = await supabase
+            .from("trip_member_legs")
+            .update({
+                start_date: startDate || null,
+                end_date: endDate || null,
+                is_joining: true,
+                updated_at: now,
+            })
+            .eq("trip_id", tripId)
+            .eq("trip_leg_id", tripLegId)
+            .in("id", rowsToUpdate);
+
+        if (updateMembersError) {
+            console.error("Error updating trip leg members:", {
+                message: updateMembersError.message,
+                code: updateMembersError.code,
+                details: updateMembersError.details,
+                hint: updateMembersError.hint,
+                tripId,
+                tripLegId,
+                rowsToUpdate,
+            });
+            throw new Error("Could not update trip leg members");
+        }
+    }
+
+    const rowsToInsert = tripMemberIds.filter(
+        (tripMemberId) => !existingByMemberId.has(tripMemberId)
+    );
+
+    if (rowsToInsert.length > 0) {
+        const { error: insertMembersError } = await supabase
+            .from("trip_member_legs")
+            .insert(
+                rowsToInsert.map((tripMemberId) => ({
+                    trip_id: tripId,
+                    trip_leg_id: tripLegId,
+                    trip_member_id: tripMemberId,
+                    start_date: startDate || null,
+                    end_date: endDate || null,
+                    is_joining: true,
+                    updated_at: now,
+                }))
+            );
+
+        if (insertMembersError) {
+            console.error("Error saving trip leg members:", {
+                message: insertMembersError.message,
+                code: insertMembersError.code,
+                details: insertMembersError.details,
+                hint: insertMembersError.hint,
+                tripId,
+                tripLegId,
+                rowsToInsert,
+            });
+            throw new Error("Could not update trip leg members");
+        }
+    }
+}
+
 export async function upsertTripLeg(formData: FormData) {
     const supabase = await createClient();
     const {
@@ -15,8 +150,11 @@ export async function upsertTripLeg(formData: FormData) {
     const tripId = String(formData.get("trip_id") || "");
     const tripLegId = String(formData.get("trip_leg_id") || "").trim();
     const revalidatePathname = String(formData.get("revalidate_path") || "");
+    const requiresGooglePlace =
+        String(formData.get("require_google_place_id") || "") === "true";
     const now = new Date().toISOString();
     const name = String(formData.get("name") || "").trim();
+    const googlePlaceId = String(formData.get("google_place_id") || "").trim();
     const cityName = String(formData.get("city_name") || "").trim();
     const countryCode = String(formData.get("country_code") || "")
         .trim()
@@ -34,8 +172,23 @@ export async function upsertTripLeg(formData: FormData) {
     );
 
     if (!tripId || !name) throw new Error("Could not save trip leg");
+    if (requiresGooglePlace && !tripLegId && !googlePlaceId) {
+        throw new Error("Choose the destination from the Google location list.");
+    }
 
-    const payload = {
+    const payload: {
+        trip_id: string;
+        name: string;
+        city_name: string | null;
+        country_code: string | null;
+        icon_emoji: string | null;
+        start_date: string | null;
+        end_date: string | null;
+        leg_type: string;
+        created_by: string;
+        updated_at: string;
+        google_place_id?: string | null;
+    } = {
         trip_id: tripId,
         name,
         city_name: cityName || null,
@@ -47,6 +200,9 @@ export async function upsertTripLeg(formData: FormData) {
         created_by: user.id,
         updated_at: now,
     };
+    if (googlePlaceId || !tripLegId) {
+        payload.google_place_id = googlePlaceId || null;
+    }
 
     const { data: savedLeg, error } = tripLegId
         ? await supabase
@@ -75,45 +231,15 @@ export async function upsertTripLeg(formData: FormData) {
         );
     }
 
-    const { error: deleteMembersError } = await supabase
-        .from("trip_member_legs")
-        .delete()
-        .eq("trip_id", tripId)
-        .eq("trip_leg_id", savedLeg.id);
-
-    if (deleteMembersError) {
-        console.error("Error clearing trip leg members:", deleteMembersError);
-        throw new Error("Could not update trip leg members");
-    }
-
-    if (tripMemberIds.length > 0) {
-        const { error: insertMembersError } = await supabase
-            .from("trip_member_legs")
-            .insert(
-                tripMemberIds.map((tripMemberId) => ({
-                    trip_id: tripId,
-                    trip_leg_id: savedLeg.id,
-                    trip_member_id: tripMemberId,
-                    start_date: startDate || null,
-                    end_date: endDate || null,
-                    is_joining: true,
-                    updated_at: now,
-                }))
-            );
-
-        if (insertMembersError) {
-            console.error("Error saving trip leg members:", {
-                message: insertMembersError.message,
-                code: insertMembersError.code,
-                details: insertMembersError.details,
-                hint: insertMembersError.hint,
-                tripId,
-                tripLegId: savedLeg.id,
-                tripMemberIds,
-            });
-            throw new Error("Could not update trip leg members");
-        }
-    }
+    await syncTripLegMembers({
+        supabase,
+        tripId,
+        tripLegId: savedLeg.id,
+        tripMemberIds,
+        startDate,
+        endDate,
+        now,
+    });
 
     revalidatePath(revalidatePathname || `/trips/${tripId}`);
 }

@@ -18,6 +18,10 @@ import {
     markOnboardingStepCompleted,
 } from "@/lib/onboarding";
 import { slugifyTripTitle } from "@/lib/tripRoutes";
+import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
+import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
+import { resolveTripLegIdForDate } from "@/lib/tripLegs";
+import { maybeCreatePassportStampForTransportationArrival } from "@/lib/passportArrivalStamps";
 
 type TripPayload = {
     user_id: string;
@@ -40,6 +44,16 @@ type TripMatrixLeg = {
     startDate: string | null;
     endDate: string | null;
 };
+
+type TransportationRouteStop = {
+    order: number;
+    label: string;
+};
+
+type TransportationItemPayload = Record<
+    string,
+    string | number | boolean | null | TransportationRouteStop[]
+>;
 
 function parseInitialInviteIdentifiers(formData: FormData) {
     return Array.from(
@@ -105,8 +119,20 @@ function normalizeMatrixValue(value: FormDataEntryValue | null) {
     return String(value || "").trim();
 }
 
+function getFirstMatrixValue(formData: FormData, names: string[]) {
+    for (const name of names) {
+        const value = normalizeMatrixValue(formData.get(name));
+        if (value) return value;
+    }
+
+    return "";
+}
+
 function getTripDateDestinationMatrix(formData: FormData) {
-    const dateMode = normalizeMatrixValue(formData.get("date_mode"));
+    const dateMode = getFirstMatrixValue(formData, [
+        "date_mode_state",
+        "date_mode",
+    ]);
     const knowsDates = dateMode === "known";
 
     if (!knowsDates) {
@@ -120,21 +146,31 @@ function getTripDateDestinationMatrix(formData: FormData) {
         };
     }
 
-    const startDestination = normalizeMatrixValue(
-        formData.get("matrix_start_destination")
-    );
-    const startPlaceId = normalizeMatrixValue(formData.get("matrix_start_place_id"));
-    const startDate = normalizeMatrixValue(formData.get("matrix_start_date"));
+    const startDestination = getFirstMatrixValue(formData, [
+        "matrix_start_destination_state",
+        "matrix_start_destination",
+    ]);
+    const startPlaceId = getFirstMatrixValue(formData, [
+        "matrix_start_place_id_state",
+        "matrix_start_place_id",
+    ]);
+    const startDate = getFirstMatrixValue(formData, [
+        "matrix_start_date_state",
+        "matrix_start_date",
+    ]);
     const nextRows = Array.from({ length: 6 }, (_, index) => {
-        const name = normalizeMatrixValue(
-            formData.get(`matrix_next_destination_${index}`)
-        );
-        const placeId = normalizeMatrixValue(
-            formData.get(`matrix_next_place_id_${index}`)
-        );
-        const arrivalDate = normalizeMatrixValue(
-            formData.get(`matrix_next_arrival_date_${index}`)
-        );
+        const name = getFirstMatrixValue(formData, [
+            `matrix_next_destination_state_${index}`,
+            `matrix_next_destination_${index}`,
+        ]);
+        const placeId = getFirstMatrixValue(formData, [
+            `matrix_next_place_id_state_${index}`,
+            `matrix_next_place_id_${index}`,
+        ]);
+        const arrivalDate = getFirstMatrixValue(formData, [
+            `matrix_next_arrival_date_state_${index}`,
+            `matrix_next_arrival_date_${index}`,
+        ]);
 
         return {
             name,
@@ -143,12 +179,20 @@ function getTripDateDestinationMatrix(formData: FormData) {
         };
     }).filter((row) => row.name || row.arrivalDate);
     const returnDestination =
-        normalizeMatrixValue(formData.get("matrix_return_destination")) ||
-        startDestination;
+        getFirstMatrixValue(formData, [
+            "matrix_return_destination_state",
+            "matrix_return_destination",
+        ]) || startDestination;
     const returnPlaceId =
-        normalizeMatrixValue(formData.get("matrix_return_place_id")) ||
+        getFirstMatrixValue(formData, [
+            "matrix_return_place_id_state",
+            "matrix_return_place_id",
+        ]) ||
         (returnDestination === startDestination ? startPlaceId : "");
-    const returnDate = normalizeMatrixValue(formData.get("matrix_return_date"));
+    const returnDate = getFirstMatrixValue(formData, [
+        "matrix_return_date_state",
+        "matrix_return_date",
+    ]);
     const missingValidatedDestination = [
         { name: startDestination, placeId: startPlaceId },
         ...nextRows.map((row) => ({ name: row.name, placeId: row.placeId })),
@@ -193,8 +237,421 @@ function getTripDateDestinationMatrix(formData: FormData) {
         legs,
         validationError: missingValidatedDestination
             ? "Choose each destination from the Google location list."
-            : "",
+            : startDestination && returnDestination && (!startDate || !returnDate)
+              ? "Add start and return dates for this trip."
+              : "",
     };
+}
+
+function getTransportationDbStatus(rawStatus: string) {
+    return rawStatus === "planned" ||
+        rawStatus === "booked" ||
+        rawStatus === "confirmed" ||
+        rawStatus === "cancelled" ||
+        rawStatus === "completed"
+        ? rawStatus
+        : "planned";
+}
+
+function normalizeAirlineCode(rawCode?: string | null) {
+    const compactCode = String(rawCode || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+    const codeFromFlightNumber = compactCode.match(/^([A-Z0-9]{2})(\d+)/)?.[1];
+
+    return codeFromFlightNumber || compactCode;
+}
+
+function normalizeFlightNumber({
+    flightNumber,
+    airlineCode,
+    fallbackFlightNumber,
+}: {
+    flightNumber?: string | null;
+    airlineCode?: string | null;
+    fallbackFlightNumber?: string | null;
+}) {
+    const compactFlightNumber = String(flightNumber || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+    if (compactFlightNumber) return compactFlightNumber;
+
+    const compactFallback = String(fallbackFlightNumber || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+    if (compactFallback) return compactFallback;
+
+    return String(airlineCode || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[\s-]+/g, "");
+}
+
+function parseMoneyLike(value: FormDataEntryValue | null) {
+    const parsed = Number(String(value || "").replace(/,/g, "").trim());
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function getMissingColumnName(error: { message?: string; details?: string }) {
+    const text = `${error.message || ""} ${error.details || ""}`;
+    return (
+        text.match(/'([^']+)' column/)?.[1] ||
+        text.match(/column "([^"]+)"/)?.[1] ||
+        ""
+    );
+}
+
+async function insertSetupTransportationPayloadWithFallback({
+    supabase,
+    payload,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    payload: TransportationItemPayload;
+}) {
+    let attempt = { ...payload };
+    let lastError: {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+    } | null = null;
+
+    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
+        const { data, error } = await supabase
+            .from("transportation_items")
+            .insert(attempt)
+            .select("id")
+            .single();
+
+        if (!error) return { data: data as Record<string, unknown>, error: null };
+
+        lastError = error;
+
+        if (error.code !== "42703" && error.code !== "PGRST204") break;
+
+        const missingColumn = getMissingColumnName(error);
+        if (!missingColumn || !(missingColumn in attempt)) break;
+
+        console.warn(
+            `Setup flight transportation insert is missing optional column "${missingColumn}". Retrying without it.`,
+            error
+        );
+
+        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
+        void _removedColumn;
+        attempt = nextAttempt;
+    }
+
+    return { data: null, error: lastError };
+}
+
+async function createSetupFlightTransportation({
+    supabase,
+    userId,
+    tripId,
+    formData,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    userId: string;
+    tripId: string;
+    formData: FormData;
+}) {
+    if (formData.get("setup_save_flight") !== "true") return;
+
+    const rawStatus = String(formData.get("status") || "").trim();
+    const status = getTransportationDbStatus(rawStatus);
+    const reservationCode = String(formData.get("reservation_code") || "").trim();
+    const cost = parseMoneyLike(formData.get("cost"));
+    const currency = String(formData.get("currency") || "CAD")
+        .trim()
+        .toUpperCase();
+    const visaRequirements = String(formData.get("visa_requirements") || "").trim();
+    const luggageRequirements = String(
+        formData.get("luggage_requirements") || ""
+    ).trim();
+    const isPrivate =
+        formData.get("is_private") === "on" ||
+        formData.get("is_private") === "true";
+    const flightLegCount = Math.max(1, Number(formData.get("flight_leg_count") || 1));
+    const firstFlightNumber = String(
+        formData.get("leg_0_flight_number") || formData.get("flight_number") || ""
+    ).trim();
+    const firstAirlineCode = normalizeAirlineCode(
+        String(formData.get("leg_0_airline_code") || formData.get("airline_code") || "")
+    );
+
+    const flightLegDetails = Array.from({ length: flightLegCount }, (_, index) => {
+        const departureLocation = String(
+            formData.get(`leg_${index}_departure_location`) || ""
+        ).trim();
+        const departurePlaceId = String(
+            formData.get(`leg_${index}_departure_google_place_id`) || ""
+        ).trim();
+        const arrivalLocation = String(
+            formData.get(`leg_${index}_arrival_location`) || ""
+        ).trim();
+        const arrivalPlaceId = String(
+            formData.get(`leg_${index}_arrival_google_place_id`) || ""
+        ).trim();
+        const departureDate = String(
+            formData.get(`leg_${index}_departure_date`) || ""
+        ).trim();
+        const departureTime = String(
+            formData.get(`leg_${index}_departure_time`) || ""
+        ).trim();
+        const arrivalDate = String(
+            formData.get(`leg_${index}_arrival_date`) || ""
+        ).trim();
+        const arrivalTime = String(
+            formData.get(`leg_${index}_arrival_time`) || ""
+        ).trim();
+        const departureTimezone = String(
+            formData.get(`leg_${index}_departure_timezone`) || ""
+        ).trim();
+        const arrivalTimezone = String(
+            formData.get(`leg_${index}_arrival_timezone`) || ""
+        ).trim();
+        const departureTerminal = String(
+            formData.get(`leg_${index}_departure_terminal`) || ""
+        ).trim();
+        const arrivalTerminal = String(
+            formData.get(`leg_${index}_arrival_terminal`) || ""
+        ).trim();
+        const flightNumber = normalizeFlightNumber({
+            flightNumber: String(formData.get(`leg_${index}_flight_number`) || ""),
+            airlineCode: String(formData.get(`leg_${index}_airline_code`) || ""),
+        });
+        const airlineCode = normalizeAirlineCode(
+            String(formData.get(`leg_${index}_airline_code`) || flightNumber)
+        );
+        const airlineName = String(
+            formData.get(`leg_${index}_airline_name`) || ""
+        ).trim();
+        const duration = String(formData.get(`leg_${index}_duration`) || "").trim();
+
+        return {
+            index,
+            departureLocation,
+            departurePlaceId,
+            arrivalLocation,
+            arrivalPlaceId,
+            departureDate,
+            departureTime,
+            arrivalDate,
+            arrivalTime,
+            departureTimezone,
+            arrivalTimezone,
+            departureTerminal,
+            arrivalTerminal,
+            flightNumber,
+            airlineCode,
+            airlineName,
+            duration,
+        };
+    }).filter(
+        (leg) =>
+            leg.departureLocation ||
+            leg.arrivalLocation ||
+            leg.departureDate ||
+            leg.arrivalDate ||
+            leg.flightNumber
+    );
+
+    if (flightLegDetails.length === 0) return;
+
+    const hasUnvalidatedAirport = flightLegDetails.some(
+        (leg) =>
+            (leg.departureLocation && !leg.departurePlaceId) ||
+            (leg.arrivalLocation && !leg.arrivalPlaceId)
+    );
+
+    if (hasUnvalidatedAirport) {
+        throw new Error("Choose each airport from the Google location list.");
+    }
+
+    const createdTransportationItemIds: string[] = [];
+
+    for (const leg of flightLegDetails) {
+        const legTitle = leg.flightNumber
+            ? `${leg.flightNumber} ${leg.departureLocation || ""} to ${
+                  leg.arrivalLocation || ""
+              }`.trim()
+            : `Airplane: ${leg.departureLocation || "Departure"} to ${
+                  leg.arrivalLocation || "Arrival"
+              }`;
+        const legNotes = [
+            flightLegDetails.length > 1
+                ? `Scenario leg ${leg.index + 1} of ${flightLegDetails.length}`
+                : "",
+            leg.duration ? `Duration: ${leg.duration}` : "",
+            leg.departureTimezone ? `Departure time zone: ${leg.departureTimezone}` : "",
+            leg.arrivalTimezone ? `Arrival time zone: ${leg.arrivalTimezone}` : "",
+            leg.departureTerminal
+                ? `Departure terminal/platform: ${leg.departureTerminal}`
+                : "",
+            leg.arrivalTerminal
+                ? `Arrival terminal/platform: ${leg.arrivalTerminal}`
+                : "",
+            visaRequirements ? `VISA requirements:\n${visaRequirements}` : "",
+            luggageRequirements
+                ? `Luggage requirements:\n${luggageRequirements}`
+                : "",
+        ]
+            .filter(Boolean)
+            .join("\n\n");
+        const effectiveFlightNumber =
+            leg.flightNumber ||
+            normalizeFlightNumber({
+                flightNumber: firstFlightNumber,
+                airlineCode: firstAirlineCode,
+            }) ||
+            "";
+        const effectiveAirlineCode =
+            leg.airlineCode || firstAirlineCode || null;
+        const legDate = leg.departureDate || null;
+        const legArrivalDate = leg.arrivalDate || null;
+        const legLocation = [leg.departureLocation, leg.arrivalLocation]
+            .filter(Boolean)
+            .join(" → ");
+
+        const payload: TransportationItemPayload = {
+            user_id: userId,
+            trip_id: tripId,
+            created_by: userId,
+            title: legTitle,
+            transport_type: "airplane",
+            transportation_mode: "airplane",
+            mode: "airplane",
+            type: "airplane",
+            status,
+            item_date: legDate,
+            date: legDate,
+            departure_date: legDate,
+            arrival_date: legArrivalDate,
+            end_date: legArrivalDate,
+            start_time: leg.departureTime || null,
+            departure_time: leg.departureTime || null,
+            end_time: leg.arrivalTime || null,
+            arrival_time: leg.arrivalTime || null,
+            departure_location: leg.departureLocation || null,
+            arrival_location: leg.arrivalLocation || null,
+            location: legLocation || null,
+            route_stops: [
+                { order: 0, label: leg.departureLocation },
+                { order: 1, label: leg.arrivalLocation },
+            ].filter((stop) => stop.label),
+            departure_timezone: leg.departureTimezone || null,
+            arrival_timezone: leg.arrivalTimezone || null,
+            timezone: leg.departureTimezone || null,
+            provider_name: leg.airlineName || null,
+            provider_code: effectiveAirlineCode,
+            airline_name: leg.airlineName || null,
+            airline_code: effectiveAirlineCode,
+            transport_number: effectiveFlightNumber || null,
+            flight_number: effectiveFlightNumber || null,
+            reservation_code: reservationCode || null,
+            cost: leg.index === 0 ? cost : null,
+            currency: leg.index === 0 && cost ? currency : null,
+            duration: leg.duration || null,
+            departure_terminal: leg.departureTerminal || null,
+            arrival_terminal: leg.arrivalTerminal || null,
+            baggage_info: luggageRequirements || null,
+            flight_leg_count: 1,
+            visa_requirements: visaRequirements || null,
+            luggage_requirements: luggageRequirements || null,
+            is_private: isPrivate,
+            audience_mode: "everyone",
+            trip_leg_id: await resolveTripLegIdForDate({
+                supabase,
+                tripId,
+                itemDate: leg.departureDate,
+            }),
+            notes: legNotes || null,
+        };
+
+        const { data, error } = await insertSetupTransportationPayloadWithFallback({
+            supabase,
+            payload,
+        });
+
+        if (error || !data?.id) {
+            console.error("Error creating setup flight transportation item:", {
+                message: error?.message,
+                code: error?.code,
+                details: error?.details,
+                hint: error?.hint,
+                tripId,
+            });
+            throw new Error("Could not save the flight details.");
+        }
+
+        const transportationItemId = String(data.id);
+        createdTransportationItemIds.push(transportationItemId);
+
+        await syncAutoBudgetExpense({
+            supabase,
+            userId,
+            tripId,
+            sourceType: "transportation",
+            sourceId: transportationItemId,
+            amount: leg.index === 0 ? cost : null,
+            currency,
+            expenseDate: leg.departureDate,
+            description: legTitle,
+            formData,
+        });
+
+        const participantsError = await replaceTripItemParticipantsFromForm({
+            tripId,
+            itemType: "transportation",
+            itemId: transportationItemId,
+            formData,
+        });
+
+        if (participantsError) {
+            console.error("Error saving setup flight participants:", {
+                message: participantsError.message,
+                code: participantsError.code,
+                details: participantsError.details,
+                hint: participantsError.hint,
+                tripId,
+                transportationItemId,
+            });
+            throw new Error("Could not save who this flight is for.");
+        }
+
+        await maybeCreatePassportStampForTransportationArrival({
+            supabase,
+            userId,
+            tripId,
+            transportationItemId,
+            title: legTitle,
+            departureLocation: leg.departureLocation,
+            arrivalLocation: leg.arrivalLocation,
+            arrivalDate: leg.arrivalDate,
+            arrivalTime: leg.arrivalTime,
+            arrivalTimezone: leg.arrivalTimezone,
+        });
+    }
+
+    if (createdTransportationItemIds.length > 0 && !isPrivate) {
+        await supabase.rpc("notify_trip_members", {
+            target_trip_id: tripId,
+            notification_type: "trip_item_added",
+            notification_title: "Trip item added",
+            notification_body:
+                createdTransportationItemIds.length > 1
+                    ? `${createdTransportationItemIds.length} transportation items were added to the trip.`
+                    : "A flight was added to the trip.",
+            notification_metadata: {
+                itemType: "transportation_item",
+                count: createdTransportationItemIds.length,
+            },
+        });
+    }
 }
 
 async function createTrip(
@@ -211,6 +668,91 @@ async function createTrip(
 
     if (!user) {
         redirect("/auth/login");
+    }
+
+    const createMode = String(formData.get("create_mode") || "");
+
+    if (createMode === "finish_existing" || createMode === "save_setup_flight") {
+        const createdTripId = String(formData.get("created_trip_id") || "").trim();
+        if (!createdTripId) {
+            return { error: "Create the trip before adding flight details." };
+        }
+
+        const { data: trip, error: tripError } = await supabase
+            .from("trips")
+            .select("id,slug,title")
+            .eq("id", createdTripId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+        if (tripError || !trip?.id) {
+            console.error("Could not load background-created trip:", {
+                message: tripError?.message,
+                code: tripError?.code,
+                details: tripError?.details,
+                hint: tripError?.hint,
+                createdTripId,
+            });
+            return { error: "Could not find the trip to add these flight details." };
+        }
+
+        try {
+            await createSetupFlightTransportation({
+                supabase,
+                userId: user.id,
+                tripId: trip.id,
+                formData,
+            });
+        } catch (error) {
+            console.error("Could not save setup flight:", error);
+            return {
+                error:
+                    error instanceof Error
+                        ? error.message
+                        : "Could not save the flight details.",
+            };
+        }
+
+        const tripSlug = trip.slug || trip.id;
+        const tripHref = `/trips/${tripSlug}?tab=itinerary&onboarding=first-item`;
+
+        if (createMode === "save_setup_flight") {
+            const { data: ownerMembership, error: ownerMembershipError } =
+                await supabase
+                    .from("trip_members")
+                    .select("id")
+                    .eq("trip_id", trip.id)
+                    .eq("user_id", user.id)
+                    .maybeSingle();
+
+            if (ownerMembershipError) {
+                console.warn("Could not load owner trip membership after setup flight:", {
+                    message: ownerMembershipError.message,
+                    code: ownerMembershipError.code,
+                    details: ownerMembershipError.details,
+                    hint: ownerMembershipError.hint,
+                    tripId: trip.id,
+                });
+            }
+
+            return {
+                error: null,
+                fieldErrors: {},
+                savedSetupStep: "flight",
+                values: {
+                    title: trip.title || "",
+                    slug: tripSlug,
+                },
+                createdTrip: {
+                    id: trip.id,
+                    slug: tripSlug,
+                    href: tripHref,
+                    currentUserTripMemberId: ownerMembership?.id || null,
+                },
+            };
+        }
+
+        redirect(tripHref);
     }
 
     const title = String(formData.get("title") || "").trim();
@@ -474,7 +1016,44 @@ async function createTrip(
         nextStep: "add_first_item",
     });
 
-    redirect(`/trips/${finalSlug}?tab=itinerary&onboarding=first-item`);
+    const tripHref = `/trips/${finalSlug}?tab=itinerary&onboarding=first-item`;
+
+    if (createMode === "background" && createdTrip?.id) {
+        const { data: ownerMembership, error: ownerMembershipError } =
+            await supabase
+                .from("trip_members")
+                .select("id")
+                .eq("trip_id", createdTrip.id)
+                .eq("user_id", user.id)
+                .maybeSingle();
+
+        if (ownerMembershipError) {
+            console.warn("Could not load owner trip membership for setup flow:", {
+                message: ownerMembershipError.message,
+                code: ownerMembershipError.code,
+                details: ownerMembershipError.details,
+                hint: ownerMembershipError.hint,
+                tripId: createdTrip.id,
+            });
+        }
+
+        return {
+            error: null,
+            fieldErrors: {},
+            values: {
+                title,
+                slug: finalSlug,
+            },
+            createdTrip: {
+                id: createdTrip.id,
+                slug: finalSlug,
+                href: tripHref,
+                currentUserTripMemberId: ownerMembership?.id || null,
+            },
+        };
+    }
+
+    redirect(tripHref);
 }
 
 async function NewTripContent() {
@@ -502,6 +1081,30 @@ async function NewTripContent() {
     const isOnboardingTripCreate =
         onboardingProgress?.status === "in_progress" &&
         onboardingProgress.current_step === "create_trip";
+    const { data: currentProfile, error: currentProfileError } = await supabase
+        .from("user_profiles")
+        .select("first_name,last_name,username,avatar_url,email")
+        .eq("id", user.id)
+        .maybeSingle();
+
+    if (currentProfileError) {
+        console.warn("Could not load current user profile for new trip form:", {
+            message: currentProfileError.message,
+            code: currentProfileError.code,
+            details: currentProfileError.details,
+            hint: currentProfileError.hint,
+            userId: user.id,
+        });
+    }
+
+    const currentUserDisplayName =
+        [currentProfile?.first_name, currentProfile?.last_name]
+            .filter(Boolean)
+            .join(" ")
+            .trim() ||
+        currentProfile?.username ||
+        user.email?.split("@")[0] ||
+        "Me";
     const { data: friendships, error: friendshipsError } = await supabase
         .from("user_friendships")
         .select("requester_user_id,addressee_user_id,status")
@@ -628,6 +1231,11 @@ async function NewTripContent() {
                     action={createTrip}
                     nextTripNumber={nextTripNumber}
                     isOnboarding={isOnboardingTripCreate}
+                    currentUser={{
+                        displayName: currentUserDisplayName,
+                        username: currentProfile?.username || null,
+                        avatarUrl: currentProfile?.avatar_url || null,
+                    }}
                     inviteOptions={{
                         friends: friendInviteOptions,
                         familyMembers: familyInviteOptions,

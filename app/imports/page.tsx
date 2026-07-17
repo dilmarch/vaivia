@@ -6,6 +6,7 @@ import {
     formatImportConfidence,
     formatImportDate,
     getImportItemRouteLabel,
+    getTravelEmailImportStatusClasses,
     getTravelEmailImportStatusLabel,
     isTravelImportReviewSchemaMissingError,
 } from "@/lib/travelEmailImports";
@@ -185,7 +186,11 @@ export default async function ImportsInboxPage() {
                                     <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <span className="rounded-full bg-lime-300 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-slate-950">
+                                                <span
+                                                    className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${getTravelEmailImportStatusClasses(
+                                                        row.status
+                                                    )}`}
+                                                >
                                                     {getTravelEmailImportStatusLabel(
                                                         row.status
                                                     )}
@@ -203,7 +208,7 @@ export default async function ImportsInboxPage() {
                                             </p>
                                             {row.status === "imported" && matchedTrip ? (
                                                 <p className="mt-2 text-sm font-black text-lime-100">
-                                                    Imported to {matchedTrip.title}
+                                                    Added to {matchedTrip.title}
                                                 </p>
                                             ) : null}
                                             <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">

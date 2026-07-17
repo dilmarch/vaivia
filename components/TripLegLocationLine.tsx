@@ -1,15 +1,19 @@
 "use client";
 
 import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import type { FormEvent, ReactNode } from "react";
 import { useMemo, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
+import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import { getInitials } from "@/lib/travelers";
+import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 
 export type TripLegLocation = {
     id: string;
     source: "destination" | "manual" | "accommodation";
     persistedLegId?: string | null;
+    googlePlaceId?: string | null;
     name: string;
     cityName?: string | null;
     countryCode?: string | null;
@@ -47,14 +51,56 @@ function getFlagEmoji(countryCode?: string | null) {
         .join("");
 }
 
+const TRIP_LEG_PLACE_TYPES = ["(regions)"];
+
+function getPlaceComponent(
+    place: google.maps.places.PlaceResult,
+    type: string,
+    nameType: "long_name" | "short_name" = "long_name"
+) {
+    return (
+        place.address_components?.find((component) =>
+            component.types.includes(type)
+        )?.[nameType] || ""
+    );
+}
+
+function getTripLegPlaceLabel(place: google.maps.places.PlaceResult) {
+    return place.name || place.formatted_address || "";
+}
+
+function getTripLegPlaceCity(place: google.maps.places.PlaceResult) {
+    return (
+        getPlaceComponent(place, "locality") ||
+        getPlaceComponent(place, "postal_town") ||
+        getPlaceComponent(place, "administrative_area_level_2")
+    );
+}
+
 function formatDateRange(startDate?: string | null, endDate?: string | null) {
-    if (!startDate && !endDate) return "";
+    if (!startDate && !endDate) return "Click to Add Dates";
     if (startDate && endDate) return `${startDate} - ${endDate}`;
     return startDate || endDate || "Dates not set";
 }
 
 function getLocationKey(location: TripLegLocation) {
     return `${location.source}:${location.id}`;
+}
+
+function getInitialSelectedMemberIds(
+    location: TripLegLocation,
+    memberOptions: TripLegMemberOption[]
+) {
+    const hasExplicitSavedSelection =
+        location.source === "manual" || Boolean(location.persistedLegId);
+
+    if (hasExplicitSavedSelection) {
+        return location.memberIds || [];
+    }
+
+    return location.memberIds?.length
+        ? location.memberIds
+        : memberOptions.map((member) => member.id);
 }
 
 function LocationTile({
@@ -68,11 +114,7 @@ function LocationTile({
         location.iconEmoji ||
         getFlagEmoji(location.countryCode) ||
         "📍";
-    const secondaryLabel =
-        formatDateRange(location.startDate, location.endDate) ||
-        location.countryName ||
-        location.countryCode ||
-        "";
+    const secondaryLabel = formatDateRange(location.startDate, location.endDate);
 
     return (
         <button
@@ -169,6 +211,11 @@ export default function TripLegLocationLine({
     deleteLegAction,
     children,
 }: TripLegLocationLineProps) {
+    const router = useRouter();
+    const sortedLocations = useMemo(
+        () => sortTripLegLocations(locations),
+        [locations]
+    );
     const accommodationLocations = useMemo(
         () => locations.filter((location) => location.source === "accommodation"),
         [locations]
@@ -178,6 +225,15 @@ export default function TripLegLocationLine({
         null
     );
     const [isAddingLeg, setIsAddingLeg] = useState(false);
+    const [addLegPlace, setAddLegPlace] = useState({
+        name: "",
+        googlePlaceId: "",
+        cityName: "",
+        countryCode: "",
+        iconEmoji: "",
+    });
+    const [addLegError, setAddLegError] = useState("");
+    const [actionError, setActionError] = useState("");
     const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(
         () => new Set(memberOptions.map((member) => member.id))
     );
@@ -189,13 +245,11 @@ export default function TripLegLocationLine({
 
     function openEditor(location: TripLegLocation) {
         setIsAddingLeg(false);
+        setActionError("");
+        setAddLegError("");
         setSelectedLocationId(getLocationKey(location));
         setSelectedMemberIds(
-            new Set(
-                location?.memberIds?.length
-                    ? location.memberIds
-                    : memberOptions.map((member) => member.id)
-            )
+            new Set(getInitialSelectedMemberIds(location, memberOptions))
         );
         setIsOpen(true);
     }
@@ -203,6 +257,15 @@ export default function TripLegLocationLine({
     function openAddLeg() {
         setSelectedLocationId(null);
         setIsAddingLeg(true);
+        setAddLegPlace({
+            name: "",
+            googlePlaceId: "",
+            cityName: "",
+            countryCode: "",
+            iconEmoji: "",
+        });
+        setAddLegError("");
+        setActionError("");
         setSelectedMemberIds(new Set(memberOptions.map((member) => member.id)));
         setIsOpen(true);
     }
@@ -218,9 +281,49 @@ export default function TripLegLocationLine({
 
     function runAction(action: (formData: FormData) => Promise<void>, formData: FormData) {
         startTransition(async () => {
-            await action(formData);
-            setIsOpen(false);
+            setActionError("");
+
+            try {
+                await action(formData);
+                router.refresh();
+                setIsOpen(false);
+            } catch (error) {
+                console.error("Could not save trip leg:", error);
+                setActionError(
+                    error instanceof Error
+                        ? error.message
+                        : "Could not save this trip leg. Please try again."
+                );
+            }
         });
+    }
+
+    function runFormAction(
+        action: (formData: FormData) => Promise<void>,
+        form: HTMLFormElement | null
+    ) {
+        if (!form) return;
+        if (!form.reportValidity()) return;
+        runAction(action, new FormData(form));
+    }
+
+    function handleAddLegSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        const form = event.currentTarget;
+
+        if (!form.reportValidity()) return;
+
+        if (!addLegPlace.googlePlaceId) {
+            setAddLegError("Choose the destination from the Google location list.");
+            return;
+        }
+
+        runAction(upsertLegAction, new FormData(form));
+    }
+
+    function handleEditLegSubmit(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        runFormAction(upsertLegAction, event.currentTarget);
     }
 
     if (locations.length === 0 && !children) {
@@ -293,12 +396,23 @@ export default function TripLegLocationLine({
                             </section>
                         ) : null}
 
+                        {actionError ? (
+                            <p className="rounded-2xl border border-red-300/25 bg-red-400/10 px-4 py-3 text-sm font-bold text-red-100">
+                                {actionError}
+                            </p>
+                        ) : null}
+
                         {isAddingLeg ? (
                             <form
-                                action={(formData) => runAction(upsertLegAction, formData)}
+                                onSubmit={handleAddLegSubmit}
                                 className="space-y-5 rounded-2xl border border-lime-300/20 bg-slate-950/80 p-5 sm:p-6"
                             >
                                 <input type="hidden" name="trip_id" value={tripId} />
+                                <input
+                                    type="hidden"
+                                    name="require_google_place_id"
+                                    value="true"
+                                />
                                 <input
                                     type="hidden"
                                     name="revalidate_path"
@@ -328,36 +442,68 @@ export default function TripLegLocationLine({
                                         <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                             Destination
                                         </span>
-                                        <input
+                                        <PlaceAutocompleteInput
                                             name="name"
-                                            type="text"
+                                            value={addLegPlace.name}
+                                            onInputChange={(value) => {
+                                                setAddLegError("");
+                                                setAddLegPlace({
+                                                    name: value,
+                                                    googlePlaceId: "",
+                                                    cityName: "",
+                                                    countryCode: "",
+                                                    iconEmoji: "",
+                                                });
+                                            }}
+                                            onPlaceSelect={(place) => {
+                                                const countryCode = getPlaceComponent(
+                                                    place,
+                                                    "country",
+                                                    "short_name"
+                                                ).toUpperCase();
+                                                setAddLegError("");
+                                                setAddLegPlace({
+                                                    name: getTripLegPlaceLabel(place),
+                                                    googlePlaceId: place.place_id || "",
+                                                    cityName: getTripLegPlaceCity(place),
+                                                    countryCode,
+                                                    iconEmoji: getFlagEmoji(countryCode),
+                                                });
+                                            }}
                                             required
-                                            placeholder="Paris, Tokyo, home..."
+                                            placeholder="Choose a city, region, province, state, or country..."
+                                            types={TRIP_LEG_PLACE_TYPES}
                                             className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
                                         />
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                            City name
-                                        </span>
                                         <input
+                                            type="hidden"
+                                            name="google_place_id"
+                                            value={addLegPlace.googlePlaceId}
+                                        />
+                                        <input
+                                            type="hidden"
                                             name="city_name"
-                                            type="text"
-                                            placeholder="Optional"
-                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                            value={addLegPlace.cityName}
                                         />
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                            Country code
-                                        </span>
                                         <input
+                                            type="hidden"
                                             name="country_code"
-                                            type="text"
-                                            maxLength={2}
-                                            placeholder="DE"
-                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold uppercase text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+                                            value={addLegPlace.countryCode}
                                         />
+                                        <input
+                                            type="hidden"
+                                            name="icon_emoji"
+                                            value={addLegPlace.iconEmoji}
+                                        />
+                                        <p className="mt-2 text-xs font-semibold text-slate-500">
+                                            Choose the destination from the Google location
+                                            list so VAIVIA can save the place correctly.
+                                        </p>
+                                        {addLegError ? (
+                                            <p className="mt-2 text-xs font-bold text-red-200">
+                                                {addLegError}
+                                            </p>
+                                        ) : null}
                                     </label>
                                     <label className="block">
                                         <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
@@ -417,7 +563,7 @@ export default function TripLegLocationLine({
                             </form>
                         ) : selectedLocation ? (
                             <form
-                                action={(formData) => runAction(upsertLegAction, formData)}
+                                onSubmit={handleEditLegSubmit}
                                 className="space-y-5 rounded-2xl border border-lime-300/20 bg-slate-950/80 p-5 sm:p-6"
                             >
                                 <input type="hidden" name="trip_id" value={tripId} />
@@ -548,9 +694,12 @@ export default function TripLegLocationLine({
                                 <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
                                     {selectedLocation ? (
                                         <button
-                                            type="submit"
-                                            formAction={(formData) =>
-                                                runAction(deleteLegAction, formData)
+                                            type="button"
+                                            onClick={(event) =>
+                                                runFormAction(
+                                                    deleteLegAction,
+                                                    event.currentTarget.form
+                                                )
                                             }
                                             className="inline-flex items-center gap-2 rounded-full border border-red-300/25 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20"
                                             disabled={
@@ -589,7 +738,7 @@ export default function TripLegLocationLine({
     return (
         <>
             <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-                {locations.map((location) => (
+                {sortedLocations.map((location) => (
                     <LocationTile
                         key={getLocationKey(location)}
                         location={location}
