@@ -15,7 +15,10 @@ type QuickAddFriend = {
     avatarUrl?: string | null;
 };
 
-type InviteWizardStep = "invitee" | "journey" | "accommodations";
+type InviteWizardStep = "invitee" | "journey" | "accommodations" | "success";
+
+const INVITE_SUCCESS_MESSAGE =
+    "If this user exists, they will receive an invitation to join your trip. If this user doesn't have an account, they will be invited to create one.";
 
 type InviteLegOption = {
     id: string;
@@ -49,20 +52,6 @@ type InviteAccommodationOption = {
     status?: string | null;
 };
 
-type ScopedTripInvitationRpcClient = {
-    rpc: (
-        fn: "create_trip_invitation_with_assignments",
-        args: {
-            target_trip_id: string;
-            invitee_identifier: string;
-            consent_confirmed: boolean;
-            target_leg_ids: string[];
-            target_transportation_item_ids: string[];
-            target_accommodation_item_ids: string[];
-        }
-    ) => Promise<{ data: string | null; error: { message?: string } | null }>;
-};
-
 type ShareTripModalProps = {
     tripId: string;
     tripTitle?: string | null;
@@ -76,6 +65,13 @@ type ShareTripModalProps = {
 
 function getInviteErrorMessage(error: { message?: string } | null) {
     const message = error?.message?.toLowerCase() || "";
+
+    if (
+        message.includes("create_trip_invitation_with_assignments") ||
+        message.includes("could not find the function")
+    ) {
+        return "Trip invite assignments are not configured in Supabase yet. Apply the scoped trip invitation migration before sending invites.";
+    }
 
     if (message.includes("blocked") || message.includes("create a trip from your account")) {
         return error?.message || "You can't invite this person to this trip.";
@@ -97,6 +93,15 @@ function getFriendInitials(friend: QuickAddFriend) {
         .toUpperCase();
 }
 
+function getFamilyInitials(member: TripHeaderFamilyMember) {
+    return member.name
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase();
+}
+
 export default function ShareTripModal({
     tripId,
     tripTitle,
@@ -108,7 +113,6 @@ export default function ShareTripModal({
     addFamilyMemberAction,
 }: ShareTripModalProps) {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<"invite" | "family">("invite");
     const [inviteStep, setInviteStep] = useState<InviteWizardStep>("invitee");
     const [invitee, setInvitee] = useState("");
     const [consentChecked, setConsentChecked] = useState(false);
@@ -149,11 +153,20 @@ export default function ShareTripModal({
         selectedFamilyIds.size > 0 &&
         !isAddingFamily;
 
+    function resetInviteForm() {
+        setInvitee("");
+        setConsentChecked(false);
+        setSelectedLegIds(new Set());
+        setSelectedJourneyIds(new Set());
+        setSelectedAccommodationIds(new Set());
+        setErrorMessage("");
+        setSuccessMessage("");
+    }
+
     useEffect(() => {
         if (!open) {
             setInviteStep("invitee");
-            setErrorMessage("");
-            setSuccessMessage("");
+            resetInviteForm();
             return;
         }
 
@@ -346,43 +359,56 @@ export default function ShareTripModal({
         event.preventDefault();
         if (!canSubmit) return;
 
-        const supabase = createClient();
         setIsSubmitting(true);
         setErrorMessage("");
         setSuccessMessage("");
 
-        const { error } = await (supabase as unknown as ScopedTripInvitationRpcClient).rpc(
-            "create_trip_invitation_with_assignments",
+        const response = await fetch(
+            `/api/trips/${encodeURIComponent(tripId)}/invitations`,
             {
-                target_trip_id: tripId,
-                invitee_identifier: invitee.trim(),
-                consent_confirmed: consentChecked,
-                target_leg_ids: Array.from(selectedLegIds),
-                target_transportation_item_ids: Array.from(selectedJourneyIds),
-                target_accommodation_item_ids: Array.from(selectedAccommodationIds),
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    invitee_identifier: invitee.trim(),
+                    consent_confirmed: consentChecked,
+                    target_leg_ids: Array.from(selectedLegIds),
+                    target_transportation_item_ids: Array.from(selectedJourneyIds),
+                    target_accommodation_item_ids: Array.from(
+                        selectedAccommodationIds
+                    ),
+                }),
             }
         );
+        const result = (await response.json().catch(() => null)) as {
+            error?: string;
+            code?: string;
+            details?: string;
+            hint?: string;
+        } | null;
 
-        if (error) {
-            setErrorMessage(getInviteErrorMessage(error));
-        } else {
-            setInvitee("");
-            setConsentChecked(false);
-            setInviteStep("invitee");
-            setSelectedLegIds(new Set());
-            setSelectedJourneyIds(new Set());
-            setSelectedAccommodationIds(new Set());
-            setSuccessMessage(
-                "If this user exists, they will receive an invitation to join your trip. If this user doesn't have an account, they will be invited to create one."
+        if (!response.ok) {
+            console.error("Could not send scoped trip invite:", {
+                status: response.status,
+                code: result?.code,
+                message: result?.error,
+                details: result?.details,
+                hint: result?.hint,
+            });
+            setErrorMessage(
+                getInviteErrorMessage({ message: result?.error || "" })
             );
+        } else {
+            resetInviteForm();
+            setInviteStep("success");
             onInviteSent?.();
         }
 
         setIsSubmitting(false);
     }
 
-    async function addSelectedFamily(event: React.FormEvent<HTMLFormElement>) {
-        event.preventDefault();
+    async function addSelectedFamily() {
         if (!addFamilyMemberAction || selectedFamilyIds.size === 0) return;
 
         const formData = new FormData();
@@ -398,7 +424,7 @@ export default function ShareTripModal({
         try {
             await addFamilyMemberAction(formData);
             setSelectedFamilyIds(new Set());
-            onOpenChange(false);
+            setSuccessMessage("Selected family members were added to this trip.");
             router.refresh();
         } catch {
             setErrorMessage("Could not add family members. Please try again.");
@@ -485,32 +511,41 @@ export default function ShareTripModal({
                     </div>
 
                     <div className="vaivia-modal-body space-y-5">
-                        <div className="inline-flex rounded-full border border-slate-200 bg-slate-100 p-1">
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab("invite")}
-                                className={`rounded-full px-4 py-2 text-sm font-black transition ${
-                                    activeTab === "invite"
-                                        ? "bg-slate-950 text-white"
-                                        : "text-slate-600 hover:text-slate-950"
-                                }`}
-                            >
-                                Invite a Friend
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab("family")}
-                                className={`rounded-full px-4 py-2 text-sm font-black transition ${
-                                    activeTab === "family"
-                                        ? "bg-slate-950 text-white"
-                                        : "text-slate-600 hover:text-slate-950"
-                                }`}
-                            >
-                                Add From Your Family
-                            </button>
-                        </div>
+                        {inviteStep === "success" ? (
+                            <div className="space-y-5">
+                                <div className="rounded-2xl border border-lime-200 bg-lime-50 p-5 text-slate-950">
+                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-700">
+                                        Invite sent
+                                    </p>
+                                    <h3 className="mt-2 text-2xl font-black">
+                                        Your trip invite is on its way
+                                    </h3>
+                                    <p className="mt-3 text-sm font-semibold leading-6 text-slate-700">
+                                        {INVITE_SUCCESS_MESSAGE}
+                                    </p>
+                                </div>
 
-                        {activeTab === "invite" ? (
+                                <div className="flex flex-col gap-2 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
+                                    <button
+                                        type="button"
+                                        onClick={requestClose}
+                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                    >
+                                        Done
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            resetInviteForm();
+                                            setInviteStep("invitee");
+                                        }}
+                                        className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                    >
+                                        Add another user
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
                             <form
                                 onSubmit={(event) => {
                                     if (inviteStep === "accommodations") {
@@ -643,6 +678,89 @@ export default function ShareTripModal({
                                                 ) : (
                                                     <p className="text-sm font-semibold text-slate-500">
                                                         Accepted friends will appear here.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+                                                        Quick add family
+                                                    </p>
+                                                    <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
+                                                        Add saved family members to Going
+                                                        without sending them an account
+                                                        invite.
+                                                    </p>
+                                                </div>
+                                                {selectedFamilyIds.size > 0 ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void addSelectedFamily()}
+                                                        disabled={!canAddFamily}
+                                                        className="shrink-0 rounded-full bg-slate-950 px-3 py-1.5 text-xs font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                                    >
+                                                        {isAddingFamily
+                                                            ? "Adding..."
+                                                            : "Add"}
+                                                    </button>
+                                                ) : null}
+                                            </div>
+                                            <div className="mt-3 flex flex-wrap gap-2">
+                                                {selectableFamilyMembers.length > 0 ? (
+                                                    selectableFamilyMembers.map((member) => {
+                                                        const selected =
+                                                            selectedFamilyIds.has(
+                                                                member.family_member_id
+                                                            );
+
+                                                        return (
+                                                            <button
+                                                                key={member.family_member_id}
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    toggleFamilyMember(
+                                                                        member.family_member_id
+                                                                    )
+                                                                }
+                                                                className={`flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-left shadow-sm transition ${
+                                                                    selected
+                                                                        ? "border-lime-300 bg-lime-50 text-slate-950"
+                                                                        : "border-slate-200 bg-white text-slate-900 hover:border-lime-300 hover:bg-lime-50"
+                                                                }`}
+                                                            >
+                                                                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-xs font-black uppercase text-lime-200">
+                                                                    {member.avatar_url ? (
+                                                                        // eslint-disable-next-line @next/next/no-img-element
+                                                                        <img
+                                                                            src={member.avatar_url}
+                                                                            alt=""
+                                                                            className="h-full w-full object-cover"
+                                                                        />
+                                                                    ) : (
+                                                                        getFamilyInitials(
+                                                                            member
+                                                                        )
+                                                                    )}
+                                                                </span>
+                                                                <span className="min-w-0">
+                                                                    <span className="block max-w-32 truncate text-sm font-black">
+                                                                        {member.name}
+                                                                    </span>
+                                                                    <span className="block max-w-32 truncate text-xs font-semibold text-slate-500">
+                                                                        {member.relationship ||
+                                                                            "Family member"}
+                                                                    </span>
+                                                                </span>
+                                                            </button>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <p className="text-sm font-semibold text-slate-500">
+                                                        Saved family members who are not
+                                                        already going will appear here.
                                                     </p>
                                                 )}
                                             </div>
@@ -923,90 +1041,6 @@ export default function ShareTripModal({
                                             : inviteStep === "accommodations"
                                               ? "Send invite"
                                               : "Next"}
-                                    </button>
-                                </div>
-                            </form>
-                        ) : (
-                            <form onSubmit={addSelectedFamily} className="space-y-5">
-                                <p className="text-sm leading-6 text-slate-600">
-                                    Select saved family members to add them to Going for
-                                    this trip.
-                                </p>
-
-                                <div className="space-y-3">
-                                    {selectableFamilyMembers.length > 0 ? (
-                                        selectableFamilyMembers.map((member) => {
-                                            const isSelected =
-                                                selectedFamilyIds.has(
-                                                    member.family_member_id
-                                                );
-
-                                            return (
-                                                <button
-                                                    key={member.family_member_id}
-                                                    type="button"
-                                                    onClick={() =>
-                                                        toggleFamilyMember(
-                                                            member.family_member_id
-                                                        )
-                                                    }
-                                                    className={`flex w-full items-center justify-between gap-3 rounded-2xl border p-3 text-left transition ${
-                                                        isSelected
-                                                            ? "border-lime-300 bg-lime-50 text-slate-950"
-                                                            : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
-                                                    }`}
-                                                >
-                                                    <span className="min-w-0">
-                                                        <span className="block truncate text-sm font-black">
-                                                            {member.name}
-                                                        </span>
-                                                        <span className="block truncate text-xs font-semibold text-slate-500">
-                                                            {member.relationship ||
-                                                                "Family member"}
-                                                        </span>
-                                                    </span>
-                                                    <span
-                                                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                                                            isSelected
-                                                                ? "border-slate-950 bg-slate-950"
-                                                                : "border-slate-300 bg-white"
-                                                        }`}
-                                                    >
-                                                        {isSelected ? (
-                                                            <span className="h-2 w-2 rounded-full bg-lime-300" />
-                                                        ) : null}
-                                                    </span>
-                                                </button>
-                                            );
-                                        })
-                                    ) : (
-                                        <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
-                                            All saved family members are already going,
-                                            or you have not added any family members yet.
-                                        </p>
-                                    )}
-                                </div>
-
-                                {errorMessage ? (
-                                    <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                                        {errorMessage}
-                                    </p>
-                                ) : null}
-
-                                <div className="flex justify-end gap-2 border-t border-slate-200 pt-5">
-                                    <button
-                                        type="button"
-                                        onClick={requestClose}
-                                        className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={!canAddFamily}
-                                        className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                        {isAddingFamily ? "Saving..." : "Save"}
                                     </button>
                                 </div>
                             </form>

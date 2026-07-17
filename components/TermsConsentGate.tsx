@@ -13,6 +13,7 @@ type TermsVersion = {
 };
 
 type ProfileConsentState = {
+    terms_accepted_at: string | null;
     marketing_emails_consent: boolean | null;
     marketing_emails_consent_decided_at: string | null;
     terms_declined_version_id: string | null;
@@ -69,6 +70,23 @@ function formatDate(value?: string | null) {
     }).format(new Date(value));
 }
 
+function isProfileTermsAcceptanceCurrent(
+    acceptedAt?: string | null,
+    publishedAt?: string | null
+) {
+    if (!acceptedAt) return false;
+    if (!publishedAt) return true;
+
+    const acceptedTime = new Date(acceptedAt).getTime();
+    const publishedTime = new Date(publishedAt).getTime();
+
+    if (Number.isNaN(acceptedTime) || Number.isNaN(publishedTime)) {
+        return false;
+    }
+
+    return acceptedTime >= publishedTime;
+}
+
 export default function TermsConsentGate({ userId }: TermsConsentGateProps) {
     const [terms, setTerms] = useState<TermsVersion | null>(null);
     const [hasAcceptedCurrentTerms, setHasAcceptedCurrentTerms] = useState(true);
@@ -96,13 +114,14 @@ export default function TermsConsentGate({ userId }: TermsConsentGateProps) {
                 queryClient
                     .from("user_profiles")
                     .select(
-                        "marketing_emails_consent,marketing_emails_consent_decided_at,terms_declined_version_id,terms_decline_delete_after,account_deletion_requested_at"
+                        "terms_accepted_at,marketing_emails_consent,marketing_emails_consent_decided_at,terms_declined_version_id,terms_decline_delete_after,account_deletion_requested_at"
                     )
                     .eq("id", userId)
                     .maybeSingle(),
             ]);
 
             const currentTerms = termsData as TermsVersion | null;
+            const currentProfile = profileData as ProfileConsentState | null;
             let accepted = true;
 
             if (currentTerms?.requires_acceptance) {
@@ -113,13 +132,19 @@ export default function TermsConsentGate({ userId }: TermsConsentGateProps) {
                     .eq("terms_version_id", currentTerms.id)
                     .maybeSingle();
 
-                accepted = Boolean(acceptanceData);
+                accepted = Boolean(
+                    acceptanceData ||
+                        isProfileTermsAcceptanceCurrent(
+                            currentProfile?.terms_accepted_at,
+                            currentTerms.published_at
+                        )
+                );
             }
 
             if (!isMounted) return;
             setTerms(currentTerms);
             setHasAcceptedCurrentTerms(accepted);
-            setProfileState(profileData as ProfileConsentState | null);
+            setProfileState(currentProfile);
             setIsLoaded(true);
         }
 
@@ -146,7 +171,8 @@ export default function TermsConsentGate({ userId }: TermsConsentGateProps) {
     const needsMarketingDecision =
         isLoaded &&
         hasAcceptedCurrentTerms &&
-        profileState?.marketing_emails_consent_decided_at == null;
+        profileState?.marketing_emails_consent_decided_at == null &&
+        profileState?.marketing_emails_consent == null;
 
     async function acceptTerms() {
         setIsWorking(true);
@@ -212,6 +238,7 @@ export default function TermsConsentGate({ userId }: TermsConsentGateProps) {
             });
             if (error) throw error;
             setProfileState((current) => ({
+                terms_accepted_at: current?.terms_accepted_at || null,
                 marketing_emails_consent: consent,
                 marketing_emails_consent_decided_at: new Date().toISOString(),
                 terms_declined_version_id:

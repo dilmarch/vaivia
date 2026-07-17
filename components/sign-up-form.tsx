@@ -119,11 +119,12 @@ function getPasswordValidationError({
 
 export function SignUpForm({
   className,
+  initialEmail = "",
   ...props
-}: React.ComponentPropsWithoutRef<"div">) {
+}: React.ComponentPropsWithoutRef<"div"> & { initialEmail?: string }) {
   const router = useRouter();
   const [step, setStep] = useState<SignupStep>("account");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -281,7 +282,7 @@ export function SignUpForm({
         email: cleanEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/`,
+          emailRedirectTo: `${window.location.origin}/`,
           data: {
             first_name: cleanFirstName,
             last_name: cleanLastName,

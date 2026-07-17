@@ -3257,6 +3257,7 @@ function WeekViewGrid({
     onOpenItem,
     onEditMemberLocationLeg,
     showFixedColumn = true,
+    currentWeekStartKey,
 }: {
     weekDates: Date[];
     items: ItineraryCalendarItem[];
@@ -3265,11 +3266,15 @@ function WeekViewGrid({
     onOpenItem: (item: ItineraryCalendarItem) => void;
     onEditMemberLocationLeg?: (locationKey: string) => void;
     showFixedColumn?: boolean;
+    currentWeekStartKey?: string;
 }) {
     const timeRailWidth = 64;
     const dayColumnWidth = 176;
+    const dayColumnCount = Math.max(weekDates.length, 1);
     const minGridWidth =
-        (showFixedColumn ? timeRailWidth : 0) + dayColumnWidth * 7;
+        (showFixedColumn ? timeRailWidth : 0) + dayColumnWidth * dayColumnCount;
+    const dateGridTemplateColumns = `repeat(${dayColumnCount}, minmax(${dayColumnWidth}px, 1fr))`;
+    const fullDateRangeGridColumn = `span ${dayColumnCount} / span ${dayColumnCount}`;
 
     return (
         <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/70 shadow-xl shadow-black/20">
@@ -3278,23 +3283,30 @@ function WeekViewGrid({
                 style={{
                     minWidth: minGridWidth,
                     gridTemplateColumns: showFixedColumn
-                        ? `${timeRailWidth}px repeat(7, minmax(${dayColumnWidth}px, 1fr))`
-                        : `repeat(7, minmax(${dayColumnWidth}px, 1fr))`,
+                        ? `${timeRailWidth}px ${dateGridTemplateColumns}`
+                        : dateGridTemplateColumns,
                 }}
             >
                 {showFixedColumn ? (
                     <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
                 ) : null}
-                {weekDates.map((date) => (
-                    <div
-                        key={getLocalDateKey(date)}
-                        className="border-b border-r border-white/10 bg-slate-950/95 px-3 py-3"
-                    >
-                        <p className="text-sm font-black text-lime-300">
-                            {formatShortDate(date)}
-                        </p>
-                    </div>
-                ))}
+                {weekDates.map((date) => {
+                    const dateKey = getLocalDateKey(date);
+
+                    return (
+                        <div
+                            key={dateKey}
+                            data-current-week={
+                                dateKey === currentWeekStartKey ? "true" : undefined
+                            }
+                            className="border-b border-r border-white/10 bg-slate-950/95 px-3 py-3"
+                        >
+                            <p className="text-sm font-black text-lime-300">
+                                {formatShortDate(date)}
+                            </p>
+                        </div>
+                    );
+                })}
 
                 {showFixedColumn ? (
                     <div className="sticky left-0 z-20 border-b border-r border-white/10 bg-slate-950/95" />
@@ -3353,24 +3365,33 @@ function WeekViewGrid({
                                     />
                                 </div>
                             ) : null}
-                            <div className="relative col-span-7 min-h-14 border-b border-white/10 bg-slate-950/55">
-                                <div className="absolute inset-0 grid grid-cols-7 divide-x divide-white/10" />
+                            <div
+                                className="relative min-h-14 border-b border-white/10 bg-slate-950/55"
+                                style={{ gridColumn: fullDateRangeGridColumn }}
+                            >
+                                <div
+                                    className="absolute inset-0 grid divide-x divide-white/10"
+                                    style={{
+                                        gridTemplateColumns: dateGridTemplateColumns,
+                                    }}
+                                />
                                 {memberSegments.length > 0 ? (
                                     memberSegments.map((segment) => {
                                         const leftPercent =
-                                            (segment.startIndex / 7) * 100;
+                                            (segment.startIndex / dayColumnCount) *
+                                            100;
                                         const widthPercent =
                                             ((segment.endIndex -
                                                 segment.startIndex +
                                                 1) /
-                                            7) *
+                                                dayColumnCount) *
                                             100;
                                         const continuesBefore =
                                             segment.continuesBeforeWeek &&
                                             segment.startIndex === 0;
                                         const continuesAfter =
                                             segment.continuesAfterWeek &&
-                                            segment.endIndex === 6;
+                                            segment.endIndex === dayColumnCount - 1;
                                         const horizontalInset =
                                             (continuesBefore ? 0 : 6) +
                                             (continuesAfter ? 0 : 6);
@@ -3599,6 +3620,15 @@ export default function ItineraryCalendar({
             );
         },
         [weekStartKey]
+    );
+    const scrollableWeekDates = useMemo(
+        () =>
+            scrollableWeekStarts.flatMap((scrollWeekStart) =>
+                Array.from({ length: 7 }, (_, index) =>
+                    addDays(scrollWeekStart, index)
+                )
+            ),
+        [scrollableWeekStarts]
     );
     const listEndDate = addDays(listStartDate, listDayCount - 1);
     const visibleDateRange = useMemo(
@@ -4116,38 +4146,20 @@ export default function ItineraryCalendar({
                         <div className="flex w-max gap-3 pb-2">
                             <WeekViewFixedRail memberLocations={memberLocations} />
                             <div className="flex w-max">
-                                {scrollableWeekStarts.map((scrollWeekStart) => {
-                                    const scrollWeekStartKey =
-                                        getLocalDateKey(scrollWeekStart);
-                                    const scrollWeekDates = Array.from(
-                                        { length: 7 },
-                                        (_, index) => addDays(scrollWeekStart, index)
-                                    );
-
-                                    return (
-                                        <div
-                                            key={scrollWeekStartKey}
-                                            data-current-week={
-                                                scrollWeekStartKey === weekStartKey
-                                                    ? "true"
-                                                    : undefined
-                                            }
-                                            className="w-max shrink-0 scroll-ml-24 scroll-mr-4"
-                                        >
-                                            <WeekViewGrid
-                                                weekDates={scrollWeekDates}
-                                                items={items}
-                                                memberLocations={memberLocations}
-                                                displayTimezone={displayTimezone}
-                                                onOpenItem={setSelectedItem}
-                                                onEditMemberLocationLeg={
-                                                    onEditMemberLocationLeg
-                                                }
-                                                showFixedColumn={false}
-                                            />
-                                        </div>
-                                    );
-                                })}
+                                <div className="w-max shrink-0 scroll-ml-24 scroll-mr-4">
+                                    <WeekViewGrid
+                                        weekDates={scrollableWeekDates}
+                                        items={items}
+                                        memberLocations={memberLocations}
+                                        displayTimezone={displayTimezone}
+                                        onOpenItem={setSelectedItem}
+                                        onEditMemberLocationLeg={
+                                            onEditMemberLocationLeg
+                                        }
+                                        showFixedColumn={false}
+                                        currentWeekStartKey={weekStartKey}
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -101,6 +101,84 @@ export default async function AppNav() {
             upcomingTrips = getUpcomingTrips((trips || []) as SharedTrip[]);
         }
 
+        const profileDefaults = getUserProfileDefaults(user);
+        const { data: profileData, error: profileError } = await supabase
+            .from("user_profiles")
+            .select("*")
+            .eq("id", user.id)
+            .maybeSingle();
+        let nextProfile = profileData as Partial<UserProfile> | null;
+
+        if (profileError) {
+            console.warn("Could not load user profile:", {
+                message: profileError.message,
+                code: profileError.code,
+                details: profileError.details,
+            });
+        } else {
+            if (
+                profileDefaults.email &&
+                (!nextProfile || !nextProfile.email)
+            ) {
+                const now = new Date().toISOString();
+                const { data: repairedProfile, error: repairProfileError } =
+                    await supabase
+                        .from("user_profiles")
+                        .upsert(
+                            {
+                                id: user.id,
+                                first_name:
+                                    nextProfile?.first_name ??
+                                    profileDefaults.first_name,
+                                last_name:
+                                    nextProfile?.last_name ??
+                                    profileDefaults.last_name,
+                                username:
+                                    nextProfile?.username ??
+                                    profileDefaults.username,
+                                email: profileDefaults.email,
+                                avatar_url:
+                                    nextProfile?.avatar_url ??
+                                    profileDefaults.avatar_url,
+                                join_date:
+                                    nextProfile?.join_date ??
+                                    profileDefaults.join_date ??
+                                    now,
+                                updated_at: now,
+                            },
+                            { onConflict: "id" }
+                        )
+                        .select("*")
+                        .maybeSingle();
+
+                if (repairProfileError) {
+                    console.warn("Could not repair profile email for invite claim:", {
+                        message: repairProfileError.message,
+                        code: repairProfileError.code,
+                        details: repairProfileError.details,
+                    });
+                } else {
+                    nextProfile = repairedProfile as Partial<UserProfile> | null;
+                }
+            }
+
+            profile = nextProfile;
+        }
+
+        profile = mergeProfileWithAuthDefaults(profile, profileDefaults);
+
+        const { error: claimInvitesError } = await supabase.rpc(
+            "claim_pending_trip_invitations_for_current_user"
+        );
+
+        if (claimInvitesError) {
+            console.warn("Could not claim pending trip invitations:", {
+                message: claimInvitesError.message,
+                code: claimInvitesError.code,
+                details: claimInvitesError.details,
+            });
+        }
+
         const {
             data: dropdownNotifications,
             error: notificationsError,
@@ -131,27 +209,6 @@ export default async function AppNav() {
         } else {
             pendingImportCount = importsCount || 0;
         }
-
-        const { data: profileData, error: profileError } = await supabase
-            .from("user_profiles")
-            .select("*")
-            .eq("id", user.id)
-            .maybeSingle();
-
-        if (profileError) {
-            console.warn("Could not load user profile:", {
-                message: profileError.message,
-                code: profileError.code,
-                details: profileError.details,
-            });
-        } else {
-            profile = profileData as Partial<UserProfile> | null;
-        }
-
-        profile = mergeProfileWithAuthDefaults(
-            profile,
-            getUserProfileDefaults(user)
-        );
 
         const { data: progressData, error: onboardingError } =
             await loadOnboardingProgress(supabase, user.id);

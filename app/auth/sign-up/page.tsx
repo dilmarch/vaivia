@@ -1,6 +1,12 @@
 import { SignUpForm } from "@/components/sign-up-form";
 
-export default function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ email?: string }>;
+}) {
+  const params = await searchParams;
+
   return (
     <main className="flex min-h-svh w-full items-center justify-center bg-[#080511] px-4 py-10 text-white md:px-8">
       <div className="w-full max-w-3xl">
@@ -9,7 +15,7 @@ export default function Page() {
             VAIVIA
           </p>
         </div>
-        <SignUpForm />
+        <SignUpForm initialEmail={params.email || ""} />
       </div>
     </main>
   );

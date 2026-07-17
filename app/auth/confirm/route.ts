@@ -7,6 +7,10 @@ import { type EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
 
+function redirectAuthError(message: string): never {
+  redirect(`/auth/error?error=${encodeURIComponent(message)}`);
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const token_hash = searchParams.get("token_hash");
@@ -49,11 +53,15 @@ export async function GET(request: NextRequest) {
             : marketingConsent
               ? termsAcceptedAt
               : null;
+        const marketingConsentDecidedAt =
+          typeof metadata.marketing_emails_consent_decided_at === "string"
+            ? metadata.marketing_emails_consent_decided_at
+            : termsAcceptedAt;
 
         const { data: existingProfile, error: profileReadError } = await supabase
           .from("user_profiles")
           .select(
-            "id,first_name,last_name,username,email,avatar_url,join_date,terms_accepted_at,marketing_emails_consent,marketing_emails_consented_at,onboarding_completed_at"
+            "id,first_name,last_name,username,email,avatar_url,join_date,terms_accepted_at,marketing_emails_consent,marketing_emails_consented_at,marketing_emails_consent_decided_at,onboarding_completed_at"
           )
           .eq("id", user.id)
           .maybeSingle();
@@ -76,6 +84,9 @@ export async function GET(request: NextRequest) {
           marketing_emails_consented_at:
             existingProfile?.marketing_emails_consented_at ??
             marketingConsentedAt,
+          marketing_emails_consent_decided_at:
+            existingProfile?.marketing_emails_consent_decided_at ??
+            marketingConsentDecidedAt,
           onboarding_completed_at:
             existingProfile?.onboarding_completed_at ?? now,
           updated_at: now,
@@ -93,16 +104,29 @@ export async function GET(request: NextRequest) {
             userId: user.id,
           });
         }
+
+        const { error: termsError } = await supabase.rpc("accept_current_terms");
+
+        if (termsError) {
+          console.warn("Could not record terms acceptance after email confirmation:", {
+            message: termsError.message,
+            code: termsError.code,
+            details: termsError.details,
+            userId: user.id,
+          });
+        }
       }
 
       // redirect user to specified redirect URL or root of app
       redirect(next);
     } else {
       // redirect the user to an error page with some instructions
-      redirect(`/auth/error?error=${error?.message}`);
+      redirectAuthError(error?.message || "Email confirmation could not be completed.");
     }
   }
 
   // redirect the user to an error page with some instructions
-  redirect(`/auth/error?error=No token hash or type`);
+  redirectAuthError(
+    "This email confirmation link is missing its verification token. Please request a new confirmation email."
+  );
 }
