@@ -8,6 +8,7 @@ import {
     Check,
     ChevronsUp,
     Home,
+    Inbox,
     ListChecks,
     Plus,
     Search,
@@ -50,6 +51,7 @@ type TopNavTrip = {
 type AppTopActionBarProps = {
     trips: TopNavTrip[];
     notifications?: AppNotification[];
+    pendingImportCount?: number;
     isSuperAdmin?: boolean;
     onboardingProgress?: OnboardingProgress | null;
 };
@@ -133,11 +135,29 @@ function isProminentActionNotification(notification: AppNotification) {
         notification.type === "trip_invite_received" ||
         notification.type === "friend_request_received" ||
         notification.type === "passport_stamp_share_received" ||
-        notification.type === "profile_onboarding_prompt"
+        notification.type === "profile_onboarding_prompt" ||
+        notification.type === "travel_email_ready" ||
+        notification.type === "travel_email_needs_review"
     );
 }
 
 function getProminentActionCopy(notification: AppNotification) {
+    if (
+        notification.type === "travel_email_ready" ||
+        notification.type === "travel_email_needs_review"
+    ) {
+        return {
+            eyebrow: "Travel import",
+            title: notification.title || "Your travel confirmation is ready",
+            body:
+                notification.body ||
+                "Review the prepared travel details before adding anything to a trip.",
+            acceptLabel: "Review now",
+            remindLabel: "Review later",
+            showDecline: false,
+        };
+    }
+
     if (notification.type === "trip_invite_received") {
         return {
             eyebrow: "Trip invitation",
@@ -208,6 +228,15 @@ function getProminentActionCopy(notification: AppNotification) {
 }
 
 function getNotificationActionHref(notification: AppNotification) {
+    if (
+        notification.type === "travel_email_ready" ||
+        notification.type === "travel_email_needs_review" ||
+        notification.type === "travel_email_failed"
+    ) {
+        const importId = getNotificationMetadataString(notification, "importId");
+        return importId ? `/imports/${importId}` : "/imports";
+    }
+
     if (notification.type === "profile_onboarding_prompt") {
         return "/profile#passport-stamps";
     }
@@ -233,6 +262,13 @@ function getProminentActionInitial(notification: AppNotification) {
                 ? notification.metadata.senderName
                 : "";
         return senderName ? getInitials(senderName) : "S";
+    }
+
+    if (
+        notification.type === "travel_email_ready" ||
+        notification.type === "travel_email_needs_review"
+    ) {
+        return "T";
     }
 
     return notification.title?.trim()[0]?.toUpperCase() || "V";
@@ -414,6 +450,7 @@ function getTripSwitchHref({
 export default function AppTopActionBar({
     trips,
     notifications = [],
+    pendingImportCount = 0,
     isSuperAdmin = false,
     onboardingProgress = null,
 }: AppTopActionBarProps) {
@@ -436,6 +473,7 @@ export default function AppTopActionBar({
         useState<AppNotification | null>(null);
     const [prominentActionNotification, setProminentActionNotification] =
         useState<AppNotification | null>(null);
+    const [isImportPromptDismissed, setIsImportPromptDismissed] = useState(false);
     const [prominentActionError, setProminentActionError] = useState("");
     const [prominentPassportSharePreview, setProminentPassportSharePreview] =
         useState<ProminentPassportSharePreview | null>(null);
@@ -1073,6 +1111,13 @@ export default function AppTopActionBar({
                   "senderAvatarUrl"
               )
             : "";
+    const isOnImportsPage = pathname === "/imports" || pathname.startsWith("/imports/");
+    const shouldShowImportPrompt =
+        pendingImportCount > 0 &&
+        !isImportPromptDismissed &&
+        !prominentActionNotification &&
+        !isOnboardingWelcomeOpen &&
+        !isOnImportsPage;
 
     return (
         <>
@@ -1116,6 +1161,14 @@ export default function AppTopActionBar({
                                             ) : prominentActionNotification.type ===
                                               "passport_stamp_share_received" ? (
                                                 getInitials(prominentPassportSenderName)
+                                            ) : prominentActionNotification.type ===
+                                                  "travel_email_ready" ||
+                                              prominentActionNotification.type ===
+                                                  "travel_email_needs_review" ? (
+                                                <Inbox
+                                                    className="h-5 w-5 text-lime-200"
+                                                    aria-hidden="true"
+                                                />
                                             ) : (
                                                 getProminentActionInitial(
                                                     prominentActionNotification
@@ -1269,7 +1322,82 @@ export default function AppTopActionBar({
                     </AnimatedModal>
                 </Portal>
             ) : null}
-            {isOnboardingWelcomeOpen && !prominentActionNotification ? (
+            {shouldShowImportPrompt ? (
+                <Portal>
+                    <AnimatedModal
+                        onClose={() => setIsImportPromptDismissed(true)}
+                        className="z-[125] items-center bg-slate-950/70"
+                        panelClassName="max-w-lg overflow-hidden rounded-[2rem] border-white/10 bg-[#050712] text-white shadow-2xl shadow-black/70"
+                        labelledBy="travel-import-prompt-title"
+                    >
+                        {() => (
+                            <div className="space-y-5 p-6">
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex items-center gap-3">
+                                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-lime-300/25 bg-lime-300/10 text-lime-100 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.18)]">
+                                            <Inbox
+                                                className="h-5 w-5 text-lime-200"
+                                                aria-hidden="true"
+                                            />
+                                        </span>
+                                        <div>
+                                            <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                                Travel import
+                                            </p>
+                                            <h2
+                                                id="travel-import-prompt-title"
+                                                className="mt-1 text-2xl font-black"
+                                            >
+                                                {pendingImportCount === 1
+                                                    ? "Your travel confirmation is ready"
+                                                    : "Your travel confirmations are ready"}
+                                            </h2>
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsImportPromptDismissed(true)}
+                                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.1]"
+                                        aria-label="Review later"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+
+                                <p className="text-sm font-semibold leading-6 text-slate-300">
+                                    You have {pendingImportCount} travel confirmation
+                                    {pendingImportCount === 1 ? "" : "s"} ready to
+                                    review. They will stay available in Travel imports
+                                    until you decide to review them.
+                                </p>
+
+                                <div className="grid gap-2 border-t border-white/10 pt-4 sm:grid-cols-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsImportPromptDismissed(true)}
+                                        className="rounded-full border border-white/10 px-4 py-2.5 text-sm font-black text-slate-200 transition hover:bg-white/[0.08]"
+                                    >
+                                        Review later
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setIsImportPromptDismissed(true);
+                                            router.push("/imports");
+                                        }}
+                                        className="rounded-full bg-lime-300 px-4 py-2.5 text-sm font-black text-slate-950 transition hover:bg-lime-200"
+                                    >
+                                        Review now
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </AnimatedModal>
+                </Portal>
+            ) : null}
+            {isOnboardingWelcomeOpen &&
+            !prominentActionNotification &&
+            !shouldShowImportPrompt ? (
                 <Portal>
                     <AnimatedModal
                         onClose={() => void dismissWelcomeOnboarding()}
@@ -1682,6 +1810,23 @@ export default function AppTopActionBar({
                                 </p>
                             )}
                             <div className="border-t border-white/10 px-3 py-2">
+                                <Link
+                                    href="/imports"
+                                    className="mb-2 flex items-center justify-between rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-100 transition hover:bg-white/[0.08]"
+                                    onClick={() => setOpenMenu(null)}
+                                >
+                                    <span className="inline-flex items-center gap-2">
+                                        <Inbox className="h-4 w-4 text-lime-200" />
+                                        Travel imports
+                                    </span>
+                                    {pendingImportCount > 0 ? (
+                                        <span className="rounded-full bg-lime-300 px-2 py-0.5 text-[10px] text-slate-950">
+                                            {pendingImportCount > 99
+                                                ? "99+"
+                                                : pendingImportCount}
+                                        </span>
+                                    ) : null}
+                                </Link>
                                 <Link
                                     href="/notifications"
                                     className="block rounded-full border border-lime-300/20 bg-lime-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-lime-100 transition hover:bg-lime-300/20"

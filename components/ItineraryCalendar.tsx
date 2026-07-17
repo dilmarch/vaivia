@@ -1390,6 +1390,25 @@ function getListEntriesForDateRange(
         );
 }
 
+function getListEntriesForAllItems(
+    items: ItineraryCalendarItem[],
+    displayTimezone: string
+) {
+    return items
+        .map((item) => {
+            const range = getDisplayEventRange(item, displayTimezone);
+
+            return {
+                item,
+                dateKey: range.startDateKey,
+                timeLabel: range.timeLabel,
+                sortKey: range.sortKey,
+                endDateKey: range.endDateKey,
+            };
+        })
+        .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+}
+
 function getInitialAnchorDate(tripStartDate?: string | null) {
     if (!tripStartDate) return new Date();
     return parseDateKey(tripStartDate);
@@ -3582,21 +3601,12 @@ export default function ItineraryCalendar({
     const todayKey = getLocalDateKey(new Date());
     const listBeforeStartItems = useMemo(
         () =>
-            items
-                .map((item) => {
-                    const range = getDisplayEventRange(item, displayTimezone);
-
-                    return {
-                        item,
-                        dateKey: range.startDateKey,
-                        timeLabel: range.timeLabel,
-                        sortKey: range.sortKey,
-                        endDateKey: range.endDateKey,
-                    };
-                })
-                .filter((entry) => entry.endDateKey < listStartKey)
-                .sort((a, b) => a.sortKey.localeCompare(b.sortKey)),
-        [displayTimezone, items, listStartKey]
+            listOnly
+                ? []
+                : getListEntriesForAllItems(items, displayTimezone).filter(
+                      (entry) => entry.endDateKey < listStartKey
+                  ),
+        [displayTimezone, items, listOnly, listStartKey]
     );
     const listPastEvents = useMemo(
         () => listBeforeStartItems.filter((entry) => entry.endDateKey < todayKey),
@@ -3611,13 +3621,15 @@ export default function ItineraryCalendar({
     );
     const listUpcomingItems = useMemo(
         () =>
-            getListEntriesForDateRange(
-                items,
-                listStartDate,
-                listEndDate,
-                displayTimezone
-            ),
-        [displayTimezone, items, listStartDate, listEndDate]
+            listOnly
+                ? getListEntriesForAllItems(items, displayTimezone)
+                : getListEntriesForDateRange(
+                      items,
+                      listStartDate,
+                      listEndDate,
+                      displayTimezone
+                  ),
+        [displayTimezone, items, listOnly, listStartDate, listEndDate]
     );
     const groupedPastEvents = useMemo(
         () => groupListEntriesByDate(listPastEvents),
@@ -3632,11 +3644,12 @@ export default function ItineraryCalendar({
         [listUpcomingItems]
     );
     const hasFutureItems = useMemo(() => {
+        if (listOnly) return false;
         const listEndKey = getLocalDateKey(listEndDate);
         return items.some(
             (item) => getDisplayEventRange(item, displayTimezone).startDateKey > listEndKey
         );
-    }, [displayTimezone, items, listEndDate]);
+    }, [displayTimezone, items, listEndDate, listOnly]);
 
     useEffect(() => {
         setBrowserTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");

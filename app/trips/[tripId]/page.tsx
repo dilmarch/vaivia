@@ -939,11 +939,15 @@ function normalizeTransportationItem(
     item: Record<string, unknown>
 ): ItineraryCalendarItem {
     const id = getStringValue(item, ["id"], crypto.randomUUID());
-    const mode = getStringValue(item, [
+    const rawMode = getStringValue(item, [
         "transportation_mode",
         "mode",
         "type",
+        "transport_type",
     ]);
+    const mode = ["flight", "plane"].includes(rawMode.toLowerCase())
+        ? "airplane"
+        : rawMode;
     const departureLocation = getStringValue(item, [
         "departure_location",
         "origin",
@@ -954,9 +958,9 @@ function normalizeTransportationItem(
         "destination",
         "to_location",
     ]);
-    const flightNumber = getStringValue(item, ["flight_number"]);
-    const airlineName = getStringValue(item, ["airline_name"]);
-    const airlineCode = getStringValue(item, ["airline_code"]);
+    const flightNumber = getStringValue(item, ["flight_number", "transport_number"]);
+    const airlineName = getStringValue(item, ["airline_name", "provider_name"]);
+    const airlineCode = getStringValue(item, ["airline_code", "provider_code"]);
     const reservationCode = getStringValue(item, ["reservation_code"]);
     const title =
         getStringValue(item, ["title"]) ||

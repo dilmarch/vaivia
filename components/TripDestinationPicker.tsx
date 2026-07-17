@@ -13,11 +13,15 @@ type TripDestinationPickerProps = {
     tripId?: string | null;
     inputId: string;
     onChange?: () => void;
+    onDestinationsChange?: (
+        destinations: Array<{ label: string; placeId?: string | null }>
+    ) => void;
 };
 
 type DestinationOption = {
     label: string;
     coverImageUrl: string;
+    placeId?: string | null;
 };
 
 type UnsplashResult = {
@@ -79,9 +83,9 @@ export default function TripDestinationPicker({
     initialCoverImageSource,
     initialCoverImageStoragePath,
     initialCoverImageUnsplashId,
-    tripId,
     inputId,
     onChange,
+    onDestinationsChange,
 }: TripDestinationPickerProps) {
     const inputRef = useRef<HTMLInputElement | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -147,6 +151,15 @@ export default function TripDestinationPicker({
         initialCoverImageUrl,
         initialDestination,
     ]);
+
+    useEffect(() => {
+        onDestinationsChange?.(
+            destinations.map((destination) => ({
+                label: destination.label,
+                placeId: destination.placeId || null,
+            }))
+        );
+    }, [destinations, onDestinationsChange]);
 
     useEffect(() => {
         if (unsplashQuery || !destinationValue && !initialDestination) return;
@@ -220,6 +233,7 @@ export default function TripDestinationPicker({
                     ...currentDestinations,
                     {
                         label,
+                        placeId: place.place_id || null,
                         coverImageUrl: coverPhotoUrl,
                     },
                 ];

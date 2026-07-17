@@ -11,11 +11,17 @@ const ACTION_REQUIRED_NOTIFICATION_TYPES = new Set([
     "passport_stamp_share_received",
     "profile_onboarding_prompt",
     "theme_exploration_prompt",
+    "travel_email_ready",
+    "travel_email_needs_review",
+    "travel_email_failed",
 ]);
 
 const ACTION_REQUIRED_UNTIL_READ_TYPES = new Set([
     "profile_onboarding_prompt",
     "theme_exploration_prompt",
+    "travel_email_ready",
+    "travel_email_needs_review",
+    "travel_email_failed",
 ]);
 
 type NotificationRow = Pick<
@@ -203,7 +209,7 @@ export async function loadActiveDropdownNotifications(
             .eq("user_id", userId)
             .is("archived_at", null)
             .or(
-                "read_at.is.null,type.in.(trip_invite_received,friend_request_received,passport_stamp_share_received,profile_onboarding_prompt,theme_exploration_prompt)"
+                "read_at.is.null,type.in.(trip_invite_received,friend_request_received,passport_stamp_share_received,profile_onboarding_prompt,theme_exploration_prompt,travel_email_ready,travel_email_needs_review,travel_email_failed)"
             )
             .order("created_at", { ascending: false }),
         supabase

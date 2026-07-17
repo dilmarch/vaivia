@@ -80,6 +80,7 @@ export default async function AppNav() {
 
     let upcomingTrips: NavTrip[] = [];
     let notifications: AppNotification[] = [];
+    let pendingImportCount = 0;
     let profile: Partial<UserProfile> | null = null;
     let preferences: Partial<UserPreferences> | null = null;
     let onboardingProgress: OnboardingProgress | null = null;
@@ -113,6 +114,22 @@ export default async function AppNav() {
             });
         } else {
             notifications = (dropdownNotifications || []) as AppNotification[];
+        }
+
+        const { count: importsCount, error: importsCountError } = await supabase
+            .from("travel_email_imports")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .in("status", ["needs_review", "ready"]);
+
+        if (importsCountError) {
+            console.warn("Could not load travel import count:", {
+                message: importsCountError.message,
+                code: importsCountError.code,
+                details: importsCountError.details,
+            });
+        } else {
+            pendingImportCount = importsCount || 0;
         }
 
         const { data: profileData, error: profileError } = await supabase
@@ -208,6 +225,7 @@ export default async function AppNav() {
                     <AppTopActionBar
                         trips={upcomingTrips}
                         notifications={notifications}
+                        pendingImportCount={pendingImportCount}
                         isSuperAdmin={profile?.role === "super_admin"}
                         onboardingProgress={onboardingProgress}
                     />

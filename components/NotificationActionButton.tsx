@@ -26,12 +26,22 @@ export default function NotificationActionButton({
     }
 
     async function handleRoutedAction() {
+        const importId =
+            typeof notification.metadata?.importId === "string"
+                ? notification.metadata.importId
+                : "";
         const href =
-            notification.type === "profile_onboarding_prompt"
-                ? "/profile#passport-stamps"
-                : notification.type === "theme_exploration_prompt"
-                  ? "/settings"
-                  : "";
+            notification.type === "travel_email_ready" ||
+            notification.type === "travel_email_needs_review" ||
+            notification.type === "travel_email_failed"
+                ? importId
+                    ? `/imports/${importId}`
+                    : "/imports"
+                : notification.type === "profile_onboarding_prompt"
+                  ? "/profile#passport-stamps"
+                  : notification.type === "theme_exploration_prompt"
+                    ? "/settings"
+                    : "";
 
         if (!href) {
             setActiveNotification(notification);

@@ -5,6 +5,18 @@ import { notFound, redirect } from "next/navigation";
 import type { Json } from "@/src/types/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { processTravelEmailImport } from "@/lib/travelEmailImportProcessor";
+import { getTripRouteSegment } from "@/lib/tripRoutes";
+import {
+    getEditableImportedFlight,
+    getRequiredFlightIssues,
+    matchImportToTrips,
+    type EditableImportedFlight,
+    type ImportTripOption,
+} from "@/lib/travelEmailImportReview";
+import {
+    getTravelEmailImportStatusLabel,
+    isTravelImportReviewSchemaMissingError,
+} from "@/lib/travelEmailImports";
 
 type ImportPageProps = {
     params: Promise<{
@@ -28,6 +40,8 @@ type TravelEmailImportRow = {
     sender_email: string | null;
     status: string;
     subject: string | null;
+    matched_trip_id?: string | null;
+    imported_at?: string | null;
 };
 
 type TravelEmailImportAttachmentRow = {
@@ -44,6 +58,64 @@ type TravelEmailImportItemRow = {
     extracted_data: Json;
     item_order: number;
     item_type: string;
+    reviewed_data?: Json | null;
+    imported_record_id?: string | null;
+    imported_at?: string | null;
+    is_excluded?: boolean | null;
+    matched_trip_id?: string | null;
+};
+
+type ImportedTransportationRecord = {
+    id: string;
+    title: string | null;
+    transport_number: string | null;
+};
+
+type ExistingTransportationFlight = {
+    id: string;
+    title: string | null;
+    transport_number: string | null;
+    departure_location: string | null;
+    departure_date: string | null;
+    departure_time: string | null;
+};
+
+type SupabaseActionError = {
+    message?: string;
+    code?: string;
+    details?: string;
+    hint?: string;
+};
+
+type ImportFlightsRpcClient = {
+    rpc: (
+        fn: "import_travel_email_flights",
+        args: {
+            p_import_id: string;
+            p_trip_id: string;
+            p_items: Json;
+        }
+    ) => Promise<{
+        data: {
+            status?: string;
+            tripId?: string;
+            tripSlug?: string | null;
+            transportationItemIds?: string[];
+        } | null;
+        error: {
+            message?: string;
+            code?: string;
+            details?: string;
+            hint?: string;
+        } | null;
+    }>;
+};
+
+type TravelEmailImportAddResult = {
+    status?: string;
+    tripId?: string;
+    tripSlug?: string | null;
+    transportationItemIds?: string[];
 };
 
 const STALE_PROCESSING_MINUTES = 15;
@@ -113,6 +185,434 @@ function getItemTitle(item: TravelEmailImportItemRow) {
     return typeof title === "string" && title.trim() ? title : item.item_type;
 }
 
+function getFieldName(itemId: string, fieldName: keyof EditableImportedFlight) {
+    return `${itemId}:${fieldName}`;
+}
+
+function getLegFieldName(itemId: string, fieldName: string) {
+    return `${itemId}:leg_0_${fieldName}`;
+}
+
+function getLegFieldForFlightField(field: keyof EditableImportedFlight) {
+    const fieldMap: Partial<Record<keyof EditableImportedFlight, string>> = {
+        airlineName: "airline_name",
+        airlineCode: "airline_code",
+        flightNumber: "flight_number",
+        departureLocation: "departure_location",
+        arrivalLocation: "arrival_location",
+        departureDate: "departure_date",
+        departureTime: "departure_time",
+        arrivalDate: "arrival_date",
+        arrivalTime: "arrival_time",
+        departureTimezone: "departure_timezone",
+        arrivalTimezone: "arrival_timezone",
+        departureTerminal: "departure_terminal",
+        arrivalTerminal: "arrival_terminal",
+    };
+
+    return fieldMap[field] || null;
+}
+
+function normalizeFlightFingerprintPart(value?: string | null) {
+    return (value || "").trim().toUpperCase().replace(/[\s-]+/g, "");
+}
+
+function getFlightFingerprint(flight: {
+    flightNumber?: string | null;
+    transport_number?: string | null;
+    departureLocation?: string | null;
+    departure_location?: string | null;
+    departureDate?: string | null;
+    departure_date?: string | null;
+    departureTime?: string | null;
+    departure_time?: string | null;
+}) {
+    return [
+        normalizeFlightFingerprintPart(flight.flightNumber || flight.transport_number),
+        normalizeFlightFingerprintPart(
+            flight.departureLocation || flight.departure_location
+        ),
+        flight.departureDate || flight.departure_date || "",
+        flight.departureTime || flight.departure_time || "",
+    ].join("|");
+}
+
+function FlightTextInput({
+    itemId,
+    field,
+    label,
+    defaultValue,
+    required = false,
+    type = "text",
+}: {
+    itemId: string;
+    field: keyof EditableImportedFlight;
+    label: string;
+    defaultValue: string;
+    required?: boolean;
+    type?: string;
+}) {
+    return (
+        <label className="block rounded-2xl border border-white/10 bg-black/20 p-3">
+            <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                {label}
+                {required ? (
+                    <span className="ml-1 text-lime-200">Required before adding</span>
+                ) : null}
+            </span>
+            <input
+                name={getFieldName(itemId, field)}
+                type={type}
+                defaultValue={defaultValue}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+            />
+        </label>
+    );
+}
+
+function FlightTextarea({
+    itemId,
+    field,
+    label,
+    defaultValue,
+    rows = 3,
+}: {
+    itemId: string;
+    field: keyof EditableImportedFlight;
+    label: string;
+    defaultValue: string;
+    rows?: number;
+}) {
+    return (
+        <label className="block rounded-2xl border border-white/10 bg-black/20 p-3">
+            <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                {label}
+            </span>
+            <textarea
+                name={getFieldName(itemId, field)}
+                defaultValue={defaultValue}
+                rows={rows}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+            />
+        </label>
+    );
+}
+
+function FlightLegTextInput({
+    itemId,
+    legField,
+    label,
+    defaultValue,
+    required = false,
+    type = "text",
+}: {
+    itemId: string;
+    legField: string;
+    label: string;
+    defaultValue: string;
+    required?: boolean;
+    type?: string;
+}) {
+    return (
+        <label className="block rounded-2xl border border-white/10 bg-black/20 p-3">
+            <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                {label}
+                {required ? (
+                    <span className="ml-1 text-lime-200">Required before adding</span>
+                ) : null}
+            </span>
+            <input
+                name={getLegFieldName(itemId, legField)}
+                type={type}
+                defaultValue={defaultValue}
+                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
+            />
+        </label>
+    );
+}
+
+function EditableFlightCard({
+    item,
+    flight,
+    duplicateRecord,
+    selectedTrip,
+}: {
+    item: TravelEmailImportItemRow;
+    flight: EditableImportedFlight;
+    duplicateRecord?: ExistingTransportationFlight | null;
+    selectedTrip?: ImportTripOption | null;
+}) {
+    const missingFields = getRequiredFlightIssues(flight);
+
+    return (
+        <article className="rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-4">
+            <input type="hidden" name="item_id" value={item.id} />
+            <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="inline-flex items-center gap-2 rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-2 text-sm font-black text-lime-50">
+                    <input
+                        type="checkbox"
+                        name={`include_${item.id}`}
+                        defaultChecked={!item.is_excluded}
+                        className="h-4 w-4 accent-lime-300"
+                    />
+                    Include
+                </label>
+                <span className="rounded-full border border-lime-300/20 px-3 py-1 text-xs font-black text-lime-100">
+                    {formatPercent(item.confidence)}
+                </span>
+            </div>
+
+            <div className="mt-4 rounded-[1.25rem] border border-lime-300/15 bg-lime-300/10 p-4">
+                <p className="text-sm font-black text-lime-50">
+                    This flight has not been added to a trip yet.
+                </p>
+                {missingFields.length > 0 ? (
+                    <p className="mt-1 text-xs font-semibold text-lime-100/80">
+                        Required before adding: {missingFields.join(", ")}
+                    </p>
+                ) : (
+                    <p className="mt-1 text-xs font-semibold text-lime-100/80">
+                        Review the local times exactly as they appear on your confirmation.
+                    </p>
+                )}
+                {duplicateRecord ? (
+                    <div className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-3">
+                        <p className="text-sm font-black text-amber-100">
+                            This flight is already in the selected trip.
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-amber-100/80">
+                            VAIVIA will link this import to the existing flight instead
+                            of creating a duplicate.
+                        </p>
+                        {selectedTrip ? (
+                            <Link
+                                href={`/trips/${getTripRouteSegment(
+                                    selectedTrip
+                                )}?tab=journey`}
+                                className="mt-2 inline-flex rounded-full border border-amber-200/30 px-3 py-1 text-xs font-black text-amber-100 transition hover:bg-amber-300/10"
+                            >
+                                Open existing flight
+                            </Link>
+                        ) : null}
+                    </div>
+                ) : null}
+            </div>
+
+            <input type="hidden" name={getLegFieldName(item.id, "airline_code")} value={flight.airlineCode} />
+            <input type="hidden" name="transportation_mode" value="airplane" />
+            <input type="hidden" name="flight_leg_count" value="1" />
+
+            <div className="mt-4 space-y-4">
+                <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200/80">
+                                Airplane
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-400">
+                                Review this flight before adding it to Journey.
+                            </p>
+                        </div>
+                        <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-black text-slate-100">
+                            <input
+                                type="checkbox"
+                                name={getFieldName(item.id, "isPrivate")}
+                                defaultChecked={flight.isPrivate === "true" || flight.isPrivate === "on"}
+                                className="h-4 w-4 accent-lime-300"
+                            />
+                            Private
+                        </label>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                Select mode of transportation
+                            </p>
+                            <p className="mt-2 text-sm font-black text-white">✈️ Airplane</p>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                Is this flight direct?
+                            </p>
+                            <p className="mt-2 text-sm font-black text-white">Direct</p>
+                        </div>
+                    </div>
+                </div>
+
+                <fieldset className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4">
+                    <legend className="px-1 text-sm font-black text-white">
+                        Flight leg 1
+                    </legend>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="departure_location"
+                            label="Departure airport, code, or city"
+                            defaultValue={flight.departureLocation}
+                            required
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="arrival_location"
+                            label="Arrival airport, code, or city"
+                            defaultValue={flight.arrivalLocation}
+                            required
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="departure_date"
+                            label="Departure date"
+                            defaultValue={flight.departureDate}
+                            required
+                            type="date"
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="departure_time"
+                            label="Departure time"
+                            defaultValue={flight.departureTime}
+                            required
+                            type="time"
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="arrival_date"
+                            label="Arrival date"
+                            defaultValue={flight.arrivalDate}
+                            required
+                            type="date"
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="arrival_time"
+                            label="Arrival time"
+                            defaultValue={flight.arrivalTime}
+                            required
+                            type="time"
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="departure_timezone"
+                            label="Departure time zone"
+                            defaultValue={flight.departureTimezone}
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="arrival_timezone"
+                            label="Arrival time zone"
+                            defaultValue={flight.arrivalTimezone}
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="departure_terminal"
+                            label="Departure terminal"
+                            defaultValue={flight.departureTerminal}
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="arrival_terminal"
+                            label="Arrival terminal"
+                            defaultValue={flight.arrivalTerminal}
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="flight_number"
+                            label="Flight number, e.g. AC692"
+                            defaultValue={flight.flightNumber}
+                            required
+                        />
+                        <FlightLegTextInput
+                            itemId={item.id}
+                            legField="airline_name"
+                            label="Airline"
+                            defaultValue={flight.airlineName}
+                        />
+                    </div>
+                </fieldset>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                    <FlightTextInput
+                        itemId={item.id}
+                        field="reservationCode"
+                        label="Reservation code / booking reference"
+                        defaultValue={flight.reservationCode}
+                    />
+                    <div className="grid gap-3 sm:grid-cols-[1fr_110px]">
+                        <FlightTextInput
+                            itemId={item.id}
+                            field="cost"
+                            label="Cost"
+                            defaultValue={flight.cost || "0"}
+                            type="number"
+                        />
+                        <FlightTextInput
+                            itemId={item.id}
+                            field="currency"
+                            label="Currency"
+                            defaultValue={flight.currency || "CAD"}
+                        />
+                    </div>
+                    <FlightTextInput
+                        itemId={item.id}
+                        field="seatNumber"
+                        label="Seat"
+                        defaultValue={flight.seatNumber}
+                    />
+                    <FlightTextInput
+                        itemId={item.id}
+                        field="cabinClass"
+                        label="Cabin"
+                        defaultValue={flight.cabinClass}
+                    />
+                    <FlightTextarea
+                        itemId={item.id}
+                        field="visaRequirements"
+                        label="VISA requirements"
+                        defaultValue={flight.visaRequirements}
+                    />
+                    <FlightTextarea
+                        itemId={item.id}
+                        field="luggageRequirements"
+                        label="Luggage requirements"
+                        defaultValue={flight.luggageRequirements}
+                    />
+                    <label className="block rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                            Status
+                        </span>
+                        <select
+                            name={getFieldName(item.id, "status")}
+                            defaultValue={flight.status}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
+                        >
+                            <option value="planned">Planned</option>
+                            <option value="booked">Booked</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </label>
+                </div>
+                <FlightTextarea
+                    itemId={item.id}
+                    field="notes"
+                    label="Notes"
+                    defaultValue={flight.notes}
+                />
+            </div>
+
+            <details className="mt-4 rounded-[1rem] border border-white/10 bg-black/30 p-3">
+                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-slate-300">
+                    Technical details
+                </summary>
+                <pre className="mt-3 max-h-72 overflow-auto text-xs font-semibold leading-5 text-slate-200">
+                    {stringifyJson(item.extracted_data)}
+                </pre>
+            </details>
+        </article>
+    );
+}
+
 async function retryTravelEmailImport(formData: FormData) {
     "use server";
 
@@ -162,6 +662,653 @@ async function retryTravelEmailImport(formData: FormData) {
     redirect(`/imports/${importId}`);
 }
 
+function getReviewedFlightField(
+    formData: FormData,
+    itemId: string,
+    field: keyof EditableImportedFlight
+) {
+    const legField = getLegFieldForFlightField(field);
+    const legValue = legField
+        ? String(formData.get(getLegFieldName(itemId, legField)) || "").trim()
+        : "";
+
+    if (legValue) return legValue;
+
+    return String(formData.get(getFieldName(itemId, field)) || "").trim();
+}
+
+function normalizeTransportationStatus(status: string) {
+    return ["planned", "booked", "confirmed", "cancelled", "completed"].includes(
+        status
+    )
+        ? status
+        : "planned";
+}
+
+function parseMoneyValue(value?: string | null) {
+    const normalized = String(value || "").replace(/,/g, "").trim();
+    if (!normalized) return null;
+    const amount = Number(normalized);
+    return Number.isFinite(amount) ? amount : null;
+}
+
+async function resolveImportTripLegIdForDate({
+    supabase,
+    tripId,
+    itemDate,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    tripId: string;
+    itemDate?: string | null;
+}) {
+    const cleanDate = (itemDate || "").trim();
+    if (!cleanDate) return null;
+
+    const { data, error } = await supabase
+        .from("trip_legs")
+        .select("id")
+        .eq("trip_id", tripId)
+        .or(`start_date.is.null,start_date.lte.${cleanDate}`)
+        .or(`end_date.is.null,end_date.gte.${cleanDate}`)
+        .order("sort_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        console.warn("travel_email_import_trip_leg_lookup_failed", {
+            tripId,
+            itemDate: cleanDate,
+            code: error.code,
+        });
+        return null;
+    }
+
+    return typeof data?.id === "string" ? data.id : null;
+}
+
+function isImportFlightRpcUnavailableError(error: SupabaseActionError) {
+    const text = [error.code, error.message, error.details, error.hint]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+    return (
+        error.code === "PGRST202" ||
+        error.code === "42883" ||
+        text.includes("import_travel_email_flights") ||
+        isTravelImportReviewSchemaMissingError(error)
+    );
+}
+
+async function loadTravelEmailImportForReview(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    importId: string,
+    userId: string
+) {
+    const richQuery = await supabase
+        .from("travel_email_imports")
+        .select(
+            "id,attachment_count,created_at,extracted_data,extraction_confidence,extraction_error,extraction_model,import_type,processed_at,provider,recipient_email,requires_data_review,sender_email,status,subject,matched_trip_id,imported_at"
+        )
+        .eq("id", importId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (
+        !richQuery.error ||
+        !isTravelImportReviewSchemaMissingError(richQuery.error)
+    ) {
+        return richQuery;
+    }
+
+    console.warn("Travel import review columns are not available yet; using import fallback query.", {
+        importId,
+        userId,
+        code: richQuery.error.code,
+    });
+
+    return supabase
+        .from("travel_email_imports")
+        .select(
+            "id,attachment_count,created_at,extracted_data,extraction_confidence,extraction_error,extraction_model,import_type,processed_at,provider,recipient_email,requires_data_review,sender_email,status,subject"
+        )
+        .eq("id", importId)
+        .eq("user_id", userId)
+        .maybeSingle();
+}
+
+async function loadTravelEmailImportItemsForReview(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    importId: string
+) {
+    const richQuery = await supabase
+        .from("travel_email_import_items")
+        .select(
+            "id,confidence,extracted_data,item_order,item_type,reviewed_data,imported_record_id,imported_at,is_excluded,matched_trip_id"
+        )
+        .eq("import_id", importId)
+        .order("item_order", { ascending: true });
+
+    if (
+        !richQuery.error ||
+        !isTravelImportReviewSchemaMissingError(richQuery.error)
+    ) {
+        return richQuery;
+    }
+
+    console.warn("Travel import item review columns are not available yet; using item fallback query.", {
+        importId,
+        code: richQuery.error.code,
+    });
+
+    return supabase
+        .from("travel_email_import_items")
+        .select("id,confidence,extracted_data,item_order,item_type")
+        .eq("import_id", importId)
+        .order("item_order", { ascending: true });
+}
+
+async function addImportedFlightsUsingTransportationFallback({
+    supabase,
+    userId,
+    importId,
+    tripId,
+    submittedItems,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    userId: string;
+    importId: string;
+    tripId: string;
+    submittedItems: Array<{
+        item_id: string;
+        include: boolean;
+        reviewed_data: Record<string, string>;
+    }>;
+}): Promise<TravelEmailImportAddResult> {
+    const { data: importRow, error: importError } = await supabase
+        .from("travel_email_imports")
+        .select("id,status,user_id")
+        .eq("id", importId)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (importError || !importRow) {
+        console.error("travel_email_import_fallback_import_lookup_failed", {
+            importId,
+            userId,
+            code: importError?.code,
+        });
+        throw new Error(
+            "We couldn’t add the flights. Nothing was changed. Please try again."
+        );
+    }
+
+    if (
+        importRow.status !== "imported" &&
+        !["needs_review", "ready"].includes(importRow.status)
+    ) {
+        throw new Error("One or more flight details need attention.");
+    }
+
+    const { data: trip, error: tripError } = await supabase
+        .from("trips")
+        .select("id,slug,title,user_id,archived_at")
+        .eq("id", tripId)
+        .maybeSingle();
+
+    if (tripError || !trip || trip.archived_at) {
+        console.error("travel_email_import_fallback_trip_lookup_failed", {
+            importId,
+            tripId,
+            userId,
+            code: tripError?.code,
+        });
+        throw new Error("Select a trip before continuing.");
+    }
+
+    const isTripOwner = trip.user_id === userId;
+    const { data: membership, error: membershipError } = isTripOwner
+        ? { data: null, error: null }
+        : await supabase
+              .from("trip_members")
+              .select("id")
+              .eq("trip_id", tripId)
+              .eq("user_id", userId)
+              .eq("status", "active")
+              .is("left_at", null)
+              .maybeSingle();
+
+    if (membershipError || (!isTripOwner && !membership)) {
+        console.error("travel_email_import_fallback_trip_not_authorized", {
+            importId,
+            tripId,
+            userId,
+            code: membershipError?.code,
+        });
+        throw new Error("You no longer have permission to edit this trip.");
+    }
+
+    const includedItems = submittedItems.filter((item) => item.include);
+    if (!includedItems.length) {
+        throw new Error("One or more flight details need attention.");
+    }
+
+    const createdIds: string[] = [];
+
+    for (const item of includedItems) {
+        const data = item.reviewed_data;
+        const flightNumber = normalizeFlightFingerprintPart(data.flight_number);
+        const airlineCode =
+            normalizeFlightFingerprintPart(data.airline_code) ||
+            flightNumber.match(/^([A-Z0-9]{2})\d/)?.[1] ||
+            "";
+        const departureLocation = data.departure_location?.trim();
+        const arrivalLocation = data.arrival_location?.trim();
+        const departureDate = data.departure_date?.trim();
+        const departureTime = data.departure_time?.trim();
+        const arrivalDate = data.arrival_date?.trim();
+        const arrivalTime = data.arrival_time?.trim();
+        const isPrivate = data.is_private === "on" || data.is_private === "true";
+        const cost = parseMoneyValue(data.cost);
+        const currency = data.currency?.trim().toUpperCase() || "CAD";
+        const notes = [
+            data.visa_requirements ? `VISA requirements:\n${data.visa_requirements}` : "",
+            data.luggage_requirements
+                ? `Luggage requirements:\n${data.luggage_requirements}`
+                : "",
+            data.notes || "",
+        ]
+            .filter(Boolean)
+            .join("\n\n");
+
+        if (
+            !flightNumber ||
+            !departureLocation ||
+            !arrivalLocation ||
+            !departureDate ||
+            !departureTime ||
+            !arrivalDate ||
+            !arrivalTime
+        ) {
+            throw new Error("One or more flight details need attention.");
+        }
+
+        const { data: importItem, error: importItemError } = await supabase
+            .from("travel_email_import_items")
+            .select("id")
+            .eq("id", item.item_id)
+            .eq("import_id", importId)
+            .eq("item_type", "flight")
+            .maybeSingle();
+
+        if (importItemError || !importItem) {
+            console.error("travel_email_import_fallback_item_lookup_failed", {
+                importId,
+                itemId: item.item_id,
+                userId,
+                code: importItemError?.code,
+            });
+            throw new Error("One or more flight details need attention.");
+        }
+
+        const { data: existingFlight, error: existingError } = await supabase
+            .from("transportation_items")
+            .select("id")
+            .eq("trip_id", tripId)
+            .eq("transport_type", "flight")
+            .eq("transport_number", flightNumber)
+            .eq("departure_location", departureLocation)
+            .eq("departure_date", departureDate)
+            .eq("departure_time", departureTime)
+            .maybeSingle();
+
+        if (existingError && existingError.code !== "PGRST116") {
+            console.error("travel_email_import_fallback_duplicate_lookup_failed", {
+                importId,
+                itemId: item.item_id,
+                userId,
+                code: existingError.code,
+            });
+            throw new Error(
+                "We couldn’t add the flights. Nothing was changed. Please try again."
+            );
+        }
+
+        if (existingFlight?.id) {
+            createdIds.push(existingFlight.id);
+            const { error: richItemUpdateError } = await supabase
+                .from("travel_email_import_items")
+                .update({
+                    reviewed_data: data as Json,
+                    matched_trip_id: tripId,
+                    imported_record_id: existingFlight.id,
+                    imported_at: new Date().toISOString(),
+                    is_excluded: false,
+                } as Record<string, unknown>)
+                .eq("id", item.item_id)
+                .eq("import_id", importId);
+
+            if (
+                richItemUpdateError &&
+                !isTravelImportReviewSchemaMissingError(richItemUpdateError)
+            ) {
+                console.warn("travel_email_import_fallback_item_update_failed", {
+                    importId,
+                    itemId: item.item_id,
+                    code: richItemUpdateError.code,
+                });
+            }
+            continue;
+        }
+
+        const title = `${flightNumber} ${departureLocation} to ${arrivalLocation}`.trim();
+        const routeStops = [
+            { order: 0, label: departureLocation },
+            { order: 1, label: arrivalLocation },
+        ];
+        const tripLegId = await resolveImportTripLegIdForDate({
+            supabase,
+            tripId,
+            itemDate: departureDate,
+        });
+        const { data: insertedFlight, error: insertError } = await supabase
+            .from("transportation_items")
+            .insert({
+                trip_id: tripId,
+                created_by: userId,
+                title,
+                transport_type: "flight",
+                status: normalizeTransportationStatus(data.status || ""),
+                departure_date: departureDate,
+                arrival_date: arrivalDate,
+                departure_time: departureTime,
+                arrival_time: arrivalTime,
+                departure_location: departureLocation,
+                arrival_location: arrivalLocation,
+                departure_timezone: data.departure_timezone || null,
+                arrival_timezone: data.arrival_timezone || null,
+                provider_name: data.airline_name || null,
+                provider_code: airlineCode || null,
+                transport_number: flightNumber,
+                reservation_code: data.reservation_code || null,
+                seat_number: data.seat_number || null,
+                cabin_class: data.cabin_class || null,
+                baggage_info: data.luggage_requirements || null,
+                departure_terminal: data.departure_terminal || null,
+                arrival_terminal: data.arrival_terminal || null,
+                cost,
+                currency,
+                notes: notes || null,
+                is_private: isPrivate,
+                audience_mode: "everyone",
+                route_stops: routeStops as Json,
+                trip_leg_id: tripLegId,
+            })
+            .select("id")
+            .single();
+
+        if (insertError || !insertedFlight?.id) {
+            console.error("travel_email_import_fallback_transport_insert_failed", {
+                importId,
+                itemId: item.item_id,
+                userId,
+                message: insertError?.message,
+                code: insertError?.code,
+                details: insertError?.details,
+                hint: insertError?.hint,
+            });
+            throw new Error(
+                "We couldn’t add the flights. Nothing was changed. Please try again."
+            );
+        }
+
+        const { data: visibleFlight, error: visibleFlightError } = await supabase
+            .from("transportation_items")
+            .select("id")
+            .eq("id", insertedFlight.id)
+            .eq("trip_id", tripId)
+            .maybeSingle();
+
+        if (visibleFlightError || !visibleFlight?.id) {
+            console.error("travel_email_import_fallback_transport_visibility_failed", {
+                importId,
+                itemId: item.item_id,
+                tripId,
+                insertedFlightId: insertedFlight.id,
+                code: visibleFlightError?.code,
+            });
+            throw new Error(
+                "We couldn’t add the flights. Nothing was changed. Please try again."
+            );
+        }
+
+        createdIds.push(insertedFlight.id);
+
+        const { error: richItemUpdateError } = await supabase
+            .from("travel_email_import_items")
+            .update({
+                reviewed_data: data as Json,
+                matched_trip_id: tripId,
+                imported_record_id: insertedFlight.id,
+                imported_at: new Date().toISOString(),
+                is_excluded: false,
+            } as Record<string, unknown>)
+            .eq("id", item.item_id)
+            .eq("import_id", importId);
+
+        if (
+            richItemUpdateError &&
+            !isTravelImportReviewSchemaMissingError(richItemUpdateError)
+        ) {
+            console.warn("travel_email_import_fallback_item_update_failed", {
+                importId,
+                itemId: item.item_id,
+                code: richItemUpdateError.code,
+            });
+        }
+    }
+
+    const { error: richImportUpdateError } = await supabase
+        .from("travel_email_imports")
+        .update({
+            status: "imported",
+            matched_trip_id: tripId,
+            imported_at: new Date().toISOString(),
+        } as Record<string, unknown>)
+        .eq("id", importId)
+        .eq("user_id", userId);
+
+    if (
+        richImportUpdateError &&
+        isTravelImportReviewSchemaMissingError(richImportUpdateError)
+    ) {
+        await supabase
+            .from("travel_email_imports")
+            .update({ status: "imported" })
+            .eq("id", importId)
+            .eq("user_id", userId);
+    } else if (richImportUpdateError) {
+        console.warn("travel_email_import_fallback_import_status_update_failed", {
+            importId,
+            userId,
+            code: richImportUpdateError.code,
+        });
+    }
+
+    await supabase.from("notifications").insert({
+        user_id: userId,
+        type: "travel_email_ready",
+        title: "Flight added to your trip",
+        body:
+            createdIds.length === 1
+                ? `A flight was added to ${trip.title}.`
+                : `${createdIds.length} flights were added to ${trip.title}.`,
+        metadata: {
+            importId,
+            tripId,
+            url: `/trips/${trip.slug || trip.id}?tab=journey`,
+            source: "travel_email_import_completion",
+        },
+    });
+
+    return {
+        status: "imported",
+        tripId,
+        tripSlug: trip.slug,
+        transportationItemIds: createdIds,
+    };
+}
+
+async function addImportedFlightsToTrip(formData: FormData) {
+    "use server";
+
+    const importId = String(formData.get("import_id") || "").trim();
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const itemIds = formData
+        .getAll("item_id")
+        .map((value) => String(value).trim())
+        .filter(Boolean);
+
+    if (!importId || !tripId) {
+        throw new Error("Select a trip before continuing.");
+    }
+
+    if (itemIds.length === 0) {
+        throw new Error("One or more flight details need attention.");
+    }
+
+    const submittedItems = itemIds.map((itemId) => ({
+        item_id: itemId,
+        include: formData.get(`include_${itemId}`) === "on",
+        reviewed_data: {
+            is_private: getReviewedFlightField(formData, itemId, "isPrivate"),
+            airline_name: getReviewedFlightField(formData, itemId, "airlineName"),
+            airline_code: getReviewedFlightField(formData, itemId, "airlineCode"),
+            flight_number: getReviewedFlightField(formData, itemId, "flightNumber"),
+            departure_location: getReviewedFlightField(
+                formData,
+                itemId,
+                "departureLocation"
+            ),
+            arrival_location: getReviewedFlightField(
+                formData,
+                itemId,
+                "arrivalLocation"
+            ),
+            departure_date: getReviewedFlightField(
+                formData,
+                itemId,
+                "departureDate"
+            ),
+            departure_time: getReviewedFlightField(
+                formData,
+                itemId,
+                "departureTime"
+            ),
+            arrival_date: getReviewedFlightField(formData, itemId, "arrivalDate"),
+            arrival_time: getReviewedFlightField(formData, itemId, "arrivalTime"),
+            departure_timezone: getReviewedFlightField(
+                formData,
+                itemId,
+                "departureTimezone"
+            ),
+            arrival_timezone: getReviewedFlightField(
+                formData,
+                itemId,
+                "arrivalTimezone"
+            ),
+            departure_terminal: getReviewedFlightField(
+                formData,
+                itemId,
+                "departureTerminal"
+            ),
+            arrival_terminal: getReviewedFlightField(
+                formData,
+                itemId,
+                "arrivalTerminal"
+            ),
+            seat_number: getReviewedFlightField(formData, itemId, "seatNumber"),
+            cabin_class: getReviewedFlightField(formData, itemId, "cabinClass"),
+            reservation_code: getReviewedFlightField(
+                formData,
+                itemId,
+                "reservationCode"
+            ),
+            cost: getReviewedFlightField(formData, itemId, "cost"),
+            currency: getReviewedFlightField(formData, itemId, "currency"),
+            visa_requirements: getReviewedFlightField(
+                formData,
+                itemId,
+                "visaRequirements"
+            ),
+            luggage_requirements: getReviewedFlightField(
+                formData,
+                itemId,
+                "luggageRequirements"
+            ),
+            notes: getReviewedFlightField(formData, itemId, "notes"),
+            status: getReviewedFlightField(formData, itemId, "status"),
+        },
+    }));
+
+    if (!submittedItems.some((item) => item.include)) {
+        throw new Error("One or more flight details need attention.");
+    }
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    let importResult: TravelEmailImportAddResult | null = null;
+    const { data, error } = await (supabase as unknown as ImportFlightsRpcClient).rpc(
+        "import_travel_email_flights",
+        {
+            p_import_id: importId,
+            p_trip_id: tripId,
+            p_items: submittedItems as Json,
+        }
+    );
+
+    if (error) {
+        if (isImportFlightRpcUnavailableError(error)) {
+            console.warn("travel_email_import_rpc_unavailable_using_transport_fallback", {
+                importId,
+                userId: user.id,
+                code: error.code,
+            });
+            importResult = await addImportedFlightsUsingTransportationFallback({
+                supabase,
+                userId: user.id,
+                importId,
+                tripId,
+                submittedItems,
+            });
+        } else {
+        console.error("travel_email_import_add_to_trip_failed", {
+            importId,
+            userId: user.id,
+            code: error.code,
+        });
+        throw new Error("We couldn’t add the flights. Nothing was changed. Please try again.");
+        }
+    } else {
+        importResult = data;
+    }
+
+    revalidatePath(`/imports/${importId}`);
+    revalidatePath("/imports");
+
+    const tripRouteSegment = importResult?.tripSlug || tripId;
+    revalidatePath(`/trips/${tripId}`);
+    if (importResult?.tripSlug) {
+        revalidatePath(`/trips/${importResult.tripSlug}`);
+    }
+    redirect(`/trips/${tripRouteSegment}?tab=journey`);
+}
+
 export default async function ImportReviewPage({ params }: ImportPageProps) {
     const { importId } = await params;
     const supabase = await createClient();
@@ -175,25 +1322,19 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
         { data: importRow, error: importError },
         { data: attachments, error: attachmentsError },
         { data: items, error: itemsError },
+        { data: trips, error: tripsError },
     ] = await Promise.all([
-        supabase
-            .from("travel_email_imports")
-            .select(
-                "id,attachment_count,created_at,extracted_data,extraction_confidence,extraction_error,extraction_model,import_type,processed_at,provider,recipient_email,requires_data_review,sender_email,status,subject"
-            )
-            .eq("id", importId)
-            .eq("user_id", user.id)
-            .maybeSingle(),
+        loadTravelEmailImportForReview(supabase, importId, user.id),
         supabase
             .from("travel_email_import_attachments")
             .select("id,filename,mime_type,size_bytes,storage_path")
             .eq("import_id", importId)
             .order("created_at", { ascending: true }),
+        loadTravelEmailImportItemsForReview(supabase, importId),
         supabase
-            .from("travel_email_import_items")
-            .select("id,confidence,extracted_data,item_order,item_type")
-            .eq("import_id", importId)
-            .order("item_order", { ascending: true }),
+            .from("trips")
+            .select("id,slug,title,destination,start_date,end_date")
+            .order("start_date", { ascending: false }),
     ]);
 
     if (importError) {
@@ -210,10 +1351,11 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
 
     if (!importRow) notFound();
 
-    if (attachmentsError || itemsError) {
+    if (attachmentsError || itemsError || tripsError) {
         console.error("Could not load travel email import review details:", {
             attachmentsError,
             itemsError,
+            tripsError,
             importId,
             userId: user.id,
         });
@@ -223,9 +1365,53 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
     const reviewImport = importRow as TravelEmailImportRow;
     const reviewAttachments = (attachments || []) as TravelEmailImportAttachmentRow[];
     const reviewItems = (items || []) as TravelEmailImportItemRow[];
+    const editableTrips = (trips || []) as ImportTripOption[];
+    const editableFlights = reviewItems
+        .filter((item) => item.item_type === "flight")
+        .map((item) =>
+            getEditableImportedFlight(item.id, item.extracted_data, item.reviewed_data)
+        );
+    const tripMatch = matchImportToTrips(editableFlights, editableTrips);
+    const selectedTripId =
+        reviewImport.matched_trip_id ||
+        tripMatch.recommendedTripId ||
+        editableTrips[0]?.id ||
+        "";
+    const selectedTrip = editableTrips.find((trip) => trip.id === selectedTripId);
     const retryAvailable = canRetryImport(
         reviewImport.status,
         reviewImport.processed_at
+    );
+    const importedRecordIds = reviewItems
+        .map((item) => item.imported_record_id)
+        .filter((id): id is string => Boolean(id));
+    const hasImportedRecordLinks = importedRecordIds.length > 0;
+    const { data: importedRecords } = importedRecordIds.length
+        ? await supabase
+              .from("transportation_items")
+              .select("id,title,transport_number")
+              .in("id", importedRecordIds)
+        : { data: [] };
+    const importedRecordsById = new Map(
+        ((importedRecords || []) as ImportedTransportationRecord[]).map((record) => [
+            record.id,
+            record,
+        ])
+    );
+    const { data: existingFlights } = selectedTripId
+        ? await supabase
+              .from("transportation_items")
+              .select(
+                  "id,title,transport_number,departure_location,departure_date,departure_time"
+              )
+              .eq("trip_id", selectedTripId)
+              .eq("transport_type", "flight")
+        : { data: [] };
+    const existingFlightsByFingerprint = new Map(
+        ((existingFlights || []) as ExistingTransportationFlight[]).map((flight) => [
+            getFlightFingerprint(flight),
+            flight,
+        ])
     );
 
     return (
@@ -278,7 +1464,7 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                 Status
                             </p>
                             <p className="mt-2 text-lg font-black capitalize text-lime-100">
-                                {reviewImport.status.replaceAll("_", " ")}
+                                {getTravelEmailImportStatusLabel(reviewImport.status)}
                             </p>
                         </div>
                         <div className="rounded-[1.25rem] border border-white/10 bg-white/[0.04] p-4">
@@ -357,30 +1543,199 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                         </div>
 
                         <div className="mt-5 space-y-4">
-                            {reviewItems.length ? (
-                                reviewItems.map((item) => (
-                                    <article
-                                        key={item.id}
-                                        className="rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-4"
-                                    >
-                                        <div className="flex flex-wrap items-start justify-between gap-3">
-                                            <div>
+                            {reviewImport.status === "imported" &&
+                            hasImportedRecordLinks ? (
+                                <section className="rounded-[1.5rem] border border-lime-300/20 bg-lime-300/10 p-5">
+                                    <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                                        Imported
+                                    </p>
+                                    <h3 className="mt-2 text-2xl font-black text-white">
+                                        Flights added to{" "}
+                                        {selectedTrip?.title || "your trip"}
+                                    </h3>
+                                    <p className="mt-2 text-sm font-semibold text-lime-50/85">
+                                        Imported {formatDate(reviewImport.imported_at)}
+                                    </p>
+                                    <div className="mt-4 space-y-2">
+                                        {reviewItems
+                                            .filter((item) => item.imported_record_id)
+                                            .map((item) => {
+                                                const record = item.imported_record_id
+                                                    ? importedRecordsById.get(
+                                                          item.imported_record_id
+                                                      )
+                                                    : null;
+
+                                                return (
+                                                    <div
+                                                        key={item.id}
+                                                        className="rounded-2xl border border-white/10 bg-slate-950/50 p-3"
+                                                    >
+                                                        <p className="text-sm font-black text-white">
+                                                            {record?.transport_number ||
+                                                                record?.title ||
+                                                                getItemTitle(item)}
+                                                        </p>
+                                                        {selectedTrip ? (
+                                                            <Link
+                                                                href={`/trips/${getTripRouteSegment(
+                                                                    selectedTrip
+                                                                )}?tab=journey`}
+                                                                className="mt-2 inline-flex rounded-full bg-lime-300 px-3 py-1 text-xs font-black text-slate-950"
+                                                            >
+                                                                View transportation
+                                                            </Link>
+                                                        ) : null}
+                                                    </div>
+                                                );
+                                            })}
+                                    </div>
+                                    <div className="mt-5 flex flex-wrap gap-2">
+                                        {selectedTrip ? (
+                                            <Link
+                                                href={`/trips/${getTripRouteSegment(
+                                                    selectedTrip
+                                                )}?tab=journey`}
+                                                className="rounded-full bg-lime-300 px-4 py-2 text-sm font-black text-slate-950"
+                                            >
+                                                View trip
+                                            </Link>
+                                        ) : null}
+                                        <Link
+                                            href="/imports"
+                                            className="rounded-full border border-white/10 px-4 py-2 text-sm font-black text-slate-200"
+                                        >
+                                            Back to imports
+                                        </Link>
+                                    </div>
+                                </section>
+                            ) : reviewItems.length ? (
+                                <form action={addImportedFlightsToTrip} className="space-y-4">
+                                    <input
+                                        type="hidden"
+                                        name="import_id"
+                                        value={reviewImport.id}
+                                    />
+                                    <section className="rounded-[1.5rem] border border-lime-300/20 bg-lime-300/10 p-4">
+                                        <p className="text-sm font-black text-lime-50">
+                                            These flights have not been added to a trip yet.
+                                        </p>
+                                        <label className="mt-4 block">
+                                            <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
+                                                {tripMatch.confidence === "recommended"
+                                                    ? "Recommended trip"
+                                                    : tripMatch.confidence === "possible"
+                                                      ? "Possible trip"
+                                                      : "Select a trip"}
+                                            </span>
+                                            {editableTrips.length ? (
+                                                <select
+                                                    name="trip_id"
+                                                    defaultValue={selectedTripId}
+                                                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-black text-white outline-none focus:border-lime-300/50"
+                                                >
+                                                    {editableTrips.map((trip) => (
+                                                        <option
+                                                            key={trip.id}
+                                                            value={trip.id}
+                                                        >
+                                                            {trip.title}
+                                                            {trip.id ===
+                                                            tripMatch.recommendedTripId
+                                                                ? " · Recommended"
+                                                                : ""}
+                                                            {trip.start_date
+                                                                ? ` · ${trip.start_date}`
+                                                                : ""}
+                                                            {trip.end_date
+                                                                ? ` - ${trip.end_date}`
+                                                                : ""}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <div className="mt-2 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
+                                                    <p className="text-sm font-bold text-white">
+                                                        Create a trip before adding this
+                                                        flight.
+                                                    </p>
+                                                    <Link
+                                                        href={`/trips/new?returnTo=/imports/${reviewImport.id}`}
+                                                        className="mt-3 inline-flex rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950"
+                                                    >
+                                                        Create trip
+                                                    </Link>
+                                                </div>
+                                            )}
+                                        </label>
+                                    </section>
+
+                                    {reviewItems.map((item) =>
+                                        item.item_type === "flight" ? (
+                                            <EditableFlightCard
+                                                key={item.id}
+                                                item={item}
+                                                flight={
+                                                    editableFlights.find(
+                                                        (flight) =>
+                                                            flight.itemId === item.id
+                                                    ) ||
+                                                    getEditableImportedFlight(
+                                                        item.id,
+                                                        item.extracted_data,
+                                                        item.reviewed_data
+                                                    )
+                                                }
+                                                duplicateRecord={existingFlightsByFingerprint.get(
+                                                    getFlightFingerprint(
+                                                        editableFlights.find(
+                                                            (flight) =>
+                                                                flight.itemId === item.id
+                                                        ) ||
+                                                            getEditableImportedFlight(
+                                                                item.id,
+                                                                item.extracted_data,
+                                                                item.reviewed_data
+                                                            )
+                                                    )
+                                                )}
+                                                selectedTrip={selectedTrip}
+                                            />
+                                        ) : (
+                                            <article
+                                                key={item.id}
+                                                className="rounded-[1.5rem] border border-white/10 bg-slate-950/60 p-4"
+                                            >
                                                 <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
                                                     {item.item_type.replaceAll("_", " ")}
                                                 </p>
                                                 <h3 className="mt-1 text-lg font-black">
                                                     {getItemTitle(item)}
                                                 </h3>
-                                            </div>
-                                            <span className="rounded-full border border-lime-300/20 px-3 py-1 text-xs font-black text-lime-100">
-                                                {formatPercent(item.confidence)}
-                                            </span>
-                                        </div>
-                                        <pre className="mt-4 max-h-72 overflow-auto rounded-[1rem] border border-white/10 bg-black/40 p-3 text-xs font-semibold leading-5 text-slate-200">
-                                            {stringifyJson(item.extracted_data)}
-                                        </pre>
-                                    </article>
-                                ))
+                                                <p className="mt-3 text-sm font-semibold text-slate-400">
+                                                    Only flight imports can be added to a
+                                                    trip in this step.
+                                                </p>
+                                            </article>
+                                        )
+                                    )}
+
+                                    <div className="sticky bottom-4 z-10 rounded-[1.5rem] border border-white/10 bg-[#050712]/95 p-4 shadow-2xl shadow-black/50 backdrop-blur-xl">
+                                        <button
+                                            type="submit"
+                                            disabled={!editableTrips.length}
+                                            className="w-full rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                                        >
+                                            {selectedTrip
+                                                ? `Add ${editableFlights.length} flight${
+                                                      editableFlights.length === 1
+                                                          ? ""
+                                                          : "s"
+                                                  } to ${selectedTrip.title}`
+                                                : "Select a trip before continuing"}
+                                        </button>
+                                    </div>
+                                </form>
                             ) : (
                                 <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-slate-950/50 p-5 text-sm font-semibold text-slate-400">
                                     Once processing finishes, VAIVIA will list detected
@@ -417,7 +1772,7 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                         To
                                     </dt>
                                     <dd className="mt-1 break-words font-bold text-slate-200">
-                                        {reviewImport.recipient_email || "Private import address"}
+                                        Private VAIVIA import address
                                     </dd>
                                 </div>
                                 <div>
@@ -486,22 +1841,24 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                 </section>
 
                 {reviewImport.extracted_data ? (
-                    <section className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-                        <div className="flex items-center gap-3">
+                    <details className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
+                        <summary className="flex cursor-pointer items-center gap-3">
                             <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-lime-300/20 bg-slate-950 text-lime-200">
                                 <FileText className="h-4 w-4" aria-hidden="true" />
                             </span>
-                            <div>
-                                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200/80">
-                                    Raw extraction payload
-                                </p>
-                                <h2 className="text-xl font-black">Import summary</h2>
-                            </div>
-                        </div>
+                            <span>
+                                <span className="block text-xs font-black uppercase tracking-[0.22em] text-lime-200/80">
+                                    Technical details
+                                </span>
+                                <span className="block text-xl font-black">
+                                    Import summary payload
+                                </span>
+                            </span>
+                        </summary>
                         <pre className="mt-5 max-h-96 overflow-auto rounded-[1rem] border border-white/10 bg-black/40 p-4 text-xs font-semibold leading-5 text-slate-200">
                             {stringifyJson(reviewImport.extracted_data)}
                         </pre>
-                    </section>
+                    </details>
                 ) : null}
             </div>
         </main>

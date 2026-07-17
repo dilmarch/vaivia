@@ -38,11 +38,134 @@ type GeminiExtractionResult = {
 
 type TravelEmailProcessorClient = ReturnType<typeof createServiceRoleClient>;
 
+type NotificationQueryError = {
+    code?: string;
+    message?: string;
+    details?: string | null;
+    hint?: string | null;
+};
+
+type NotificationInsertPayload = {
+    user_id: string;
+    type: "travel_email_ready" | "travel_email_needs_review";
+    title: string;
+    body: string;
+    metadata: {
+        importId: string;
+        url: string;
+        source: "travel_email_import";
+    };
+};
+
+type NotificationTableClient = {
+    select: (columns: string) => {
+        eq: (column: "user_id", value: string) => {
+            in: (
+                column: "type",
+                values: Array<NotificationInsertPayload["type"]>
+            ) => {
+                contains: (
+                    column: "metadata",
+                    value: { importId: string }
+                ) => {
+                    maybeSingle: () => Promise<{
+                        data: { id: string } | null;
+                        error: NotificationQueryError | null;
+                    }>;
+                };
+            };
+        };
+    };
+    insert: (payload: NotificationInsertPayload) => Promise<{
+        error: NotificationQueryError | null;
+    }>;
+};
+
+type NotificationCapableClient = TravelEmailProcessorClient & {
+    from: (table: "notifications") => NotificationTableClient;
+};
+
+function getNotificationTable(
+    supabase: TravelEmailProcessorClient
+): NotificationTableClient {
+    return (supabase as unknown as NotificationCapableClient).from("notifications");
+}
+
 function logTravelEmailEvent(
     event: string,
     metadata: Record<string, string | number | boolean | null | undefined>
 ) {
     console.info(event, metadata);
+}
+
+function getPreparedItemSummary(items: ExtractionItem[]) {
+    const flightCount = items.filter((item) => item.item_type === "flight").length;
+    if (flightCount > 0) {
+        return `${flightCount} flight${flightCount === 1 ? "" : "s"}`;
+    }
+    return `${items.length} travel item${items.length === 1 ? "" : "s"}`;
+}
+
+async function createImportReadyNotification(
+    supabase: TravelEmailProcessorClient,
+    importRow: TravelEmailImportForProcessing,
+    items: ExtractionItem[],
+    confidence: number | null
+) {
+    const importId = importRow.id;
+    const url = `/imports/${importId}`;
+    const notifications = getNotificationTable(supabase);
+    const { data: existingNotification, error: existingError } = await notifications
+        .select("id")
+        .eq("user_id", importRow.user_id)
+        .in("type", ["travel_email_ready", "travel_email_needs_review"])
+        .contains("metadata", { importId })
+        .maybeSingle();
+
+    if (existingError && existingError.code !== "PGRST116") {
+        console.warn("travel_email_notification_lookup_failed", {
+            importId,
+            error: sanitizeServerError(existingError),
+        });
+        return;
+    }
+
+    if (existingNotification?.id) return;
+
+    const itemSummary = getPreparedItemSummary(items);
+    const isPartial = !items.length || (typeof confidence === "number" && confidence < 0.75);
+    const notificationType = isPartial
+        ? "travel_email_needs_review"
+        : "travel_email_ready";
+    const title = isPartial
+        ? "Your forwarded booking needs a quick check"
+        : "Your flight confirmation is ready";
+    const body = isPartial
+        ? "We found some travel details, but one or more fields need confirmation."
+        : `We found ${itemSummary}. Review ${
+              items.length === 1 ? "it" : "them"
+          } before adding ${
+              items.length === 1 ? "it" : "them"
+          } to a trip.`;
+
+    const { error } = await notifications.insert({
+        user_id: importRow.user_id,
+        type: notificationType,
+        title,
+        body,
+        metadata: {
+            importId,
+            url,
+            source: "travel_email_import",
+        },
+    });
+
+    if (error) {
+        console.warn("travel_email_notification_create_failed", {
+            importId,
+            error: sanitizeServerError(error),
+        });
+    }
 }
 
 function getGeminiEmailImportModel() {
@@ -205,6 +328,16 @@ async function callGeminiForImport(importRow: TravelEmailImportForProcessing) {
                                     "\"confidence\": 0.0, \"summary\": {}, \"items\": [" +
                                     "{ \"item_type\": \"flight|train|bus|accommodation|receipt|itinerary_item|unknown\", " +
                                     "\"confidence\": 0.0, \"extracted_data\": {} } ] }. " +
+                                    "For flight items, use these exact extracted_data keys when present: " +
+                                    "flight_number (full flight number including airline code, for example AC692), " +
+                                    "airline_name, airline_code, departure_location, arrival_location, " +
+                                    "departure_date (YYYY-MM-DD), departure_time (HH:MM 24-hour local), " +
+                                    "arrival_date (YYYY-MM-DD), arrival_time (HH:MM 24-hour local), " +
+                                    "departure_timezone, arrival_timezone, departure_terminal, arrival_terminal, " +
+                                    "seat_number, cabin_class, reservation_code, cost, currency, " +
+                                    "visa_requirements, luggage_requirements, notes, status. " +
+                                    "If the email only contains an airport code, put that code in the location field. " +
+                                    "Do not invent Google place IDs or passenger-sensitive details. " +
                                     "Do not include markdown. Email content follows:\n\n" +
                                     emailText,
                             },
@@ -305,6 +438,8 @@ export async function processTravelEmailImport(importId: string) {
             .eq("id", importId);
 
         if (updateError) throw updateError;
+
+        await createImportReadyNotification(supabase, importRow, items, confidence);
 
         logTravelEmailEvent("travel_email_processing_completed", {
             importId,
