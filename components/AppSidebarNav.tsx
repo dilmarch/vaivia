@@ -194,6 +194,13 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
                 pathname.startsWith("/trips/") &&
                 pathname.includes("/accommodations"),
         },
+        {
+            label: "Travel Assistant",
+            href: tripHref ? `${tripHref}/assistant` : undefined,
+            icon: Bot,
+            match: (pathname) =>
+                pathname.startsWith("/trips/") && pathname.includes("/assistant"),
+        },
     ];
 
     if (showAdminStats) items.push(getAdminStatsItem());
@@ -326,6 +333,7 @@ export default function AppSidebarNav({
                 "Journey",
                 "Food",
                 "Accommodations",
+                "Travel Assistant",
             ].includes(item.label)
         ),
     ];

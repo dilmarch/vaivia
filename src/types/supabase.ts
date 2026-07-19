@@ -14,6 +14,203 @@ export type Database = {
   }
   public: {
     Tables: {
+      accommodation_cancellation_reminder_deliveries: {
+        Row: {
+          accommodation_id: string
+          created_at: string
+          free_cancellation_ends_on: string
+          id: string
+          notification_id: string | null
+          user_id: string
+        }
+        Insert: {
+          accommodation_id: string
+          created_at?: string
+          free_cancellation_ends_on: string
+          id?: string
+          notification_id?: string | null
+          user_id: string
+        }
+        Update: {
+          accommodation_id?: string
+          created_at?: string
+          free_cancellation_ends_on?: string
+          id?: string
+          notification_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accommodation_cancellation_reminder_deliv_accommodation_id_fkey"
+            columns: ["accommodation_id"]
+            isOneToOne: false
+            referencedRelation: "trip_accommodations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "accommodation_cancellation_reminder_delive_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: true
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          last_message_at: string | null
+          title: string
+          trip_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          title?: string
+          trip_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          title?: string
+          trip_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          model: string | null
+          role: string
+          status: string
+          trip_id: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          model?: string | null
+          role: string
+          status?: string
+          trip_id: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          model?: string | null
+          role?: string
+          status?: string
+          trip_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_conversation_scope_fkey"
+            columns: ["conversation_id", "trip_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id", "trip_id", "user_id"]
+          },
+          {
+            foreignKeyName: "ai_messages_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_usage_events: {
+        Row: {
+          candidate_token_count: number | null
+          completed_at: string | null
+          conversation_id: string | null
+          error_code: string | null
+          event_type: string
+          id: string
+          model: string
+          occurred_at: string
+          outcome: string
+          prompt_token_count: number | null
+          total_token_count: number | null
+          trip_id: string
+          usage_date: string
+          user_id: string
+        }
+        Insert: {
+          candidate_token_count?: number | null
+          completed_at?: string | null
+          conversation_id?: string | null
+          error_code?: string | null
+          event_type?: string
+          id?: string
+          model: string
+          occurred_at?: string
+          outcome?: string
+          prompt_token_count?: number | null
+          total_token_count?: number | null
+          trip_id: string
+          usage_date?: string
+          user_id: string
+        }
+        Update: {
+          candidate_token_count?: number | null
+          completed_at?: string | null
+          conversation_id?: string | null
+          error_code?: string | null
+          event_type?: string
+          id?: string
+          model?: string
+          occurred_at?: string
+          outcome?: string
+          prompt_token_count?: number | null
+          total_token_count?: number | null
+          trip_id?: string
+          usage_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_events_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_usage_events_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       airports: {
         Row: {
           continent: string | null
@@ -409,6 +606,9 @@ export type Database = {
           audience_mode: string
           category: string | null
           category_id: string | null
+          cover_image_source: string | null
+          cover_image_storage_path: string | null
+          cover_image_url: string | null
           created_at: string | null
           created_by: string | null
           end_date: string | null
@@ -421,11 +621,13 @@ export type Database = {
           location: string | null
           location_lat: number | null
           location_lng: number | null
+          location_website: string | null
           notes: string | null
           sort_order: number | null
           source_idea_id: string | null
           start_time: string | null
           status: string | null
+          ticket_website: string | null
           timezone: string | null
           timezone_source: string | null
           title: string
@@ -438,6 +640,9 @@ export type Database = {
           audience_mode?: string
           category?: string | null
           category_id?: string | null
+          cover_image_source?: string | null
+          cover_image_storage_path?: string | null
+          cover_image_url?: string | null
           created_at?: string | null
           created_by?: string | null
           end_date?: string | null
@@ -450,11 +655,13 @@ export type Database = {
           location?: string | null
           location_lat?: number | null
           location_lng?: number | null
+          location_website?: string | null
           notes?: string | null
           sort_order?: number | null
           source_idea_id?: string | null
           start_time?: string | null
           status?: string | null
+          ticket_website?: string | null
           timezone?: string | null
           timezone_source?: string | null
           title: string
@@ -467,6 +674,9 @@ export type Database = {
           audience_mode?: string
           category?: string | null
           category_id?: string | null
+          cover_image_source?: string | null
+          cover_image_storage_path?: string | null
+          cover_image_url?: string | null
           created_at?: string | null
           created_by?: string | null
           end_date?: string | null
@@ -479,11 +689,13 @@ export type Database = {
           location?: string | null
           location_lat?: number | null
           location_lng?: number | null
+          location_website?: string | null
           notes?: string | null
           sort_order?: number | null
           source_idea_id?: string | null
           start_time?: string | null
           status?: string | null
+          ticket_website?: string | null
           timezone?: string | null
           timezone_source?: string | null
           title?: string
@@ -1294,12 +1506,14 @@ export type Database = {
           check_in_time_end: string | null
           check_in_time_start: string | null
           check_out_date: string
+          check_out_time: string | null
           city: string | null
           cost: number | null
           country: string | null
           created_at: string
           created_by: string
           currency: string | null
+          free_cancellation_ends_on: string | null
           google_maps_url: string | null
           google_place_id: string | null
           hotel_name: string
@@ -1326,12 +1540,14 @@ export type Database = {
           check_in_time_end?: string | null
           check_in_time_start?: string | null
           check_out_date: string
+          check_out_time?: string | null
           city?: string | null
           cost?: number | null
           country?: string | null
           created_at?: string
           created_by?: string
           currency?: string | null
+          free_cancellation_ends_on?: string | null
           google_maps_url?: string | null
           google_place_id?: string | null
           hotel_name: string
@@ -1358,12 +1574,14 @@ export type Database = {
           check_in_time_end?: string | null
           check_in_time_start?: string | null
           check_out_date?: string
+          check_out_time?: string | null
           city?: string | null
           cost?: number | null
           country?: string | null
           created_at?: string
           created_by?: string
           currency?: string | null
+          free_cancellation_ends_on?: string | null
           google_maps_url?: string | null
           google_place_id?: string | null
           hotel_name?: string
@@ -3840,6 +4058,21 @@ export type Database = {
           trip_title: string
         }[]
       }
+      consume_ai_daily_usage: {
+        Args: {
+          daily_limit: number
+          target_conversation_id: string
+          target_model: string
+          target_trip_id: string
+          target_user_id: string
+        }
+        Returns: {
+          allowed: boolean
+          remaining: number
+          usage_event_id: string
+          used: number
+        }[]
+      }
       create_friend_invitation: {
         Args: { invitee_identifier: string }
         Returns: string
@@ -3848,6 +4081,17 @@ export type Database = {
         Args: {
           consent_confirmed: boolean
           invitee_identifier: string
+          target_trip_id: string
+        }
+        Returns: string
+      }
+      create_trip_invitation_with_assignments: {
+        Args: {
+          consent_confirmed: boolean
+          invitee_identifier: string
+          target_accommodation_item_ids?: string[]
+          target_leg_ids?: string[]
+          target_transportation_item_ids?: string[]
           target_trip_id: string
         }
         Returns: string
@@ -3883,10 +4127,12 @@ export type Database = {
         Args: never
         Returns: {
           auth_method: string
+          banned_until: string
           created_at: string
           email: string
           first_name: string
           id: string
+          is_frozen: boolean
           join_date: string
           last_name: string
           role: string
@@ -3947,11 +4193,13 @@ export type Database = {
           notification_metadata?: Json
           notification_title: string
           notification_type: string
-          target_item_ids?: string[]
-          target_item_type?: string
           target_trip_id: string
         }
         Returns: undefined
+      }
+      queue_due_accommodation_cancellation_reminders: {
+        Args: never
+        Returns: number
       }
       queue_external_invite_email: {
         Args: {
@@ -4013,6 +4261,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      remove_trip_member: {
+        Args: { target_member_user_id: string; target_trip_id: string }
+        Returns: string
       }
       request_account_deletion_after_terms_decline: {
         Args: never
@@ -4097,6 +4349,14 @@ export type Database = {
         Returns: boolean
       }
       unfriend_user: { Args: { target_user_id: string }; Returns: undefined }
+      update_trip_invitation_leg_assignments: {
+        Args: {
+          target_invitation_id: string
+          target_leg_ids?: string[]
+          target_trip_id: string
+        }
+        Returns: number
+      }
       vaivia_level_for_points: { Args: { raw_points: number }; Returns: Json }
       vaivia_trip_owner: { Args: { trip_id: string }; Returns: string }
       visible_trip_member_ids: {

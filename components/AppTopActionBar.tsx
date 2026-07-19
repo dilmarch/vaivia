@@ -435,6 +435,10 @@ function getTripSwitchHref({
         return `${baseHref}/accommodations`;
     }
 
+    if (suffix.startsWith("/assistant")) {
+        return `${baseHref}/assistant`;
+    }
+
     if (suffix.startsWith("/food")) {
         return `${baseHref}/food`;
     }
