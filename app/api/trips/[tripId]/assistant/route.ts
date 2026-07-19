@@ -12,12 +12,14 @@ import {
 import {
     generateGeminiAssistantResponse,
     getAiDailyMessageLimit,
+    getGeminiAssistantGenerationConfig,
     getGeminiAssistantModel,
     isGeminiAssistantConfigured,
     VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
     type GeminiAssistantGenerationResult,
     type GeminiAssistantTokenUsage,
 } from "@/lib/ai/gemini-assistant";
+import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
 import { buildVaiviaAssistantSystemInstruction } from "@/lib/ai/system-instruction";
 import { loadTripAssistantContext } from "@/lib/ai/trip-context";
 import { createClient } from "@/lib/supabase/server";
@@ -34,6 +36,8 @@ type ConversationRow = {
     updated_at: string;
     last_message_at: string | null;
 };
+
+const AI_USAGE_RESERVATION_TTL_MS = 5 * 60 * 1_000;
 
 function safeError(message: string, status: number, code: string) {
     return NextResponse.json({ error: message, code }, { status });
@@ -72,6 +76,8 @@ function generationFailureResponse(generation: GeminiAssistantGenerationResult) 
         rate_limited: { status: 429, code: "gemini_rate_limited" },
         service_failure: { status: 502, code: "gemini_service_failure" },
         empty_output: { status: 502, code: "gemini_empty_output" },
+        max_tokens: { status: 502, code: "gemini_max_tokens" },
+        blocked_output: { status: 502, code: "gemini_blocked_output" },
         aborted: { status: 499, code: "request_aborted" },
     } as const;
     return { ...mapping[generation.status], message: generation.message };
@@ -104,6 +110,7 @@ async function completeUsageEvent({
                 model,
                 prompt_token_count: tokenUsage?.promptTokenCount ?? null,
                 candidate_token_count: tokenUsage?.candidateTokenCount ?? null,
+                thoughts_token_count: tokenUsage?.thoughtsTokenCount ?? null,
                 total_token_count: tokenUsage?.totalTokenCount ?? null,
                 completed_at: new Date().toISOString(),
             })
@@ -129,7 +136,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const dailyLimit = getAiDailyMessageLimit();
     const usageDate = new Date().toISOString().slice(0, 10);
-    const [conversationsResult, usageResult] = await Promise.all([
+    const activeReservationCutoff = new Date(
+        Date.now() - AI_USAGE_RESERVATION_TTL_MS
+    ).toISOString();
+    const [
+        conversationsResult,
+        succeededUsageResult,
+        activeReservationResult,
+    ] = await Promise.all([
         supabase
             .from("ai_conversations")
             .select("id,title,created_at,updated_at,last_message_at")
@@ -143,10 +157,22 @@ export async function GET(request: NextRequest, context: RouteContext) {
             .eq("user_id", user.id)
             .eq("usage_date", usageDate)
             .eq("event_type", "assistant_request")
-            .in("outcome", ["in_progress", "succeeded", "failed"]),
+            .eq("outcome", "succeeded"),
+        supabase
+            .from("ai_usage_events")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("usage_date", usageDate)
+            .eq("event_type", "assistant_request")
+            .eq("outcome", "in_progress")
+            .gte("occurred_at", activeReservationCutoff),
     ]);
 
-    if (conversationsResult.error || usageResult.error) {
+    if (
+        conversationsResult.error ||
+        succeededUsageResult.error ||
+        activeReservationResult.error
+    ) {
         return safeError("Unable to load the assistant", 500, "load_failed");
     }
 
@@ -182,7 +208,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
         messages = (messagesResult.data || []).reverse();
     }
 
-    const used = usageResult.count || 0;
+    const used =
+        (succeededUsageResult.count || 0) + (activeReservationResult.count || 0);
     return NextResponse.json({
         configured: isGeminiAssistantConfigured(),
         trip: { id: trip.id, title: trip.title },
@@ -273,6 +300,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     try {
         tripContext = await loadTripAssistantContext(supabase, trip.id);
     } catch {
+        logAssistantDiagnostic({ stage: "trip_context", code: "context_failed" });
         return safeError("Unable to read the saved trip details", 500, "context_failed");
     }
 
@@ -288,6 +316,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
             .order("created_at", { ascending: false })
             .limit(ASSISTANT_HISTORY_LIMIT);
         if (historyResult.error) {
+            logAssistantDiagnostic({
+                stage: "conversation_history",
+                code: "history_failed",
+            });
             return safeError("Unable to load conversation history", 500, "history_failed");
         }
         history = historyResult.data || [];
@@ -334,12 +366,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
         usageRows = result.data;
         usageError = result.error;
     } catch {
+        logAssistantDiagnostic({
+            stage: "quota_reservation",
+            code: "usage_failed",
+        });
         await deleteEmptyCreatedConversation();
         return safeError("Unable to verify daily usage", 500, "usage_failed");
     }
 
     const usage = usageRows?.[0];
     if (usageError || !usage) {
+        logAssistantDiagnostic({
+            stage: "quota_reservation",
+            code: "usage_failed",
+        });
         await deleteEmptyCreatedConversation();
         return safeError("Unable to verify daily usage", 500, "usage_failed");
     }
@@ -357,6 +397,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const usageEventId = usage.usage_event_id;
     if (!usageEventId) {
+        logAssistantDiagnostic({
+            stage: "quota_reservation",
+            code: "usage_event_missing",
+        });
         await deleteEmptyCreatedConversation();
         return safeError("Unable to verify daily usage", 500, "usage_failed");
     }
@@ -374,6 +418,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         .select("id,role,status,content,created_at")
         .single();
     if (messageInsertError || !userMessage) {
+        logAssistantDiagnostic({
+            stage: "user_message_persistence",
+            code: "user_message_persistence_failed",
+        });
         await completeUsageEvent({
             usageEventId,
             userId: user.id,
@@ -408,12 +456,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }));
     contents.push({ role: "user", parts: [{ text: message }] });
 
+    const systemInstruction = buildVaiviaAssistantSystemInstruction(tripContext);
     const generation = await generateGeminiAssistantResponse({
         contents,
         config: {
-            systemInstruction: buildVaiviaAssistantSystemInstruction(tripContext),
-            temperature: 0.2,
-            maxOutputTokens: 1_200,
+            ...getGeminiAssistantGenerationConfig(),
+            systemInstruction,
         },
         signal: request.signal,
     });
@@ -421,6 +469,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const conversationPayload = updatedConversation || conversation;
     if (generation.status !== "success") {
         const failure = generationFailureResponse(generation)!;
+        logAssistantDiagnostic({
+            stage: "gemini_generate_content",
+            code: failure.code,
+            apiVersion: generation.diagnostics.apiVersion,
+            model: generation.diagnostics.model,
+            providerStatus: generation.diagnostics.providerStatus,
+            providerCode: generation.diagnostics.providerCode,
+            providerMessage: generation.diagnostics.providerMessage,
+            finishReason: generation.diagnostics.finishReason,
+            promptBlockReason: generation.diagnostics.promptBlockReason,
+            promptTokenCount:
+                generation.diagnostics.tokenUsage.promptTokenCount,
+            candidateTokenCount:
+                generation.diagnostics.tokenUsage.candidateTokenCount,
+            thoughtsTokenCount:
+                generation.diagnostics.tokenUsage.thoughtsTokenCount,
+            totalTokenCount: generation.diagnostics.tokenUsage.totalTokenCount,
+            elapsedMs: generation.diagnostics.elapsedMs,
+            contextCharacters: systemInstruction.length,
+            historyMessageCount: contents.length - 1,
+        });
         await supabase
             .from("ai_messages")
             .update({ status: "failed" })
@@ -428,7 +497,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             .eq("conversation_id", conversation.id)
             .eq("trip_id", trip.id)
             .eq("user_id", user.id);
-        await completeUsageEvent({
+        const usageReleased = await completeUsageEvent({
             usageEventId,
             userId: user.id,
             tripId: trip.id,
@@ -443,8 +512,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 code: failure.code,
                 usage: {
                     limit: dailyLimit,
-                    used: usage.used,
-                    remaining: usage.remaining,
+                    used: usageReleased ? Math.max(0, usage.used - 1) : usage.used,
+                    remaining: usageReleased
+                        ? Math.min(dailyLimit, usage.remaining + 1)
+                        : usage.remaining,
                 },
             },
             { status: failure.status }
@@ -465,6 +536,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         .select("id,role,status,content,created_at")
         .single();
     if (assistantInsertError || !assistantMessage) {
+        logAssistantDiagnostic({
+            stage: "assistant_message_persistence",
+            code: "assistant_message_persistence_failed",
+        });
         await supabase
             .from("ai_messages")
             .update({ status: "failed" })
@@ -498,6 +573,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         .eq("trip_id", trip.id)
         .eq("user_id", user.id);
     if (userStatusError) {
+        logAssistantDiagnostic({
+            stage: "request_finalization",
+            code: "message_status_persistence_failed",
+        });
         await completeUsageEvent({
             usageEventId,
             userId: user.id,
@@ -538,6 +617,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     };
 
     if (!usageSaved) {
+        logAssistantDiagnostic({
+            stage: "request_finalization",
+            code: "usage_persistence_failed",
+        });
         return NextResponse.json(
             { ...payload, error: "Unable to record assistant usage", code: "usage_failed" },
             { status: 500 }

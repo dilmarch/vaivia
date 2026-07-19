@@ -157,6 +157,7 @@ export type Database = {
           occurred_at: string
           outcome: string
           prompt_token_count: number | null
+          thoughts_token_count: number | null
           total_token_count: number | null
           trip_id: string
           usage_date: string
@@ -173,6 +174,7 @@ export type Database = {
           occurred_at?: string
           outcome?: string
           prompt_token_count?: number | null
+          thoughts_token_count?: number | null
           total_token_count?: number | null
           trip_id: string
           usage_date?: string
@@ -189,6 +191,7 @@ export type Database = {
           occurred_at?: string
           outcome?: string
           prompt_token_count?: number | null
+          thoughts_token_count?: number | null
           total_token_count?: number | null
           trip_id?: string
           usage_date?: string

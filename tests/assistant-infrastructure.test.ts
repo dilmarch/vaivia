@@ -52,18 +52,55 @@ describe("assistant credential and dependency isolation", () => {
 describe("assistant database and read-only safeguards", () => {
     it("uses a service-only security-invoker quota function with an advisory lock", () => {
         const migration = read(
-            "supabase/migrations/20260719000122_complete_ai_assistant_phase_one_audit.sql"
+            "supabase/migrations/20260719204124_fix_ai_assistant_generation_and_quota.sql"
         );
 
         expect(migration).toContain("security invoker");
         expect(migration).toContain("set search_path = ''");
         expect(migration).toContain("pg_advisory_xact_lock");
         expect(migration).toContain("'rate_limited'");
+        expect(migration).toContain("usage_event.outcome = 'succeeded'");
+        expect(migration).toContain("usage_event.outcome = 'in_progress'");
+        expect(migration).toContain("interval '5 minutes'");
+        expect(migration).toContain("thoughts_token_count");
+        expect(migration).not.toMatch(
+            /usage_event\.outcome\s+in\s*\([^)]*'failed'/
+        );
+        expect(migration).not.toMatch(/delete\s+from\s+public\.ai_usage_events/i);
         expect(migration).toMatch(
             /revoke all on function public\.consume_ai_daily_usage[\s\S]*from public, anon, authenticated/
         );
         expect(migration).toMatch(
             /grant execute on function public\.consume_ai_daily_usage[\s\S]*to service_role/
+        );
+
+        const lockPosition = migration.indexOf("pg_advisory_xact_lock");
+        const countPosition = migration.indexOf("select count(*)::integer");
+        const insertPosition = migration.lastIndexOf(
+            "insert into public.ai_usage_events"
+        );
+        expect(lockPosition).toBeGreaterThan(-1);
+        expect(lockPosition).toBeLessThan(countPosition);
+        expect(countPosition).toBeLessThan(insertPosition);
+    });
+
+    it("uses only successful and active reservations in user-visible usage", () => {
+        const route = read("app/api/trips/[tripId]/assistant/route.ts");
+
+        expect(route).toContain('.eq("outcome", "succeeded")');
+        expect(route).toContain('.eq("outcome", "in_progress")');
+        expect(route).toContain('.gte("occurred_at", activeReservationCutoff)');
+        expect(route).not.toContain(
+            '.in("outcome", ["in_progress", "succeeded", "failed"])'
+        );
+    });
+
+    it("keeps server diagnostics development-only and metadata-only", () => {
+        const diagnostics = read("lib/ai/assistant-diagnostics.ts");
+
+        expect(diagnostics).toContain('process.env.NODE_ENV !== "development"');
+        expect(diagnostics).not.toMatch(
+            /\b(?:rawPrompt|rawMessage|tripContext|cookie|authorizationHeader|userId|tripId)\b/
         );
     });
 

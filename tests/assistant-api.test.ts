@@ -16,6 +16,10 @@ vi.mock("@/lib/supabase/service", () => ({
 vi.mock("@/lib/ai/gemini-assistant", () => ({
     isGeminiAssistantConfigured: mocks.configured,
     getGeminiAssistantModel: () => "gemini-3.5-flash",
+    getGeminiAssistantGenerationConfig: () => ({
+        maxOutputTokens: 4_096,
+        thinkingConfig: { thinkingLevel: "LOW" },
+    }),
     getAiDailyMessageLimit: () => 50,
     generateGeminiAssistantResponse: mocks.generate,
     VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE:
@@ -79,6 +83,9 @@ function fakeSupabase(options: FakeOptions = {}) {
                 return builder;
             },
             in() {
+                return builder;
+            },
+            gte() {
                 return builder;
             },
             order() {
@@ -199,6 +206,26 @@ function messageRequest(
     });
 }
 
+function generationDiagnostics(overrides: Record<string, unknown> = {}) {
+    return {
+        apiVersion: "v1beta",
+        model: "gemini-3.5-flash",
+        providerStatus: null,
+        providerCode: null,
+        providerMessage: null,
+        finishReason: "STOP",
+        promptBlockReason: null,
+        elapsedMs: 120,
+        tokenUsage: {
+            promptTokenCount: 20,
+            candidateTokenCount: 8,
+            thoughtsTokenCount: 4,
+            totalTokenCount: 32,
+        },
+        ...overrides,
+    };
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.configured.mockReturnValue(true);
@@ -215,8 +242,10 @@ beforeEach(() => {
         tokenUsage: {
             promptTokenCount: 20,
             candidateTokenCount: 8,
-            totalTokenCount: 28,
+            thoughtsTokenCount: 4,
+            totalTokenCount: 32,
         },
+        diagnostics: generationDiagnostics(),
     });
 });
 
@@ -336,6 +365,11 @@ describe("trip assistant persistence and quota", () => {
                         parts: [{ text: "When does my trip start?" }],
                     },
                 ],
+                config: {
+                    maxOutputTokens: 4_096,
+                    thinkingConfig: { thinkingLevel: "LOW" },
+                    systemInstruction: "system",
+                },
             })
         );
         const messageWrites = userDatabase.writes.filter(
@@ -354,7 +388,8 @@ describe("trip assistant persistence and quota", () => {
                     outcome: "succeeded",
                     prompt_token_count: 20,
                     candidate_token_count: 8,
-                    total_token_count: 28,
+                    thoughts_token_count: 4,
+                    total_token_count: 32,
                 }),
             })
         );
@@ -379,14 +414,27 @@ describe("trip assistant persistence and quota", () => {
             mocks.generate.mockResolvedValue({
                 status,
                 message: "The assistant could not complete this request",
+                diagnostics: generationDiagnostics({
+                    providerStatus: status === "service_failure" ? 400 : null,
+                    providerCode:
+                        status === "service_failure" ? "INVALID_ARGUMENT" : null,
+                    providerMessage:
+                        status === "service_failure"
+                            ? "Invalid JSON payload received"
+                            : null,
+                    finishReason: status === "empty_output" ? "STOP" : null,
+                }),
             });
 
             const response = await POST(messageRequest(), routeContext());
             expect(response.status).toBe(expectedStatus);
-            await expect(response.json()).resolves.toMatchObject({
+            const payload = await response.json();
+            expect(payload).toMatchObject({
                 code: expectedCode,
                 userMessage: { status: "failed" },
+                usage: { limit: 50, used: 0, remaining: 50 },
             });
+            expect(JSON.stringify(payload)).not.toContain("INVALID_ARGUMENT");
             expect(
                 userDatabase.writes.filter(
                     (write) =>

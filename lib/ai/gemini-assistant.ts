@@ -2,14 +2,20 @@ import "server-only";
 
 import {
   ApiError,
+  FinishReason,
   GoogleGenAI,
+  ThinkingLevel,
   type ContentListUnion,
   type GenerateContentConfig,
+  type GenerateContentResponse,
 } from "@google/genai";
 
 const DEFAULT_GEMINI_ASSISTANT_MODEL = "gemini-3.5-flash";
 const DEFAULT_AI_DAILY_MESSAGE_LIMIT = 50;
 const GEMINI_REQUEST_TIMEOUT_MS = 30_000;
+export const GEMINI_ASSISTANT_API_VERSION = "v1beta";
+export const GEMINI_ASSISTANT_MAX_OUTPUT_TOKENS = 4_096;
+export const GEMINI_ASSISTANT_THINKING_LEVEL = ThinkingLevel.LOW;
 
 export const VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE =
   "The VAIVIA assistant is temporarily unavailable";
@@ -19,7 +25,20 @@ let assistantClient: GoogleGenAI | null = null;
 export type GeminiAssistantTokenUsage = {
   promptTokenCount: number | null;
   candidateTokenCount: number | null;
+  thoughtsTokenCount: number | null;
   totalTokenCount: number | null;
+};
+
+export type GeminiAssistantDiagnostics = {
+  apiVersion: string;
+  model: string;
+  providerStatus: number | null;
+  providerCode: string | null;
+  providerMessage: string | null;
+  finishReason: string | null;
+  promptBlockReason: string | null;
+  elapsedMs: number;
+  tokenUsage: GeminiAssistantTokenUsage;
 };
 
 export type GeminiAssistantGenerationResult =
@@ -28,6 +47,7 @@ export type GeminiAssistantGenerationResult =
       message: string;
       model: string;
       tokenUsage: GeminiAssistantTokenUsage;
+      diagnostics: GeminiAssistantDiagnostics;
     }
   | {
       status:
@@ -36,8 +56,11 @@ export type GeminiAssistantGenerationResult =
         | "rate_limited"
         | "service_failure"
         | "empty_output"
+        | "max_tokens"
+        | "blocked_output"
         | "aborted";
       message: string;
+      diagnostics: GeminiAssistantDiagnostics;
     };
 
 function getAssistantApiKey() {
@@ -58,6 +81,15 @@ export function getAiDailyMessageLimit() {
     : DEFAULT_AI_DAILY_MESSAGE_LIMIT;
 }
 
+export function getGeminiAssistantGenerationConfig(): GenerateContentConfig {
+  return {
+    maxOutputTokens: GEMINI_ASSISTANT_MAX_OUTPUT_TOKENS,
+    thinkingConfig: {
+      thinkingLevel: GEMINI_ASSISTANT_THINKING_LEVEL,
+    },
+  };
+}
+
 export function isGeminiAssistantConfigured() {
   return Boolean(getAssistantApiKey());
 }
@@ -70,7 +102,7 @@ export function getGeminiAssistantClient() {
     try {
       assistantClient = new GoogleGenAI({
         apiKey,
-        apiVersion: "v1",
+        apiVersion: GEMINI_ASSISTANT_API_VERSION,
         enterprise: false,
       });
     } catch {
@@ -85,8 +117,88 @@ function safeTokenCount(value: number | undefined) {
   return Number.isSafeInteger(value) && (value || 0) >= 0 ? (value as number) : null;
 }
 
+function getTokenUsage(
+  response?: GenerateContentResponse
+): GeminiAssistantTokenUsage {
+  return {
+    promptTokenCount: safeTokenCount(response?.usageMetadata?.promptTokenCount),
+    candidateTokenCount: safeTokenCount(
+      response?.usageMetadata?.candidatesTokenCount
+    ),
+    thoughtsTokenCount: safeTokenCount(
+      response?.usageMetadata?.thoughtsTokenCount
+    ),
+    totalTokenCount: safeTokenCount(response?.usageMetadata?.totalTokenCount),
+  };
+}
+
+function parseProviderError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return { providerCode: null, providerMessage: null };
+  }
+
+  let providerCode: string | null = error.name || null;
+  let providerMessage = error.message || null;
+
+  try {
+    const parsed = JSON.parse(error.message) as {
+      error?: { status?: unknown; message?: unknown };
+    };
+    if (typeof parsed.error?.status === "string") {
+      providerCode = parsed.error.status.slice(0, 80);
+    }
+    if (typeof parsed.error?.message === "string") {
+      providerMessage = parsed.error.message;
+    }
+  } catch {
+    // Non-JSON SDK and network errors are already represented by Error fields.
+  }
+
+  return {
+    providerCode,
+    providerMessage: providerMessage
+      ?.replace(/AIza[0-9A-Za-z_-]{20,}/g, "[redacted]")
+      .replace(/[\r\n\t]+/g, " ")
+      .trim()
+      .slice(0, 240) || null,
+  };
+}
+
+function getResponseDiagnostics({
+  response,
+  model,
+  elapsedMs,
+}: {
+  response?: GenerateContentResponse;
+  model: string;
+  elapsedMs: number;
+}): GeminiAssistantDiagnostics {
+  return {
+    apiVersion: GEMINI_ASSISTANT_API_VERSION,
+    model,
+    providerStatus: null,
+    providerCode: null,
+    providerMessage: null,
+    finishReason: response?.candidates?.[0]?.finishReason || null,
+    promptBlockReason: response?.promptFeedback?.blockReason || null,
+    elapsedMs,
+    tokenUsage: getTokenUsage(response),
+  };
+}
+
+function isBlockedFinishReason(finishReason: string | null) {
+  return [
+    FinishReason.SAFETY,
+    FinishReason.RECITATION,
+    FinishReason.LANGUAGE,
+    FinishReason.BLOCKLIST,
+    FinishReason.PROHIBITED_CONTENT,
+    FinishReason.SPII,
+  ].includes(finishReason as FinishReason);
+}
+
 /**
- * Generates one non-streaming, stateless response with the stable
+ * Generates one non-streaming, stateless response with the supported
  * models.generateContent API. VAIVIA supplies and persists all history. The
  * non-streaming choice keeps persistence atomic at the application boundary:
  * only complete model output is ever saved as an assistant message.
@@ -100,16 +212,29 @@ export async function generateGeminiAssistantResponse({
   config?: GenerateContentConfig;
   signal?: AbortSignal;
 }): Promise<GeminiAssistantGenerationResult> {
+  const model = getGeminiAssistantModel();
+  const startedAt = Date.now();
   const client = getGeminiAssistantClient();
   if (!client) {
     return {
       status: "missing_configuration",
       message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
+      diagnostics: getResponseDiagnostics({
+        model,
+        elapsedMs: Date.now() - startedAt,
+      }),
     };
   }
 
   if (signal?.aborted) {
-    return { status: "aborted", message: "The assistant request was cancelled" };
+    return {
+      status: "aborted",
+      message: "The assistant request was cancelled",
+      diagnostics: getResponseDiagnostics({
+        model,
+        elapsedMs: Date.now() - startedAt,
+      }),
+    };
   }
 
   const controller = new AbortController();
@@ -123,7 +248,7 @@ export async function generateGeminiAssistantResponse({
 
   try {
     const response = await client.models.generateContent({
-      model: getGeminiAssistantModel(),
+      model,
       contents,
       config: {
         ...config,
@@ -135,45 +260,82 @@ export async function generateGeminiAssistantResponse({
       },
     });
     const message = response.text?.trim();
+    const diagnostics = getResponseDiagnostics({
+      response,
+      model,
+      elapsedMs: Date.now() - startedAt,
+    });
+
+    if (diagnostics.finishReason === FinishReason.MAX_TOKENS) {
+      return {
+        status: "max_tokens",
+        message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
+        diagnostics,
+      };
+    }
+
+    if (
+      diagnostics.promptBlockReason ||
+      isBlockedFinishReason(diagnostics.finishReason)
+    ) {
+      return {
+        status: "blocked_output",
+        message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
+        diagnostics,
+      };
+    }
 
     if (!message) {
       return {
         status: "empty_output",
-        message: "The assistant returned an empty response. Please try again.",
+        message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
+        diagnostics,
       };
     }
 
     return {
       status: "success",
       message,
-      model: response.modelVersion?.trim() || getGeminiAssistantModel(),
-      tokenUsage: {
-        promptTokenCount: safeTokenCount(response.usageMetadata?.promptTokenCount),
-        candidateTokenCount: safeTokenCount(
-          response.usageMetadata?.candidatesTokenCount
-        ),
-        totalTokenCount: safeTokenCount(response.usageMetadata?.totalTokenCount),
-      },
+      model: response.modelVersion?.trim() || model,
+      tokenUsage: diagnostics.tokenUsage,
+      diagnostics,
     };
   } catch (error) {
+    const providerError = parseProviderError(error);
+    const diagnostics: GeminiAssistantDiagnostics = {
+      ...getResponseDiagnostics({
+        model,
+        elapsedMs: Date.now() - startedAt,
+      }),
+      providerStatus: error instanceof ApiError ? error.status : null,
+      ...providerError,
+    };
+
     if (timedOut || (error instanceof ApiError && error.status === 408)) {
       return {
         status: "timeout",
         message: "The assistant took too long to respond. Please try again.",
+        diagnostics,
       };
     }
     if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) {
-      return { status: "aborted", message: "The assistant request was cancelled" };
+      return {
+        status: "aborted",
+        message: "The assistant request was cancelled",
+        diagnostics,
+      };
     }
     if (error instanceof ApiError && error.status === 429) {
       return {
         status: "rate_limited",
         message: "Google Gemini is temporarily rate limited. Please try again shortly.",
+        diagnostics,
       };
     }
     return {
       status: "service_failure",
       message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
+      diagnostics,
     };
   } finally {
     clearTimeout(timeout);
