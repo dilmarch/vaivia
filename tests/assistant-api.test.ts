@@ -15,7 +15,7 @@ vi.mock("@/lib/supabase/service", () => ({
 }));
 vi.mock("@/lib/ai/gemini-assistant", () => ({
     isGeminiAssistantConfigured: mocks.configured,
-    getGeminiAssistantModel: () => "gemini-2.5-flash",
+    getGeminiAssistantModel: () => "gemini-3.5-flash",
     getAiDailyMessageLimit: () => 50,
     generateGeminiAssistantResponse: mocks.generate,
     VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE:
@@ -211,7 +211,7 @@ beforeEach(() => {
     mocks.generate.mockResolvedValue({
         status: "success",
         message: "Your trip starts on Monday.",
-        model: "gemini-2.5-flash-001",
+        model: "gemini-3.5-flash-001",
         tokenUsage: {
             promptTokenCount: 20,
             candidateTokenCount: 8,
@@ -344,7 +344,7 @@ describe("trip assistant persistence and quota", () => {
         expect(messageWrites).toHaveLength(2);
         expect(messageWrites[1]?.payload).toMatchObject({
             role: "assistant",
-            model: "gemini-2.5-flash-001",
+            model: "gemini-3.5-flash-001",
         });
         expect(serviceDatabase.writes).toContainEqual(
             expect.objectContaining({

@@ -1,9 +1,15 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { getGeminiAssistantModel } from "@/lib/ai/gemini-assistant";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+
+afterEach(() => {
+    vi.unstubAllEnvs();
+});
 
 describe("assistant credential and dependency isolation", () => {
     it("uses only the dedicated assistant credential with no email-import fallback", () => {
@@ -17,6 +23,14 @@ describe("assistant credential and dependency isolation", () => {
         expect(emailImport).not.toContain("GEMINI_ASSISTANT_API_KEY");
     });
 
+    it("defaults to Gemini 3.5 Flash while preserving the model override", () => {
+        vi.stubEnv("GEMINI_ASSISTANT_MODEL", "");
+        expect(getGeminiAssistantModel()).toBe("gemini-3.5-flash");
+
+        vi.stubEnv("GEMINI_ASSISTANT_MODEL", "gemini-custom-model");
+        expect(getGeminiAssistantModel()).toBe("gemini-custom-model");
+    });
+
     it("uses the current SDK and documents empty server-only placeholders", () => {
         const packageJson = JSON.parse(read("package.json")) as {
             dependencies: Record<string, string>;
@@ -26,6 +40,9 @@ describe("assistant credential and dependency isolation", () => {
         expect(packageJson.dependencies["@google/genai"]).toBeTruthy();
         expect(packageJson.dependencies["@google/generative-ai"]).toBeUndefined();
         expect(example).toContain("GEMINI_ASSISTANT_API_KEY=\n");
+        expect(example).toContain(
+            "# Optional; defaults to gemini-3.5-flash when empty"
+        );
         expect(example).toContain("GEMINI_ASSISTANT_MODEL=\n");
         expect(example).toContain("AI_DAILY_MESSAGE_LIMIT=\n");
         expect(example).not.toContain("NEXT_PUBLIC_GEMINI");
