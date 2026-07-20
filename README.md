@@ -141,6 +141,23 @@ generation per request. Grounded answers, queries, citations, source metadata,
 and Search Suggestions are not persisted; reopened conversations contain a
 VAIVIA-authored prompt to refresh current information.
 
+## VAIVIA Travel Companion extension
+
+The Chrome extension source lives in `browser-extension/`. Its app-side routes
+use the existing server-only Supabase service-role environment variable to
+validate revocable extension sessions and enforce trip membership before any
+capture is saved.
+
+Once a production Chrome Web Store ID is assigned, restrict connection
+callbacks in Vercel:
+
+```env
+VAIVIA_BROWSER_EXTENSION_IDS=your_32_character_chrome_extension_id
+```
+
+Multiple IDs, such as development and production packages, may be supplied as
+a comma-separated list. Keep this variable server-only.
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).

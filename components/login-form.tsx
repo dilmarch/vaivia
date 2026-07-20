@@ -19,8 +19,12 @@ type PasskeyLoginClient = ReturnType<typeof createClient> & {
 export function LoginForm({
   className,
   initialError,
+  redirectTo = "/",
   ...props
-}: React.ComponentPropsWithoutRef<"div"> & { initialError?: string }) {
+}: React.ComponentPropsWithoutRef<"div"> & {
+  initialError?: string;
+  redirectTo?: string;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError || null);
@@ -39,7 +43,7 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      window.location.assign("/");
+      window.location.assign(redirectTo);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -55,7 +59,7 @@ export function LoginForm({
       const supabase = createClient() as PasskeyLoginClient;
       const { error } = await supabase.auth.signInWithPasskey();
       if (error) throw error;
-      window.location.assign("/");
+      window.location.assign(redirectTo);
     } catch (error: unknown) {
       setError(
         error instanceof Error
@@ -87,10 +91,12 @@ export function LoginForm({
             <div className="grid gap-3 sm:grid-cols-2">
               <SocialLoginButton
                 provider="google"
+                redirectTo={redirectTo}
                 className="min-h-12 rounded-full border-white/10 bg-white/[0.08] text-sm font-black text-slate-100 hover:border-lime-300 hover:bg-lime-300 hover:text-slate-950 focus-visible:ring-lime-300"
               />
               <SocialLoginButton
                 provider="azure"
+                redirectTo={redirectTo}
                 className="min-h-12 rounded-full border-white/10 bg-white/[0.08] text-sm font-black text-slate-100 hover:border-lime-300 hover:bg-lime-300 hover:text-slate-950 focus-visible:ring-lime-300"
               />
             </div>

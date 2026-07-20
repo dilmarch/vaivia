@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "VAIVIA Travel Companion",
+  "short_name": "VAIVIA",
+  "version": "0.1.0",
+  "description": "Save hotel and flight options from travel websites into VAIVIA.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "activeTab",
+    "identity",
+    "scripting",
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://app.thetravellinglinguist.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*.booking.com/*",
+    "https://*.expedia.com/*",
+    "https://*.expedia.ca/*",
+    "https://*.hotels.com/*",
+    "https://*.kayak.com/*",
+    "https://*.kayak.ca/*",
+    "https://*.aircanada.com/*",
+    "https://*.westjet.com/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ],
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open VAIVIA Travel Companion"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  }
+}
