@@ -535,6 +535,168 @@ describe("trip assistant persistence and quota", () => {
         );
     });
 
+    it("returns grounding ephemerally while persisting only a refresh placeholder and numeric counters", async () => {
+        const userDatabase = fakeSupabase({ conversation: conversation() });
+        const serviceDatabase = fakeSupabase();
+        mocks.createClient.mockResolvedValue(userDatabase);
+        mocks.createServiceClient.mockReturnValue(serviceDatabase);
+        const groundedContent = "Toronto Pride programming is scheduled for June 25–28.";
+        const refreshPlaceholder =
+            "This current-information answer is not stored. Ask again to refresh it with Google Search.";
+        mocks.generate.mockResolvedValue({
+            status: "success",
+            message: groundedContent,
+            persistedMessage: refreshPlaceholder,
+            model: "gemini-3.5-flash-001",
+            tokenUsage: generationDiagnostics().tokenUsage,
+            diagnostics: generationDiagnostics(),
+            metadata: { version: 1, type: "current_web_refresh" },
+            recommendations: [],
+            webGrounding: {
+                sources: [
+                    {
+                        id: "source-1",
+                        title: "Official Pride programme",
+                        url: "https://example.org/pride",
+                    },
+                ],
+                supports: [
+                    {
+                        startIndex: 0,
+                        endIndex: new TextEncoder().encode(groundedContent).length,
+                        sourceIds: ["source-1"],
+                    },
+                ],
+                searchEntryPointHtml: "<div>Google Search Suggestions</div>",
+                queryCount: 2,
+            },
+            toolUsage: {
+                functionCalls: 1,
+                externalToolCalls: 1,
+                placeResults: 0,
+                webSearchOperations: 1,
+                webSearchQueries: 2,
+            },
+        });
+
+        const response = await POST(
+            messageRequest(
+                CONVERSATION_A,
+                "Use current web sources to find LGBTQ+ events, food festivals or tours, and beer, wine, or spirits experiences happening during my saved trip dates. Cite each time-sensitive claim."
+            ),
+            routeContext()
+        );
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(payload.assistantMessage).toMatchObject({
+            content: groundedContent,
+            webGrounding: { queryCount: 2 },
+        });
+        const assistantWrite = serviceDatabase.writes.find(
+            (write) =>
+                write.table === "ai_messages" &&
+                (write.payload as { role?: string }).role === "assistant"
+        );
+        expect(assistantWrite?.payload).toMatchObject({
+            content: refreshPlaceholder,
+            metadata: { version: 1, type: "current_web_refresh" },
+        });
+        expect(mocks.generate).toHaveBeenCalledWith(
+            expect.objectContaining({
+                retrievalDecision: expect.objectContaining({ mode: "current_web" }),
+            })
+        );
+        const persistedWrites = JSON.stringify([
+            ...userDatabase.writes,
+            ...serviceDatabase.writes,
+        ]);
+        expect(persistedWrites).not.toContain("example.org");
+        expect(persistedWrites).not.toContain("Official Pride programme");
+        expect(persistedWrites).not.toContain("Google Search Suggestions");
+        expect(persistedWrites).not.toContain("provider query");
+        expect(serviceDatabase.writes).toContainEqual(
+            expect.objectContaining({
+                table: "ai_usage_events",
+                operation: "update",
+                payload: expect.objectContaining({
+                    outcome: "succeeded",
+                    google_search_operations: 1,
+                    google_search_queries: 2,
+                }),
+            })
+        );
+    });
+
+    it("reopens only the grounded refresh placeholder with no stale citations or suggestions", async () => {
+        const refreshPlaceholder =
+            "This current-information answer is not stored. Ask again to refresh it with Google Search.";
+        mocks.createClient.mockResolvedValue(
+            fakeSupabase({
+                conversation: conversation(),
+                messages: [
+                    {
+                        id: "grounded-placeholder-message",
+                        role: "assistant",
+                        status: "complete",
+                        content: refreshPlaceholder,
+                        created_at: "2026-07-18T00:01:00Z",
+                        metadata: { version: 1, type: "current_web_refresh" },
+                    },
+                ],
+            })
+        );
+
+        const response = await GET(
+            new NextRequest("http://localhost/api/trips/trip-a/assistant"),
+            routeContext()
+        );
+        const payload = await response.json();
+        expect(payload.messages).toEqual([
+            expect.objectContaining({ content: refreshPlaceholder }),
+        ]);
+        expect(payload.messages[0].webGrounding).toBeUndefined();
+        expect(JSON.stringify(payload)).not.toMatch(/groundingChunks|searchEntryPoint|https?:\/\//);
+    });
+
+    it("releases quota when grounded output is unusable and stores no incomplete query counters", async () => {
+        const userDatabase = fakeSupabase({ conversation: conversation() });
+        const serviceDatabase = fakeSupabase();
+        mocks.createClient.mockResolvedValue(userDatabase);
+        mocks.createServiceClient.mockReturnValue(serviceDatabase);
+        mocks.generate.mockResolvedValue({
+            status: "empty_output",
+            message: "Current web information is temporarily unavailable. Please try again.",
+            diagnostics: generationDiagnostics(),
+            toolUsage: {
+                functionCalls: 1,
+                externalToolCalls: 1,
+                placeResults: 0,
+                webSearchOperations: 0,
+                webSearchQueries: 0,
+            },
+        });
+
+        const response = await POST(
+            messageRequest(CONVERSATION_A, "What current events are on?"),
+            routeContext()
+        );
+        const payload = await response.json();
+        expect(response.status).toBe(502);
+        expect(payload.usage).toEqual({ limit: 50, used: 0, remaining: 50 });
+        expect(serviceDatabase.writes).toContainEqual(
+            expect.objectContaining({
+                table: "ai_usage_events",
+                operation: "update",
+                payload: expect.objectContaining({
+                    outcome: "failed",
+                    google_search_operations: 0,
+                    google_search_queries: 0,
+                }),
+            })
+        );
+    });
+
     it.each([
         ["timeout", 504, "gemini_timeout"],
         ["rate_limited", 429, "gemini_rate_limited"],

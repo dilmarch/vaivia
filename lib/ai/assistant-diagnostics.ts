@@ -6,7 +6,9 @@ export type AssistantDiagnosticStage =
   | "quota_reservation"
   | "user_message_persistence"
   | "gemini_generate_content"
+  | "retrieval_routing"
   | "places_tool"
+  | "search_grounding"
   | "assistant_message_persistence"
   | "request_finalization";
 
@@ -29,22 +31,11 @@ export type AssistantDiagnostic = {
   historyMessageCount?: number;
   externalToolCalls?: number;
   externalPlaceResults?: number;
+  googleSearchOperations?: number;
+  googleSearchQueries?: number;
+  retrievalMode?: "none" | "places" | "current_web" | "auto";
+  groundedFollowUp?: boolean;
 };
-
-function sanitizeDiagnosticMessage(message: string | null | undefined) {
-  if (!message) return null;
-
-  return message
-    .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[redacted]")
-    .replace(
-      /((?:api[_-]?key|key|authorization)\s*[=:]\s*)[^\s,;}]+/gi,
-      "$1[redacted]"
-    )
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .slice(0, 240);
-}
 
 /**
  * Emits metadata-only diagnostics during local development. The typed payload
@@ -54,11 +45,13 @@ function sanitizeDiagnosticMessage(message: string | null | undefined) {
 export function logAssistantDiagnostic(diagnostic: AssistantDiagnostic) {
   if (process.env.NODE_ENV !== "development") return;
 
+  // Provider messages are intentionally excluded: an upstream error may echo
+  // prompt or grounding data even when the application never supplied a log field.
+  const metadataOnlyDiagnostic = { ...diagnostic };
+  delete metadataOnlyDiagnostic.providerMessage;
+
   console.error(
     "[VAIVIA assistant]",
-    JSON.stringify({
-      ...diagnostic,
-      providerMessage: sanitizeDiagnosticMessage(diagnostic.providerMessage),
-    })
+    JSON.stringify(metadataOnlyDiagnostic)
   );
 }

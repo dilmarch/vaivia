@@ -118,9 +118,11 @@ still require the existing server-only Supabase service role environment variabl
 
 ## VAIVIA assistant
 
-The trip assistant uses dedicated server-only credentials. Phase 2A can perform
-bounded, read-only live place discovery through Google Places API (New); it does
-not search the general web, calculate routes, make bookings, or modify trip data.
+The trip assistant uses dedicated server-only credentials. Phase 2A performs
+bounded, read-only permanent-place discovery through Google Places API (New).
+Phase 2B can answer explicitly current travel questions with Gemini Grounding
+and Google Search. It does not scrape arbitrary URLs, calculate routes, make
+bookings, or modify trip data.
 
 ```env
 GEMINI_ASSISTANT_API_KEY=
@@ -133,7 +135,11 @@ GOOGLE_PLACES_API_KEY=
 (New) and to the deployment's server environment. It is never exposed through a
 `NEXT_PUBLIC_` variable. There is no separate daily Places allowance in Phase
 2A: the existing per-user assistant quota and the hard limit of four external
-tool calls (twenty unique candidates) per request bound usage.
+tool calls (twenty unique candidates) per request bound usage. Search grounding
+uses the existing `GEMINI_ASSISTANT_API_KEY` and permits at most one grounded
+generation per request. Grounded answers, queries, citations, source metadata,
+and Search Suggestions are not persisted; reopened conversations contain a
+VAIVIA-authored prompt to refresh current information.
 
 ## Feedback and issues
 

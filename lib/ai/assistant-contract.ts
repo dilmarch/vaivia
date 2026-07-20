@@ -17,6 +17,7 @@ export type AssistantMessage = {
     content: string;
     created_at: string;
     recommendations?: import("@/lib/ai/places-contract").AssistantPlaceRecommendation[];
+    webGrounding?: import("@/lib/ai/grounding-contract").AssistantWebGrounding;
 };
 
 export type AssistantUsage = {

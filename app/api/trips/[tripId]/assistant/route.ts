@@ -25,6 +25,7 @@ import {
     type AssistantPlacesToolUsage,
 } from "@/lib/ai/places-orchestrator";
 import { parsePlacesMessageMetadata } from "@/lib/ai/places-contract";
+import { selectAssistantRetrieval } from "@/lib/ai/current-web-grounding";
 import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
 import { buildVaiviaAssistantSystemInstruction } from "@/lib/ai/system-instruction";
 import { loadTripAssistantContext } from "@/lib/ai/trip-context";
@@ -121,6 +122,9 @@ async function completeUsageEvent({
     toolUsage?: AssistantPlacesToolUsage;
 }) {
     try {
+        const googleSearchQueries = toolUsage?.webSearchQueries ?? 0;
+        const googleSearchOperations =
+            googleSearchQueries > 0 ? (toolUsage?.webSearchOperations ?? 0) : 0;
         const serviceSupabase = createServiceRoleClient();
         const { error } = await serviceSupabase
             .from("ai_usage_events")
@@ -134,6 +138,8 @@ async function completeUsageEvent({
                 total_token_count: tokenUsage?.totalTokenCount ?? null,
                 external_tool_calls: toolUsage?.externalToolCalls ?? 0,
                 external_place_results: toolUsage?.placeResults ?? 0,
+                google_search_operations: googleSearchOperations,
+                google_search_queries: googleSearchQueries,
                 completed_at: new Date().toISOString(),
             })
             .eq("id", usageEventId)
@@ -519,14 +525,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
     contents.push({ role: "user", parts: [{ text: message }] });
 
     const systemInstruction = buildVaiviaAssistantSystemInstruction(tripContext);
+    const retrievalDecision = selectAssistantRetrieval({ contents, context: tripContext });
+    logAssistantDiagnostic({
+        stage: "retrieval_routing",
+        code: "retrieval_selected",
+        retrievalMode: retrievalDecision.mode,
+        groundedFollowUp:
+            retrievalDecision.mode === "current_web"
+                ? retrievalDecision.isGroundedFollowUp
+                : false,
+    });
     const generation = await generateTripAssistantResponse({
         supabase,
         tripId: trip.id,
         contents,
         systemInstruction,
+        retrievalDecision,
         signal: request.signal,
     });
-    if (generation.toolUsage.externalToolCalls > 0) {
+    if (
+        generation.toolUsage.externalToolCalls > 0 &&
+        (generation.toolUsage.webSearchOperations || 0) === 0
+    ) {
         logAssistantDiagnostic({
             stage: "places_tool",
             code:
@@ -535,6 +555,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
                     : "places_tool_no_results",
             externalToolCalls: generation.toolUsage.externalToolCalls,
             externalPlaceResults: generation.toolUsage.placeResults,
+        });
+    }
+    if ((generation.toolUsage.webSearchOperations || 0) > 0) {
+        logAssistantDiagnostic({
+            stage: "search_grounding",
+            code:
+                generation.status === "success" && generation.webGrounding
+                    ? "search_grounding_completed"
+                    : "search_grounding_unavailable",
+            googleSearchOperations: generation.toolUsage.webSearchOperations,
+            googleSearchQueries: generation.toolUsage.webSearchQueries,
         });
     }
 
@@ -575,6 +606,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
             tripId: trip.id,
             outcome: "failed",
             errorCode: failure.code,
+            model: generation.diagnostics.model,
+            tokenUsage: generation.diagnostics.tokenUsage,
             toolUsage: generation.toolUsage,
         });
         return NextResponse.json(
@@ -607,7 +640,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 user_id: user.id,
                 role: "assistant",
                 status: "complete",
-                content: generation.message,
+                content: generation.persistedMessage || generation.message,
                 model: generation.model,
                 metadata: generation.metadata,
             })
@@ -696,8 +729,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
         userMessage: { ...userMessage, status: "complete" },
         assistantMessage: {
             ...assistantMessage,
+            content: generation.message,
             ...(generation.recommendations.length > 0
                 ? { recommendations: generation.recommendations }
+                : {}),
+            ...(generation.webGrounding
+                ? { webGrounding: generation.webGrounding }
                 : {}),
         },
         usage: {

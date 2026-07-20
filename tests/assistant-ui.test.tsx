@@ -62,6 +62,8 @@ describe("trip assistant interface", () => {
         expect(
             screen.getByText(/trip details and questions are sent to Google Gemini/i)
         ).toBeInTheDocument();
+        expect(screen.getByText(/stored for 30 days/i)).toBeInTheDocument();
+        expect(screen.getByText(/Saved-trip-only questions do not invoke Google Search/i)).toBeInTheDocument();
         expect(screen.getByRole("link", { name: /VAIVIA privacy notice/i })).toHaveAttribute(
             "href",
             "/terms"
@@ -192,7 +194,8 @@ describe("trip assistant interface", () => {
                                 id: "assistant-place-message",
                                 role: "assistant",
                                 status: "complete",
-                                content: "Here is a nearby option.",
+                                content:
+                                    "Here is [an ordinary model link](https://example.org/place).",
                                 created_at: "2026-07-18T00:01:00Z",
                                 recommendations: [
                                     {
@@ -227,6 +230,76 @@ describe("trip assistant interface", () => {
             screen.getByRole("link", { name: "Open Green Room Café in Google Maps" })
         ).toHaveAttribute("href", "https://maps.google.com/?cid=123");
         expect(screen.queryByRole("button", { name: /save|book|add/i })).toBeNull();
+        expect(screen.getByRole("link", { name: "an ordinary model link" })).toHaveAttribute(
+            "href",
+            "https://example.org/place"
+        );
+        expect(screen.queryByText("Current web sources")).not.toBeInTheDocument();
+    });
+
+    it("renders ephemeral grounded citations and sandboxed Google Search Suggestions accessibly", async () => {
+        const content = "Pride programming runs June 25–28.";
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(() =>
+                response(
+                    bootstrap({
+                        activeConversationId: CONVERSATION_A,
+                        messages: [
+                            {
+                                id: "grounded-message",
+                                role: "assistant",
+                                status: "complete",
+                                content,
+                                created_at: "2026-07-18T00:01:00Z",
+                                webGrounding: {
+                                    sources: [
+                                        {
+                                            id: "source-1",
+                                            title: "Official Pride programme",
+                                            url: "https://example.org/pride",
+                                        },
+                                    ],
+                                    supports: [
+                                        {
+                                            startIndex: 0,
+                                            endIndex: new TextEncoder().encode(content).length,
+                                            sourceIds: ["source-1"],
+                                        },
+                                    ],
+                                    searchEntryPointHtml:
+                                        "<div>Google Search Suggestions</div>",
+                                    queryCount: 1,
+                                },
+                            },
+                        ],
+                    })
+                )
+            )
+        );
+        render(<TripAssistant tripId="trip-a" tripTitle="Japan" />);
+
+        expect(
+            await screen.findByLabelText(
+                "Current web answer with Google Search citations"
+            )
+        ).toBeInTheDocument();
+        expect(screen.getByText("Current web sources")).toBeInTheDocument();
+        expect(screen.getByRole("link", { name: /Source 1: Official Pride programme/i })).toHaveAttribute(
+            "href",
+            "https://example.org/pride"
+        );
+        expect(screen.getByRole("link", { name: "Official Pride programme" })).toHaveAttribute(
+            "rel",
+            "noopener noreferrer"
+        );
+        expect(screen.getByTitle("Google Search Suggestions")).toHaveAttribute(
+            "sandbox",
+            "allow-popups allow-popups-to-escape-sandbox"
+        );
+        expect(
+            screen.getByText(/Verify important dates, availability, closures/i)
+        ).toBeInTheDocument();
     });
 
     it("reopens a conversation and confirms before deleting it", async () => {

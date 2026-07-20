@@ -34,6 +34,7 @@ vi.mock("@/lib/ai/google-places", () => ({
 
 import {
     ASSISTANT_MAX_FUNCTION_CALLS,
+    ASSISTANT_PLACE_LOCATION_NEEDED_MESSAGE,
     VAIVIA_PLACES_TOOLS,
     generateTripAssistantResponse,
 } from "@/lib/ai/places-orchestrator";
@@ -114,6 +115,45 @@ function searchCall(id = "call-1") {
     };
 }
 
+function webCall(topic = "events") {
+    return {
+        id: "web-call-1",
+        name: "search_current_web",
+        args: {
+            question: "What current events are happening during our Toronto trip?",
+            topic,
+            location: "Toronto",
+            start_date: "2026-09-02",
+            end_date: "2026-09-05",
+        },
+    };
+}
+
+function groundedMetadata(message: string) {
+    return {
+        webSearchQueries: ["ephemeral provider query"],
+        searchEntryPoint: { renderedContent: "<div>Google Search suggestions</div>" },
+        groundingChunks: [
+            {
+                web: {
+                    uri: "https://example.org/event",
+                    title: "Official event",
+                },
+            },
+        ],
+        groundingSupports: [
+            {
+                segment: {
+                    startIndex: 0,
+                    endIndex: new TextEncoder().encode(message).length,
+                    partIndex: 0,
+                },
+                groundingChunkIndices: [0],
+            },
+        ],
+    };
+}
+
 beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadPlaceContext.mockResolvedValue(tripContext);
@@ -128,14 +168,202 @@ describe("VAIVIA controlled Places tool loop", () => {
         expect(schema).toContain("anchor_reference");
         expect(schema).toContain("result_id");
         expect(schema).not.toMatch(/latitude|longitude|place_id/i);
+        expect(schema).toContain("search_current_web");
     });
 
-    it("does not call Google Places for an ordinary saved-trip question", async () => {
-        mocks.turn.mockResolvedValue(successfulTurn({ message: "Your trip starts Monday." }));
+    it("server-routes the exact operational prompt through exactly one grounded operation", async () => {
+        const prompt =
+            "Use current web sources to find LGBTQ+ events, food festivals or tours, and beer, wine, or spirits experiences happening during my saved trip dates. Cite each time-sensitive claim.";
+        const groundedAnswer = "Current trip-date events are listed here.";
+        mocks.turn.mockResolvedValueOnce(
+            successfulTurn({
+                message: groundedAnswer,
+                groundingMetadata: groundedMetadata(groundedAnswer),
+            })
+        );
+
         const result = await generateTripAssistantResponse({
             supabase: {} as never,
             tripId: "trip-a",
-            contents: [{ role: "user", parts: [{ text: "When does my trip start?" }] }],
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            systemInstruction: "system",
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            persistedMessage:
+                "This current-information answer is not stored. Ask again to refresh it with Google Search.",
+            metadata: { version: 1, type: "current_web_refresh" },
+            webGrounding: { queryCount: 1 },
+            toolUsage: {
+                functionCalls: 0,
+                externalToolCalls: 1,
+                placeResults: 0,
+                webSearchOperations: 1,
+                webSearchQueries: 1,
+            },
+        });
+        expect(mocks.turn).toHaveBeenCalledTimes(1);
+        expect(mocks.turn.mock.calls[0]?.[0]?.config).toMatchObject({
+            tools: [{ googleSearch: {} }],
+        });
+        expect(mocks.search).not.toHaveBeenCalled();
+    });
+
+    it("routes the grounded placeholder follow-up through a fresh single operation", async () => {
+        const original =
+            "Use current web sources to find LGBTQ+ events during my saved trip dates.";
+        const followUp = "Which of these are on Friday or Saturday night?";
+        const groundedAnswer = "The Friday and Saturday options are listed here.";
+        mocks.turn.mockResolvedValueOnce(
+            successfulTurn({
+                message: groundedAnswer,
+                groundingMetadata: groundedMetadata(groundedAnswer),
+            })
+        );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [
+                { role: "user", parts: [{ text: original }] },
+                {
+                    role: "model",
+                    parts: [
+                        {
+                            text: "This current-information answer is not stored. Ask again to refresh it with Google Search.",
+                        },
+                    ],
+                },
+                { role: "user", parts: [{ text: followUp }] },
+            ],
+            systemInstruction: "system",
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            toolUsage: { webSearchOperations: 1, webSearchQueries: 1 },
+        });
+        expect(mocks.turn).toHaveBeenCalledTimes(1);
+        expect(JSON.stringify(mocks.turn.mock.calls[0]?.[0]?.contents)).toContain(
+            `Follow-up: ${followUp}`
+        );
+    });
+
+    it.each([
+        ["events", "What events are happening during the trip?"],
+        ["lgbtq_events", "What LGBTQ+ events are happening during the trip?"],
+        ["culinary_experiences", "What food festivals or tours are happening during the trip?"],
+        [
+            "culinary_experiences",
+            "Use current web sources to find restaurant events during my trip.",
+        ],
+        ["drinks_experiences", "What wine or spirits experiences are happening during the trip?"],
+        [
+            "drinks_experiences",
+            "Find beer festivals happening during my trip dates.",
+        ],
+        ["temporary_attractions", "What temporary exhibitions are on during the trip?"],
+    ])("routes %s through one terminal Google Search-grounded generation", async (topic, prompt) => {
+        const answer = `Current ${topic.replaceAll("_", " ")} are listed here.`;
+        mocks.turn.mockResolvedValueOnce(
+            successfulTurn({
+                message: answer,
+                groundingMetadata: groundedMetadata(answer),
+            })
+        );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            systemInstruction: "system",
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            message: answer,
+            persistedMessage:
+                "This current-information answer is not stored. Ask again to refresh it with Google Search.",
+            metadata: { version: 1, type: "current_web_refresh" },
+            recommendations: [],
+            webGrounding: { queryCount: 1 },
+            toolUsage: {
+                externalToolCalls: 1,
+                placeResults: 0,
+                webSearchOperations: 1,
+                webSearchQueries: 1,
+            },
+        });
+        expect(mocks.turn).toHaveBeenCalledTimes(1);
+        expect(mocks.turn.mock.calls[0]?.[0]?.config).toMatchObject({
+            tools: [{ googleSearch: {} }],
+        });
+        expect(mocks.search).not.toHaveBeenCalled();
+    });
+
+    it("rejects missing grounding metadata as retryable and does not continue ungrounded", async () => {
+        const call = webCall();
+        mocks.turn
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: { role: "model", parts: [{ functionCall: call }] },
+                    functionCalls: [call],
+                })
+            )
+            .mockResolvedValueOnce(
+                successfulTurn({ message: "Unverified answer", groundingMetadata: null })
+            );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [],
+            systemInstruction: "system",
+        });
+        expect(result).toMatchObject({
+            status: "empty_output",
+            message: "Current web information is temporarily unavailable. Please try again.",
+            toolUsage: { webSearchOperations: 0, webSearchQueries: 0 },
+        });
+        expect(mocks.turn).toHaveBeenCalledTimes(2);
+    });
+
+    it("refuses mixed Search and Places calls without invoking either provider", async () => {
+        const currentCall = webCall();
+        mocks.turn.mockResolvedValueOnce(
+            successfulTurn({
+                message: null,
+                responseContent: {
+                    role: "model",
+                    parts: [
+                        { functionCall: currentCall },
+                        { functionCall: searchCall() },
+                    ],
+                },
+                functionCalls: [currentCall, searchCall()],
+            })
+        );
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [],
+            systemInstruction: "system",
+        });
+        expect(result.status).toBe("empty_output");
+        expect(mocks.turn).toHaveBeenCalledTimes(1);
+        expect(mocks.search).not.toHaveBeenCalled();
+    });
+
+    it("uses neither external service for the exact saved-trip summary request", async () => {
+        mocks.turn.mockResolvedValue(
+            successfulTurn({ message: "Here is your saved trip summary." })
+        );
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [{ role: "user", parts: [{ text: "Summarize this trip." }] }],
             systemInstruction: "system",
         });
         expect(result).toMatchObject({
@@ -144,9 +372,11 @@ describe("VAIVIA controlled Places tool loop", () => {
         });
         expect(mocks.loadPlaceContext).not.toHaveBeenCalled();
         expect(mocks.search).not.toHaveBeenCalled();
+        expect(result).not.toHaveProperty("webGrounding");
+        expect(mocks.turn.mock.calls[0]?.[0]?.config?.tools).toBeUndefined();
     });
 
-    it("resolves a trusted saved anchor, sanitizes tool output, ranks results and creates Place-ID-only metadata", async () => {
+    it("forces the exact nearby-restaurant request through Places and returns structured cards only", async () => {
         mocks.turn
             .mockResolvedValueOnce(
                 successfulTurn({
@@ -168,7 +398,12 @@ describe("VAIVIA controlled Places tool loop", () => {
         const result = await generateTripAssistantResponse({
             supabase: {} as never,
             tripId: "trip-a",
-            contents: [{ role: "user", parts: [{ text: "Find cafés near my hotel" }] }],
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: "Find restaurants near my hotel." }],
+                },
+            ],
             systemInstruction: "system",
         });
 
@@ -185,6 +420,15 @@ describe("VAIVIA controlled Places tool loop", () => {
                 maxResults: 8,
             })
         );
+        expect(JSON.stringify(mocks.turn.mock.calls[0]?.[0]?.config?.tools)).not.toContain(
+            "search_current_web"
+        );
+        expect(mocks.turn.mock.calls[0]?.[0]?.config?.toolConfig).toEqual({
+            functionCallingConfig: {
+                mode: "ANY",
+                allowedFunctionNames: ["search_nearby_places"],
+            },
+        });
         expect(result).toMatchObject({
             status: "success",
             metadata: {
@@ -206,6 +450,7 @@ describe("VAIVIA controlled Places tool loop", () => {
             ],
             toolUsage: { functionCalls: 1, externalToolCalls: 1, placeResults: 1 },
         });
+        expect(result).not.toHaveProperty("webGrounding");
         const secondTurnContents = mocks.turn.mock.calls[1]?.[0]?.contents;
         const browserSafeToolJson = JSON.stringify(secondTurnContents);
         expect(browserSafeToolJson).toContain("Green Room Café");
@@ -213,6 +458,81 @@ describe("VAIVIA controlled Places tool loop", () => {
         expect(browserSafeToolJson).toContain("opaque-signature");
         expect(browserSafeToolJson).not.toContain("43.654");
         expect(browserSafeToolJson).not.toContain("ChIJCafeCandidate123");
+    });
+
+    it("rejects model prose when a required Places call is skipped", async () => {
+        mocks.turn.mockResolvedValueOnce(
+            successfulTurn({
+                message: "Here are some restaurants I already know about.",
+            })
+        );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: "Find restaurants near my hotel." }],
+                },
+            ],
+            systemInstruction: "system",
+        });
+
+        expect(result).toMatchObject({
+            status: "empty_output",
+            message: "Live place discovery is temporarily unavailable. Please try again.",
+            toolUsage: {
+                functionCalls: 0,
+                externalToolCalls: 0,
+                placeResults: 0,
+            },
+        });
+        expect(result).not.toHaveProperty("recommendations");
+        expect(mocks.search).not.toHaveBeenCalled();
+    });
+
+    it("returns a deterministic location-needed response when no trusted anchor exists", async () => {
+        mocks.resolveAnchor.mockReturnValue({ status: "missing" });
+        mocks.turn.mockResolvedValueOnce(
+            successfulTurn({
+                message: null,
+                responseContent: {
+                    role: "model",
+                    parts: [{ functionCall: searchCall() }],
+                },
+                functionCalls: [searchCall()],
+            })
+        );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [
+                {
+                    role: "user",
+                    parts: [{ text: "Find restaurants near my hotel." }],
+                },
+            ],
+            systemInstruction: "system",
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            message: ASSISTANT_PLACE_LOCATION_NEEDED_MESSAGE,
+            metadata: {},
+            recommendations: [],
+            toolUsage: {
+                functionCalls: 1,
+                externalToolCalls: 0,
+                placeResults: 0,
+            },
+        });
+        expect(mocks.turn).toHaveBeenCalledTimes(1);
+        expect(mocks.search).not.toHaveBeenCalled();
+        expect(JSON.stringify(result)).not.toContain(
+            "Here are some restaurants I already know about."
+        );
     });
 
     it("asks a focused clarification without calling Google when a saved anchor is ambiguous", async () => {

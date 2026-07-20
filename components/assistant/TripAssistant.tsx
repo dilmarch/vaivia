@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import SafeMarkdown from "@/components/assistant/SafeMarkdown";
 import PlaceRecommendationCards from "@/components/assistant/PlaceRecommendationCards";
+import GroundedWebAnswer from "@/components/assistant/GroundedWebAnswer";
 import type {
     AssistantConversation,
     AssistantMessage,
@@ -31,6 +32,7 @@ export const ASSISTANT_STARTER_PROMPTS = [
     "What still needs planning?",
     "Find gaps or conflicts",
     "Find cafés near my accommodation",
+    "What current events are on during this trip?",
 ] as const;
 
 type BootstrapPayload = {
@@ -494,9 +496,10 @@ export default function TripAssistant({
                                         Ask about {tripTitle}
                                     </h2>
                                     <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-400">
-                                        I can explain what is saved in this trip and find live
-                                        nearby places around saved trip locations. I can’t make
-                                        changes, bookings, or route searches.
+                                        I can explain what is saved in this trip, find nearby
+                                        places, and check current public events or visitor
+                                        information. I can’t make changes, bookings, or route
+                                        searches.
                                     </p>
                                 </div>
                                 <div className="mt-7 grid gap-3 sm:grid-cols-2">
@@ -532,7 +535,14 @@ export default function TripAssistant({
                                         >
                                             {message.role === "assistant" ? (
                                                 <div>
-                                                    <SafeMarkdown content={message.content} />
+                                                    {message.webGrounding ? (
+                                                        <GroundedWebAnswer
+                                                            content={message.content}
+                                                            grounding={message.webGrounding}
+                                                        />
+                                                    ) : (
+                                                        <SafeMarkdown content={message.content} />
+                                                    )}
                                                     <PlaceRecommendationCards
                                                         recommendations={
                                                             message.recommendations || []
@@ -665,9 +675,13 @@ export default function TripAssistant({
                                 Your allowlisted trip details and questions are sent to Google
                                 Gemini. For explicit nearby discovery, a trusted saved trip
                                 location and bounded query are sent server-side to Google Places.
-                                Sensitive details and precise coordinates are not sent to Gemini
-                                or exposed in the browser. Answers and live details may be
-                                inaccurate.{" "}
+                                Current-information questions may use Google Search grounding with
+                                only the minimum necessary question, trip location, and dates.
+                                Google states that grounding prompts, contextual information, and
+                                output are stored for 30 days. Saved-trip-only questions do not
+                                invoke Google Search. Sensitive details and precise coordinates are
+                                not sent to Gemini or exposed in the browser. Current information
+                                can change; verify important details with the cited source.{" "}
                                 <Link
                                     href="/terms"
                                     className="font-bold text-slate-300 underline underline-offset-2 hover:text-white"

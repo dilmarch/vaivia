@@ -157,6 +157,8 @@ export type Database = {
           event_type: string
           external_place_results: number
           external_tool_calls: number
+          google_search_operations: number
+          google_search_queries: number
           id: string
           model: string
           occurred_at: string
@@ -176,6 +178,8 @@ export type Database = {
           event_type?: string
           external_place_results?: number
           external_tool_calls?: number
+          google_search_operations?: number
+          google_search_queries?: number
           id?: string
           model: string
           occurred_at?: string
@@ -195,6 +199,8 @@ export type Database = {
           event_type?: string
           external_place_results?: number
           external_tool_calls?: number
+          google_search_operations?: number
+          google_search_queries?: number
           id?: string
           model?: string
           occurred_at?: string

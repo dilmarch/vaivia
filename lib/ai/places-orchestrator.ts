@@ -1,5 +1,6 @@
 import "server-only";
 
+import { FunctionCallingConfigMode } from "@google/genai";
 import type {
     Content,
     FunctionCall,
@@ -36,6 +37,15 @@ import {
     type AssistantPlaceReference,
     type AssistantPlacesMessageMetadata,
 } from "@/lib/ai/places-contract";
+import {
+    CURRENT_WEB_REFRESH_METADATA,
+    generateCurrentWebGroundedResponse,
+    GROUNDED_RESPONSE_REFRESH_PLACEHOLDER,
+    SEARCH_CURRENT_WEB_DECLARATION,
+    selectAssistantRetrieval,
+    type AssistantRetrievalDecision,
+} from "@/lib/ai/current-web-grounding";
+import type { AssistantWebGrounding } from "@/lib/ai/grounding-contract";
 import type { Database } from "@/src/types/supabase";
 
 export const ASSISTANT_MAX_FUNCTION_CALLS = 4;
@@ -44,6 +54,12 @@ export const ASSISTANT_MAX_SEARCH_RESULTS = 10;
 export const ASSISTANT_DEFAULT_SEARCH_RESULTS = 8;
 export const ASSISTANT_DEFAULT_RADIUS_METERS = 3_000;
 export const ASSISTANT_MAX_RADIUS_METERS = 10_000;
+export const ASSISTANT_PLACE_LOCATION_NEEDED_MESSAGE =
+    "I need a saved accommodation, activity, destination, or arrival location in this trip before I can find nearby places.";
+export const ASSISTANT_PLACE_LOCATION_AMBIGUOUS_MESSAGE =
+    "I found more than one saved trip location that could match. Please name the accommodation, activity, destination, or arrival point you want me to use.";
+const ASSISTANT_PLACES_UNAVAILABLE_MESSAGE =
+    "Live place discovery is temporarily unavailable. Please try again.";
 
 const SEARCH_NEARBY_PLACES_DECLARATION: FunctionDeclaration = {
     name: "search_nearby_places",
@@ -133,8 +149,23 @@ const GET_PLACE_DETAILS_DECLARATION: FunctionDeclaration = {
     },
 };
 
+const VAIVIA_PLACES_ONLY_TOOLS = [
+    {
+        functionDeclarations: [
+            SEARCH_NEARBY_PLACES_DECLARATION,
+            GET_PLACE_DETAILS_DECLARATION,
+        ],
+    },
+];
+
 export const VAIVIA_PLACES_TOOLS = [
-    { functionDeclarations: [SEARCH_NEARBY_PLACES_DECLARATION, GET_PLACE_DETAILS_DECLARATION] },
+    {
+        functionDeclarations: [
+            SEARCH_NEARBY_PLACES_DECLARATION,
+            GET_PLACE_DETAILS_DECLARATION,
+            SEARCH_CURRENT_WEB_DECLARATION,
+        ],
+    },
 ];
 
 type SearchArguments = {
@@ -162,12 +193,19 @@ export type AssistantPlacesToolUsage = {
     functionCalls: number;
     externalToolCalls: number;
     placeResults: number;
+    webSearchOperations?: number;
+    webSearchQueries?: number;
 };
 
 export type AssistantPlacesGenerationResult =
     | (Extract<GeminiAssistantGenerationResult, { status: "success" }> & {
-          metadata: AssistantPlacesMessageMetadata | Record<string, never>;
+          metadata:
+              | AssistantPlacesMessageMetadata
+              | typeof CURRENT_WEB_REFRESH_METADATA
+              | Record<string, never>;
           recommendations: AssistantPlaceRecommendation[];
+          persistedMessage?: string;
+          webGrounding?: AssistantWebGrounding;
           toolUsage: AssistantPlacesToolUsage;
       })
     | (Exclude<GeminiAssistantGenerationResult, { status: "success" }> & {
@@ -476,12 +514,14 @@ export async function generateTripAssistantResponse({
     tripId,
     contents: initialContents,
     systemInstruction,
+    retrievalDecision,
     signal,
 }: {
     supabase: SupabaseClient<Database>;
     tripId: string;
     contents: Content[];
     systemInstruction: string;
+    retrievalDecision?: AssistantRetrievalDecision;
     signal?: AbortSignal;
 }): Promise<AssistantPlacesGenerationResult> {
     const contents = [...initialContents];
@@ -493,6 +533,13 @@ export async function generateTripAssistantResponse({
     let externalToolCalls = 0;
     let tokenUsage = emptyTokenUsage();
     let lastDiagnostics: GeminiAssistantDiagnostics | null = null;
+    let webSearchOperations = 0;
+    let webSearchQueries = 0;
+    const retrieval =
+        retrievalDecision || selectAssistantRetrieval({ contents: initialContents });
+    let placesPathSelected = retrieval.mode === "places";
+    let requiredPlacesSearchPending = retrieval.mode === "places";
+    let requiredPlacesTerminalMessage: string | null = null;
 
     const incrementExternalCall = () => {
         if (externalToolCalls >= ASSISTANT_MAX_FUNCTION_CALLS) return false;
@@ -512,6 +559,10 @@ export async function generateTripAssistantResponse({
             targetDate: args.targetDate,
         });
         if (resolution.status === "ambiguous") {
+            if (retrieval.mode === "places") {
+                requiredPlacesTerminalMessage =
+                    ASSISTANT_PLACE_LOCATION_AMBIGUOUS_MESSAGE;
+            }
             return {
                 clarification_required: true,
                 message: "More than one saved trip location matches. Ask the user which one they mean.",
@@ -519,6 +570,10 @@ export async function generateTripAssistantResponse({
             };
         }
         if (resolution.status === "missing") {
+            if (retrieval.mode === "places") {
+                requiredPlacesTerminalMessage =
+                    ASSISTANT_PLACE_LOCATION_NEEDED_MESSAGE;
+            }
             return {
                 clarification_required: true,
                 message:
@@ -628,13 +683,156 @@ export async function generateTripAssistantResponse({
               };
     };
 
+    const currentWebFailure = (
+        diagnostics: GeminiAssistantDiagnostics,
+        message = "Current web information is temporarily unavailable. Please try again."
+    ): AssistantPlacesGenerationResult => ({
+        status: "empty_output",
+        message,
+        diagnostics: { ...diagnostics, tokenUsage },
+        toolUsage: {
+            functionCalls,
+            externalToolCalls,
+            placeResults: 0,
+            webSearchOperations,
+            webSearchQueries,
+        },
+    });
+
+    const requiredPlacesTerminalResponse = (
+        turn: { model: string; diagnostics: GeminiAssistantDiagnostics },
+        message: string
+    ): AssistantPlacesGenerationResult => ({
+        status: "success",
+        message,
+        model: turn.model,
+        tokenUsage,
+        diagnostics: { ...turn.diagnostics, tokenUsage },
+        metadata: {},
+        recommendations: [],
+        toolUsage: {
+            functionCalls,
+            externalToolCalls,
+            placeResults: 0,
+        },
+    });
+
+    const requiredPlacesFailure = (
+        turn: { diagnostics: GeminiAssistantDiagnostics }
+    ): AssistantPlacesGenerationResult => ({
+        status: "empty_output",
+        message: ASSISTANT_PLACES_UNAVAILABLE_MESSAGE,
+        diagnostics: { ...turn.diagnostics, tokenUsage },
+        toolUsage: {
+            functionCalls,
+            externalToolCalls,
+            placeResults: candidatesByPlaceId.size,
+        },
+    });
+
+    const executeCurrentWeb = async (
+        call: FunctionCall
+    ): Promise<AssistantPlacesGenerationResult> => {
+        const priorElapsedMs = lastDiagnostics?.elapsedMs || 0;
+        const grounded = await generateCurrentWebGroundedResponse({ call, signal });
+        if (grounded.status === "invalid_arguments") {
+            return currentWebFailure(
+                lastDiagnostics || {
+                    apiVersion: "v1beta",
+                    model: "unknown",
+                    providerStatus: null,
+                    providerCode: null,
+                    providerMessage: null,
+                    finishReason: null,
+                    promptBlockReason: null,
+                    elapsedMs: 0,
+                    tokenUsage,
+                }
+            );
+        }
+
+        externalToolCalls = 1;
+        if (grounded.status === "success" || grounded.status === "unusable_grounding") {
+            tokenUsage = addTokenUsage(tokenUsage, grounded.turn.tokenUsage);
+            lastDiagnostics = {
+                ...grounded.turn.diagnostics,
+                elapsedMs: priorElapsedMs + grounded.turn.diagnostics.elapsedMs,
+                tokenUsage,
+            };
+        } else {
+            tokenUsage = addTokenUsage(tokenUsage, grounded.diagnostics.tokenUsage);
+            lastDiagnostics = {
+                ...grounded.diagnostics,
+                elapsedMs: priorElapsedMs + grounded.diagnostics.elapsedMs,
+                tokenUsage,
+            };
+        }
+
+        if (grounded.status === "unusable_grounding") {
+            return currentWebFailure(lastDiagnostics);
+        }
+        if (grounded.status !== "success") {
+            return { ...grounded, diagnostics: lastDiagnostics, toolUsage: {
+                functionCalls,
+                externalToolCalls,
+                placeResults: 0,
+                webSearchOperations,
+                webSearchQueries,
+            } };
+        }
+
+        webSearchOperations = 1;
+        webSearchQueries = grounded.webGrounding.queryCount;
+        return {
+            status: "success",
+            message: grounded.message,
+            persistedMessage: GROUNDED_RESPONSE_REFRESH_PLACEHOLDER,
+            model: grounded.turn.model,
+            tokenUsage,
+            diagnostics: lastDiagnostics,
+            metadata: CURRENT_WEB_REFRESH_METADATA,
+            recommendations: [],
+            webGrounding: grounded.webGrounding,
+            toolUsage: {
+                functionCalls,
+                externalToolCalls,
+                placeResults: 0,
+                webSearchOperations,
+                webSearchQueries,
+            },
+        };
+    };
+
+    if (retrieval.mode === "current_web") {
+        return executeCurrentWeb(retrieval.call);
+    }
+
     for (let turnIndex = 0; turnIndex <= ASSISTANT_MAX_FUNCTION_CALLS; turnIndex += 1) {
         const baseConfig = getGeminiAssistantGenerationConfig();
-        const allowTools = functionCalls < ASSISTANT_MAX_FUNCTION_CALLS;
+        const allowTools =
+            retrieval.mode !== "none" && functionCalls < ASSISTANT_MAX_FUNCTION_CALLS;
         const config: GenerateContentConfig = {
             ...baseConfig,
             systemInstruction,
-            ...(allowTools ? { tools: VAIVIA_PLACES_TOOLS } : {}),
+            ...(allowTools
+                ? {
+                      tools: retrieval.mode === "places" || placesPathSelected
+                          ? VAIVIA_PLACES_ONLY_TOOLS
+                          : VAIVIA_PLACES_TOOLS,
+                  }
+                : {}),
+            ...(allowTools && requiredPlacesSearchPending
+                ? {
+                      toolConfig: {
+                          functionCallingConfig: {
+                              mode: FunctionCallingConfigMode.ANY,
+                              allowedFunctionNames: [
+                                  SEARCH_NEARBY_PLACES_DECLARATION.name!,
+                              ],
+                          },
+                      },
+                  }
+                : {}),
         };
         const turn = await generateGeminiAssistantTurn({ contents, config, signal });
         if (turn.status !== "success") {
@@ -647,7 +845,40 @@ export async function generateTripAssistantResponse({
         tokenUsage = addTokenUsage(tokenUsage, turn.tokenUsage);
         lastDiagnostics = turn.diagnostics;
 
+        const webCalls = turn.functionCalls.filter(
+            (call) => call.name === SEARCH_CURRENT_WEB_DECLARATION.name
+        );
+        if (webCalls.length > 0) {
+            functionCalls += turn.functionCalls.length;
+            const cannotUseGrounding =
+                retrieval.mode === "places" ||
+                webCalls.length !== 1 ||
+                turn.functionCalls.length !== 1 ||
+                webSearchOperations > 0 ||
+                externalToolCalls > 0 ||
+                candidatesByPlaceId.size > 0;
+            if (cannotUseGrounding) {
+                return {
+                    status: "empty_output",
+                    message:
+                        "Current web information is temporarily unavailable. Please try again.",
+                    diagnostics: { ...turn.diagnostics, tokenUsage },
+                    toolUsage: {
+                        functionCalls,
+                        externalToolCalls,
+                        placeResults: candidatesByPlaceId.size,
+                        webSearchOperations,
+                        webSearchQueries,
+                    },
+                };
+            }
+            return executeCurrentWeb(webCalls[0]!);
+        }
+
         if (turn.functionCalls.length === 0 && turn.message) {
+            if (retrieval.mode === "places" && candidatesByPlaceId.size === 0) {
+                return requiredPlacesFailure(turn);
+            }
             const ranked = [...candidatesByPlaceId.values()]
                 .sort((a, b) => b.score - a.score)
                 .slice(0, ASSISTANT_MAX_SEARCH_RESULTS);
@@ -676,8 +907,14 @@ export async function generateTripAssistantResponse({
 
         contents.push(turn.responseContent);
         const responses = [];
-        for (const call of turn.functionCalls) {
-            functionCalls += 1;
+            for (const call of turn.functionCalls) {
+                functionCalls += 1;
+                if (
+                    call.name === "search_nearby_places" ||
+                    call.name === "get_place_details"
+                ) {
+                    placesPathSelected = true;
+                }
             const overLimit = functionCalls > ASSISTANT_MAX_FUNCTION_CALLS;
             let response: Record<string, unknown>;
             try {
@@ -693,6 +930,15 @@ export async function generateTripAssistantResponse({
                     error:
                         "The saved trip location could not be read. Live place discovery is temporarily unavailable.",
                 };
+            }
+            if (call.name === "search_nearby_places") {
+                requiredPlacesSearchPending = false;
+            }
+            if (requiredPlacesTerminalMessage) {
+                return requiredPlacesTerminalResponse(
+                    turn,
+                    requiredPlacesTerminalMessage
+                );
             }
             responses.push({
                 functionResponse: {

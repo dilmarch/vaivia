@@ -232,7 +232,7 @@ describe("Gemini assistant generation compatibility", () => {
     ).resolves.toMatchObject({ status: "aborted" });
   });
 
-  it("logs sanitized metadata only in development", () => {
+  it("logs metadata only in development and omits provider messages entirely", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const diagnostic = {
       stage: "gemini_generate_content" as const,
@@ -253,7 +253,7 @@ describe("Gemini assistant generation compatibility", () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     const logged = errorSpy.mock.calls.flat().join(" ");
     expect(logged).toContain("INVALID_ARGUMENT");
-    expect(logged).toContain("[redacted]");
+    expect(logged).not.toContain("Invalid request");
     expect(logged).not.toContain("super-secret-value");
   });
 });

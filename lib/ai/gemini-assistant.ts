@@ -10,6 +10,7 @@ import {
   type FunctionCall,
   type GenerateContentConfig,
   type GenerateContentResponse,
+  type GroundingMetadata,
 } from "@google/genai";
 
 const DEFAULT_GEMINI_ASSISTANT_MODEL = "gemini-3.5-flash";
@@ -71,6 +72,7 @@ export type GeminiAssistantTurnResult =
       message: string | null;
       responseContent: Content;
       functionCalls: FunctionCall[];
+      groundingMetadata: GroundingMetadata | null;
       model: string;
       tokenUsage: GeminiAssistantTokenUsage;
       diagnostics: GeminiAssistantDiagnostics;
@@ -316,6 +318,7 @@ export async function generateGeminiAssistantTurn({
         parts: message ? [{ text: message }] : [],
       },
       functionCalls,
+      groundingMetadata: response.candidates?.[0]?.groundingMetadata || null,
       model: response.modelVersion?.trim() || model,
       tokenUsage: diagnostics.tokenUsage,
       diagnostics,

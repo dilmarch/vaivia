@@ -195,4 +195,31 @@ describe("assistant database and read-only safeguards", () => {
         );
         expect(metadataGrantMigration).not.toMatch(/grant insert \([^)]*metadata/i);
     });
+
+    it("adds only bounded numeric Search-grounding telemetry with service-only writes", () => {
+        const migration = read(
+            "supabase/migrations/20260720011057_add_assistant_search_grounding_phase_two_b.sql"
+        );
+        expect(migration).toContain("google_search_operations between 0 and 1");
+        expect(migration).toContain("google_search_queries between 0 and 20");
+        expect(migration).toContain("google_search_operations = 0 and google_search_queries = 0");
+        expect(migration).toContain(
+            "revoke all on table public.ai_usage_events from authenticated"
+        );
+        expect(migration).toContain(
+            "grant select on table public.ai_usage_events to authenticated"
+        );
+        expect(migration).toContain(
+            "grant all on table public.ai_usage_events to service_role"
+        );
+        expect(migration).not.toMatch(
+            /add column (?:search_query|citation|source_url|grounding_chunk|rendered_content)\b/i
+        );
+
+        const route = read("app/api/trips/[tripId]/assistant/route.ts");
+        expect(route).toContain("generation.persistedMessage || generation.message");
+        expect(route).toContain("google_search_operations");
+        expect(route).toContain("google_search_queries");
+        expect(route).not.toMatch(/console\.(?:log|info|warn|error)/);
+    });
 });
