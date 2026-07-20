@@ -142,6 +142,9 @@ export default function UsernameRequiredGate({
                   onChange={(event) => setUsername(event.target.value)}
                   onBlur={() => setUsername((current) => normalizeUsername(current))}
                   required
+                  minLength={3}
+                  maxLength={30}
+                  pattern="[a-z0-9]+(?:[_-][a-z0-9]+)*"
                   autoFocus
                   autoComplete="username"
                   className="w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
@@ -149,7 +152,8 @@ export default function UsernameRequiredGate({
                 />
               </div>
               <p className="mt-2 text-xs font-semibold text-slate-400">
-                Use 3-30 letters, numbers, underscores, or hyphens.
+                Use 3-30 lowercase letters or numbers. Single underscores and
+                hyphens can appear between characters.
               </p>
             </label>
 

@@ -26,6 +26,27 @@ type ExportDataset = {
     warning?: string;
 };
 
+type RuntimeTableClient = {
+    from: (table: string) => {
+        select: (columns: string) => {
+            eq: (
+                column: string,
+                value: string
+            ) => Promise<{
+                data: unknown[] | null;
+                error: { message: string } | null;
+            }>;
+            in: (
+                column: string,
+                values: string[]
+            ) => Promise<{
+                data: unknown[] | null;
+                error: { message: string } | null;
+            }>;
+        };
+    };
+};
+
 type ExportFileManifest = {
     path: string;
     bytes: number;
@@ -176,7 +197,10 @@ async function selectRows(
     supabase: ExportClient,
     dataset: DatasetConfig
 ): Promise<ExportDataset> {
-    const { data, error } = await supabase
+    // The runtime table list is intentionally configured below. Keeping this
+    // query surface narrow avoids expanding the full generated-table union.
+    const runtimeClient = supabase as unknown as RuntimeTableClient;
+    const { data, error } = await runtimeClient
         .from(dataset.table)
         .select("*")
         .eq(dataset.column, dataset.value);
@@ -207,7 +231,8 @@ async function selectTripScopedRows(
 ): Promise<ExportDataset> {
     if (tripIds.length === 0) return { label, rows: [] };
 
-    const { data, error } = await supabase
+    const runtimeClient = supabase as unknown as RuntimeTableClient;
+    const { data, error } = await runtimeClient
         .from(table)
         .select("*")
         .in("trip_id", tripIds);

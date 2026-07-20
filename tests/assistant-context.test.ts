@@ -42,10 +42,19 @@ function contextDatabase() {
                 trip_id: TRIP_A,
                 hotel_name: "Tokyo Hotel",
                 status: "booked",
+                is_planning_option: false,
                 check_in_date: "2026-09-01",
                 check_out_date: "2026-09-04",
                 latitude: 1,
                 longitude: 2,
+            },
+            {
+                trip_id: TRIP_A,
+                hotel_name: "Unselected comparison option",
+                status: "tentative",
+                is_planning_option: true,
+                check_in_date: "2026-09-01",
+                check_out_date: "2026-09-04",
             },
         ],
         trip_ideas: [
@@ -196,7 +205,7 @@ describe("secure trip context loader", () => {
         expect(context.itinerary_plans).toEqual([
             expect.objectContaining({ title: "TeamLab", timezone: "Asia/Tokyo" }),
         ]);
-        expect(context.accommodations).toEqual([
+        expect(context.stays).toEqual([
             expect.objectContaining({ hotel_name: "Tokyo Hotel", status: "booked" }),
         ]);
         expect(context.budget_summary).toEqual([
@@ -219,6 +228,7 @@ describe("secure trip context loader", () => {
             "Other user's secret trip",
             "Cross-trip leg",
             "Cross-trip itinerary item",
+            "Unselected comparison option",
             "SECRET-CODE",
             "private item note",
             "private budget note",

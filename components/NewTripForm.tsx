@@ -36,6 +36,7 @@ import {
     inferAirlineCodeFromFlightNumber,
 } from "@/lib/airline";
 import { COMMON_CURRENCIES } from "@/lib/budget";
+import { getValidEndDate } from "@/lib/dateRange";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import { getInitials } from "@/lib/travelers";
@@ -121,6 +122,8 @@ function createEmptyMatrixDestination() {
     return {
         destination: "",
         placeId: "",
+        countryCode: "",
+        countryName: "",
         arrivalDate: "",
     };
 }
@@ -128,6 +131,8 @@ function createEmptyMatrixDestination() {
 type SelectedDestination = {
     label: string;
     placeId?: string | null;
+    countryCode?: string | null;
+    countryName?: string | null;
 };
 
 function areSelectedDestinationsEqual(
@@ -140,7 +145,9 @@ function areSelectedDestinationsEqual(
         const other = right[index];
         return (
             destination.label === other.label &&
-            (destination.placeId || "") === (other.placeId || "")
+            (destination.placeId || "") === (other.placeId || "") &&
+            (destination.countryCode || "") === (other.countryCode || "") &&
+            (destination.countryName || "") === (other.countryName || "")
         );
     });
 }
@@ -866,7 +873,7 @@ const plannedOptions: Array<{
     { id: "flights", label: "Flights", icon: Plane },
     { id: "train", label: "Train", icon: Train },
     { id: "bus", label: "Bus", icon: Bus },
-    { id: "accommodations", label: "Accommodations", icon: BedDouble },
+    { id: "accommodations", label: "Stays", icon: BedDouble },
     { id: "event", label: "Event / itinerary item", icon: CalendarClock },
 ];
 
@@ -885,13 +892,13 @@ function getStepTitle(step: WizardStep) {
         case "bus":
             return "Add bus details";
         case "accommodations":
-            return "Add accommodations";
+            return "Add stays";
         case "activityChoice":
-            return "Activities";
+            return "Things to Do";
         case "scheduled":
-            return "Add scheduled activity";
+            return "Add fixed-time activity";
         case "idea":
-            return "Add activity idea";
+            return "Add trip idea";
     }
 }
 
@@ -1031,6 +1038,10 @@ export default function NewTripForm({
                 return {
                     destination: destination.label,
                     placeId: destination.placeId || existingRow?.placeId || "",
+                    countryCode:
+                        destination.countryCode || existingRow?.countryCode || "",
+                    countryName:
+                        destination.countryName || existingRow?.countryName || "",
                     arrivalDate: existingRow?.arrivalDate || "",
                 };
             })
@@ -1127,6 +1138,50 @@ export default function NewTripForm({
             current.map((row, rowIndex) =>
                 rowIndex === index ? { ...row, [key]: value } : row
             )
+        );
+    }
+
+    function handleStartDateChange(nextStartDate: string) {
+        setStartDate(nextStartDate);
+        let previousDate = nextStartDate;
+        const normalized = nextDestinations.map((row) => {
+            if (!row.arrivalDate || !previousDate) return row;
+            const arrivalDate = getValidEndDate(
+                previousDate,
+                row.arrivalDate
+            );
+            previousDate = arrivalDate;
+            return arrivalDate === row.arrivalDate
+                ? row
+                : { ...row, arrivalDate };
+        });
+        setNextDestinations(normalized);
+        setReturnDate((currentReturnDate) =>
+            getValidEndDate(previousDate || nextStartDate, currentReturnDate)
+        );
+    }
+
+    function handleNextArrivalDateChange(index: number, value: string) {
+        const previousDate =
+            index === 0
+                ? startDate
+                : nextDestinations[index - 1]?.arrivalDate || "";
+        const next = nextDestinations.map((row) => ({ ...row }));
+        next[index].arrivalDate = getValidEndDate(previousDate, value);
+
+        let dateCursor = next[index].arrivalDate;
+        for (let rowIndex = index + 1; rowIndex < next.length; rowIndex += 1) {
+            if (!next[rowIndex].arrivalDate || !dateCursor) continue;
+            next[rowIndex].arrivalDate = getValidEndDate(
+                dateCursor,
+                next[rowIndex].arrivalDate
+            );
+            dateCursor = next[rowIndex].arrivalDate;
+        }
+
+        setNextDestinations(next);
+        setReturnDate((currentReturnDate) =>
+            getValidEndDate(dateCursor || previousDate, currentReturnDate)
         );
     }
 
@@ -1799,7 +1854,7 @@ export default function NewTripForm({
                                                         name="matrix_start_date"
                                                         value={startDate}
                                                         onChange={(event) =>
-                                                            setStartDate(
+                                                            handleStartDateChange(
                                                                 event.target.value
                                                             )
                                                         }
@@ -1928,10 +1983,17 @@ export default function NewTripForm({
                                                         <DateInput
                                                             name={`matrix_next_arrival_date_${index}`}
                                                             value={row.arrivalDate}
+                                                            min={
+                                                                (index === 0
+                                                                    ? startDate
+                                                                    : nextDestinations[
+                                                                          index - 1
+                                                                      ]?.arrivalDate) ||
+                                                                undefined
+                                                            }
                                                             onChange={(event) =>
-                                                                updateNextDestination(
+                                                                handleNextArrivalDateChange(
                                                                     index,
-                                                                    "arrivalDate",
                                                                     event.target.value
                                                                 )
                                                             }
@@ -2031,9 +2093,20 @@ export default function NewTripForm({
                                                     <DateInput
                                                         name="matrix_return_date"
                                                         value={returnDate}
+                                                        min={
+                                                            nextDestinations.at(-1)
+                                                                ?.arrivalDate ||
+                                                            startDate ||
+                                                            undefined
+                                                        }
                                                         onChange={(event) =>
                                                             setReturnDate(
-                                                                event.target.value
+                                                                getValidEndDate(
+                                                                    nextDestinations.at(-1)
+                                                                        ?.arrivalDate ||
+                                                                        startDate,
+                                                                    event.target.value
+                                                                )
                                                             )
                                                         }
                                                         className={inputClass}
@@ -2141,7 +2214,7 @@ export default function NewTripForm({
                             <div className="space-y-4 rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-4">
                                 <div className="grid gap-4 sm:grid-cols-2">
                                     <SimpleField
-                                        label="Accommodation name"
+                                        label="Stay name"
                                         name="setup_accommodation_name"
                                         placeholder="Hotel, apartment, hostel..."
                                     />
@@ -2170,14 +2243,14 @@ export default function NewTripForm({
                                     {[
                                         {
                                             id: "scheduled" as const,
-                                            title: "Add Scheduled Activity / Event",
-                                            body: "Do you have anything at a specific time?",
+                                            title: "Add Fixed-time Activity / Event",
+                                            body: "Add something happening at a particular date and time.",
                                             icon: CalendarClock,
                                         },
                                         {
                                             id: "idea" as const,
-                                            title: "Add Idea",
-                                            body: "Have ideas of what you want to do? These don't need a date or time and can be quick-added later.",
+                                            title: "Add Trip Idea",
+                                            body: "Add something flexible or available anytime during the trip.",
                                             icon: Lightbulb,
                                         },
                                     ].map((option) => {

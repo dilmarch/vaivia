@@ -23,16 +23,14 @@ type TripAction =
     | "accommodation"
     | "expense"
     | "food"
-    | "scheduled"
-    | "idea";
+    | "things";
 
 const tripActionLabels: Record<TripAction, string> = {
     transportation: "Add transportation",
-    accommodation: "Add accommodation",
+    accommodation: "Add stay",
     expense: "Add expense",
     food: "Add food or restaurant",
-    scheduled: "Add scheduled activity/event",
-    idea: "Add activity idea",
+    things: "Add things to do",
 };
 
 function getCurrentTripId(pathname: string | null) {
@@ -127,7 +125,9 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
         }
         if (action === "expense") return `/trips/${tripRouteSegment}/budget/expenses?addExpense=1`;
         if (action === "food") return `/trips/${tripRouteSegment}/food?addFood=1`;
-        if (action === "idea") return `/trips/${tripRouteSegment}?tab=ideas&add=idea`;
+        if (action === "things") {
+            return `/trips/${tripRouteSegment}/itinerary?add=things`;
+        }
         if (action === "transportation") {
             return `/trips/${tripRouteSegment}?tab=journey&add=transportation`;
         }

@@ -41,6 +41,14 @@ const validMatch = extractInboundRecipientToken(
 assert.equal(validMatch?.address, `trips+${token}@${domain}`);
 assert.equal(validMatch?.token, token);
 
+const usernameAlias = "dill_travels-a2.abc123def456";
+const usernameMatch = extractInboundRecipientToken(
+    `${usernameAlias}@${domain}`,
+    domain
+);
+assert.equal(usernameMatch?.address, `${usernameAlias}@${domain}`);
+assert.equal(usernameMatch?.token, usernameAlias);
+
 assert.equal(
     extractInboundRecipientToken(`hello+${token}@${domain}`, domain),
     null
@@ -53,6 +61,16 @@ assert.equal(
 
 assert.equal(
     extractInboundRecipientToken(`trips+${"z".repeat(48)}@${domain}`, domain),
+    null
+);
+
+assert.equal(extractInboundRecipientToken(`dill.abc123@${domain}`, domain), null);
+assert.equal(
+    extractInboundRecipientToken(`dill..abc123def456@${domain}`, domain),
+    null
+);
+assert.equal(
+    extractInboundRecipientToken(`dill.abc123def456@other.example`, domain),
     null
 );
 

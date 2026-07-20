@@ -11,13 +11,13 @@ type AccommodationPageTabsProps = {
 const tabs = [
     {
         id: "stays",
-        label: "Stays",
+        label: "Planned Stays",
         description: "Coverage and booking details",
         icon: BedDouble,
     },
     {
         id: "planning",
-        label: "Planning",
+        label: "Compare Stays",
         description: "Compare stays with your plans",
         icon: MapPinned,
     },
@@ -29,7 +29,7 @@ export default function AccommodationPageTabs({
 }: AccommodationPageTabsProps) {
     return (
         <nav
-            aria-label="Accommodations views"
+            aria-label="Stay views"
             className="grid gap-2 rounded-[1.5rem] border border-white/10 bg-[#03030a] p-2 text-white shadow-2xl shadow-black/20 sm:inline-grid sm:grid-cols-2"
         >
             {tabs.map((tab) => {

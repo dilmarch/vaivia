@@ -2,6 +2,7 @@ import type {
     CalendarAccommodation,
     ItineraryCalendarItem,
 } from "@/components/ItineraryCalendar";
+import { getAccommodationMapsUrl } from "@/lib/accommodations";
 
 const HOLD_DURATION_MINUTES = 2 * 60;
 const ARRIVAL_BUFFER_MINUTES = 60;
@@ -128,13 +129,15 @@ function buildHoldItem({
     kind,
     start,
     end,
+    timezone,
 }: {
     accommodation: CalendarAccommodation;
     kind: "check_in" | "check_out";
     start: LocalDateTime;
     end: LocalDateTime;
+    timezone?: string | null;
 }): ItineraryCalendarItem {
-    const hotelName = accommodation.hotel_name?.trim() || "your accommodation";
+    const hotelName = accommodation.hotel_name?.trim() || "your stay";
 
     return {
         id: `accommodation-hold:${accommodation.id}:${kind}`,
@@ -147,10 +150,14 @@ function buildHoldItem({
         start_time: start.time,
         end_time: end.time,
         category: "accommodation",
-        category_name: "Accommodation",
+        category_name: "Stay",
         category_color_hex: "#bef264",
         status: "confirmed",
+        timezone: timezone || null,
         location: getAccommodationLocation(accommodation),
+        formatted_address: accommodation.address || null,
+        google_place_id: accommodation.google_place_id || null,
+        location_website: getAccommodationMapsUrl(accommodation) || null,
         accommodation_id: accommodation.id,
         accommodation_hold_kind: kind,
     };
@@ -159,9 +166,11 @@ function buildHoldItem({
 export function buildAccommodationItineraryHolds({
     accommodations,
     items,
+    timezoneByAccommodationId = {},
 }: {
     accommodations: CalendarAccommodation[];
     items: ItineraryCalendarItem[];
+    timezoneByAccommodationId?: Readonly<Record<string, string | null | undefined>>;
 }) {
     return accommodations.flatMap((accommodation) => {
         if (
@@ -173,6 +182,7 @@ export function buildAccommodationItineraryHolds({
         }
 
         const holds: ItineraryCalendarItem[] = [];
+        const timezone = timezoneByAccommodationId[accommodation.id] || null;
         const checkInStartMinutes = getCheckInStartMinutes(accommodation, items);
 
         if (checkInStartMinutes !== null) {
@@ -189,7 +199,13 @@ export function buildAccommodationItineraryHolds({
 
             if (start && end) {
                 holds.push(
-                    buildHoldItem({ accommodation, kind: "check_in", start, end })
+                    buildHoldItem({
+                        accommodation,
+                        kind: "check_in",
+                        start,
+                        end,
+                        timezone,
+                    })
                 );
             }
         }
@@ -209,7 +225,13 @@ export function buildAccommodationItineraryHolds({
 
             if (start && end) {
                 holds.push(
-                    buildHoldItem({ accommodation, kind: "check_out", start, end })
+                    buildHoldItem({
+                        accommodation,
+                        kind: "check_out",
+                        start,
+                        end,
+                        timezone,
+                    })
                 );
             }
         }

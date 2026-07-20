@@ -111,6 +111,8 @@ export type TripIdea = {
     category: IdeaCategory | string;
     tags: string[];
     days_available: IdeaDay[];
+    availability_start_date?: string | null;
+    availability_end_date?: string | null;
     time_of_day: IdeaTimeOfDay[];
     opens_at?: string | null;
     closes_at?: string | null;
@@ -269,6 +271,14 @@ export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
                 : "Other",
         tags: normalizeStringArray(record.tags),
         days_available: normalizeStringArray(rawDays).map(toIdeaDayLabel) as IdeaDay[],
+        availability_start_date:
+            typeof record.availability_start_date === "string"
+                ? record.availability_start_date
+                : null,
+        availability_end_date:
+            typeof record.availability_end_date === "string"
+                ? record.availability_end_date
+                : null,
         time_of_day: normalizeStringArray(record.time_of_day).map(
             toIdeaTimeOfDayLabel
         ) as IdeaTimeOfDay[],
@@ -350,6 +360,59 @@ export function getIdeaDayForDate(date: Date): IdeaDay {
     ];
 
     return sundayFirstDays[date.getDay()];
+}
+
+function getLocalDateKey(date: Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+}
+
+export function isIdeaAvailableOnDate(idea: TripIdea, date: Date) {
+    const dateKey = getLocalDateKey(date);
+    if (
+        idea.availability_start_date &&
+        dateKey < idea.availability_start_date
+    ) {
+        return false;
+    }
+    if (idea.availability_end_date && dateKey > idea.availability_end_date) {
+        return false;
+    }
+
+    return (
+        idea.days_available.length === 0 ||
+        idea.days_available.includes(getIdeaDayForDate(date))
+    );
+}
+
+function formatIdeaDate(value: string) {
+    const date = new Date(`${value}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+
+    return new Intl.DateTimeFormat("en-CA", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+    }).format(date);
+}
+
+export function formatIdeaAvailabilityDateRange(idea: TripIdea) {
+    if (idea.availability_start_date && idea.availability_end_date) {
+        return `${formatIdeaDate(idea.availability_start_date)} – ${formatIdeaDate(
+            idea.availability_end_date
+        )}`;
+    }
+    if (idea.availability_start_date) {
+        return `From ${formatIdeaDate(idea.availability_start_date)}`;
+    }
+    if (idea.availability_end_date) {
+        return `Until ${formatIdeaDate(idea.availability_end_date)}`;
+    }
+
+    return "Entire trip";
 }
 
 export function formatIdeaTimeLabel(times: IdeaTimeOfDay[]) {

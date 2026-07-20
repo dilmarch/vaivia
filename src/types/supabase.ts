@@ -148,6 +148,94 @@ export type Database = {
           },
         ]
       }
+      ai_place_action_proposals: {
+        Row: {
+          action_type: string
+          completed_at: string | null
+          confirmed_at: string | null
+          conversation_id: string
+          created_at: string
+          expires_at: string
+          failure_code: string | null
+          google_place_id: string
+          id: string
+          idempotency_key: string
+          place_details_call_count: number
+          place_details_outcome: string
+          source_message_id: string
+          source_type: string
+          status: string
+          target_record_id: string | null
+          target_record_type: string | null
+          trip_id: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          completed_at?: string | null
+          confirmed_at?: string | null
+          conversation_id: string
+          created_at?: string
+          expires_at?: string
+          failure_code?: string | null
+          google_place_id: string
+          id?: string
+          idempotency_key?: string
+          place_details_call_count?: number
+          place_details_outcome?: string
+          source_message_id: string
+          source_type?: string
+          status?: string
+          target_record_id?: string | null
+          target_record_type?: string | null
+          trip_id: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          completed_at?: string | null
+          confirmed_at?: string | null
+          conversation_id?: string
+          created_at?: string
+          expires_at?: string
+          failure_code?: string | null
+          google_place_id?: string
+          id?: string
+          idempotency_key?: string
+          place_details_call_count?: number
+          place_details_outcome?: string
+          source_message_id?: string
+          source_type?: string
+          status?: string
+          target_record_id?: string | null
+          target_record_type?: string | null
+          trip_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_place_action_proposals_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_place_action_proposals_source_message_id_fkey"
+            columns: ["source_message_id"]
+            isOneToOne: false
+            referencedRelation: "ai_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_place_action_proposals_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_usage_events: {
         Row: {
           candidate_token_count: number | null
@@ -295,6 +383,75 @@ export type Database = {
           type?: string | null
           updated_at?: string
           wikipedia_link?: string | null
+        }
+        Relationships: []
+      }
+      browser_extension_auth_codes: {
+        Row: {
+          code_hash: string
+          created_at: string
+          expires_at: string
+          extension_id: string
+          id: string
+          redirect_uri: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          extension_id: string
+          id?: string
+          redirect_uri: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          extension_id?: string
+          id?: string
+          redirect_uri?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      browser_extension_sessions: {
+        Row: {
+          created_at: string
+          device_name: string
+          expires_at: string
+          extension_id: string
+          id: string
+          last_used_at: string | null
+          revoked_at: string | null
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_name?: string
+          expires_at: string
+          extension_id: string
+          id?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_name?: string
+          expires_at?: string
+          extension_id?: string
+          id?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token_hash?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -497,6 +654,751 @@ export type Database = {
         }
         Relationships: []
       }
+      event_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string | null
+          created_at: string
+          event_id: string | null
+          id: string
+          metadata: Json
+          subject_id: string | null
+          subject_type: string | null
+        }
+        Insert: {
+          action: string
+          actor_user_id?: string | null
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          metadata?: Json
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string | null
+          created_at?: string
+          event_id?: string | null
+          id?: string
+          metadata?: Json
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_audit_log_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_check_ins: {
+        Row: {
+          checked_in_at: string
+          checked_in_by: string
+          created_at: string
+          event_id: string
+          id: string
+          ticket_id: string
+          undone_at: string | null
+          undone_by: string | null
+        }
+        Insert: {
+          checked_in_at?: string
+          checked_in_by: string
+          created_at?: string
+          event_id: string
+          id?: string
+          ticket_id: string
+          undone_at?: string | null
+          undone_by?: string | null
+        }
+        Update: {
+          checked_in_at?: string
+          checked_in_by?: string
+          created_at?: string
+          event_id?: string
+          id?: string
+          ticket_id?: string
+          undone_at?: string | null
+          undone_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_check_ins_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_check_ins_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "event_tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_invitations: {
+        Row: {
+          accepted_at: string | null
+          accepted_by: string | null
+          created_at: string
+          email_normalized: string
+          event_id: string
+          expires_at: string | null
+          id: string
+          invited_by: string
+          last_sent_at: string | null
+          revoked_at: string | null
+          send_count: number
+          status: string
+          token_hash: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email_normalized: string
+          event_id: string
+          expires_at?: string | null
+          id?: string
+          invited_by: string
+          last_sent_at?: string | null
+          revoked_at?: string | null
+          send_count?: number
+          status?: string
+          token_hash: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
+          created_at?: string
+          email_normalized?: string
+          event_id?: string
+          expires_at?: string | null
+          id?: string
+          invited_by?: string
+          last_sent_at?: string | null
+          revoked_at?: string | null
+          send_count?: number
+          status?: string
+          token_hash?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_invitations_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_order_items: {
+        Row: {
+          created_at: string
+          currency: string
+          description_snapshot: string | null
+          event_id: string
+          id: string
+          order_id: string
+          quantity: number
+          ticket_name_snapshot: string
+          ticket_type_id: string
+          unit_fee_minor: number
+          unit_price_minor: number
+          unit_tax_minor: number
+        }
+        Insert: {
+          created_at?: string
+          currency: string
+          description_snapshot?: string | null
+          event_id: string
+          id?: string
+          order_id: string
+          quantity: number
+          ticket_name_snapshot: string
+          ticket_type_id: string
+          unit_fee_minor?: number
+          unit_price_minor: number
+          unit_tax_minor?: number
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          description_snapshot?: string | null
+          event_id?: string
+          id?: string
+          order_id?: string
+          quantity?: number
+          ticket_name_snapshot?: string
+          ticket_type_id?: string
+          unit_fee_minor?: number
+          unit_price_minor?: number
+          unit_tax_minor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_order_items_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "event_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_order_items_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "event_ticket_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_orders: {
+        Row: {
+          created_at: string
+          currency: string
+          event_id: string
+          failed_at: string | null
+          fee_minor: number
+          hold_expires_at: string | null
+          id: string
+          idempotency_key: string
+          paid_at: string | null
+          refunded_at: string | null
+          status: string
+          stripe_charge_id: string | null
+          stripe_checkout_session_id: string | null
+          stripe_payment_intent_id: string | null
+          subtotal_minor: number
+          tax_minor: number
+          total_minor: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency: string
+          event_id: string
+          failed_at?: string | null
+          fee_minor?: number
+          hold_expires_at?: string | null
+          id?: string
+          idempotency_key: string
+          paid_at?: string | null
+          refunded_at?: string | null
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subtotal_minor?: number
+          tax_minor?: number
+          total_minor?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          event_id?: string
+          failed_at?: string | null
+          fee_minor?: number
+          hold_expires_at?: string | null
+          id?: string
+          idempotency_key?: string
+          paid_at?: string | null
+          refunded_at?: string | null
+          status?: string
+          stripe_charge_id?: string | null
+          stripe_checkout_session_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subtotal_minor?: number
+          tax_minor?: number
+          total_minor?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_orders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_private_details: {
+        Row: {
+          created_at: string
+          event_id: string
+          internal_notes: string | null
+          online_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          internal_notes?: string | null
+          online_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          internal_notes?: string | null
+          online_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_private_details_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: true
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_rsvps: {
+        Row: {
+          attendee_email: string | null
+          attendee_name: string | null
+          cancelled_at: string | null
+          confirmed_at: string | null
+          created_at: string
+          event_id: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attendee_email?: string | null
+          attendee_name?: string | null
+          cancelled_at?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          event_id: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attendee_email?: string | null
+          attendee_name?: string | null
+          cancelled_at?: string | null
+          confirmed_at?: string | null
+          created_at?: string
+          event_id?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_rsvps_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_team_members: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          event_id: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          event_id: string
+          id?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          event_id?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_team_members_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_ticket_types: {
+        Row: {
+          attendee_instructions: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          display_order: number
+          event_id: string
+          fee_minor: number
+          id: string
+          max_per_customer: number | null
+          max_per_order: number
+          min_per_order: number
+          name: string
+          price_minor: number
+          quantity_held: number
+          quantity_sold: number
+          sales_end_at: string | null
+          sales_start_at: string | null
+          state: string
+          tax_minor: number
+          total_quantity: number
+          updated_at: string
+        }
+        Insert: {
+          attendee_instructions?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          display_order?: number
+          event_id: string
+          fee_minor?: number
+          id?: string
+          max_per_customer?: number | null
+          max_per_order?: number
+          min_per_order?: number
+          name: string
+          price_minor?: number
+          quantity_held?: number
+          quantity_sold?: number
+          sales_end_at?: string | null
+          sales_start_at?: string | null
+          state?: string
+          tax_minor?: number
+          total_quantity: number
+          updated_at?: string
+        }
+        Update: {
+          attendee_instructions?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          display_order?: number
+          event_id?: string
+          fee_minor?: number
+          id?: string
+          max_per_customer?: number | null
+          max_per_order?: number
+          min_per_order?: number
+          name?: string
+          price_minor?: number
+          quantity_held?: number
+          quantity_sold?: number
+          sales_end_at?: string | null
+          sales_start_at?: string | null
+          state?: string
+          tax_minor?: number
+          total_quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_ticket_types_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_tickets: {
+        Row: {
+          attendee_email: string
+          attendee_name: string
+          checked_in_at: string | null
+          checked_in_by: string | null
+          created_at: string
+          event_id: string
+          id: string
+          issued_at: string
+          order_id: string
+          order_item_id: string
+          owner_user_id: string
+          redemption_hash: string
+          status: string
+          ticket_number: string
+          ticket_type_id: string
+          updated_at: string
+          voided_at: string | null
+        }
+        Insert: {
+          attendee_email: string
+          attendee_name: string
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          created_at?: string
+          event_id: string
+          id?: string
+          issued_at?: string
+          order_id: string
+          order_item_id: string
+          owner_user_id: string
+          redemption_hash: string
+          status?: string
+          ticket_number: string
+          ticket_type_id: string
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Update: {
+          attendee_email?: string
+          attendee_name?: string
+          checked_in_at?: string | null
+          checked_in_by?: string | null
+          created_at?: string
+          event_id?: string
+          id?: string
+          issued_at?: string
+          order_id?: string
+          order_item_id?: string
+          owner_user_id?: string
+          redemption_hash?: string
+          status?: string
+          ticket_number?: string
+          ticket_type_id?: string
+          updated_at?: string
+          voided_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_tickets_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_tickets_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "event_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_tickets_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "event_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_tickets_ticket_type_id_fkey"
+            columns: ["ticket_type_id"]
+            isOneToOne: false
+            referencedRelation: "event_ticket_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_webhook_events: {
+        Row: {
+          created_at: string
+          error_code: string | null
+          event_type: string
+          id: string
+          order_id: string | null
+          processed_at: string | null
+          processing_status: string
+          provider: string
+          provider_event_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_code?: string | null
+          event_type: string
+          id?: string
+          order_id?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          provider?: string
+          provider_event_id: string
+        }
+        Update: {
+          created_at?: string
+          error_code?: string | null
+          event_type?: string
+          id?: string
+          order_id?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          provider?: string
+          provider_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_webhook_events_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "event_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      events: {
+        Row: {
+          accessibility_info: string | null
+          address_line: string | null
+          age_restriction: string | null
+          archived_at: string | null
+          attendee_notes: string | null
+          cancelled_at: string | null
+          category: string | null
+          city: string | null
+          country: string | null
+          cover_image_alt: string | null
+          cover_image_storage_path: string | null
+          created_at: string
+          deleted_at: string | null
+          description: string | null
+          ends_at: string
+          google_place_id: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          organizer_contact_email: string | null
+          organizer_display_name: string | null
+          overall_capacity: number | null
+          owner_user_id: string
+          postal_code: string | null
+          publish_at: string | null
+          published_at: string | null
+          refund_policy: string | null
+          region: string | null
+          registration_mode: string
+          short_summary: string | null
+          slug: string
+          starts_at: string
+          status: string
+          tags: string[]
+          timezone: string
+          title: string
+          updated_at: string
+          venue_name: string | null
+          venue_type: string
+          visibility: string
+        }
+        Insert: {
+          accessibility_info?: string | null
+          address_line?: string | null
+          age_restriction?: string | null
+          archived_at?: string | null
+          attendee_notes?: string | null
+          cancelled_at?: string | null
+          category?: string | null
+          city?: string | null
+          country?: string | null
+          cover_image_alt?: string | null
+          cover_image_storage_path?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          ends_at: string
+          google_place_id?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          organizer_contact_email?: string | null
+          organizer_display_name?: string | null
+          overall_capacity?: number | null
+          owner_user_id: string
+          postal_code?: string | null
+          publish_at?: string | null
+          published_at?: string | null
+          refund_policy?: string | null
+          region?: string | null
+          registration_mode?: string
+          short_summary?: string | null
+          slug: string
+          starts_at: string
+          status?: string
+          tags?: string[]
+          timezone?: string
+          title: string
+          updated_at?: string
+          venue_name?: string | null
+          venue_type?: string
+          visibility?: string
+        }
+        Update: {
+          accessibility_info?: string | null
+          address_line?: string | null
+          age_restriction?: string | null
+          archived_at?: string | null
+          attendee_notes?: string | null
+          cancelled_at?: string | null
+          category?: string | null
+          city?: string | null
+          country?: string | null
+          cover_image_alt?: string | null
+          cover_image_storage_path?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          description?: string | null
+          ends_at?: string
+          google_place_id?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          organizer_contact_email?: string | null
+          organizer_display_name?: string | null
+          overall_capacity?: number | null
+          owner_user_id?: string
+          postal_code?: string | null
+          publish_at?: string | null
+          published_at?: string | null
+          refund_policy?: string | null
+          region?: string | null
+          registration_mode?: string
+          short_summary?: string | null
+          slug?: string
+          starts_at?: string
+          status?: string
+          tags?: string[]
+          timezone?: string
+          title?: string
+          updated_at?: string
+          venue_name?: string | null
+          venue_type?: string
+          visibility?: string
+        }
+        Relationships: []
+      }
       external_email_invite_outbox: {
         Row: {
           attempts: number
@@ -621,6 +1523,7 @@ export type Database = {
       }
       itinerary_items: {
         Row: {
+          assistant_action_proposal_id: string | null
           audience_mode: string
           category: string | null
           category_id: string | null
@@ -633,6 +1536,7 @@ export type Database = {
           end_time: string | null
           formatted_address: string | null
           google_place_id: string | null
+          google_place_id_saved_at: string | null
           id: string
           is_private: boolean
           item_date: string
@@ -641,6 +1545,7 @@ export type Database = {
           location_lng: number | null
           location_website: string | null
           notes: string | null
+          place_source: string | null
           sort_order: number | null
           source_idea_id: string | null
           start_time: string | null
@@ -655,6 +1560,7 @@ export type Database = {
           url: string | null
         }
         Insert: {
+          assistant_action_proposal_id?: string | null
           audience_mode?: string
           category?: string | null
           category_id?: string | null
@@ -667,6 +1573,7 @@ export type Database = {
           end_time?: string | null
           formatted_address?: string | null
           google_place_id?: string | null
+          google_place_id_saved_at?: string | null
           id?: string
           is_private?: boolean
           item_date: string
@@ -675,6 +1582,7 @@ export type Database = {
           location_lng?: number | null
           location_website?: string | null
           notes?: string | null
+          place_source?: string | null
           sort_order?: number | null
           source_idea_id?: string | null
           start_time?: string | null
@@ -689,6 +1597,7 @@ export type Database = {
           url?: string | null
         }
         Update: {
+          assistant_action_proposal_id?: string | null
           audience_mode?: string
           category?: string | null
           category_id?: string | null
@@ -701,6 +1610,7 @@ export type Database = {
           end_time?: string | null
           formatted_address?: string | null
           google_place_id?: string | null
+          google_place_id_saved_at?: string | null
           id?: string
           is_private?: boolean
           item_date?: string
@@ -709,6 +1619,7 @@ export type Database = {
           location_lng?: number | null
           location_website?: string | null
           notes?: string | null
+          place_source?: string | null
           sort_order?: number | null
           source_idea_id?: string | null
           start_time?: string | null
@@ -723,6 +1634,13 @@ export type Database = {
           url?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "itinerary_items_assistant_action_proposal_id_fkey"
+            columns: ["assistant_action_proposal_id"]
+            isOneToOne: false
+            referencedRelation: "ai_place_action_proposals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "itinerary_items_category_id_fkey"
             columns: ["category_id"]
@@ -1050,6 +1968,35 @@ export type Database = {
             columns: ["trip_id"]
             isOneToOne: false
             referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_events: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_events_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
             referencedColumns: ["id"]
           },
         ]
@@ -1520,6 +2467,7 @@ export type Database = {
           address_line_1: string | null
           address_line_2: string | null
           audience_mode: string
+          booking_url: string | null
           check_in_date: string
           check_in_time_end: string | null
           check_in_time_start: string | null
@@ -1536,6 +2484,7 @@ export type Database = {
           google_place_id: string | null
           hotel_name: string
           id: string
+          is_planning_option: boolean
           is_private: boolean
           latitude: number | null
           longitude: number | null
@@ -1554,6 +2503,7 @@ export type Database = {
           address_line_1?: string | null
           address_line_2?: string | null
           audience_mode?: string
+          booking_url?: string | null
           check_in_date: string
           check_in_time_end?: string | null
           check_in_time_start?: string | null
@@ -1570,6 +2520,7 @@ export type Database = {
           google_place_id?: string | null
           hotel_name: string
           id?: string
+          is_planning_option?: boolean
           is_private?: boolean
           latitude?: number | null
           longitude?: number | null
@@ -1588,6 +2539,7 @@ export type Database = {
           address_line_1?: string | null
           address_line_2?: string | null
           audience_mode?: string
+          booking_url?: string | null
           check_in_date?: string
           check_in_time_end?: string | null
           check_in_time_start?: string | null
@@ -1604,6 +2556,7 @@ export type Database = {
           google_place_id?: string | null
           hotel_name?: string
           id?: string
+          is_planning_option?: boolean
           is_private?: boolean
           latitude?: number | null
           longitude?: number | null
@@ -1784,6 +2737,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "trip_budgets_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trip_destinations: {
+        Row: {
+          country_code: string | null
+          country_name: string | null
+          created_at: string
+          created_by: string
+          google_place_id: string | null
+          id: string
+          label: string
+          sort_order: number
+          trip_id: string
+          updated_at: string
+        }
+        Insert: {
+          country_code?: string | null
+          country_name?: string | null
+          created_at?: string
+          created_by?: string
+          google_place_id?: string | null
+          id?: string
+          label: string
+          sort_order?: number
+          trip_id: string
+          updated_at?: string
+        }
+        Update: {
+          country_code?: string | null
+          country_name?: string | null
+          created_at?: string
+          created_by?: string
+          google_place_id?: string | null
+          id?: string
+          label?: string
+          sort_order?: number
+          trip_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_destinations_trip_id_fkey"
             columns: ["trip_id"]
             isOneToOne: false
             referencedRelation: "trips"
@@ -2191,6 +3191,7 @@ export type Database = {
       }
       trip_food_items: {
         Row: {
+          assistant_action_proposal_id: string | null
           business_status: string | null
           created_at: string
           created_by: string
@@ -2199,6 +3200,7 @@ export type Database = {
           formatted_address: string | null
           google_maps_url: string | null
           google_place_id: string | null
+          google_place_id_saved_at: string | null
           id: string
           instagram_url: string | null
           item_type: string
@@ -2208,6 +3210,7 @@ export type Database = {
           name: string
           personal_note: string | null
           phone_number: string | null
+          place_source: string | null
           place_types: string[]
           primary_place_type: string | null
           region: string | null
@@ -2217,6 +3220,7 @@ export type Database = {
           website_url: string | null
         }
         Insert: {
+          assistant_action_proposal_id?: string | null
           business_status?: string | null
           created_at?: string
           created_by?: string
@@ -2225,6 +3229,7 @@ export type Database = {
           formatted_address?: string | null
           google_maps_url?: string | null
           google_place_id?: string | null
+          google_place_id_saved_at?: string | null
           id?: string
           instagram_url?: string | null
           item_type: string
@@ -2234,6 +3239,7 @@ export type Database = {
           name: string
           personal_note?: string | null
           phone_number?: string | null
+          place_source?: string | null
           place_types?: string[]
           primary_place_type?: string | null
           region?: string | null
@@ -2243,6 +3249,7 @@ export type Database = {
           website_url?: string | null
         }
         Update: {
+          assistant_action_proposal_id?: string | null
           business_status?: string | null
           created_at?: string
           created_by?: string
@@ -2251,6 +3258,7 @@ export type Database = {
           formatted_address?: string | null
           google_maps_url?: string | null
           google_place_id?: string | null
+          google_place_id_saved_at?: string | null
           id?: string
           instagram_url?: string | null
           item_type?: string
@@ -2260,6 +3268,7 @@ export type Database = {
           name?: string
           personal_note?: string | null
           phone_number?: string | null
+          place_source?: string | null
           place_types?: string[]
           primary_place_type?: string | null
           region?: string | null
@@ -2269,6 +3278,13 @@ export type Database = {
           website_url?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "trip_food_items_assistant_action_proposal_id_fkey"
+            columns: ["assistant_action_proposal_id"]
+            isOneToOne: false
+            referencedRelation: "ai_place_action_proposals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trip_food_items_trip_id_fkey"
             columns: ["trip_id"]
@@ -2426,7 +3442,10 @@ export type Database = {
       trip_ideas: {
         Row: {
           age_policy: string | null
+          assistant_action_proposal_id: string | null
           attended: boolean
+          availability_end_date: string | null
+          availability_start_date: string | null
           category: string
           closes_at: string | null
           created_at: string
@@ -2438,6 +3457,7 @@ export type Database = {
           estimated_cost: number | null
           formatted_address: string | null
           google_place_id: string | null
+          google_place_id_saved_at: string | null
           id: string
           is_24_hours: boolean
           is_archived: boolean
@@ -2451,6 +3471,7 @@ export type Database = {
           location_postal_code: string | null
           location_region: string | null
           opens_at: string | null
+          place_source: string | null
           sort_order: number | null
           tags: string[]
           ticket_policy: string | null
@@ -2465,7 +3486,10 @@ export type Database = {
         }
         Insert: {
           age_policy?: string | null
+          assistant_action_proposal_id?: string | null
           attended?: boolean
+          availability_end_date?: string | null
+          availability_start_date?: string | null
           category?: string
           closes_at?: string | null
           created_at?: string
@@ -2477,6 +3501,7 @@ export type Database = {
           estimated_cost?: number | null
           formatted_address?: string | null
           google_place_id?: string | null
+          google_place_id_saved_at?: string | null
           id?: string
           is_24_hours?: boolean
           is_archived?: boolean
@@ -2490,6 +3515,7 @@ export type Database = {
           location_postal_code?: string | null
           location_region?: string | null
           opens_at?: string | null
+          place_source?: string | null
           sort_order?: number | null
           tags?: string[]
           ticket_policy?: string | null
@@ -2504,7 +3530,10 @@ export type Database = {
         }
         Update: {
           age_policy?: string | null
+          assistant_action_proposal_id?: string | null
           attended?: boolean
+          availability_end_date?: string | null
+          availability_start_date?: string | null
           category?: string
           closes_at?: string | null
           created_at?: string
@@ -2516,6 +3545,7 @@ export type Database = {
           estimated_cost?: number | null
           formatted_address?: string | null
           google_place_id?: string | null
+          google_place_id_saved_at?: string | null
           id?: string
           is_24_hours?: boolean
           is_archived?: boolean
@@ -2529,6 +3559,7 @@ export type Database = {
           location_postal_code?: string | null
           location_region?: string | null
           opens_at?: string | null
+          place_source?: string | null
           sort_order?: number | null
           tags?: string[]
           ticket_policy?: string | null
@@ -2542,6 +3573,13 @@ export type Database = {
           url?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "trip_ideas_assistant_action_proposal_id_fkey"
+            columns: ["assistant_action_proposal_id"]
+            isOneToOne: false
+            referencedRelation: "ai_place_action_proposals"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trip_ideas_trip_id_fkey"
             columns: ["trip_id"]
@@ -3175,26 +4213,38 @@ export type Database = {
       }
       user_email_import_addresses: {
         Row: {
+          address_format: string
           created_at: string
           id: string
           inbound_token: string
           is_active: boolean
+          is_primary: boolean
+          request_key: string | null
+          retired_at: string | null
           rotated_at: string | null
           user_id: string
         }
         Insert: {
+          address_format?: string
           created_at?: string
           id?: string
           inbound_token: string
           is_active?: boolean
+          is_primary?: boolean
+          request_key?: string | null
+          retired_at?: string | null
           rotated_at?: string | null
           user_id: string
         }
         Update: {
+          address_format?: string
           created_at?: string
           id?: string
           inbound_token?: string
           is_active?: boolean
+          is_primary?: boolean
+          request_key?: string | null
+          retired_at?: string | null
           rotated_at?: string | null
           user_id?: string
         }
@@ -4010,9 +5060,22 @@ export type Database = {
         Args: { target_trip_id: string; target_trip_leg_id: string }
         Returns: boolean
       }
+      cancel_ai_place_action_proposal: {
+        Args: { target_proposal_id: string }
+        Returns: boolean
+      }
+      cancel_event_rsvp: { Args: { target_event_id: string }; Returns: boolean }
       cancel_trip_invitation: {
         Args: { invitation_id: string }
         Returns: undefined
+      }
+      check_in_event_ticket: {
+        Args: { target_event_id: string; target_redemption_hash: string }
+        Returns: Json
+      }
+      claim_event_invitation: {
+        Args: { target_token_hash: string }
+        Returns: string
       }
       claim_external_email_invite_outbox: {
         Args: { batch_limit?: number }
@@ -4120,6 +5183,19 @@ export type Database = {
           trip_title: string
         }[]
       }
+      complete_ai_place_action_details_call: {
+        Args: { target_outcome: string; target_proposal_id: string }
+        Returns: boolean
+      }
+      confirm_ai_place_action_proposal: {
+        Args: { target_fields: Json; target_proposal_id: string }
+        Returns: {
+          failure_code: string
+          proposal_status: string
+          target_record_id: string
+          target_record_type: string
+        }[]
+      }
       consume_ai_daily_usage: {
         Args: {
           daily_limit: number
@@ -4133,6 +5209,22 @@ export type Database = {
           remaining: number
           usage_event_id: string
           used: number
+        }[]
+      }
+      create_ai_place_action_proposal: {
+        Args: {
+          target_action_type: string
+          target_conversation_id: string
+          target_message_id: string
+          target_place_id: string
+          target_trip_id: string
+        }
+        Returns: {
+          existing_target_id: string
+          existing_target_type: string
+          proposal_expires_at: string
+          proposal_id: string
+          proposal_status: string
         }[]
       }
       create_friend_invitation: {
@@ -4162,6 +5254,27 @@ export type Database = {
       decline_trip_invitation: {
         Args: { invitation_id: string }
         Returns: undefined
+      }
+      event_issue_order_tickets: {
+        Args: { target_order_id: string }
+        Returns: number
+      }
+      event_user_can_manage: {
+        Args: { target_event_id: string; target_user_id?: string }
+        Returns: boolean
+      }
+      event_user_can_view: {
+        Args: { target_event_id: string; target_user_id?: string }
+        Returns: boolean
+      }
+      finalize_event_order: {
+        Args: {
+          provider_charge_id?: string
+          provider_checkout_session_id: string
+          provider_payment_intent_id?: string
+          target_order_id: string
+        }
+        Returns: number
       }
       friendship_block_exists: {
         Args: { blocked_user_id: string; blocker_user_id: string }
@@ -4213,6 +5326,10 @@ export type Database = {
         }
         Returns: string
       }
+      get_event_ticket_secret: {
+        Args: { target_ticket_id: string }
+        Returns: string
+      }
       get_friend_profile_snapshot: {
         Args: { target_user_id: string }
         Returns: Json
@@ -4229,6 +5346,7 @@ export type Database = {
         Args: { target_user_id: string }
         Returns: string
       }
+      is_event_organizer: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
       is_trip_active_member: {
         Args: { target_trip_id: string }
@@ -4249,6 +5367,10 @@ export type Database = {
       leave_trip: { Args: { target_trip_id: string }; Returns: undefined }
       mark_app_alert_read: { Args: { alert_id: string }; Returns: undefined }
       normalize_trip_slug: { Args: { input_value: string }; Returns: string }
+      normalize_vaivia_username: {
+        Args: { input_value: string }
+        Returns: string
+      }
       notify_trip_members: {
         Args: {
           notification_body?: string
@@ -4324,6 +5446,32 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      refund_event_order: { Args: { target_order_id: string }; Returns: number }
+      register_event_rsvp: {
+        Args: { attendee_name_input?: string; target_event_id: string }
+        Returns: {
+          attendee_email: string | null
+          attendee_name: string | null
+          cancelled_at: string | null
+          confirmed_at: string | null
+          created_at: string
+          event_id: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "event_rsvps"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      release_event_order_hold: {
+        Args: { release_status?: string; target_order_id: string }
+        Returns: boolean
+      }
       remove_trip_member: {
         Args: { target_member_user_id: string; target_trip_id: string }
         Returns: string
@@ -4333,6 +5481,14 @@ export type Database = {
         Returns: undefined
       }
       request_current_user_account_deletion: { Args: never; Returns: undefined }
+      reserve_ai_place_action_details_call: {
+        Args: { target_proposal_id: string }
+        Returns: boolean
+      }
+      reserve_event_order: {
+        Args: { request_idempotency_key: string; selections: Json }
+        Returns: Json
+      }
       respond_to_friend_invitation: {
         Args: { friendship_id: string; next_status: string }
         Returns: undefined
@@ -4358,12 +5514,21 @@ export type Database = {
         }
       }
       rotate_user_email_import_address: {
-        Args: { new_inbound_token: string; target_user_id: string }
+        Args: {
+          deactivate_previous?: boolean
+          new_inbound_token: string
+          request_key?: string
+          target_user_id: string
+        }
         Returns: {
+          address_format: string
           created_at: string
           id: string
           inbound_token: string
           is_active: boolean
+          is_primary: boolean
+          request_key: string | null
+          retired_at: string | null
           rotated_at: string | null
           user_id: string
         }
@@ -4408,6 +5573,10 @@ export type Database = {
           target_slug: string
           target_user_id: string
         }
+        Returns: boolean
+      }
+      undo_event_ticket_check_in: {
+        Args: { target_ticket_id: string }
         Returns: boolean
       }
       unfriend_user: { Args: { target_user_id: string }; Returns: undefined }

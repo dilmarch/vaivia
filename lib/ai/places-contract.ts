@@ -1,7 +1,14 @@
 export const ASSISTANT_PLACE_CARD_LIMIT = 10;
 
+export type AssistantPlaceSavedTarget = {
+    type: "trip_idea" | "trip_food_item" | "itinerary_item";
+    label: string;
+    href: string;
+};
+
 export type AssistantPlaceRecommendation = {
     recommendationId: string;
+    placeId: string;
     name: string;
     category: string;
     address: string | null;
@@ -13,6 +20,8 @@ export type AssistantPlaceRecommendation = {
     hoursSummary: string | null;
     mapsUrl: string;
     alreadySaved: boolean;
+    liveDetailsAvailable?: boolean;
+    savedTargets?: AssistantPlaceSavedTarget[];
 };
 
 export type AssistantPlaceReference = {

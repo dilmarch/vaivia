@@ -1,4 +1,4 @@
-import { FileText, Inbox, Paperclip, Plane, ShieldCheck } from "lucide-react";
+import { Inbox, Paperclip, Plane, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
@@ -8,9 +8,25 @@ import { createServiceRoleClient } from "@/lib/supabase/service";
 import { processTravelEmailImport } from "@/lib/travelEmailImportProcessor";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
-import { getTripRouteSegment } from "@/lib/tripRoutes";
+import ImportAirportFields from "@/components/ImportAirportFields";
+import ImportTripTravelerSelector, {
+    type ImportTravelerTrip,
+} from "@/components/ImportTripTravelerSelector";
+import { resolveImportedFlightTimezones } from "@/lib/importAirportTimezones";
 import {
+    findImportedFlightMatch,
+    getImportedFlightMergePatch,
+    getImportedFlightFingerprint,
+    normalizeImportedFlightNumber,
+    parseImportedCoordinate,
+} from "@/lib/importFlightMatching";
+import ImportFlightMatchReview from "@/components/ImportFlightMatchReview";
+import { getTripRouteSegment } from "@/lib/tripRoutes";
+import { stripStructuredFlightNotes } from "@/lib/flightNotes";
+import {
+    applyConfirmationPriceToFlights,
     getEditableImportedFlight,
+    getImportedTravelerNames,
     getRequiredFlightIssues,
     matchImportToTrips,
     type EditableImportedFlight,
@@ -77,11 +93,54 @@ type ImportedTransportationRecord = {
 
 type ExistingTransportationFlight = {
     id: string;
+    trip_id: string;
     title: string | null;
     transport_number: string | null;
     departure_location: string | null;
+    arrival_location: string | null;
     departure_date: string | null;
     departure_time: string | null;
+    arrival_date: string | null;
+    arrival_time: string | null;
+    notes: string | null;
+    status?: string | null;
+    provider_name?: string | null;
+    provider_code?: string | null;
+    reservation_code?: string | null;
+    baggage_info?: string | null;
+    seat_number?: string | null;
+    cabin_class?: string | null;
+    departure_terminal?: string | null;
+    arrival_terminal?: string | null;
+    cost?: number | null;
+    currency?: string | null;
+    departure_timezone?: string | null;
+    arrival_timezone?: string | null;
+    departure_formatted_address?: string | null;
+    departure_google_place_id?: string | null;
+    departure_lat?: number | null;
+    departure_lng?: number | null;
+    arrival_formatted_address?: string | null;
+    arrival_google_place_id?: string | null;
+    arrival_lat?: number | null;
+    arrival_lng?: number | null;
+};
+
+type ImportTripRow = ImportTripOption & {
+    user_id: string;
+};
+
+type ImportTravelerSelection = {
+    userIds: string[];
+    familyMemberIds: string[];
+    guestNames: string[];
+};
+
+type SubmittedImportFlight = {
+    item_id: string;
+    include: boolean;
+    match_action: "create" | "merge" | "separate";
+    reviewed_data: Record<string, string>;
 };
 
 type SupabaseActionError = {
@@ -148,11 +207,6 @@ function formatBytes(value?: number | null) {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function stringifyJson(value: Json) {
-    if (typeof value === "string") return value;
-    return JSON.stringify(value, null, 2);
-}
-
 function getUserFacingExtractionError(value?: string | null) {
     if (!value) return "";
 
@@ -217,30 +271,6 @@ function getLegFieldForFlightField(field: keyof EditableImportedFlight) {
     return fieldMap[field] || null;
 }
 
-function normalizeFlightFingerprintPart(value?: string | null) {
-    return (value || "").trim().toUpperCase().replace(/[\s-]+/g, "");
-}
-
-function getFlightFingerprint(flight: {
-    flightNumber?: string | null;
-    transport_number?: string | null;
-    departureLocation?: string | null;
-    departure_location?: string | null;
-    departureDate?: string | null;
-    departure_date?: string | null;
-    departureTime?: string | null;
-    departure_time?: string | null;
-}) {
-    return [
-        normalizeFlightFingerprintPart(flight.flightNumber || flight.transport_number),
-        normalizeFlightFingerprintPart(
-            flight.departureLocation || flight.departure_location
-        ),
-        flight.departureDate || flight.departure_date || "",
-        flight.departureTime || flight.departure_time || "",
-    ].join("|");
-}
-
 function FlightTextInput({
     itemId,
     field,
@@ -248,6 +278,7 @@ function FlightTextInput({
     defaultValue,
     required = false,
     type = "text",
+    step,
 }: {
     itemId: string;
     field: keyof EditableImportedFlight;
@@ -255,6 +286,7 @@ function FlightTextInput({
     defaultValue: string;
     required?: boolean;
     type?: string;
+    step?: string;
 }) {
     return (
         <label className="block rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -267,6 +299,7 @@ function FlightTextInput({
             <input
                 name={getFieldName(itemId, field)}
                 type={type}
+                step={step}
                 defaultValue={defaultValue}
                 className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
             />
@@ -358,13 +391,15 @@ function FlightLegTextInput({
 function EditableFlightCard({
     item,
     flight,
-    duplicateRecord,
-    selectedTrip,
+    flightRecordsByTrip,
+    defaultTripId,
+    tripHrefsById,
 }: {
     item: TravelEmailImportItemRow;
     flight: EditableImportedFlight;
-    duplicateRecord?: ExistingTransportationFlight | null;
-    selectedTrip?: ImportTripOption | null;
+    flightRecordsByTrip: Record<string, ExistingTransportationFlight[]>;
+    defaultTripId: string;
+    tripHrefsById: Record<string, string>;
 }) {
     const missingFields = getRequiredFlightIssues(flight);
 
@@ -388,7 +423,7 @@ function EditableFlightCard({
 
             <div className="mt-4 rounded-[1.25rem] border border-lime-300/15 bg-lime-300/10 p-4">
                 <p className="text-sm font-black text-lime-50">
-                    This flight has not been added to a trip yet.
+                    Review this flight before importing it.
                 </p>
                 {missingFields.length > 0 ? (
                     <p className="mt-1 text-xs font-semibold text-lime-100/80">
@@ -399,27 +434,13 @@ function EditableFlightCard({
                         Review the local times exactly as they appear on your confirmation.
                     </p>
                 )}
-                {duplicateRecord ? (
-                    <div className="mt-3 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-3">
-                        <p className="text-sm font-black text-amber-100">
-                            This flight is already in the selected trip.
-                        </p>
-                        <p className="mt-1 text-xs font-semibold text-amber-100/80">
-                            VAIVIA will link this import to the existing flight instead
-                            of creating a duplicate.
-                        </p>
-                        {selectedTrip ? (
-                            <Link
-                                href={`/trips/${getTripRouteSegment(
-                                    selectedTrip
-                                )}?tab=journey`}
-                                className="mt-2 inline-flex rounded-full border border-amber-200/30 px-3 py-1 text-xs font-black text-amber-100 transition hover:bg-amber-300/10"
-                            >
-                                Open existing flight
-                            </Link>
-                        ) : null}
-                    </div>
-                ) : null}
+                <ImportFlightMatchReview
+                    itemId={item.id}
+                    importedFlight={flight}
+                    flightRecordsByTrip={flightRecordsByTrip}
+                    defaultTripId={defaultTripId}
+                    tripHrefsById={tripHrefsById}
+                />
             </div>
 
             <input type="hidden" name={getLegFieldName(item.id, "airline_code")} value={flight.airlineCode} />
@@ -434,7 +455,7 @@ function EditableFlightCard({
                                 Airplane
                             </p>
                             <p className="mt-1 text-sm font-semibold text-slate-400">
-                                Review this flight before adding it to Journey.
+                                Review this flight before adding it to Transport.
                             </p>
                         </div>
                         <label className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/70 px-3 py-2 text-sm font-black text-slate-100">
@@ -447,18 +468,12 @@ function EditableFlightCard({
                             Private
                         </label>
                     </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-4 grid gap-3">
                         <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
                             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
                                 Select mode of transportation
                             </p>
                             <p className="mt-2 text-sm font-black text-white">✈️ Airplane</p>
-                        </div>
-                        <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                                Is this flight direct?
-                            </p>
-                            <p className="mt-2 text-sm font-black text-white">Direct</p>
                         </div>
                     </div>
                 </div>
@@ -468,19 +483,26 @@ function EditableFlightCard({
                         Flight leg 1
                     </legend>
                     <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                        <FlightLegTextInput
+                        <ImportAirportFields
                             itemId={item.id}
-                            legField="departure_location"
-                            label="Departure airport, code, or city"
-                            defaultValue={flight.departureLocation}
-                            required
-                        />
-                        <FlightLegTextInput
-                            itemId={item.id}
-                            legField="arrival_location"
-                            label="Arrival airport, code, or city"
-                            defaultValue={flight.arrivalLocation}
-                            required
+                            departureDate={flight.departureDate}
+                            arrivalDate={flight.arrivalDate}
+                            departure={{
+                                location: flight.departureLocation,
+                                formattedAddress: flight.departureFormattedAddress,
+                                googlePlaceId: flight.departureGooglePlaceId,
+                                latitude: flight.departureLat,
+                                longitude: flight.departureLng,
+                                timezone: flight.departureTimezone,
+                            }}
+                            arrival={{
+                                location: flight.arrivalLocation,
+                                formattedAddress: flight.arrivalFormattedAddress,
+                                googlePlaceId: flight.arrivalGooglePlaceId,
+                                latitude: flight.arrivalLat,
+                                longitude: flight.arrivalLng,
+                                timezone: flight.arrivalTimezone,
+                            }}
                         />
                         <FlightLegTextInput
                             itemId={item.id}
@@ -513,18 +535,6 @@ function EditableFlightCard({
                             defaultValue={flight.arrivalTime}
                             required
                             type="time"
-                        />
-                        <FlightLegTextInput
-                            itemId={item.id}
-                            legField="departure_timezone"
-                            label="Departure time zone"
-                            defaultValue={flight.departureTimezone}
-                        />
-                        <FlightLegTextInput
-                            itemId={item.id}
-                            legField="arrival_timezone"
-                            label="Arrival time zone"
-                            defaultValue={flight.arrivalTimezone}
                         />
                         <FlightLegTextInput
                             itemId={item.id}
@@ -566,8 +576,9 @@ function EditableFlightCard({
                             itemId={item.id}
                             field="cost"
                             label="Cost"
-                            defaultValue={flight.cost || "0"}
+                            defaultValue={flight.cost}
                             type="number"
+                            step="0.01"
                         />
                         <FlightTextInput
                             itemId={item.id}
@@ -609,7 +620,6 @@ function EditableFlightCard({
                             defaultValue={flight.status}
                             className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
                         >
-                            <option value="planned">Planned</option>
                             <option value="booked">Booked</option>
                             <option value="confirmed">Confirmed</option>
                             <option value="cancelled">Cancelled</option>
@@ -625,14 +635,6 @@ function EditableFlightCard({
                 />
             </div>
 
-            <details className="mt-4 rounded-[1rem] border border-white/10 bg-black/30 p-3">
-                <summary className="cursor-pointer text-xs font-black uppercase tracking-[0.16em] text-slate-300">
-                    Technical details
-                </summary>
-                <pre className="mt-3 max-h-72 overflow-auto text-xs font-semibold leading-5 text-slate-200">
-                    {stringifyJson(item.extracted_data)}
-                </pre>
-            </details>
         </article>
     );
 }
@@ -797,12 +799,252 @@ function getReviewedFlightField(
     return String(formData.get(getFieldName(itemId, field)) || "").trim();
 }
 
+function getReviewedFlightLegField(
+    formData: FormData,
+    itemId: string,
+    field: string
+) {
+    return String(formData.get(getLegFieldName(itemId, field)) || "").trim();
+}
+
 function normalizeTransportationStatus(status: string) {
-    return ["planned", "booked", "confirmed", "cancelled", "completed"].includes(
+    if (status === "planned") return "booked";
+
+    return ["booked", "confirmed", "cancelled", "completed"].includes(
         status
     )
         ? status
-        : "planned";
+        : "booked";
+}
+
+function getUniqueFormStrings(
+    formData: FormData,
+    name: string,
+    maxLength = 120
+) {
+    return Array.from(
+        new Set(
+            formData
+                .getAll(name)
+                .map((value) => String(value).trim().slice(0, maxLength))
+                .filter(Boolean)
+        )
+    );
+}
+
+function getImportTravelerSelection(formData: FormData): ImportTravelerSelection {
+    return {
+        userIds: getUniqueFormStrings(formData, "traveler_user_ids", 64),
+        familyMemberIds: getUniqueFormStrings(
+            formData,
+            "traveler_family_member_ids",
+            64
+        ),
+        guestNames: getUniqueFormStrings(formData, "traveler_guest_names"),
+    };
+}
+
+async function validateImportTravelerSelection({
+    supabase,
+    userId,
+    tripId,
+    selection,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    userId: string;
+    tripId: string;
+    selection: ImportTravelerSelection;
+}) {
+    const selectedCount =
+        selection.userIds.length +
+        selection.familyMemberIds.length +
+        selection.guestNames.length;
+    if (selectedCount === 0 || selectedCount > 50) {
+        throw new Error("Select at least one traveler before adding this import.");
+    }
+
+    const usersToValidate = Array.from(new Set([...selection.userIds, userId]));
+    const [tripResult, memberResult, tripFamilyResult, familyResult] =
+        await Promise.all([
+            supabase
+                .from("trips")
+                .select("user_id")
+                .eq("id", tripId)
+                .maybeSingle(),
+            supabase
+                .from("trip_members")
+                .select("user_id")
+                .eq("trip_id", tripId)
+                .eq("status", "active")
+                .is("left_at", null)
+                .in("user_id", usersToValidate),
+            selection.familyMemberIds.length
+                ? supabase
+                      .from("trip_family_members")
+                      .select("family_member_id")
+                      .eq("trip_id", tripId)
+                      .eq("status", "going")
+                      .in("family_member_id", selection.familyMemberIds)
+                : Promise.resolve({ data: [], error: null }),
+            selection.familyMemberIds.length
+                ? supabase
+                      .from("user_family_members")
+                      .select("id")
+                      .eq("user_id", userId)
+                      .in("id", selection.familyMemberIds)
+                : Promise.resolve({ data: [], error: null }),
+        ]);
+
+    const validUserIds = new Set(
+        (memberResult.data || []).map((member) => member.user_id)
+    );
+    if (tripResult.data?.user_id) validUserIds.add(tripResult.data.user_id);
+    const userCanEditTrip =
+        !tripResult.error &&
+        Boolean(tripResult.data) &&
+        validUserIds.has(userId);
+    const selectedUsersAreValid =
+        !memberResult.error &&
+        selection.userIds.every((selectedUserId) =>
+            validUserIds.has(selectedUserId)
+        );
+    const selectedFamilyAreValid =
+        !tripFamilyResult.error &&
+        !familyResult.error &&
+        (tripFamilyResult.data || []).length === selection.familyMemberIds.length &&
+        (familyResult.data || []).length === selection.familyMemberIds.length;
+
+    if (!userCanEditTrip || !selectedUsersAreValid || !selectedFamilyAreValid) {
+        throw new Error(
+            "One or more selected travelers are not available for this trip. Review the traveler selection and try again."
+        );
+    }
+}
+
+async function saveImportedFlightTravelers({
+    userId,
+    tripId,
+    transportationItemIds,
+    selection,
+}: {
+    userId: string;
+    tripId: string;
+    transportationItemIds: string[];
+    selection: ImportTravelerSelection;
+}) {
+    const itemIds = Array.from(new Set(transportationItemIds.filter(Boolean)));
+    if (itemIds.length === 0) {
+        throw new Error("VAIVIA could not confirm the imported flights.");
+    }
+
+    // The import mutation has already verified ownership and trip access. Use the
+    // server-only client here so an exact replacement cannot be weakened by an
+    // older row's creator-scoped delete policy.
+    const serviceSupabase = createServiceRoleClient();
+    const { error: travelerDeleteError } = await serviceSupabase
+        .from("transportation_item_travelers")
+        .delete()
+        .eq("trip_id", tripId)
+        .in("transportation_item_id", itemIds);
+
+    if (travelerDeleteError) {
+        throw new Error("VAIVIA could not save who this import is for.");
+    }
+
+    const travelerRows: Array<{
+        transportation_item_id: string;
+        trip_id: string;
+        created_by: string;
+        user_id?: string;
+        family_member_id?: string;
+        guest_name?: string;
+    }> = itemIds.flatMap((transportationItemId) => [
+        ...selection.userIds.map((selectedUserId) => ({
+            transportation_item_id: transportationItemId,
+            trip_id: tripId,
+            user_id: selectedUserId,
+            created_by: userId,
+        })),
+        ...selection.familyMemberIds.map((familyMemberId) => ({
+            transportation_item_id: transportationItemId,
+            trip_id: tripId,
+            family_member_id: familyMemberId,
+            created_by: userId,
+        })),
+        ...selection.guestNames.map((guestName) => ({
+            transportation_item_id: transportationItemId,
+            trip_id: tripId,
+            guest_name: guestName,
+            created_by: userId,
+        })),
+    ]);
+    const { error: travelerInsertError } = await serviceSupabase
+        .from("transportation_item_travelers")
+        .insert(travelerRows);
+    if (travelerInsertError) {
+        console.error("travel_email_import_traveler_insert_failed", {
+            importTravelerCount: travelerRows.length,
+            code: travelerInsertError.code,
+        });
+        throw new Error("VAIVIA could not save who this import is for.");
+    }
+
+    const { error: participantDeleteError } = await serviceSupabase
+        .from("trip_item_participants")
+        .delete()
+        .eq("trip_id", tripId)
+        .eq("item_type", "transportation")
+        .in("item_id", itemIds);
+    if (participantDeleteError) {
+        throw new Error("VAIVIA could not save who this import is for.");
+    }
+
+    const participantRows = itemIds.flatMap((itemId) => [
+        ...selection.userIds.map((selectedUserId) => ({
+            trip_id: tripId,
+            item_type: "transportation",
+            item_id: itemId,
+            participant_kind: "user",
+            user_id: selectedUserId,
+            created_by: userId,
+        })),
+        ...selection.familyMemberIds.map((familyMemberId) => ({
+            trip_id: tripId,
+            item_type: "transportation",
+            item_id: itemId,
+            participant_kind: "family_member",
+            family_member_id: familyMemberId,
+            created_by: userId,
+        })),
+        ...selection.guestNames.map((guestName) => ({
+            trip_id: tripId,
+            item_type: "transportation",
+            item_id: itemId,
+            participant_kind: "guest",
+            guest_name: guestName,
+            created_by: userId,
+        })),
+    ]);
+    const { error: participantInsertError } = await serviceSupabase
+        .from("trip_item_participants")
+        .insert(participantRows);
+    if (participantInsertError) {
+        throw new Error("VAIVIA could not save who this import is for.");
+    }
+
+    const isJustCurrentUser =
+        selection.userIds.length === 1 &&
+        selection.userIds[0] === userId &&
+        selection.familyMemberIds.length === 0 &&
+        selection.guestNames.length === 0;
+    const { error: audienceError } = await serviceSupabase
+        .from("transportation_items")
+        .update({ audience_mode: isJustCurrentUser ? "just_me" : "custom" })
+        .eq("trip_id", tripId)
+        .in("id", itemIds);
+    if (audienceError) {
+        throw new Error("VAIVIA could not save who this import is for.");
+    }
 }
 
 function parseMoneyValue(value?: string | null) {
@@ -810,6 +1052,146 @@ function parseMoneyValue(value?: string | null) {
     if (!normalized) return null;
     const amount = Number(normalized);
     return Number.isFinite(amount) ? amount : null;
+}
+
+async function prepareExistingImportedFlightMatches({
+    supabase,
+    tripId,
+    submittedItems,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    tripId: string;
+    submittedItems: SubmittedImportFlight[];
+}) {
+    const includedItems = submittedItems.filter(
+        (item) => item.include && item.match_action !== "separate"
+    );
+    if (includedItems.length === 0) return;
+
+    const { data, error } = await supabase
+        .from("transportation_items")
+        .select(
+            "id,trip_id,title,status,transport_number,departure_location,arrival_location,departure_date,departure_time,arrival_date,arrival_time,notes,provider_name,provider_code,reservation_code,baggage_info,seat_number,cabin_class,departure_terminal,arrival_terminal,cost,currency,departure_timezone,arrival_timezone,departure_formatted_address,departure_google_place_id,departure_lat,departure_lng,arrival_formatted_address,arrival_google_place_id,arrival_lat,arrival_lng"
+        )
+        .eq("trip_id", tripId)
+        .eq("transport_type", "flight")
+        .limit(500);
+
+    if (error) {
+        throw new Error("VAIVIA could not check this trip for matching flights.");
+    }
+
+    const existingFlights = (data || []) as ExistingTransportationFlight[];
+    for (const item of includedItems) {
+        const existingFlight = findImportedFlightMatch(
+            existingFlights,
+            {
+                flightNumber: item.reviewed_data.flight_number,
+                departureDate: item.reviewed_data.departure_date,
+                departureTime: item.reviewed_data.departure_time,
+            }
+        );
+        if (!existingFlight) continue;
+
+        const { error: updateError } = await supabase
+            .from("transportation_items")
+            .update(getImportedFlightMergePatch(item.reviewed_data, existingFlight))
+            .eq("id", existingFlight.id)
+            .eq("trip_id", tripId);
+
+        if (updateError) {
+            throw new Error("VAIVIA could not link this import to the matching flight.");
+        }
+
+        item.reviewed_data.departure_location =
+            existingFlight.departure_location ||
+            item.reviewed_data.departure_location;
+        item.reviewed_data.arrival_location =
+            existingFlight.arrival_location || item.reviewed_data.arrival_location;
+        item.reviewed_data.flight_number =
+            normalizeImportedFlightNumber(
+                existingFlight.transport_number ||
+                    getImportedFlightFingerprint(existingFlight).split("|")[0]
+            ) || item.reviewed_data.flight_number;
+        item.reviewed_data.departure_date =
+            existingFlight.departure_date || item.reviewed_data.departure_date;
+        item.reviewed_data.departure_time =
+            existingFlight.departure_time || item.reviewed_data.departure_time;
+    }
+}
+
+async function saveImportedFlightPlaceMetadata({
+    supabase,
+    importId,
+    tripId,
+    submittedItems,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    importId: string;
+    tripId: string;
+    submittedItems: SubmittedImportFlight[];
+}) {
+    const itemIds = submittedItems.map((item) => item.item_id);
+    const { data: importItems, error: importItemsError } = await supabase
+        .from("travel_email_import_items")
+        .select("id,imported_record_id")
+        .eq("import_id", importId)
+        .in("id", itemIds);
+
+    if (importItemsError) {
+        if (isTravelImportReviewSchemaMissingError(importItemsError)) {
+            console.warn("travel_email_import_airport_metadata_tracking_unavailable", {
+                importId,
+                code: importItemsError.code,
+            });
+            return;
+        }
+        throw new Error("VAIVIA could not finish saving the imported airports.");
+    }
+
+    const records = (importItems || []).filter(
+        (item): item is { id: string; imported_record_id: string } =>
+            Boolean(item.imported_record_id)
+    );
+    if (records.length === 0) return;
+
+    const recordIds = records.map((item) => item.imported_record_id);
+    const { data: transportationRows, error: transportationError } = await supabase
+        .from("transportation_items")
+        .select(
+            "id,trip_id,title,status,transport_number,departure_location,arrival_location,departure_date,departure_time,arrival_date,arrival_time,notes,provider_name,provider_code,reservation_code,baggage_info,seat_number,cabin_class,departure_terminal,arrival_terminal,cost,currency,departure_timezone,arrival_timezone,departure_formatted_address,departure_google_place_id,departure_lat,departure_lng,arrival_formatted_address,arrival_google_place_id,arrival_lat,arrival_lng"
+        )
+        .eq("trip_id", tripId)
+        .in("id", recordIds);
+
+    if (transportationError) {
+        throw new Error("VAIVIA could not finish saving the imported airports.");
+    }
+
+    const submittedById = new Map(
+        submittedItems.map((item) => [item.item_id, item.reviewed_data])
+    );
+    const transportationById = new Map(
+        ((transportationRows || []) as ExistingTransportationFlight[]).map((item) => [
+            item.id,
+            item,
+        ])
+    );
+
+    for (const importItem of records) {
+        const reviewedData = submittedById.get(importItem.id);
+        const transportation = transportationById.get(importItem.imported_record_id);
+        if (!reviewedData || !transportation) continue;
+
+        const { error } = await supabase
+            .from("transportation_items")
+            .update(getImportedFlightMergePatch(reviewedData, transportation))
+            .eq("id", transportation.id)
+            .eq("trip_id", tripId);
+        if (error) {
+            throw new Error("VAIVIA could not finish saving the imported airports.");
+        }
+    }
 }
 
 async function resolveImportTripLegIdForDate({
@@ -991,11 +1373,7 @@ async function addImportedFlightsUsingTransportationFallback({
     userId: string;
     importId: string;
     tripId: string;
-    submittedItems: Array<{
-        item_id: string;
-        include: boolean;
-        reviewed_data: Record<string, string>;
-    }>;
+    submittedItems: SubmittedImportFlight[];
 }): Promise<TravelEmailImportAddResult> {
     const { data: importRow, error: importError } = await supabase
         .from("travel_email_imports")
@@ -1070,9 +1448,9 @@ async function addImportedFlightsUsingTransportationFallback({
 
     for (const item of includedItems) {
         const data = item.reviewed_data;
-        const flightNumber = normalizeFlightFingerprintPart(data.flight_number);
+        const flightNumber = normalizeImportedFlightNumber(data.flight_number);
         const airlineCode =
-            normalizeFlightFingerprintPart(data.airline_code) ||
+            normalizeImportedFlightNumber(data.airline_code) ||
             flightNumber.match(/^([A-Z0-9]{2})\d/)?.[1] ||
             "";
         const departureLocation = data.departure_location?.trim();
@@ -1084,15 +1462,7 @@ async function addImportedFlightsUsingTransportationFallback({
         const isPrivate = data.is_private === "on" || data.is_private === "true";
         const cost = parseMoneyValue(data.cost);
         const currency = data.currency?.trim().toUpperCase() || "CAD";
-        const notes = [
-            data.visa_requirements ? `VISA requirements:\n${data.visa_requirements}` : "",
-            data.luggage_requirements
-                ? `Luggage requirements:\n${data.luggage_requirements}`
-                : "",
-            data.notes || "",
-        ]
-            .filter(Boolean)
-            .join("\n\n");
+        const notes = stripStructuredFlightNotes(data.notes);
 
         if (
             !flightNumber ||
@@ -1124,16 +1494,14 @@ async function addImportedFlightsUsingTransportationFallback({
             throw new Error("One or more flight details need attention.");
         }
 
-        const { data: existingFlight, error: existingError } = await supabase
+        const { data: existingFlightCandidates, error: existingError } = await supabase
             .from("transportation_items")
-            .select("id")
+            .select(
+                "id,trip_id,title,status,transport_number,departure_location,arrival_location,departure_date,departure_time,arrival_date,arrival_time,notes,provider_name,provider_code,reservation_code,baggage_info,seat_number,cabin_class,departure_terminal,arrival_terminal,cost,currency,departure_timezone,arrival_timezone,departure_formatted_address,departure_google_place_id,departure_lat,departure_lng,arrival_formatted_address,arrival_google_place_id,arrival_lat,arrival_lng"
+            )
             .eq("trip_id", tripId)
             .eq("transport_type", "flight")
-            .eq("transport_number", flightNumber)
-            .eq("departure_location", departureLocation)
-            .eq("departure_date", departureDate)
-            .eq("departure_time", departureTime)
-            .maybeSingle();
+            .limit(500);
 
         if (existingError && existingError.code !== "PGRST116") {
             console.error("travel_email_import_fallback_duplicate_lookup_failed", {
@@ -1147,7 +1515,37 @@ async function addImportedFlightsUsingTransportationFallback({
             );
         }
 
+        const existingFlight =
+            item.match_action === "separate"
+                ? null
+                : findImportedFlightMatch(
+                      (existingFlightCandidates || []) as ExistingTransportationFlight[],
+                      {
+                          flightNumber,
+                          departureDate,
+                          departureTime,
+                      }
+                  );
+
         if (existingFlight?.id) {
+            const { error: mergeError } = await supabase
+                .from("transportation_items")
+                .update(getImportedFlightMergePatch(data, existingFlight))
+                .eq("id", existingFlight.id)
+                .eq("trip_id", tripId);
+
+            if (mergeError) {
+                console.error("travel_email_import_fallback_merge_failed", {
+                    importId,
+                    itemId: item.item_id,
+                    userId,
+                    code: mergeError.code,
+                });
+                throw new Error(
+                    "We couldn’t merge this confirmation with the existing flight. Nothing was changed."
+                );
+            }
+
             createdIds.push(existingFlight.id);
             const existingImportItemUpdate = {
                 reviewed_data: data as Json,
@@ -1199,6 +1597,16 @@ async function addImportedFlightsUsingTransportationFallback({
                 arrival_time: arrivalTime,
                 departure_location: departureLocation,
                 arrival_location: arrivalLocation,
+                departure_formatted_address:
+                    data.departure_formatted_address || null,
+                departure_google_place_id:
+                    data.departure_google_place_id || null,
+                departure_lat: parseImportedCoordinate(data.departure_lat, -90, 90),
+                departure_lng: parseImportedCoordinate(data.departure_lng, -180, 180),
+                arrival_formatted_address: data.arrival_formatted_address || null,
+                arrival_google_place_id: data.arrival_google_place_id || null,
+                arrival_lat: parseImportedCoordinate(data.arrival_lat, -90, 90),
+                arrival_lng: parseImportedCoordinate(data.arrival_lng, -180, 180),
                 departure_timezone: data.departure_timezone || null,
                 arrival_timezone: data.arrival_timezone || null,
                 provider_name: data.airline_name || null,
@@ -1366,6 +1774,7 @@ async function addImportedFlightsToTrip(formData: FormData) {
 
     const importId = String(formData.get("import_id") || "").trim();
     const tripId = String(formData.get("trip_id") || "").trim();
+    const travelerSelection = getImportTravelerSelection(formData);
     const itemIds = formData
         .getAll("item_id")
         .map((value) => String(value).trim())
@@ -1379,10 +1788,21 @@ async function addImportedFlightsToTrip(formData: FormData) {
         throw new Error("One or more flight details need attention.");
     }
 
-    const submittedItems = itemIds.map((itemId) => ({
-        item_id: itemId,
-        include: formData.get(`include_${itemId}`) === "on",
-        reviewed_data: {
+    const submittedItems: SubmittedImportFlight[] = itemIds.map((itemId) => {
+        const requestedMatchAction = String(
+            formData.get(`match_action_${itemId}`) || "create"
+        );
+        const matchAction: SubmittedImportFlight["match_action"] =
+            requestedMatchAction === "merge" || requestedMatchAction === "separate"
+                ? requestedMatchAction
+                : "create";
+
+        return {
+            item_id: itemId,
+            include: formData.get(`include_${itemId}`) === "on",
+            match_action: matchAction,
+            reviewed_data: {
+                import_match_action: matchAction,
             is_private: getReviewedFlightField(formData, itemId, "isPrivate"),
             airline_name: getReviewedFlightField(formData, itemId, "airlineName"),
             airline_code: getReviewedFlightField(formData, itemId, "airlineCode"),
@@ -1392,10 +1812,50 @@ async function addImportedFlightsToTrip(formData: FormData) {
                 itemId,
                 "departureLocation"
             ),
+            departure_formatted_address: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "departure_formatted_address"
+            ),
+            departure_google_place_id: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "departure_google_place_id"
+            ),
+            departure_lat: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "departure_lat"
+            ),
+            departure_lng: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "departure_lng"
+            ),
             arrival_location: getReviewedFlightField(
                 formData,
                 itemId,
                 "arrivalLocation"
+            ),
+            arrival_formatted_address: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "arrival_formatted_address"
+            ),
+            arrival_google_place_id: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "arrival_google_place_id"
+            ),
+            arrival_lat: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "arrival_lat"
+            ),
+            arrival_lng: getReviewedFlightLegField(
+                formData,
+                itemId,
+                "arrival_lng"
             ),
             departure_date: getReviewedFlightField(
                 formData,
@@ -1449,9 +1909,12 @@ async function addImportedFlightsToTrip(formData: FormData) {
                 "luggageRequirements"
             ),
             notes: getReviewedFlightField(formData, itemId, "notes"),
-            status: getReviewedFlightField(formData, itemId, "status"),
-        },
-    }));
+            status: normalizeTransportationStatus(
+                getReviewedFlightField(formData, itemId, "status")
+            ),
+            },
+        };
+    });
 
     if (!submittedItems.some((item) => item.include)) {
         throw new Error("One or more flight details need attention.");
@@ -1464,41 +1927,85 @@ async function addImportedFlightsToTrip(formData: FormData) {
 
     if (!user) redirect("/auth/login");
 
+    await validateImportTravelerSelection({
+        supabase,
+        userId: user.id,
+        tripId,
+        selection: travelerSelection,
+    });
     let importResult: TravelEmailImportAddResult | null = null;
-    const { data, error } = await (supabase as unknown as ImportFlightsRpcClient).rpc(
-        "import_travel_email_flights",
-        {
+    const requiresSeparateInsert = submittedItems.some(
+        (item) => item.include && item.match_action === "separate"
+    );
+
+    if (requiresSeparateInsert) {
+        importResult = await addImportedFlightsUsingTransportationFallback({
+            supabase,
+            userId: user.id,
+            importId,
+            tripId,
+            submittedItems,
+        });
+    } else {
+        await prepareExistingImportedFlightMatches({
+            supabase,
+            tripId,
+            submittedItems,
+        });
+
+        const { data, error } = await (
+            supabase as unknown as ImportFlightsRpcClient
+        ).rpc("import_travel_email_flights", {
             p_import_id: importId,
             p_trip_id: tripId,
             p_items: submittedItems as Json,
-        }
-    );
-
-    if (error) {
-        if (isImportFlightRpcUnavailableError(error)) {
-            console.warn("travel_email_import_rpc_unavailable_using_transport_fallback", {
-                importId,
-                userId: user.id,
-                code: error.code,
-            });
-            importResult = await addImportedFlightsUsingTransportationFallback({
-                supabase,
-                userId: user.id,
-                importId,
-                tripId,
-                submittedItems,
-            });
-        } else {
-        console.error("travel_email_import_add_to_trip_failed", {
-            importId,
-            userId: user.id,
-            code: error.code,
         });
-        throw new Error("We couldn’t add the flights. Nothing was changed. Please try again.");
+
+        if (error) {
+            if (isImportFlightRpcUnavailableError(error)) {
+                console.warn(
+                    "travel_email_import_rpc_unavailable_using_transport_fallback",
+                    {
+                        importId,
+                        userId: user.id,
+                        code: error.code,
+                    }
+                );
+                importResult = await addImportedFlightsUsingTransportationFallback({
+                    supabase,
+                    userId: user.id,
+                    importId,
+                    tripId,
+                    submittedItems,
+                });
+            } else {
+                console.error("travel_email_import_add_to_trip_failed", {
+                    importId,
+                    userId: user.id,
+                    code: error.code,
+                });
+                throw new Error(
+                    "We couldn’t add the flights. Nothing was changed. Please try again."
+                );
+            }
+        } else {
+            importResult = data;
         }
-    } else {
-        importResult = data;
     }
+
+    await saveImportedFlightTravelers({
+        userId: user.id,
+        tripId,
+        transportationItemIds: importResult?.transportationItemIds || [],
+        selection: travelerSelection,
+    });
+
+    await saveImportedFlightPlaceMetadata({
+        supabase,
+        importId,
+        tripId,
+        submittedItems,
+    });
 
     await markTravelEmailImportNotificationsRead({
         supabase,
@@ -1515,6 +2022,144 @@ async function addImportedFlightsToTrip(formData: FormData) {
         revalidatePath(`/trips/${importResult.tripSlug}`);
     }
     redirect(`/trips/${tripRouteSegment}?tab=journey`);
+}
+
+async function loadImportTravelerTrips({
+    supabase,
+    trips,
+    currentUserId,
+    recommendedTripId,
+}: {
+    supabase: Awaited<ReturnType<typeof createClient>>;
+    trips: ImportTripRow[];
+    currentUserId: string;
+    recommendedTripId: string | null;
+}): Promise<ImportTravelerTrip[]> {
+    const tripIds = trips.map((trip) => trip.id);
+    if (tripIds.length === 0) return [];
+
+    const [memberResult, tripFamilyResult, familyResult] = await Promise.all([
+        supabase
+            .from("trip_members")
+            .select("trip_id,user_id")
+            .in("trip_id", tripIds)
+            .eq("status", "active")
+            .is("left_at", null),
+        supabase
+            .from("trip_family_members")
+            .select("trip_id,family_member_id")
+            .in("trip_id", tripIds)
+            .eq("status", "going"),
+        supabase
+            .from("user_family_members")
+            .select("id,name,relationship,avatar_url")
+            .eq("user_id", currentUserId),
+    ]);
+
+    if (memberResult.error || tripFamilyResult.error || familyResult.error) {
+        console.warn("travel_email_import_traveler_options_unavailable", {
+            memberCode: memberResult.error?.code,
+            tripFamilyCode: tripFamilyResult.error?.code,
+            familyCode: familyResult.error?.code,
+        });
+    }
+
+    const memberRows = (memberResult.data || []) as Array<{
+        trip_id: string;
+        user_id: string;
+    }>;
+    const memberUserIds = Array.from(
+        new Set([
+            ...trips.map((trip) => trip.user_id),
+            ...memberRows.map((member) => member.user_id),
+        ])
+    );
+    const { data: profiles, error: profileError } = memberUserIds.length
+        ? await supabase
+              .from("connected_public_user_profiles")
+              .select("id,first_name,last_name,username,avatar_url")
+              .in("id", memberUserIds)
+        : { data: [], error: null };
+
+    if (profileError) {
+        console.warn("travel_email_import_traveler_profiles_unavailable", {
+            code: profileError.code,
+        });
+    }
+
+    const profilesById = new Map(
+        ((profiles || []) as Array<{
+            id: string;
+            first_name?: string | null;
+            last_name?: string | null;
+            username?: string | null;
+            avatar_url?: string | null;
+        }>).map((profile) => [profile.id, profile])
+    );
+    const familyById = new Map(
+        ((familyResult.data || []) as Array<{
+            id: string;
+            name: string;
+            relationship?: string | null;
+            avatar_url?: string | null;
+        }>).map((familyMember) => [familyMember.id, familyMember])
+    );
+    const tripFamilyRows = (tripFamilyResult.data || []) as Array<{
+        trip_id: string;
+        family_member_id: string;
+    }>;
+
+    return trips.map((trip) => {
+        const userIds = Array.from(
+            new Set([
+                trip.user_id,
+                ...memberRows
+                    .filter((member) => member.trip_id === trip.id)
+                    .map((member) => member.user_id),
+            ])
+        );
+        const users = userIds.map((memberUserId) => {
+            const profile = profilesById.get(memberUserId);
+            const profileName = [profile?.first_name, profile?.last_name]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+            return {
+                type: "user" as const,
+                id: memberUserId,
+                name:
+                    profileName ||
+                    profile?.username ||
+                    (memberUserId === currentUserId ? "You" : "Trip member"),
+                secondaryLabel: profile?.username
+                    ? `@${profile.username}`
+                    : memberUserId === currentUserId
+                      ? "You"
+                      : null,
+                avatarUrl: profile?.avatar_url || null,
+            };
+        });
+        const familyMembers = tripFamilyRows
+            .filter((row) => row.trip_id === trip.id)
+            .map((row) => familyById.get(row.family_member_id))
+            .filter((familyMember) => Boolean(familyMember))
+            .map((familyMember) => ({
+                type: "family" as const,
+                id: familyMember!.id,
+                name: familyMember!.name,
+                secondaryLabel: familyMember!.relationship || "Family member",
+                avatarUrl: familyMember!.avatar_url || null,
+            }));
+
+        return {
+            id: trip.id,
+            title: trip.title,
+            startDate: trip.start_date,
+            endDate: trip.end_date,
+            isRecommended: trip.id === recommendedTripId,
+            travelers: [...users, ...familyMembers],
+        };
+    });
 }
 
 export default async function ImportReviewPage({ params }: ImportPageProps) {
@@ -1541,7 +2186,7 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
         loadTravelEmailImportItemsForReview(supabase, importId),
         supabase
             .from("trips")
-            .select("id,slug,title,destination,start_date,end_date")
+            .select("id,slug,title,destination,start_date,end_date,user_id")
             .order("start_date", { ascending: false }),
     ]);
 
@@ -1573,12 +2218,32 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
     const reviewImport = importRow as TravelEmailImportRow;
     const reviewAttachments = (attachments || []) as TravelEmailImportAttachmentRow[];
     const reviewItems = (items || []) as TravelEmailImportItemRow[];
-    const editableTrips = (trips || []) as ImportTripOption[];
-    const editableFlights = reviewItems
-        .filter((item) => item.item_type === "flight")
-        .map((item) =>
-            getEditableImportedFlight(item.id, item.extracted_data, item.reviewed_data)
-        );
+    const editableTrips = (trips || []) as ImportTripRow[];
+    const baseEditableFlights = applyConfirmationPriceToFlights(
+        reviewItems
+            .filter((item) => item.item_type === "flight")
+            .map((item) =>
+                getEditableImportedFlight(
+                    item.id,
+                    item.extracted_data,
+                    item.reviewed_data
+                )
+            ),
+        reviewImport.extracted_data
+    );
+    const resolvedTimezones = await resolveImportedFlightTimezones(
+        supabase,
+        baseEditableFlights
+    );
+    const editableFlights = baseEditableFlights.map((flight, index) => ({
+        ...flight,
+        departureTimezone:
+            flight.departureTimezone ||
+            resolvedTimezones[index]?.departureTimezone ||
+            "",
+        arrivalTimezone:
+            flight.arrivalTimezone || resolvedTimezones[index]?.arrivalTimezone || "",
+    }));
     const tripMatch = matchImportToTrips(editableFlights, editableTrips);
     const selectedTripId =
         reviewImport.matched_trip_id ||
@@ -1586,6 +2251,19 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
         editableTrips[0]?.id ||
         "";
     const selectedTrip = editableTrips.find((trip) => trip.id === selectedTripId);
+    const inferredTravelerNames = Array.from(
+        new Set(
+            reviewItems
+                .filter((item) => item.item_type === "flight")
+                .flatMap((item) => getImportedTravelerNames(item.extracted_data))
+        )
+    );
+    const travelerTrips = await loadImportTravelerTrips({
+        supabase,
+        trips: editableTrips,
+        currentUserId: user.id,
+        recommendedTripId: tripMatch.recommendedTripId,
+    });
     const retryAvailable = canRetryImport(
         reviewImport.status,
         reviewImport.processed_at
@@ -1609,21 +2287,38 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
             record,
         ])
     );
-    const { data: existingFlights } = selectedTripId
+    const editableTripIds = editableTrips.map((trip) => trip.id);
+    const { data: existingFlights } = editableTripIds.length
         ? await supabase
               .from("transportation_items")
               .select(
-                  "id,title,transport_number,departure_location,departure_date,departure_time"
+                  "id,trip_id,title,status,transport_number,departure_location,arrival_location,departure_date,departure_time,arrival_date,arrival_time,notes,provider_name,provider_code,reservation_code,baggage_info,seat_number,cabin_class,departure_terminal,arrival_terminal,cost,currency,departure_timezone,arrival_timezone,departure_formatted_address,departure_google_place_id,departure_lat,departure_lng,arrival_formatted_address,arrival_google_place_id,arrival_lat,arrival_lng"
               )
-              .eq("trip_id", selectedTripId)
+              .in("trip_id", editableTripIds)
               .eq("transport_type", "flight")
         : { data: [] };
-    const existingFlightsByFingerprint = new Map(
-        ((existingFlights || []) as ExistingTransportationFlight[]).map((flight) => [
-            getFlightFingerprint(flight),
+    const existingFlightsByTrip = new Map<string, ExistingTransportationFlight[]>();
+    for (const flight of (existingFlights || []) as ExistingTransportationFlight[]) {
+        existingFlightsByTrip.set(flight.trip_id, [
+            ...(existingFlightsByTrip.get(flight.trip_id) || []),
             flight,
+        ]);
+    }
+    const tripHrefsById = Object.fromEntries(
+        editableTrips.map((trip) => [
+            trip.id,
+            `/trips/${getTripRouteSegment(trip)}?tab=journey`,
         ])
     );
+
+    function getFlightRecordsByTrip() {
+        return Object.fromEntries(
+            editableTripIds.map((tripId) => [
+                tripId,
+                existingFlightsByTrip.get(tripId) || [],
+            ])
+        );
+    }
 
     return (
         <main className="min-h-screen bg-[#0c0115] px-4 pb-10 pt-[calc(8rem+var(--safe-area-top))] text-white md:py-10 md:pl-28">
@@ -1851,59 +2546,33 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                         name="import_id"
                                         value={reviewImport.id}
                                     />
-                                    <section className="rounded-[1.5rem] border border-lime-300/20 bg-lime-300/10 p-4">
-                                        <p className="text-sm font-black text-lime-50">
-                                            These flights have not been added to a trip yet.
-                                        </p>
-                                        <label className="mt-4 block">
-                                            <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                                {tripMatch.confidence === "recommended"
+                                    {editableTrips.length ? (
+                                        <ImportTripTravelerSelector
+                                            trips={travelerTrips}
+                                            defaultTripId={selectedTripId}
+                                            inferredTravelerNames={inferredTravelerNames}
+                                            currentUserId={user.id}
+                                            confidenceLabel={
+                                                tripMatch.confidence === "recommended"
                                                     ? "Recommended trip"
                                                     : tripMatch.confidence === "possible"
                                                       ? "Possible trip"
-                                                      : "Select a trip"}
-                                            </span>
-                                            {editableTrips.length ? (
-                                                <select
-                                                    name="trip_id"
-                                                    defaultValue={selectedTripId}
-                                                    className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 py-3 text-sm font-black text-white outline-none focus:border-lime-300/50"
-                                                >
-                                                    {editableTrips.map((trip) => (
-                                                        <option
-                                                            key={trip.id}
-                                                            value={trip.id}
-                                                        >
-                                                            {trip.title}
-                                                            {trip.id ===
-                                                            tripMatch.recommendedTripId
-                                                                ? " · Recommended"
-                                                                : ""}
-                                                            {trip.start_date
-                                                                ? ` · ${trip.start_date}`
-                                                                : ""}
-                                                            {trip.end_date
-                                                                ? ` - ${trip.end_date}`
-                                                                : ""}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <div className="mt-2 rounded-2xl border border-white/10 bg-slate-950/70 p-4">
-                                                    <p className="text-sm font-bold text-white">
-                                                        Create a trip before adding this
-                                                        flight.
-                                                    </p>
-                                                    <Link
-                                                        href={`/trips/new?returnTo=/imports/${reviewImport.id}`}
-                                                        className="mt-3 inline-flex rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950"
-                                                    >
-                                                        Create trip
-                                                    </Link>
-                                                </div>
-                                            )}
-                                        </label>
-                                    </section>
+                                                      : "Select a trip"
+                                            }
+                                        />
+                                    ) : (
+                                        <section className="rounded-[1.5rem] border border-lime-300/20 bg-lime-300/10 p-4">
+                                            <p className="text-sm font-bold text-white">
+                                                Create a trip before adding this flight.
+                                            </p>
+                                            <Link
+                                                href={`/trips/new?returnTo=/imports/${reviewImport.id}`}
+                                                className="mt-3 inline-flex rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950"
+                                            >
+                                                Create trip
+                                            </Link>
+                                        </section>
+                                    )}
 
                                     {reviewItems.map((item) =>
                                         item.item_type === "flight" ? (
@@ -1921,20 +2590,9 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                                         item.reviewed_data
                                                     )
                                                 }
-                                                duplicateRecord={existingFlightsByFingerprint.get(
-                                                    getFlightFingerprint(
-                                                        editableFlights.find(
-                                                            (flight) =>
-                                                                flight.itemId === item.id
-                                                        ) ||
-                                                            getEditableImportedFlight(
-                                                                item.id,
-                                                                item.extracted_data,
-                                                                item.reviewed_data
-                                                            )
-                                                    )
-                                                )}
-                                                selectedTrip={selectedTrip}
+                                                flightRecordsByTrip={getFlightRecordsByTrip()}
+                                                defaultTripId={selectedTripId}
+                                                tripHrefsById={tripHrefsById}
                                             />
                                         ) : (
                                             <article
@@ -1970,15 +2628,7 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                                                 disabled={!editableTrips.length}
                                                 className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
                                             >
-                                                {selectedTrip
-                                                    ? `Add ${
-                                                          editableFlights.length
-                                                      } flight${
-                                                          editableFlights.length === 1
-                                                              ? ""
-                                                              : "s"
-                                                      } to ${selectedTrip.title}`
-                                                    : "Select a trip before continuing"}
+                                                Add to trip
                                             </button>
                                         </div>
                                     </div>
@@ -2088,26 +2738,6 @@ export default async function ImportReviewPage({ params }: ImportPageProps) {
                     </aside>
                 </section>
 
-                {reviewImport.extracted_data ? (
-                    <details className="rounded-[2rem] border border-white/10 bg-white/[0.04] p-5">
-                        <summary className="flex cursor-pointer items-center gap-3">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-lime-300/20 bg-slate-950 text-lime-200">
-                                <FileText className="h-4 w-4" aria-hidden="true" />
-                            </span>
-                            <span>
-                                <span className="block text-xs font-black uppercase tracking-[0.22em] text-lime-200/80">
-                                    Technical details
-                                </span>
-                                <span className="block text-xl font-black">
-                                    Import summary payload
-                                </span>
-                            </span>
-                        </summary>
-                        <pre className="mt-5 max-h-96 overflow-auto rounded-[1rem] border border-white/10 bg-black/40 p-4 text-xs font-semibold leading-5 text-slate-200">
-                            {stringifyJson(reviewImport.extracted_data)}
-                        </pre>
-                    </details>
-                ) : null}
             </div>
         </main>
     );

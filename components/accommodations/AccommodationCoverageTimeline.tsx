@@ -477,7 +477,7 @@ export default function AccommodationCoverageTimeline({
                     Stay coverage
                 </p>
                 <h2 className="mt-2 text-2xl font-black tracking-tight">
-                    Add trip dates to see the accommodation timeline
+                    Add trip dates to see the stay timeline
                 </h2>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
                     Once the trip has a start and return date, each traveler’s booked nights will appear here.
@@ -505,7 +505,7 @@ export default function AccommodationCoverageTimeline({
                             Who has a place to stay?
                         </h2>
                         <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-400">
-                            Each traveler’s required nights come from the trip legs they’re joining. Accommodation nights run from check-in up to, but not including, check-out.
+                            Each traveler’s required nights come from the trip legs they’re joining. Stay nights run from check-in up to, but not including, check-out.
                         </p>
                     </div>
                     <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-[0.08em]">
@@ -529,7 +529,7 @@ export default function AccommodationCoverageTimeline({
                 <div className="mx-5 mb-5 rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.04] p-7 text-center md:mx-7 md:mb-7">
                     <BedDouble className="mx-auto h-6 w-6 text-lime-200" aria-hidden="true" />
                     <p className="mt-3 text-sm font-bold text-slate-300">
-                        Add trip members to compare accommodation coverage.
+                        Add trip members to compare stay coverage.
                     </p>
                 </div>
             ) : (

@@ -48,6 +48,8 @@ export type TripAccommodation = {
     accommodation_type: AccommodationType;
     status: AccommodationStatus;
     website?: string | null;
+    booking_url?: string | null;
+    is_planning_option?: boolean;
     cost?: number | null;
     currency?: string | null;
     is_private: boolean;
@@ -57,6 +59,39 @@ export type TripAccommodation = {
     created_at?: string | null;
     updated_at?: string | null;
 };
+
+export function getAccommodationMapsUrl(
+    accommodation: Pick<
+        TripAccommodation,
+        | "hotel_name"
+        | "address"
+        | "city"
+        | "region"
+        | "country"
+        | "google_maps_url"
+        | "google_place_id"
+    >
+) {
+    if (accommodation.google_maps_url) return accommodation.google_maps_url;
+
+    const location =
+        accommodation.address ||
+        [accommodation.city, accommodation.region, accommodation.country]
+            .filter(Boolean)
+            .join(", ");
+    const query = location || accommodation.hotel_name;
+    if (!query && !accommodation.google_place_id) return "";
+
+    const params = new URLSearchParams({
+        api: "1",
+        query: query || accommodation.google_place_id || "",
+    });
+    if (accommodation.google_place_id) {
+        params.set("query_place_id", accommodation.google_place_id);
+    }
+
+    return `https://www.google.com/maps/search/?${params.toString()}`;
+}
 
 export type TripAccommodationFormPayload = Omit<
     TripAccommodation,
@@ -94,7 +129,7 @@ export function getAccommodationErrorMessage(message?: string | null) {
     const value = message?.toLowerCase() || "";
 
     if (value.includes("check_out") || value.includes("after check_in")) {
-        return "Check-out date must be after check-in date.";
+        return "Check-out date cannot be before check-in date.";
     }
     if (
         value.includes("free_cancellation") ||
@@ -106,13 +141,13 @@ export function getAccommodationErrorMessage(message?: string | null) {
         return "Check-in end time must be after check-in start time.";
     }
     if (value.includes("google_place_id")) {
-        return "Select a Google Maps result to validate this accommodation.";
+        return "Select a Google Maps result to validate this stay.";
     }
     if (value.includes("website")) {
         return "Website must be a valid URL.";
     }
     if (value.includes("row-level security") || value.includes("permission")) {
-        return "You do not have permission to edit this accommodation.";
+        return "You do not have permission to edit this stay.";
     }
 
     return message || "Unknown Supabase error";
@@ -171,6 +206,10 @@ export function buildAccommodationPayload(
         accommodation_type: accommodationType,
         status,
         website: normalizeWebsiteUrl(formData.get("website")),
+        booking_url: normalizeWebsiteUrl(formData.get("booking_url")),
+        is_planning_option:
+            formData.get("is_planning_option") === "true" ||
+            formData.get("is_planning_option") === "on",
         cost: costText ? Number(costText.replace(/,/g, "")) : null,
         currency: costText
             ? nullableString(formData.get("currency"))?.toUpperCase() || null
@@ -193,15 +232,15 @@ export function validateAccommodationPayload(
 ) {
     const errors: string[] = [];
 
-    if (!payload.hotel_name) errors.push("Accommodation name is required.");
+    if (!payload.hotel_name) errors.push("Stay name is required.");
     if (!payload.check_in_date) errors.push("Check-in date is required.");
     if (!payload.check_out_date) errors.push("Check-out date is required.");
     if (
         payload.check_in_date &&
         payload.check_out_date &&
-        payload.check_out_date <= payload.check_in_date
+        payload.check_out_date < payload.check_in_date
     ) {
-        errors.push("Check-out date must be after check-in date.");
+        errors.push("Check-out date cannot be before check-in date.");
     }
     if (
         payload.free_cancellation_ends_on &&
@@ -219,6 +258,12 @@ export function validateAccommodationPayload(
     }
     if (payload.website && !/^https?:\/\/\S+\.\S+/i.test(payload.website)) {
         errors.push("Website must be a valid URL.");
+    }
+    if (
+        payload.booking_url &&
+        !/^https?:\/\/\S+\.\S+/i.test(payload.booking_url)
+    ) {
+        errors.push("Booking link must be a valid URL.");
     }
     if (payload.cost !== null && payload.cost !== undefined) {
         if (!Number.isFinite(payload.cost) || payload.cost <= 0) {

@@ -28,12 +28,39 @@ const MINUTES = Array.from({ length: 60 }, (_, minute) =>
 );
 
 function sanitizeTimeInput(value: string) {
-  const digits = value.replace(/\D/g, "").slice(0, 4);
-  const hour = digits.slice(0, 2);
-  const minute = digits.slice(2, 4);
+  const colonIndex = value.indexOf(":");
 
-  if (digits.length <= 2) return hour;
-  return `${hour}:${minute}`;
+  if (colonIndex >= 0) {
+    const hourDigits = value
+      .slice(0, colonIndex)
+      .replace(/\D/g, "")
+      .slice(0, 2);
+    const minuteDigits = value
+      .slice(colonIndex + 1)
+      .replace(/\D/g, "")
+      .slice(0, 2);
+
+    if (!hourDigits) return minuteDigits;
+
+    return `${hourDigits.padStart(2, "0")}:${minuteDigits}`;
+  }
+
+  const digits = value.replace(/\D/g, "").slice(0, 4);
+  if (!digits) return "";
+
+  const firstDigit = Number(digits[0]);
+  if (firstDigit > 2) {
+    return `0${digits[0]}:${digits.slice(1, 3)}`;
+  }
+
+  if (digits.length === 1) return digits;
+
+  const hourCandidate = Number(digits.slice(0, 2));
+  if (hourCandidate <= 23) {
+    return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+  }
+
+  return `0${digits[0]}:${digits.slice(1, 3)}`;
 }
 
 function parseTime(value?: string | null) {
@@ -148,7 +175,9 @@ const TimeInput = React.forwardRef<HTMLInputElement, TimeInputProps>(
       if (!isControlled) {
         setInternalValue(nextValue);
       } else {
-        event.currentTarget.dispatchEvent(new Event("input", { bubbles: true }));
+        event.currentTarget.dispatchEvent(
+          new Event("input", { bubbles: true }),
+        );
       }
     }
 
@@ -253,7 +282,11 @@ const TimeInput = React.forwardRef<HTMLInputElement, TimeInputProps>(
                   className="h-11 w-full cursor-pointer rounded-xl border border-white/10 bg-white/[0.08] px-3 text-center text-base font-black text-white outline-none transition focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/20"
                 >
                   {MINUTES.map((minute) => (
-                    <option key={minute} value={minute} className="bg-[#0c0115]">
+                    <option
+                      key={minute}
+                      value={minute}
+                      className="bg-[#0c0115]"
+                    >
                       {minute}
                     </option>
                   ))}

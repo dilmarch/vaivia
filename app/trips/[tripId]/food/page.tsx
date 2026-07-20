@@ -320,9 +320,19 @@ async function updateFoodItem(formData: FormData) {
         throw new Error("Food item needs a name.");
     }
 
+    const { data: existingFoodItem } = await supabase
+        .from("trip_food_items")
+        .select("place_source")
+        .eq("trip_id", payload.trip_id)
+        .eq("id", foodItemId)
+        .maybeSingle();
+    const isAssistantPlace =
+        existingFoodItem?.place_source === "google_place_assistant";
+
     if (
         payload.item_type === "place" &&
-        (!payload.google_place_id || !payload.formatted_address)
+        (!payload.google_place_id ||
+            (!payload.formatted_address && !isAssistantPlace))
     ) {
         throw new Error("Select a Google Maps result to validate this place.");
     }
@@ -595,7 +605,7 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripPageHero
                 tripId={tripId}
-                pageLabel="Food"
+                pageLabel="Eat & Drink"
                 revalidatePathname={`/trips/${resolvedTrip.routeSegment}/food`}
             />
             <FoodPageClient

@@ -32,6 +32,7 @@ import {
     getUsernameValidationError,
     isUsernameConflictError,
     normalizeUsername,
+    RESERVED_USERNAMES,
 } from "@/lib/usernames";
 
 type SettingsPageProps = {
@@ -155,7 +156,11 @@ async function updateProfileDetails(formData: FormData) {
     if (usernameError) {
         redirect(
             `/settings?section=profile&message=${
-                username ? "username-invalid" : "username-required"
+                !username
+                    ? "username-required"
+                    : RESERVED_USERNAMES.has(username)
+                      ? "username-reserved"
+                      : "username-invalid"
             }`
         );
     }

@@ -91,7 +91,7 @@ describe("trip context privacy boundary", () => {
             "Never expose internal provider identifiers",
             "Never infer or claim that a place is queer-owned",
             "You are read-only",
-            "missing accommodation nights",
+            "missing stay nights",
             "transportation conflicts",
             "overloaded days",
             "possible budget issues",

@@ -4,11 +4,14 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import DashboardHero from "@/components/DashboardHero";
 import TripDashboardClient, {
+  type DashboardEvent,
   type DashboardPassportStamp,
   type DashboardProfileSummary,
   type DashboardTrip,
   type DashboardWishlistItem,
 } from "@/components/TripDashboardClient";
+import { createServiceRoleClient } from "@/lib/supabase/service";
+import { eventLocationLabel } from "@/lib/events/format";
 import DelayedVaiviaLoadingScreen from "@/components/DelayedVaiviaLoadingScreen";
 import {
   isCountdownUnit,
@@ -27,6 +30,8 @@ import {
   isTripSlugConflictError,
 } from "@/lib/tripSlugUpdate";
 import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
+import { assertDateRangeOrdered } from "@/lib/dateRange";
+import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 
 export const metadata: Metadata = {
   title: "Dashboard – VIVIA",
@@ -265,6 +270,7 @@ async function addDashboardPlanningData(
     supabase
       .from("trip_accommodations")
       .select("id,trip_id,check_in_date,check_out_date,status,city,region,country")
+      .eq("is_planning_option", false)
       .in("trip_id", tripIds),
     supabase
       .from("transportation_items")
@@ -275,7 +281,7 @@ async function addDashboardPlanningData(
   ]);
 
   if (accommodationsResult.error) {
-    console.warn("Could not load dashboard accommodation tasks:", {
+    console.warn("Could not load dashboard stay tasks:", {
       message: accommodationsResult.error.message,
       code: accommodationsResult.error.code,
       details: accommodationsResult.error.details,
@@ -393,6 +399,11 @@ async function updateTrip(formData: FormData) {
   const startDate = formData.get("start_date") as string;
   const endDate = formData.get("end_date") as string;
   const notes = formData.get("notes") as string;
+  assertDateRangeOrdered(
+    startDate,
+    endDate,
+    "Trip end date cannot be before its start date.",
+  );
   const { data: existingTripCover, error: existingTripCoverError } = await supabase
     .from("trips")
     .select("id,cover_image_source,cover_image_storage_path")
@@ -462,6 +473,8 @@ async function updateTrip(formData: FormData) {
     }
     throw new Error("Could not update trip");
   }
+
+  await syncTripDestinationsFromForm({ supabase, tripId, formData });
 
   await cleanupReplacedTripCover({
     supabase,
@@ -548,7 +561,7 @@ async function TripsDashboard() {
 
   const { data: profile, error: profileError } = await supabase
     .from("user_profiles")
-    .select("first_name,last_name,username,email,avatar_url")
+    .select("first_name,last_name,username,email,avatar_url,role")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -687,6 +700,20 @@ async function TripsDashboard() {
     })
   );
 
+  const eventService = createServiceRoleClient();
+  const [{ data: dashboardTickets }, { data: dashboardRsvps }] = await Promise.all([
+    eventService.from("event_tickets").select("id,status,events(id,slug,title,starts_at,ends_at,timezone,venue_type,venue_name,city,region)").eq("owner_user_id", user.id).in("status", ["active", "checked_in"]),
+    eventService.from("event_rsvps").select("id,status,events(id,slug,title,starts_at,ends_at,timezone,venue_type,venue_name,city,region)").eq("user_id", user.id).eq("status", "confirmed"),
+  ]);
+  const dashboardEvents: DashboardEvent[] = [
+    ...(dashboardTickets || []).map((item) => ({ item, admissionType: "Ticket" as const })),
+    ...(dashboardRsvps || []).map((item) => ({ item, admissionType: "RSVP" as const })),
+  ].map(({ item, admissionType }) => {
+    const event = Array.isArray(item.events) ? item.events[0] : item.events;
+    if (!event) return null;
+    return { id: item.id, slug: event.slug, title: event.title, startsAt: event.starts_at, timezone: event.timezone, venue: eventLocationLabel(event), status: item.status, admissionType };
+  }).filter((event): event is DashboardEvent => Boolean(event) && new Date(event!.startsAt).getTime() >= Date.now()).sort((a, b) => a.startsAt.localeCompare(b.startsAt)).slice(0, 3);
+
   return (
     <main className="min-h-screen bg-[#0c0115] text-white">
       <div className="space-y-1.5">
@@ -703,6 +730,8 @@ async function TripsDashboard() {
             profile={dashboardProfile}
             wishlistItems={dashboardWishlistItems}
             currentUserId={user.id}
+            events={dashboardEvents}
+            canManageEvents={["event_organizer", "super_admin"].includes((profile as { role?: string } | null)?.role || "")}
             updateTripAction={updateTrip}
             deleteTripAction={archiveTrip}
           />

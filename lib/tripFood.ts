@@ -44,6 +44,7 @@ export type TripFoodItem = {
     region?: string | null;
     personal_note?: string | null;
     google_place_id?: string | null;
+    place_source?: string | null;
     formatted_address?: string | null;
     location_lat?: number | null;
     location_lng?: number | null;
@@ -125,6 +126,8 @@ export function normalizeTripFoodItem(record: Record<string, unknown>): TripFood
             typeof record.google_place_id === "string"
                 ? record.google_place_id
                 : null,
+        place_source:
+            typeof record.place_source === "string" ? record.place_source : null,
         formatted_address:
             typeof record.formatted_address === "string"
                 ? record.formatted_address

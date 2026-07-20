@@ -17,6 +17,8 @@ import {
     getTripSlugErrorMessage,
     isTripSlugConflictError,
 } from "@/lib/tripSlugUpdate";
+import { assertDateRangeOrdered } from "@/lib/dateRange";
+import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 
 export const metadata: Metadata = {
     title: "My Trips – VAIVIA",
@@ -102,6 +104,7 @@ async function addTripsPlanningData(
             .select(
                 "id,trip_id,check_in_date,check_out_date,status,city,region,country"
             )
+            .eq("is_planning_option", false)
             .in("trip_id", tripIds),
         supabase
             .from("transportation_items")
@@ -112,7 +115,7 @@ async function addTripsPlanningData(
     ]);
 
     if (accommodationsResult.error) {
-        console.warn("Could not load trips page accommodation summaries:", {
+        console.warn("Could not load trips page stay summaries:", {
             message: accommodationsResult.error.message,
             code: accommodationsResult.error.code,
             details: accommodationsResult.error.details,
@@ -188,6 +191,11 @@ async function updateTrip(formData: FormData) {
     const startDate = String(formData.get("start_date") || "");
     const endDate = String(formData.get("end_date") || "");
     const notes = String(formData.get("notes") || "");
+    assertDateRangeOrdered(
+        startDate,
+        endDate,
+        "Trip end date cannot be before its start date."
+    );
     const { data: existingTripCover, error: existingTripCoverError } = await supabase
         .from("trips")
         .select("id,cover_image_source,cover_image_storage_path")
@@ -266,6 +274,8 @@ async function updateTrip(formData: FormData) {
             `Could not update trip: ${error.message ?? "Unknown Supabase error"}`
         );
     }
+
+    await syncTripDestinationsFromForm({ supabase, tripId, formData });
 
     await cleanupReplacedTripCover({
         supabase,

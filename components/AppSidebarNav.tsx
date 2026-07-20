@@ -7,9 +7,11 @@ import {
     BedDouble,
     BarChart3,
     Bot,
+    CalendarRange,
     CalendarCheck,
     ChevronsUp,
     Home,
+    HeartPulse,
     LayoutDashboard,
     Map,
     Megaphone,
@@ -19,6 +21,7 @@ import {
     Settings,
     ShieldCheck,
     Sparkles,
+    TicketCheck,
     Utensils,
     UsersRound,
     type LucideIcon,
@@ -47,6 +50,13 @@ type NavItem = {
     icon: LucideIcon;
     disabled?: boolean;
     match?: (pathname: string, tab: string) => boolean;
+    subItems?: NavSubItem[];
+};
+
+type NavSubItem = {
+    label: string;
+    href: string;
+    match: (pathname: string, tab: string, view: string) => boolean;
 };
 
 function getCurrentTripId(pathname: string) {
@@ -97,7 +107,7 @@ function getAdminMarketingItem(): NavItem {
     };
 }
 
-function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
+function getNavItems(pathname: string, isSuperAdmin: boolean, isEventOrganizer: boolean): NavItem[] {
     const currentTripId = getCurrentTripId(pathname);
     const tripHref = currentTripId ? `/trips/${currentTripId}` : undefined;
     const showAdminUsers = isSuperAdmin && pathname.startsWith("/admin");
@@ -106,12 +116,6 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
 
     if (!tripHref) {
         const items: NavItem[] = [
-            {
-                label: "Home",
-                href: "/",
-                icon: Home,
-                match: (currentPathname) => currentPathname === "/",
-            },
             ...(isSuperAdmin
                 ? [{
                 label: "News Feed",
@@ -122,7 +126,27 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
             }]
                 : []),
             {
-                label: "Travel Assistant",
+                label: "Events",
+                href: "/events",
+                icon: CalendarRange,
+                match: (currentPathname) => currentPathname.startsWith("/events"),
+            },
+            {
+                label: "My Events",
+                href: "/my-events",
+                icon: TicketCheck,
+                match: (currentPathname) => currentPathname.startsWith("/my-events"),
+            },
+            ...(isEventOrganizer
+                ? [{
+                    label: "Manage Events",
+                    href: "/organizer/events",
+                    icon: UsersRound,
+                    match: (currentPathname: string) => currentPathname.startsWith("/organizer/events"),
+                }]
+                : []),
+            {
+                label: "Ask Concierge",
                 href: "/assistant",
                 icon: Bot,
                 match: (currentPathname) => currentPathname === "/assistant",
@@ -137,29 +161,35 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
 
     const items: NavItem[] = [
         {
-            label: "Home",
-            href: "/",
-            icon: Home,
-            match: (pathname) => pathname === "/",
-        },
-        ...(isSuperAdmin
-            ? [{
-            label: "News Feed",
-            href: "/news-feed",
-            icon: Newspaper,
-            match: (pathname: string) => pathname.startsWith("/news-feed"),
-        }]
-            : []),
-        {
             label: "Itinerary",
             href: tripHref ? `${tripHref}/itinerary` : undefined,
             icon: CalendarCheck,
             match: (pathname, tab) =>
                 pathname.startsWith("/trips/") &&
                 (pathname.includes("/itinerary") || tab === "itinerary"),
+            subItems: [
+                {
+                    label: "List view",
+                    href: `${tripHref}/itinerary?view=list`,
+                    match: (pathname, _tab, view) =>
+                        pathname.includes("/itinerary") && view === "list",
+                },
+                {
+                    label: "Day view",
+                    href: `${tripHref}/itinerary?view=day`,
+                    match: (pathname, _tab, view) =>
+                        pathname.includes("/itinerary") && view === "day",
+                },
+                {
+                    label: "Week view",
+                    href: `${tripHref}/itinerary?view=week`,
+                    match: (pathname, _tab, view) =>
+                        pathname.includes("/itinerary") && view === "week",
+                },
+            ],
         },
         {
-            label: "Ideas",
+            label: "Trip Ideas",
             href: tripHref ? `${tripHref}?tab=ideas` : undefined,
             icon: Sparkles,
             match: (pathname, tab) => pathname.startsWith("/trips/") && tab === "ideas",
@@ -170,36 +200,103 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
             icon: PiggyBank,
             match: (pathname) =>
                 pathname.startsWith("/trips/") && pathname.includes("/budget"),
+            subItems: [
+                {
+                    label: "Budget",
+                    href: `${tripHref}/budget`,
+                    match: (pathname) =>
+                        pathname.endsWith("/budget") || pathname.endsWith("/budget/"),
+                },
+                {
+                    label: "Expenses",
+                    href: `${tripHref}/budget/expenses`,
+                    match: (pathname) => pathname.includes("/budget/expenses"),
+                },
+            ],
         },
         {
-            label: "Journey",
+            label: "Transport",
             href: tripHref ? `${tripHref}?tab=journey` : undefined,
             icon: Map,
             match: (pathname, tab) =>
                 pathname.startsWith("/trips/") &&
                 (tab === "journey" || tab === "journey-planning"),
+            subItems: [
+                {
+                    label: "Planned transport",
+                    href: `${tripHref}?tab=journey`,
+                    match: (_pathname, tab) => tab === "journey",
+                },
+                {
+                    label: "Compare transport",
+                    href: `${tripHref}?tab=journey-planning`,
+                    match: (_pathname, tab) => tab === "journey-planning",
+                },
+            ],
         },
         {
-            label: "Food",
+            label: "Eat & Drink",
             href: tripHref ? `${tripHref}/food` : undefined,
             icon: Utensils,
             match: (pathname) =>
                 pathname.startsWith("/trips/") && pathname.includes("/food"),
+            subItems: [
+                {
+                    label: "Places to Eat",
+                    href: `${tripHref}/food?tab=places`,
+                    match: (pathname, tab) =>
+                        pathname.includes("/food") && tab !== "foods",
+                },
+                {
+                    label: "Food to Try",
+                    href: `${tripHref}/food?tab=foods`,
+                    match: (pathname, tab) =>
+                        pathname.includes("/food") && tab === "foods",
+                },
+            ],
         },
         {
-            label: "Accommodations",
+            label: "Stays",
             href: tripHref ? `${tripHref}/accommodations` : undefined,
             icon: BedDouble,
             match: (pathname) =>
                 pathname.startsWith("/trips/") &&
                 pathname.includes("/accommodations"),
+            subItems: [
+                {
+                    label: "Planned stays",
+                    href: `${tripHref}/accommodations`,
+                    match: (pathname, tab) =>
+                        pathname.includes("/accommodations") && tab !== "planning",
+                },
+                {
+                    label: "Compare stays",
+                    href: `${tripHref}/accommodations?tab=planning`,
+                    match: (pathname, tab) =>
+                        pathname.includes("/accommodations") && tab === "planning",
+                },
+            ],
         },
         {
-            label: "Travel Assistant",
+            label: "Events",
+            href: "/events",
+            icon: CalendarRange,
+            match: (pathname) => pathname.startsWith("/events") || pathname.startsWith("/my-events"),
+        },
+        {
+            label: "Ask Concierge",
             href: tripHref ? `${tripHref}/assistant` : undefined,
             icon: Bot,
             match: (pathname) =>
                 pathname.startsWith("/trips/") && pathname.includes("/assistant"),
+        },
+        {
+            label: "Health & Safety",
+            href: tripHref ? `${tripHref}/health-safety` : undefined,
+            icon: HeartPulse,
+            match: (pathname) =>
+                pathname.startsWith("/trips/") &&
+                pathname.includes("/health-safety"),
         },
     ];
 
@@ -214,11 +311,17 @@ function NavItemButton({
     isActive,
     mobile = false,
     onNavigate,
+    currentPathname = "",
+    currentTab = "",
+    currentView = "",
 }: {
     item: NavItem;
     isActive: boolean;
     mobile?: boolean;
     onNavigate?: () => void;
+    currentPathname?: string;
+    currentTab?: string;
+    currentView?: string;
 }) {
     const Icon = item.icon;
     const baseClass = mobile
@@ -227,7 +330,7 @@ function NavItemButton({
                   ? "text-lime-200"
                   : "text-slate-200 hover:text-white"
           }`
-        : `group/item flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border p-0 text-left transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:h-12 group-hover/sidebar:min-h-12 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:px-3 group-hover/sidebar:py-2 ${
+        : `group/item flex h-12 min-h-12 w-12 min-w-12 max-w-12 items-center justify-center gap-0 overflow-hidden rounded-[18px] border p-0 text-left transition-all duration-300 ease-out focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:h-12 group-hover/sidebar:min-h-12 group-hover/sidebar:w-full group-hover/sidebar:max-w-full group-hover/sidebar:justify-start group-hover/sidebar:gap-3 group-hover/sidebar:px-3 group-hover/sidebar:py-2 group-focus-within/sidebar:w-full group-focus-within/sidebar:max-w-full group-focus-within/sidebar:justify-start group-focus-within/sidebar:gap-3 group-focus-within/sidebar:px-3 group-focus-within/sidebar:py-2 ${
               isActive
                   ? "border-lime-300/35 bg-[radial-gradient(circle_at_50%_25%,rgba(var(--vaivia-neon-rgb),0.20),rgba(var(--vaivia-neon-rgb),0.08)_48%,rgba(15,23,42,0.38))] text-lime-300 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.24),inset_0_1px_0_rgba(255,255,255,0.12)]"
                   : "border-transparent text-slate-400 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
@@ -252,7 +355,7 @@ function NavItemButton({
                 <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
             )}
             {!mobile ? (
-                <span className="pointer-events-none block w-0 max-w-0 translate-x-2 overflow-hidden whitespace-nowrap text-left text-xs font-semibold opacity-0 transition-all duration-300 group-hover/sidebar:pointer-events-auto group-hover/sidebar:w-40 group-hover/sidebar:max-w-40 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100">
+                <span className="pointer-events-none block w-0 max-w-0 translate-x-2 overflow-hidden whitespace-nowrap text-left text-xs font-semibold opacity-0 transition-all duration-300 group-hover/sidebar:pointer-events-auto group-hover/sidebar:w-40 group-hover/sidebar:max-w-40 group-hover/sidebar:translate-x-0 group-hover/sidebar:opacity-100 group-focus-within/sidebar:pointer-events-auto group-focus-within/sidebar:w-40 group-focus-within/sidebar:max-w-40 group-focus-within/sidebar:translate-x-0 group-focus-within/sidebar:opacity-100">
                     {item.label}
                 </span>
             ) : null}
@@ -273,7 +376,7 @@ function NavItemButton({
         );
     }
 
-    return (
+    const primaryLink = (
         <Link
             href={item.href}
             onClick={onNavigate}
@@ -284,6 +387,52 @@ function NavItemButton({
         >
             {content}
         </Link>
+    );
+
+    if (mobile || !item.subItems?.length) return primaryLink;
+
+    return (
+        <div className="group/nav-item relative h-12 w-12 max-w-full shrink-0 transition-all duration-300 group-hover/sidebar:w-full group-focus-within/sidebar:w-full">
+            {primaryLink}
+            <div className="invisible absolute bottom-auto left-12 right-0 top-0 z-[70] w-auto pl-3 opacity-0 transition duration-150 group-hover/nav-item:visible group-hover/nav-item:opacity-100 group-focus-within/nav-item:visible group-focus-within/nav-item:opacity-100">
+                <nav
+                    aria-label={`${item.label} views`}
+                    className="rounded-[1.25rem] border border-white/10 bg-[#050712] p-2 text-white shadow-2xl shadow-black/40 backdrop-blur-xl"
+                >
+                    <p className="px-3 pb-2 pt-1 text-[10px] font-black uppercase tracking-[0.18em] text-lime-300">
+                        {item.label}
+                    </p>
+                    <ul className="space-y-1">
+                        {item.subItems.map((subItem) => {
+                            const isSubItemActive = subItem.match(
+                                currentPathname,
+                                currentTab,
+                                currentView
+                            );
+
+                            return (
+                                <li key={subItem.label}>
+                                    <Link
+                                        href={subItem.href}
+                                        aria-current={
+                                            isSubItemActive ? "page" : undefined
+                                        }
+                                        className={`block rounded-xl px-3 py-2.5 text-sm font-bold transition focus:outline-none focus:ring-2 focus:ring-lime-300/50 ${
+                                            isSubItemActive
+                                                ? "bg-lime-300 text-slate-950"
+                                                : "text-slate-200 hover:bg-white/[0.08] hover:text-white"
+                                        }`}
+                                        prefetch
+                                    >
+                                        {subItem.label}
+                                    </Link>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </nav>
+            </div>
+        </div>
     );
 }
 
@@ -297,13 +446,15 @@ export default function AppSidebarNav({
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const tab = searchParams.get("tab") || "";
+    const view = searchParams.get("view") || "";
     const realIsSuperAdmin = profile?.role === "super_admin";
     const previewRole = useRolePreview(realIsSuperAdmin);
     const isSuperAdmin = getEffectiveIsSuperAdmin({
         realIsSuperAdmin,
         previewRole,
     });
-    const navItems = getNavItems(pathname, isSuperAdmin);
+    const isEventOrganizer = isSuperAdmin || profile?.role === "event_organizer";
+    const navItems = getNavItems(pathname, isSuperAdmin, isEventOrganizer);
     const adminItem = getAdminItem();
     const adminUsersItem = getAdminUsersItem();
     const adminStatsItem = getAdminStatsItem();
@@ -329,11 +480,15 @@ export default function AppSidebarNav({
                 "News Feed",
                 "Itinerary",
                 "Budget",
-                "Ideas",
-                "Journey",
-                "Food",
-                "Accommodations",
-                "Travel Assistant",
+                "Trip Ideas",
+                "Transport",
+                "Eat & Drink",
+                "Stays",
+                "Ask Concierge",
+                "Health & Safety",
+                "Events",
+                "My Events",
+                "Manage Events",
             ].includes(item.label)
         ),
     ];
@@ -378,7 +533,7 @@ export default function AppSidebarNav({
 
     return (
         <>
-            <aside className="group/sidebar fixed left-0 top-0 z-50 hidden h-screen w-24 flex-col border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(var(--vaivia-neon-rgb),0.10),transparent_35%),linear-gradient(180deg,rgba(2,6,23,0.95),rgba(3,7,18,0.92))] px-4 py-6 text-white shadow-2xl shadow-black/40 backdrop-blur-xl transition-all duration-300 ease-out hover:w-72 md:flex">
+            <aside className="group/sidebar fixed left-0 top-0 z-50 hidden h-screen w-24 flex-col border-r border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(var(--vaivia-neon-rgb),0.10),transparent_35%),linear-gradient(180deg,rgba(2,6,23,0.95),rgba(3,7,18,0.92))] px-4 py-6 text-white shadow-2xl shadow-black/40 backdrop-blur-xl transition-all duration-300 ease-out hover:w-72 focus-within:w-72 md:flex">
                 <div className="flex min-h-0 flex-1 flex-col pb-4">
                     <Link
                         href="/"
@@ -394,16 +549,21 @@ export default function AppSidebarNav({
                     </Link>
 
                     <nav
-                        className="flex flex-col items-center gap-2 px-1 group-hover/sidebar:items-stretch group-hover/sidebar:gap-1.5 group-hover/sidebar:px-0"
+                        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 [scrollbar-gutter:stable] group-hover/sidebar:px-0"
                         aria-label="Primary navigation"
                     >
-                        {navItems.map((item) => (
-                            <NavItemButton
-                                key={item.label}
-                                item={item}
-                                isActive={item.match?.(pathname, tab) || false}
-                            />
-                        ))}
+                        <div className="flex flex-col items-center gap-2 group-hover/sidebar:items-stretch group-hover/sidebar:gap-1.5">
+                            {navItems.map((item) => (
+                                <NavItemButton
+                                    key={item.label}
+                                    item={item}
+                                    isActive={item.match?.(pathname, tab) || false}
+                                    currentPathname={pathname}
+                                    currentTab={tab}
+                                    currentView={view}
+                                />
+                            ))}
+                        </div>
                     </nav>
                 </div>
 

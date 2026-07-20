@@ -11,9 +11,11 @@ import {
     type IdeaTimeOfDay,
     type TripIdea,
     formatIdeaAgePolicy,
+    formatIdeaAvailabilityDateRange,
     formatIdeaDayLabel,
     formatIdeaTimeLabel,
     getIdeaDayForDate,
+    isIdeaAvailableOnDate,
 } from "@/lib/tripIdeas";
 
 type SuggestedIdeasPanelProps = {
@@ -395,6 +397,16 @@ function IdeaSuggestionCard({
                     </dt>
                     <dd className="min-w-0 truncate">{formatIdeaDayLabel(idea.days_available)}</dd>
                 </div>
+                {(idea.availability_start_date || idea.availability_end_date) && (
+                    <div className="flex gap-2">
+                        <dt className="shrink-0 font-bold uppercase tracking-[0.14em] text-slate-500">
+                            Dates
+                        </dt>
+                        <dd className="min-w-0 truncate">
+                            {formatIdeaAvailabilityDateRange(idea)}
+                        </dd>
+                    </div>
+                )}
                 <div className="flex gap-2">
                     <dt className="shrink-0 font-bold uppercase tracking-[0.14em] text-slate-500">
                         Time
@@ -558,7 +570,7 @@ export default function SuggestedIdeasPanel({
         .filter(
             (idea) =>
                 !idea.is_archived &&
-                idea.days_available.includes(selectedDay) &&
+                isIdeaAvailableOnDate(idea, selectedDate) &&
                 ideaMatchesTimedDayLocation(
                     idea,
                     dayLocationText,

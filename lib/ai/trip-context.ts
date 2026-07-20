@@ -83,6 +83,8 @@ export const TRIP_CONTEXT_FIELD_ALLOWLISTS = {
         "location_region",
         "location_country",
         "days_of_week",
+        "availability_start_date",
+        "availability_end_date",
         "time_of_day",
         "timezone",
         "opens_at",
@@ -155,7 +157,7 @@ export type VaiviaTripContext = {
     travelers?: Record<string, unknown>[];
     itinerary_plans?: Record<string, unknown>[];
     transportation?: Record<string, unknown>[];
-    accommodations?: Record<string, unknown>[];
+    stays?: Record<string, unknown>[];
     saved_ideas?: Record<string, unknown>[];
     food_ideas?: Record<string, unknown>[];
     budget_summary?: Record<string, unknown>[];
@@ -276,11 +278,12 @@ export async function loadTripAssistantContext(
             .from("trip_accommodations")
             .select("hotel_name,accommodation_type,status,address,city,region,country,check_in_date,check_in_time_start,check_in_time_end,check_out_date,check_out_time,free_cancellation_ends_on")
             .eq("trip_id", tripId)
+            .eq("is_planning_option", false)
             .order("check_in_date")
             .limit(MAX_CONTEXT_ROWS_PER_SECTION),
         supabase
             .from("trip_ideas")
-            .select("title,description,category,location,formatted_address,location_city,location_region,location_country,days_of_week,time_of_day,timezone,opens_at,closes_at,is_24_hours,estimated_cost,currency,ticket_policy,age_policy,dress_code,tags")
+            .select("title,description,category,location,formatted_address,location_city,location_region,location_country,days_of_week,availability_start_date,availability_end_date,time_of_day,timezone,opens_at,closes_at,is_24_hours,estimated_cost,currency,ticket_policy,age_policy,dress_code,tags")
             .eq("trip_id", tripId)
             .eq("is_archived", false)
             .limit(MAX_CONTEXT_ROWS_PER_SECTION),
@@ -400,7 +403,7 @@ export async function loadTripAssistantContext(
         transportationResult.data as Record<string, unknown>[],
         TRIP_CONTEXT_FIELD_ALLOWLISTS.transportation_items
     ));
-    addRowsWhenPresent(context, "accommodations", allowlistRows(
+    addRowsWhenPresent(context, "stays", allowlistRows(
         accommodationsResult.data as Record<string, unknown>[],
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_accommodations
     ));

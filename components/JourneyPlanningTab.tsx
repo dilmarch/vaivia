@@ -1954,7 +1954,7 @@ export default function JourneyPlanningTab({
                         Flight scenarios
                     </p>
                     <h2 className="mt-2 text-3xl font-black tracking-tight">
-                        Journey Planning
+                        Compare Flights
                     </h2>
                     <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
                         Compare possible flight plans here first. Nothing is added to
@@ -3177,7 +3177,7 @@ export default function JourneyPlanningTab({
                                 <div className="vaivia-modal-header flex items-start justify-between gap-4">
                                     <div>
                                         <p className="vaivia-modal-eyebrow">
-                                            Journey planning
+                                            Compare Flights
                                         </p>
                                         <h2
                                             id="journey-scenario-modal-title"

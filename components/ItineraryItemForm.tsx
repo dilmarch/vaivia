@@ -16,6 +16,7 @@ import TripAudienceSelector from "@/components/TripAudienceSelector";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import { COMMON_CURRENCIES, type SplitMethod } from "@/lib/budget";
+import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
 import {
     FALLBACK_CATEGORY_LABEL,
     type UserCategory,
@@ -582,7 +583,7 @@ export default function ItineraryItemForm({
             const address = place.formatted_address || "";
             const lat = place.geometry?.location?.lat();
             const lng = place.geometry?.location?.lng();
-            const website = place.website || "";
+            const website = addVaiviaUtmAttribution(place.website);
             const coverPhotoUrl =
                 place.photos?.[0]?.getUrl({
                     maxWidth: 1200,

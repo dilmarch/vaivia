@@ -29,6 +29,55 @@ describe("brat theme surfaces", () => {
         expect(css).toContain("Dark buttons are the sole exception");
     });
 
+    it("keeps every dark button family green, including nested labels and icons", () => {
+        const css = read("app/globals.css");
+
+        for (const darkFamily of [
+            'bg-slate-950',
+            'bg-[#2',
+            'bg-gray-950',
+            'bg-zinc-950',
+            'bg-neutral-950',
+            'bg-stone-950',
+            'bg-black',
+            '.bg-lime-300',
+            '.vaivia-quick-add-bubble',
+            'background-color: rgb(0',
+        ]) {
+            expect(css).toContain(darkFamily);
+        }
+        expect(css).toContain("-webkit-text-fill-color: #8ace00 !important");
+        expect(css).toContain("fill: currentColor !important");
+        expect(css).toContain("stroke: currentColor !important");
+    });
+
+    it("uses black and green for every semantic button in brat mode", () => {
+        const css = read("app/globals.css");
+
+        expect(css).toMatch(
+            /data-vaivia-theme="brat"[\s\S]*:is\([\s\S]*button,[\s\S]*\[role="button"\],[\s\S]*input\[type="submit"\][\s\S]*\)\s*\{[\s\S]*background: #000000 !important;[\s\S]*color: #8ace00 !important;/
+        );
+    });
+
+    it("keeps all dashboard trip-card labels green across image tones", () => {
+        const dashboard = read("components/TripDashboardClient.tsx");
+        const css = read("app/globals.css");
+
+        expect(dashboard).toContain("vaivia-trip-card-duration");
+        expect(css).toContain(
+            '.vaivia-trip-card .vaivia-trip-card-title'
+        );
+        expect(css).toContain(
+            '.vaivia-trip-card .vaivia-trip-card-date'
+        );
+        expect(css).toContain(
+            '.vaivia-trip-card .vaivia-trip-card-duration'
+        );
+        expect(css).not.toContain(
+            '.vaivia-trip-card[data-image-tone="light"] .vaivia-trip-card-title'
+        );
+    });
+
     it("covers shared custom surfaces that do not use background utilities", () => {
         const css = read("app/globals.css");
 

@@ -55,9 +55,9 @@ export const ASSISTANT_DEFAULT_SEARCH_RESULTS = 8;
 export const ASSISTANT_DEFAULT_RADIUS_METERS = 3_000;
 export const ASSISTANT_MAX_RADIUS_METERS = 10_000;
 export const ASSISTANT_PLACE_LOCATION_NEEDED_MESSAGE =
-    "I need a saved accommodation, activity, destination, or arrival location in this trip before I can find nearby places.";
+    "I need a saved stay, activity, destination, or arrival location in this trip before I can find nearby places.";
 export const ASSISTANT_PLACE_LOCATION_AMBIGUOUS_MESSAGE =
-    "I found more than one saved trip location that could match. Please name the accommodation, activity, destination, or arrival point you want me to use.";
+    "I found more than one saved trip location that could match. Please name the stay, activity, destination, or arrival point you want me to use.";
 const ASSISTANT_PLACES_UNAVAILABLE_MESSAGE =
     "Live place discovery is temporarily unavailable. Please try again.";
 
@@ -427,6 +427,7 @@ function publicRecommendation(
 ): AssistantPlaceRecommendation {
     return {
         recommendationId,
+        placeId: candidate.place.placeId,
         name: candidate.place.name,
         category: categoryLabel(candidate.place.category),
         address: candidate.place.address,
@@ -438,6 +439,7 @@ function publicRecommendation(
         hoursSummary: candidate.place.hoursSummary,
         mapsUrl: candidate.place.mapsUrl,
         alreadySaved: candidate.alreadySaved,
+        liveDetailsAvailable: true,
     };
 }
 
@@ -577,7 +579,7 @@ export async function generateTripAssistantResponse({
             return {
                 clarification_required: true,
                 message:
-                    "No authorized saved trip location matches. Ask the user to identify a saved accommodation, activity, destination, or arrival point.",
+                    "No authorized saved trip location matches. Ask the user to identify a saved stay, activity, destination, or arrival point.",
             };
         }
         const anchor = resolution.anchor;

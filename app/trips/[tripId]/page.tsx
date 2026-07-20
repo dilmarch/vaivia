@@ -49,6 +49,7 @@ import TripCountdown, {
     type TripCountdownTargetOption,
 } from "@/components/TripCountdown";
 import MobileTripInviteLauncher from "@/components/MobileTripInviteLauncher";
+import MobileExchangeRatesWidget from "@/components/MobileExchangeRatesWidget";
 import TripMembersPanel, {
     type TripHeaderFamilyMember,
     type TripHeaderInvitation,
@@ -72,6 +73,8 @@ import {
     toIdeaDayValue,
     toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
+import { assertDateRangeOrdered } from "@/lib/dateRange";
+import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 import type {
     TransportationTraveler,
     TransportationTravelerOptions,
@@ -100,6 +103,12 @@ import {
 } from "@/lib/tripLegs";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 import {
+    getTransportationDbType,
+    getTransportationModeEmoji,
+    getTransportationModeLabel,
+    resolveTransportationMode,
+} from "@/lib/transportationModes";
+import {
     getTripHref,
     getTripItineraryHref,
     resolveTripRouteParam,
@@ -118,6 +127,7 @@ import type {
     TripExpenseSplit,
 } from "@/lib/budget";
 import { calculateBudgetTotals } from "@/lib/budget";
+import { loadMobileTripExchangeRates } from "@/lib/tripExchangeRates";
 
 type PageProps = {
     params: Promise<{
@@ -128,6 +138,7 @@ type PageProps = {
         add?: string;
         addedScenario?: string;
         addedTransportation?: string;
+        view?: string;
         _route?: string;
     }>;
 };
@@ -242,6 +253,8 @@ type TripIdeaPayload = {
     category: string;
     tags: string[];
     days_of_week: string[];
+    availability_start_date: string | null;
+    availability_end_date: string | null;
     time_of_day: string[];
     opens_at: string | null;
     closes_at: string | null;
@@ -884,6 +897,8 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
         "dress_code",
         "other_notes",
         "attended",
+        "availability_start_date",
+        "availability_end_date",
     ]);
     let attempt: Record<string, unknown> = { ...payload };
     let lastError: {
@@ -1032,9 +1047,8 @@ function normalizeTransportationItem(
         "type",
         "transport_type",
     ]);
-    const mode = ["flight", "plane"].includes(rawMode.toLowerCase())
-        ? "airplane"
-        : rawMode;
+    const storedTitle = getStringValue(item, ["title"]);
+    const mode = resolveTransportationMode(rawMode, storedTitle);
     const departureLocation = getStringValue(item, [
         "departure_location",
         "origin",
@@ -1050,7 +1064,7 @@ function normalizeTransportationItem(
     const airlineCode = getStringValue(item, ["airline_code", "provider_code"]);
     const reservationCode = getStringValue(item, ["reservation_code"]);
     const title =
-        getStringValue(item, ["title"]) ||
+        storedTitle ||
         (flightNumber
             ? `${flightNumber} ${departureLocation || ""} to ${
                   arrivalLocation || ""
@@ -1177,6 +1191,20 @@ function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
     );
     const agePolicy = normalizeIdeaAgePolicy(formData.get("age_policy"));
     const dressCode = ((formData.get("dress_code") as string) || "").trim();
+    const availabilityStartDate = String(
+        formData.get("availability_start_date") || ""
+    ).trim();
+    const availabilityEndDate = String(
+        formData.get("availability_end_date") || ""
+    ).trim();
+
+    if (
+        availabilityStartDate &&
+        availabilityEndDate &&
+        availabilityEndDate < availabilityStartDate
+    ) {
+        throw new Error("The activity idea end date must be on or after its start date.");
+    }
 
     return {
         created_by: userId,
@@ -1186,6 +1214,8 @@ function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
         category: (formData.get("category") as string) || "Other",
         tags,
         days_of_week: [...new Set(daysOfWeek)],
+        availability_start_date: availabilityStartDate || null,
+        availability_end_date: availabilityEndDate || null,
         time_of_day: [
             ...new Set(
                 parseFormStringArray(formData, "time_of_day").map(
@@ -1746,22 +1776,6 @@ function MobileOverviewTile({
     }
 
     return <div className={className}>{content}</div>;
-}
-
-function getTransportationModeEmoji(mode?: string | null) {
-    const normalizedMode = (mode || "").toLowerCase();
-    if (["airplane", "flight", "plane"].includes(normalizedMode)) return "✈️";
-    if (normalizedMode.includes("train")) return "🚆";
-    if (normalizedMode.includes("bus")) return "🚌";
-    if (normalizedMode.includes("ferry") || normalizedMode.includes("ship")) {
-        return "⛴️";
-    }
-    if (normalizedMode.includes("taxi") || normalizedMode.includes("car")) return "🚕";
-    if (normalizedMode.includes("tram")) return "🚊";
-    if (normalizedMode.includes("bike") || normalizedMode.includes("bicycle")) {
-        return "🚲";
-    }
-    return "🧭";
 }
 
 function getCompactRouteLocationLabel(location?: string | null) {
@@ -2412,6 +2426,12 @@ async function createTransportationItem(formData: FormData) {
     const mode = formData.get("transportation_mode") as string;
     const departureLocation = formData.get("departure_location") as string;
     const arrivalLocation = formData.get("arrival_location") as string;
+    const departureGooglePlaceId = String(
+        formData.get("departure_google_place_id") || ""
+    ).trim();
+    const arrivalGooglePlaceId = String(
+        formData.get("arrival_google_place_id") || ""
+    ).trim();
     const itemDate = formData.get("item_date") as string;
     const endDate = formData.get("end_date") as string;
     const startTime = formData.get("start_time") as string;
@@ -2462,6 +2482,12 @@ async function createTransportationItem(formData: FormData) {
         const legArrivalLocation = formData.get(
             `leg_${index}_arrival_location`
         ) as string;
+        const legDepartureGooglePlaceId = String(
+            formData.get(`leg_${index}_departure_google_place_id`) || ""
+        ).trim();
+        const legArrivalGooglePlaceId = String(
+            formData.get(`leg_${index}_arrival_google_place_id`) || ""
+        ).trim();
         const legDepartureDate = formData.get(`leg_${index}_departure_date`) as string;
         const legDepartureTime = formData.get(`leg_${index}_departure_time`) as string;
         const legArrivalDate = formData.get(`leg_${index}_arrival_date`) as string;
@@ -2528,6 +2554,8 @@ async function createTransportationItem(formData: FormData) {
             index,
             departureLocation: legDepartureLocation,
             arrivalLocation: legArrivalLocation,
+            departureGooglePlaceId: legDepartureGooglePlaceId,
+            arrivalGooglePlaceId: legArrivalGooglePlaceId,
             departureDate: legDepartureDate,
             departureTime: legDepartureTime,
             arrivalDate: legArrivalDate,
@@ -2568,7 +2596,7 @@ async function createTransportationItem(formData: FormData) {
         airlineCode: effectiveAirlineCode,
         fallbackFlightNumber: firstLegFlightNumber,
     });
-    const modeLabel = mode ? mode[0].toUpperCase() + mode.slice(1) : "Transportation";
+    const modeLabel = getTransportationModeLabel(mode);
     const routeSummary = routeStops.map((stop) => stop.label).join(" → ");
     const title =
         mode === "airplane" && effectiveFlightNumber
@@ -2656,6 +2684,7 @@ async function createTransportationItem(formData: FormData) {
                           transportation_mode: mode || null,
                           mode: mode || null,
                           type: mode || null,
+                          transport_type: getTransportationDbType(mode),
                           status: leg.status,
                           item_date: leg.departureDate || null,
                           date: leg.departureDate || null,
@@ -2668,6 +2697,10 @@ async function createTransportationItem(formData: FormData) {
                           arrival_time: leg.arrivalTime || null,
                           departure_location: leg.departureLocation || null,
                           arrival_location: leg.arrivalLocation || null,
+                          departure_google_place_id:
+                              leg.departureGooglePlaceId || null,
+                          arrival_google_place_id:
+                              leg.arrivalGooglePlaceId || null,
                           location: [leg.departureLocation, leg.arrivalLocation]
                               .filter(Boolean)
                               .join(" → "),
@@ -2732,6 +2765,7 @@ async function createTransportationItem(formData: FormData) {
                       transportation_mode: mode || null,
                       mode: mode || null,
                       type: mode || null,
+                      transport_type: getTransportationDbType(mode),
                       status: firstLegStatus,
                       item_date: itemDate || null,
                       date: itemDate || null,
@@ -2744,6 +2778,9 @@ async function createTransportationItem(formData: FormData) {
                       arrival_time: endTime || null,
                       departure_location: departureLocation || null,
                       arrival_location: arrivalLocation || null,
+                      departure_google_place_id:
+                          departureGooglePlaceId || null,
+                      arrival_google_place_id: arrivalGooglePlaceId || null,
                       location:
                           routeSummary ||
                           [departureLocation, arrivalLocation]
@@ -3034,7 +3071,7 @@ async function updateTransportationItem(formData: FormData) {
         flightNumber,
         airlineCode: effectiveAirlineCode,
     });
-    const modeLabel = mode ? mode[0].toUpperCase() + mode.slice(1) : "Transportation";
+    const modeLabel = getTransportationModeLabel(mode);
     const routeSummary = routeStops.map((stop) => stop.label).join(" → ");
     const title = mode === "airplane" && effectiveFlightNumber
         ? `${effectiveFlightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
@@ -3055,6 +3092,7 @@ async function updateTransportationItem(formData: FormData) {
         transportation_mode: mode || null,
         mode: mode || null,
         type: mode || null,
+        transport_type: getTransportationDbType(mode),
         status: transportationStatus,
         item_date: itemDate || null,
         date: itemDate || null,
@@ -3214,6 +3252,11 @@ async function updateTrip(formData: FormData) {
     const startDate = formData.get("start_date") as string;
     const endDate = formData.get("end_date") as string;
     const notes = formData.get("notes") as string;
+    assertDateRangeOrdered(
+        startDate,
+        endDate,
+        "Trip end date cannot be before its start date."
+    );
     const { data: existingTripCover, error: existingTripCoverError } = await supabase
         .from("trips")
         .select("id,cover_image_source,cover_image_storage_path")
@@ -3285,6 +3328,8 @@ async function updateTrip(formData: FormData) {
             error.message ? `Could not update trip: ${error.message}` : "Could not update trip"
         );
     }
+
+    await syncTripDestinationsFromForm({ supabase, tripId, formData });
 
     await cleanupReplacedTripCover({
         supabase,
@@ -4058,11 +4103,11 @@ async function TripDetailContent({
     const tripHeroPageLabel = isTripOverviewPage
         ? "Trip Overview"
         : initialTab === "ideas"
-          ? "Ideas"
+          ? "Trip Ideas"
         : initialTab === "journey"
-          ? "Journey"
+          ? "Transport"
         : initialTab === "journey-planning"
-          ? "Journey Planning"
+          ? "Compare Flights"
         : "Itinerary";
     const tripHeaderDetailsClassName = "hidden sm:block";
     const tripHeaderDateCardsClassName = "hidden sm:grid";
@@ -4070,6 +4115,7 @@ async function TripDetailContent({
         resolvedSearchParams.add === "transportation" ||
         resolvedSearchParams.add === "scheduled" ||
         resolvedSearchParams.add === "idea" ||
+        resolvedSearchParams.add === "things" ||
         resolvedSearchParams.add === "expense"
             ? resolvedSearchParams.add
             : null;
@@ -4169,8 +4215,9 @@ async function TripDetailContent({
     }
 
     const defaultItineraryView = getDefaultItineraryView(
-        (userPreferences as { itinerary_default_view?: unknown } | null)
-            ?.itinerary_default_view
+        resolvedSearchParams.view ??
+            (userPreferences as { itinerary_default_view?: unknown } | null)
+                ?.itinerary_default_view
     );
     const { trips: movableTrips } = await loadActiveMemberTrips(supabase, user.id);
     const moveTargetTrips = getMoveTargetTrips({
@@ -4701,13 +4748,14 @@ async function TripDetailContent({
     const { data: accommodationRows, error: accommodationsError } = await supabase
         .from("trip_accommodations")
         .select(
-            "id,hotel_name,city,region,country,address,check_in_date,check_in_time_start,check_out_date,check_out_time,status"
+            "id,hotel_name,accommodation_type,status,address,city,region,country,latitude,longitude,check_in_date,check_in_time_start,check_in_time_end,check_out_date,check_out_time,free_cancellation_ends_on,website,booking_url,google_maps_url,google_place_id,cost,currency,notes,is_private"
         )
         .eq("trip_id", tripId)
+        .eq("is_planning_option", false)
         .order("check_in_date", { ascending: true });
 
     if (accommodationsError) {
-        console.warn("Could not load accommodations for week location band:", {
+        console.warn("Could not load stays for week location band:", {
             message: accommodationsError.message,
             code: accommodationsError.code,
             details: accommodationsError.details,
@@ -4794,38 +4842,6 @@ async function TripDetailContent({
         );
     });
 
-    const accommodationLocations: TripLegLocation[] = (
-        (accommodationRows || []) as Array<{
-            id: string;
-            hotel_name?: string | null;
-            city?: string | null;
-            region?: string | null;
-            country?: string | null;
-            check_in_date?: string | null;
-            check_out_date?: string | null;
-            status?: string | null;
-        }>
-    )
-        .filter((accommodation) => accommodation.status !== "cancelled")
-        .map((accommodation) => {
-            const name =
-                accommodation.city ||
-                accommodation.region ||
-                accommodation.country ||
-                accommodation.hotel_name ||
-                "Accommodation";
-
-            return {
-                id: accommodation.id,
-                source: "accommodation" as const,
-                name,
-                cityName: accommodation.city || accommodation.region || name,
-                countryName: accommodation.country || null,
-                startDate: accommodation.check_in_date || null,
-                endDate: accommodation.check_out_date || null,
-            };
-        });
-
     const manualLocations: TripLegLocation[] = (
         (tripLegRows || []) as Array<{
             id: string;
@@ -4850,6 +4866,8 @@ async function TripDetailContent({
             iconEmoji: leg.icon_emoji || null,
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
+            canDelete: leg.leg_type === "custom",
+            canClearDates: leg.leg_type === "custom",
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
             memberDatesByMemberId: Object.fromEntries(
                 (tripMemberIdsByLegId.get(leg.id) || []).map((memberId) => {
@@ -4895,62 +4913,31 @@ async function TripDetailContent({
         };
     });
 
-    const accommodationLocationsWithManualLegs = accommodationLocations.map(
-        (accommodation) => {
-            const manualMatch = manualLocations.find((location) =>
-                !location.googlePlaceId && locationsMatch(accommodation, location)
-            );
-
-            return {
-                ...accommodation,
-                persistedLegId: manualMatch?.id || null,
-                startDate:
-                    accommodation.startDate || manualMatch?.startDate || null,
-                endDate: accommodation.endDate || manualMatch?.endDate || null,
-                memberIds: manualMatch?.memberIds || [],
-                memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
-            };
-        }
-    );
     const unmatchedManualLocations = manualLocations.filter(
         (manualLocation) =>
             Boolean(manualLocation.googlePlaceId) ||
-            (!accommodationLocations.some((accommodation) =>
-                locationsMatch(accommodation, manualLocation)
-            ) &&
-                !destinationLocations.some((destination) =>
-                    locationsMatch(destination, manualLocation)
-                ))
+            !destinationLocations.some((destination) =>
+                locationsMatch(destination, manualLocation)
+            )
     );
 
     const mergedDestinationLocations = destinationLocations.map((destination) => {
         const manualMatch = manualLocations.find((location) =>
             !location.googlePlaceId && locationsMatch(destination, location)
         );
-        const accommodationMatch = accommodationLocations.find((location) =>
-            locationsMatch(destination, location)
-        );
-
         return {
             ...destination,
             persistedLegId: manualMatch?.id || null,
-            startDate:
-                accommodationMatch?.startDate ||
-                manualMatch?.startDate ||
-                null,
-            endDate:
-                accommodationMatch?.endDate ||
-                manualMatch?.endDate ||
-                null,
+            canClearDates: manualMatch?.canClearDates || false,
+            startDate: manualMatch?.startDate || null,
+            endDate: manualMatch?.endDate || null,
             memberIds: manualMatch?.memberIds || [],
             memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
         };
     });
 
     const heroLocations = sortTripLegLocations(
-        destinationLocations.length > 0
-            ? [...mergedDestinationLocations, ...unmatchedManualLocations]
-            : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
+        [...mergedDestinationLocations, ...unmatchedManualLocations]
     );
     const visibleHeroLocations = heroLocations.filter((location) => {
         const hasExplicitSavedSelection =
@@ -5472,6 +5459,18 @@ async function TripDetailContent({
         participants: mobileBudgetParticipants,
         currency: mobileBudgetCurrency,
     });
+    const mobileExchangeRateData = !hasExplicitTripTab
+        ? await loadMobileTripExchangeRates({
+              supabase,
+              userId: user.id,
+              tripId,
+              fallbackCurrency: mobileBudgetCurrency,
+              fallbackDestinations: visibleHeroLocations.map((location) => ({
+                  label: getMobileLocationLabel(location) || location.name,
+                  countryCode: location.countryCode || null,
+              })),
+          })
+        : null;
     return (
         <main className="min-h-screen bg-[#0c0115] pb-10 pt-0">
             <TripDocumentTitle
@@ -5756,21 +5755,21 @@ async function TripDetailContent({
                                 buttonLabel="Visit itinerary"
                             />
                             <MobileOverviewTile
-                                title="Ideas"
+                                title="Trip Ideas"
                                 description="Brainstorm ideas of trip activities without scheduling them for a specific time on the itinerary."
                                 href={getTripHref(trip, "?tab=ideas")}
                                 icon={Sparkles}
-                                buttonLabel="Visit ideas"
+                                buttonLabel="Visit trip ideas"
                             />
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
                             <MobileOverviewTile
-                                title="Journey"
+                                title="Transport"
                                 description="Transportation from start to finish."
                                 href={getTripHref(trip, "?tab=journey")}
                                 icon={Route}
-                                buttonLabel="Visit journey"
+                                buttonLabel="Visit transport"
                                 alignTop
                             >
                                 <div>
@@ -5946,13 +5945,13 @@ async function TripDetailContent({
                                 className="rounded-[1.35rem] border border-lime-300/25 bg-lime-300 p-4 text-center text-sm font-black leading-5 text-slate-950 shadow-[0_0_32px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/45"
                                 prefetch
                             >
-                                Plan out your journey
+                                Compare flights
                                 <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-800/75">
                                     Add flights to compare
                                 </span>
                             </Link>
                             <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 text-center text-sm font-black leading-5 text-slate-500 shadow-xl shadow-black/15">
-                                Plan out accommodations
+                                Compare stays
                                 <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em]">
                                     Coming soon
                                 </span>
@@ -6021,6 +6020,12 @@ async function TripDetailContent({
                                 href={getTripHref(trip, "/budget")}
                                 icon={Mail}
                                 buttonLabel="Visit budget"
+                            />
+                        ) : null}
+
+                        {mobileExchangeRateData ? (
+                            <MobileExchangeRatesWidget
+                                data={mobileExchangeRateData}
                             />
                         ) : null}
                     </section>

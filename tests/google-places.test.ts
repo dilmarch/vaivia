@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
     findGooglePlaceByText,
     getGooglePlaceDetails,
+    refreshGooglePlaceId,
     searchGooglePlaces,
     straightLineDistanceMeters,
 } from "@/lib/ai/google-places";
@@ -163,6 +164,30 @@ describe("server-only Google Places client", () => {
             code: "billing_or_configuration",
         });
         expect(JSON.stringify(result)).not.toContain("secret provider");
+    });
+
+    it("refreshes an aging saved Place ID with an IDs-only field mask", async () => {
+        vi.stubEnv("GOOGLE_PLACES_API_KEY", "server-only-test-key");
+        const fetchMock = vi.fn(async () =>
+            response({ id: "ChIJRefreshedPlace123" })
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        await expect(
+            refreshGooglePlaceId({ placeId: "ChIJAgingPlace123" })
+        ).resolves.toEqual({
+            status: "success",
+            data: "ChIJRefreshedPlace123",
+        });
+
+        const [url, init] = fetchMock.mock.calls[0] as unknown as [
+            string,
+            RequestInit,
+        ];
+        expect(url).toBe(
+            "https://places.googleapis.com/v1/places/ChIJAgingPlace123"
+        );
+        expect(init.headers).toMatchObject({ "X-Goog-FieldMask": "id" });
     });
 
     it("labels only mathematically computed straight-line distance", () => {

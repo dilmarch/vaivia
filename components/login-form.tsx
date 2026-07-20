@@ -6,6 +6,7 @@ import { SocialLoginButton } from "@/components/social-login-button";
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowRight, KeyRound } from "lucide-react";
+import { normalizeAuthNext } from "@/lib/authNext";
 
 type PasskeyLoginClient = ReturnType<typeof createClient> & {
   auth: ReturnType<typeof createClient>["auth"] & {
@@ -25,6 +26,7 @@ export function LoginForm({
   initialError?: string;
   redirectTo?: string;
 }) {
+  const safeNext = normalizeAuthNext(redirectTo);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(initialError || null);
@@ -43,7 +45,7 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      window.location.assign(redirectTo);
+      window.location.assign(safeNext);
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -59,7 +61,7 @@ export function LoginForm({
       const supabase = createClient() as PasskeyLoginClient;
       const { error } = await supabase.auth.signInWithPasskey();
       if (error) throw error;
-      window.location.assign(redirectTo);
+      window.location.assign(safeNext);
     } catch (error: unknown) {
       setError(
         error instanceof Error
@@ -91,12 +93,12 @@ export function LoginForm({
             <div className="grid gap-3 sm:grid-cols-2">
               <SocialLoginButton
                 provider="google"
-                redirectTo={redirectTo}
+                redirectTo={safeNext}
                 className="min-h-12 rounded-full border-white/10 bg-white/[0.08] text-sm font-black text-slate-100 hover:border-lime-300 hover:bg-lime-300 hover:text-slate-950 focus-visible:ring-lime-300"
               />
               <SocialLoginButton
                 provider="azure"
-                redirectTo={redirectTo}
+                redirectTo={safeNext}
                 className="min-h-12 rounded-full border-white/10 bg-white/[0.08] text-sm font-black text-slate-100 hover:border-lime-300 hover:bg-lime-300 hover:text-slate-950 focus-visible:ring-lime-300"
               />
             </div>
@@ -183,7 +185,7 @@ export function LoginForm({
           <div className="mt-6 text-center text-sm font-semibold text-slate-400">
             Don&apos;t have an account?{" "}
             <Link
-              href="/auth/sign-up"
+              href={`/auth/sign-up?next=${encodeURIComponent(safeNext)}`}
               className="text-lime-200 underline underline-offset-4"
             >
               Sign up

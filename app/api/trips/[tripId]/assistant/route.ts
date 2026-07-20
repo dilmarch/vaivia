@@ -25,6 +25,10 @@ import {
     type AssistantPlacesToolUsage,
 } from "@/lib/ai/places-orchestrator";
 import { parsePlacesMessageMetadata } from "@/lib/ai/places-contract";
+import {
+    attachAssistantSavedPlaceTargets,
+    loadAssistantSavedPlaceTargets,
+} from "@/lib/ai/place-actions";
 import { selectAssistantRetrieval } from "@/lib/ai/current-web-grounding";
 import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
 import { buildVaiviaAssistantSystemInstruction } from "@/lib/ai/system-instruction";
@@ -252,10 +256,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
                 refreshReferences.set(row.id, { ...metadata, recommendations });
             }
         }
+        const savedTargets = await loadAssistantSavedPlaceTargets({
+            supabase,
+            tripId: trip.id,
+            placeIds: Array.from(refreshReferences.values()).flatMap((metadata) =>
+                metadata.recommendations.map((reference) => reference.placeId)
+            ),
+        });
         messages = await Promise.all(
             orderedMessages.map(async (row) => {
                 const metadata = refreshReferences.get(row.id);
-                const recommendations =
+                const hydratedRecommendations =
                     metadata && isGooglePlacesConfigured()
                         ? await hydratePersistedPlaceRecommendations({
                               metadata,
@@ -263,6 +274,42 @@ export async function GET(request: NextRequest, context: RouteContext) {
                               signal: request.signal,
                           })
                         : [];
+                const hydratedPlaceIds = new Set(
+                    hydratedRecommendations.map(
+                        (recommendation) => recommendation.placeId
+                    )
+                );
+                const unavailableSavedRecommendations = (metadata?.recommendations || [])
+                    .filter(
+                        (reference) =>
+                            !hydratedPlaceIds.has(reference.placeId) &&
+                            (savedTargets.get(reference.placeId)?.length || 0) > 0
+                    )
+                    .map((reference, index) => ({
+                        recommendationId: `${row.id}:unavailable:${index}`,
+                        placeId: reference.placeId,
+                        name:
+                            savedTargets.get(reference.placeId)?.[0]?.label ||
+                            "Saved place",
+                        category: "Saved place",
+                        address: null,
+                        matchReason: reference.matchReason,
+                        distance: "Distance unavailable",
+                        rating: null,
+                        userRatingCount: null,
+                        priceLevel: null,
+                        hoursSummary: null,
+                        mapsUrl: `https://www.google.com/maps/search/?api=1&query_place_id=${encodeURIComponent(reference.placeId)}`,
+                        alreadySaved: true,
+                        liveDetailsAvailable: false,
+                    }));
+                const recommendations = attachAssistantSavedPlaceTargets(
+                    [
+                        ...hydratedRecommendations,
+                        ...unavailableSavedRecommendations,
+                    ],
+                    savedTargets
+                );
                 return {
                     id: row.id,
                     role: row.role,
@@ -724,14 +771,26 @@ export async function POST(request: NextRequest, context: RouteContext) {
         toolUsage: generation.toolUsage,
     });
 
+    const responseSavedTargets = await loadAssistantSavedPlaceTargets({
+        supabase,
+        tripId: trip.id,
+        placeIds: generation.recommendations.map(
+            (recommendation) => recommendation.placeId
+        ),
+    });
+    const responseRecommendations = attachAssistantSavedPlaceTargets(
+        generation.recommendations,
+        responseSavedTargets
+    );
+
     const payload = {
         conversation: conversationPayload,
         userMessage: { ...userMessage, status: "complete" },
         assistantMessage: {
             ...assistantMessage,
             content: generation.message,
-            ...(generation.recommendations.length > 0
-                ? { recommendations: generation.recommendations }
+            ...(responseRecommendations.length > 0
+                ? { recommendations: responseRecommendations }
                 : {}),
             ...(generation.webGrounding
                 ? { webGrounding: generation.webGrounding }

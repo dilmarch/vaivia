@@ -2,6 +2,7 @@
 
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
+import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
 
 type PlaceAutocompleteInputProps = {
     id?: string;
@@ -51,7 +52,8 @@ function buildSafePlaceResult(
         name: source.name || place.name,
         formatted_address: source.formatted_address || place.formatted_address,
         geometry: source.geometry || place.geometry,
-        website: source.website || place.website,
+        website:
+            addVaiviaUtmAttribution(source.website || place.website) || undefined,
         url: source.url || place.url,
         types: source.types || place.types,
         business_status: source.business_status || place.business_status,

@@ -1,9 +1,15 @@
 "use client";
 
 import { AlertTriangle, GripVertical, Lock, Plus, Trash2, X } from "lucide-react";
-import Script from "next/script";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+    type FormEvent,
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     getAirlineLogoUrl,
     getAirlineNameFromCode,
@@ -18,6 +24,7 @@ import Portal from "@/components/Portal";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import { COMMON_CURRENCIES } from "@/lib/budget";
+import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 
 type TransportationFormProps = {
     tripId: string;
@@ -34,10 +41,12 @@ type TransportationFormProps = {
 
 export type FlightLeg = {
     departureLocation: string;
+    departurePlaceId?: string;
     departureDate: string;
     departureTime: string;
     departureTimezone: string;
     arrivalLocation: string;
+    arrivalPlaceId?: string;
     arrivalDate: string;
     arrivalTime: string;
     arrivalTimezone: string;
@@ -66,6 +75,7 @@ export type TransportationFormInitialValues = {
 const MODES = [
     { value: "airplane", label: "Airplane", emoji: "✈️", disabled: false },
     { value: "train", label: "Train", emoji: "🚆", disabled: false },
+    { value: "subway", label: "Metro / Subway", emoji: "🚇", disabled: false },
     { value: "bus", label: "Bus", emoji: "🚌", disabled: false },
     { value: "tram", label: "Tram", emoji: "🚊", disabled: false },
     { value: "ferry", label: "Ferry", emoji: "⛴️", disabled: false },
@@ -92,10 +102,12 @@ const PASSWORD_MANAGER_IGNORE_PROPS = {
 function createEmptyLeg(defaultDate = ""): FlightLeg {
     return {
         departureLocation: "",
+        departurePlaceId: "",
         departureDate: defaultDate,
         departureTime: "",
         departureTimezone: "",
         arrivalLocation: "",
+        arrivalPlaceId: "",
         arrivalDate: defaultDate,
         arrivalTime: "",
         arrivalTimezone: "",
@@ -130,7 +142,7 @@ function normalizeInitialRouteStops(
         .filter(Boolean);
 
     if (savedStops?.length) {
-        return savedStops.map((label) => ({ label }));
+        return savedStops.map((label) => ({ label, placeId: "" }));
     }
 
     const fallbackStops = [
@@ -141,10 +153,20 @@ function normalizeInitialRouteStops(
         .filter(Boolean);
 
     if (fallbackStops.length >= 2) {
-        return fallbackStops.map((label) => ({ label }));
+        return fallbackStops.map((label) => ({ label, placeId: "" }));
     }
 
-    return [{ label: "" }, { label: "" }];
+    return [
+        { label: "", placeId: "" },
+        { label: "", placeId: "" },
+    ];
+}
+
+function getGooglePlaceLabel(
+    place: google.maps.places.PlaceResult,
+    fallback: string
+) {
+    return place.name || place.formatted_address || fallback;
 }
 
 function getInitialMode(initialItem?: TransportationFormInitialValues | null) {
@@ -271,6 +293,7 @@ export default function TransportationForm({
     );
     const [isClosing, setIsClosing] = useState(false);
     const [showCloseWarning, setShowCloseWarning] = useState(false);
+    const [locationValidationError, setLocationValidationError] = useState("");
     const [connectionCount, setConnectionCount] = useState<number | null>(() =>
         getInitialConnectionCount(initialItem, initialMode)
     );
@@ -280,11 +303,6 @@ export default function TransportationForm({
     const [routeStops, setRouteStops] = useState(() =>
         normalizeInitialRouteStops(initialItem)
     );
-    const [isGoogleReady, setIsGoogleReady] = useState(false);
-    const departureRefs = useRef<Array<HTMLInputElement | null>>([]);
-    const arrivalRefs = useRef<Array<HTMLInputElement | null>>([]);
-    const routeStopRefs = useRef<Array<HTMLInputElement | null>>([]);
-    const flightLegsRef = useRef(flightLegs);
     const previousIsOpenRef = useRef(isOpen);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
         null
@@ -319,7 +337,12 @@ export default function TransportationForm({
         hasSelectedMode && (mode !== "airplane" || hasSelectedFlightStructure);
     const isTaxiOrCarMode = mode === "taxi" || mode === "car";
     const visibleRouteStops =
-        routeStops.length >= 2 ? routeStops : [{ label: "" }, { label: "" }];
+        routeStops.length >= 2
+            ? routeStops
+            : [
+                  { label: "", placeId: "" },
+                  { label: "", placeId: "" },
+              ];
     const firstRouteStop = visibleRouteStops[0]?.label || "";
     const lastRouteStop = visibleRouteStops.at(-1)?.label || "";
     const effectiveDepartureLocation = isTaxiOrCarMode
@@ -328,14 +351,16 @@ export default function TransportationForm({
     const effectiveArrivalLocation = isTaxiOrCarMode
         ? lastRouteStop
         : lastLeg.arrivalLocation;
+    const effectiveDeparturePlaceId = isTaxiOrCarMode
+        ? visibleRouteStops[0]?.placeId || ""
+        : firstLeg.departurePlaceId || "";
+    const effectiveArrivalPlaceId = isTaxiOrCarMode
+        ? visibleRouteStops.at(-1)?.placeId || ""
+        : lastLeg.arrivalPlaceId || "";
     const returnTo = useMemo(() => {
         const query = searchParams.toString();
         return `${pathname || ""}${query ? `?${query}` : ""}`;
     }, [pathname, searchParams]);
-
-    useEffect(() => {
-        flightLegsRef.current = flightLegs;
-    }, [flightLegs]);
 
     useEffect(() => {
         if (!isOpen || previousIsOpenRef.current === isOpen) {
@@ -353,6 +378,7 @@ export default function TransportationForm({
         setHasUnsavedChanges(false);
         setIsClosing(false);
         setShowCloseWarning(false);
+        setLocationValidationError("");
         previousIsOpenRef.current = isOpen;
     }, [defaultDate, initialItem, isOpen]);
 
@@ -372,110 +398,6 @@ export default function TransportationForm({
             ];
         });
     }, [connectionCount, defaultDate]);
-
-    useEffect(() => {
-        if (!isOpen || !isGoogleReady) return;
-        if (!shouldShowDetails) return;
-        if (!window.google?.maps?.places?.Autocomplete) return;
-
-        const listeners: google.maps.MapsEventListener[] = [];
-
-        if (isTaxiOrCarMode) {
-            routeStopRefs.current.forEach((element, index) => {
-                if (!element) return;
-
-                const autocomplete = new window.google.maps.places.Autocomplete(
-                    element,
-                    {
-                        fields: ["name", "formatted_address"],
-                        types: ["geocode", "establishment"],
-                    }
-                );
-
-                listeners.push(
-                    autocomplete.addListener("place_changed", () => {
-                        const place = autocomplete.getPlace();
-                        const placeName =
-                            place.name || place.formatted_address || element.value;
-                        updateRouteStop(index, placeName);
-                        setHasUnsavedChanges(true);
-                    })
-                );
-            });
-
-            return () => {
-                listeners.forEach((listener) => listener.remove());
-            };
-        }
-
-        flightLegs.forEach((_, index) => {
-            [
-                {
-                    element: departureRefs.current[index],
-                    locationKey: "departureLocation" as const,
-                    timezoneKey: "departureTimezone" as const,
-                    dateKey: "departureDate" as const,
-                    coordinateKey: "departure" as const,
-                },
-                {
-                    element: arrivalRefs.current[index],
-                    locationKey: "arrivalLocation" as const,
-                    timezoneKey: "arrivalTimezone" as const,
-                    dateKey: "arrivalDate" as const,
-                    coordinateKey: "arrival" as const,
-                },
-            ].forEach(({ element, locationKey, timezoneKey, dateKey, coordinateKey }) => {
-                if (!element) return;
-
-                const autocomplete = new window.google.maps.places.Autocomplete(element, {
-                    fields: ["name", "formatted_address", "geometry"],
-                    types: mode === "airplane" ? ["airport"] : ["establishment"],
-                });
-
-                listeners.push(
-                    autocomplete.addListener("place_changed", async () => {
-                        const place = autocomplete.getPlace();
-                        const placeName =
-                            place.name || place.formatted_address || element.value;
-                        const lat = place.geometry?.location?.lat();
-                        const lng = place.geometry?.location?.lng();
-
-                        updateLeg(index, locationKey, placeName);
-                        setHasUnsavedChanges(true);
-
-                        if (typeof lat !== "number" || typeof lng !== "number") return;
-
-                        airportCoordinateRefs.current[index] = {
-                            ...airportCoordinateRefs.current[index],
-                            [coordinateKey]: { lat, lng },
-                        };
-
-                        void resolveLegTimezone({
-                            index,
-                            timezoneKey,
-                            lat,
-                            lng,
-                            date: flightLegsRef.current[index]?.[dateKey],
-                        });
-                    })
-                );
-            });
-        });
-
-        return () => {
-            listeners.forEach((listener) => listener.remove());
-        };
-        // Keep Autocomplete listeners stable across field edits; live leg values come from refs.
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [
-        flightLegs.length,
-        isGoogleReady,
-        isOpen,
-        isTaxiOrCarMode,
-        mode,
-        routeStops.length,
-        shouldShowDetails,
-    ]);
 
     function updateLeg(index: number, field: keyof FlightLeg, value: string) {
         setFlightLegs((currentLegs) =>
@@ -602,16 +524,22 @@ export default function TransportationForm({
         setConnectionCount(null);
         setFlightLegs([createEmptyLeg(defaultDate)]);
         setRouteStops((currentStops) =>
-            currentStops.length >= 2 ? currentStops : [{ label: "" }, { label: "" }]
+            currentStops.length >= 2
+                ? currentStops
+                : [
+                      { label: "", placeId: "" },
+                      { label: "", placeId: "" },
+                  ]
         );
         airportCoordinateRefs.current = [];
+        setLocationValidationError("");
         setHasUnsavedChanges(true);
     }
 
-    function updateRouteStop(index: number, label: string) {
+    function updateRouteStop(index: number, label: string, placeId = "") {
         setRouteStops((currentStops) =>
             currentStops.map((stop, stopIndex) =>
-                stopIndex === index ? { ...stop, label } : stop
+                stopIndex === index ? { ...stop, label, placeId } : stop
             )
         );
     }
@@ -619,7 +547,10 @@ export default function TransportationForm({
     function addRouteStop() {
         setRouteStops((currentStops) => {
             const nextStops = [...currentStops];
-            nextStops.splice(Math.max(1, nextStops.length - 1), 0, { label: "" });
+            nextStops.splice(Math.max(1, nextStops.length - 1), 0, {
+                label: "",
+                placeId: "",
+            });
             return nextStops;
         });
         setHasUnsavedChanges(true);
@@ -644,14 +575,28 @@ export default function TransportationForm({
         setHasUnsavedChanges(true);
     }
 
+    function validateGoogleLocations(event: FormEvent<HTMLFormElement>) {
+        const hasUnvalidatedLocation =
+            mode === "airplane"
+                ? flightLegs.some(
+                      (leg) =>
+                          !leg.departurePlaceId || !leg.arrivalPlaceId
+                  )
+                : !effectiveDeparturePlaceId || !effectiveArrivalPlaceId;
+
+        if (!hasUnvalidatedLocation) {
+            setLocationValidationError("");
+            return;
+        }
+
+        event.preventDefault();
+        setLocationValidationError(
+            "Choose both departure and arrival locations from the Google suggestions."
+        );
+    }
+
     return (
         <>
-            <Script
-                src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
-                strategy="afterInteractive"
-                onLoad={() => setIsGoogleReady(true)}
-                onReady={() => setIsGoogleReady(true)}
-            />
             <Portal>
             <div
                 className="vaivia-modal-backdrop"
@@ -705,6 +650,7 @@ export default function TransportationForm({
                         action={submitAction}
                         className="vaivia-modal-body space-y-5"
                         onChange={() => setHasUnsavedChanges(true)}
+                        onSubmit={validateGoogleLocations}
                     >
                         <input type="hidden" name="trip_id" value={tripId} />
                         <input type="hidden" name="return_to" value={returnTo} />
@@ -729,6 +675,16 @@ export default function TransportationForm({
                             type="hidden"
                             name="arrival_location"
                             value={effectiveArrivalLocation}
+                        />
+                        <input
+                            type="hidden"
+                            name="departure_google_place_id"
+                            value={effectiveDeparturePlaceId}
+                        />
+                        <input
+                            type="hidden"
+                            name="arrival_google_place_id"
+                            value={effectiveArrivalPlaceId}
                         />
                         {visibleRouteStops.map((stop, index) => (
                             <input
@@ -904,45 +860,129 @@ export default function TransportationForm({
                                                 name={`leg_${index}_flight_number`}
                                                 value={legFlightNumber}
                                             />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${index}_departure_google_place_id`}
+                                                value={leg.departurePlaceId || ""}
+                                            />
+                                            <input
+                                                type="hidden"
+                                                name={`leg_${index}_arrival_google_place_id`}
+                                                value={leg.arrivalPlaceId || ""}
+                                            />
 
                                             <div className="grid gap-3 md:grid-cols-2">
-                                                <input
+                                                <PlaceAutocompleteInput
                                                     id={`flightLeg${index}DepartureAirport`}
-                                                    ref={(element) => {
-                                                        departureRefs.current[index] = element;
-                                                    }}
                                                     name={`leg_${index}_departure_location`}
-                                                    type="text"
                                                     value={leg.departureLocation}
-                                                    onChange={(event) =>
+                                                    onInputChange={(value) => {
                                                         updateLeg(
                                                             index,
                                                             "departureLocation",
-                                                            event.target.value
-                                                        )
-                                                    }
-                                                    placeholder="Departure airport, code, or city"
-                                                    className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
-                                                />
-                                                <input
-                                                    id={`flightLeg${index}ArrivalAirport`}
-                                                    ref={(element) => {
-                                                        arrivalRefs.current[index] = element;
+                                                            value
+                                                        );
+                                                        updateLeg(index, "departurePlaceId", "");
                                                     }}
+                                                    onPlaceSelect={(place) => {
+                                                        updateLeg(
+                                                            index,
+                                                            "departureLocation",
+                                                            getGooglePlaceLabel(
+                                                                place,
+                                                                leg.departureLocation
+                                                            )
+                                                        );
+                                                        updateLeg(
+                                                            index,
+                                                            "departurePlaceId",
+                                                            place.place_id || ""
+                                                        );
+                                                        const lat =
+                                                            place.geometry?.location?.lat();
+                                                        const lng =
+                                                            place.geometry?.location?.lng();
+                                                        if (
+                                                            typeof lat === "number" &&
+                                                            typeof lng === "number"
+                                                        ) {
+                                                            airportCoordinateRefs.current[
+                                                                index
+                                                            ] = {
+                                                                ...airportCoordinateRefs
+                                                                    .current[index],
+                                                                departure: { lat, lng },
+                                                            };
+                                                            void resolveLegTimezone({
+                                                                index,
+                                                                timezoneKey:
+                                                                    "departureTimezone",
+                                                                lat,
+                                                                lng,
+                                                                date: leg.departureDate,
+                                                            });
+                                                        }
+                                                    }}
+                                                    placeholder="Departure airport, code, or city"
+                                                    types={["airport"]}
+                                                    required
+                                                    className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                                />
+                                                <PlaceAutocompleteInput
+                                                    id={`flightLeg${index}ArrivalAirport`}
                                                     name={`leg_${index}_arrival_location`}
-                                                    type="text"
                                                     value={leg.arrivalLocation}
-                                                    onChange={(event) =>
+                                                    onInputChange={(value) => {
                                                         updateLeg(
                                                             index,
                                                             "arrivalLocation",
-                                                            event.target.value
-                                                        )
-                                                    }
+                                                            value
+                                                        );
+                                                        updateLeg(index, "arrivalPlaceId", "");
+                                                    }}
+                                                    onPlaceSelect={(place) => {
+                                                        updateLeg(
+                                                            index,
+                                                            "arrivalLocation",
+                                                            getGooglePlaceLabel(
+                                                                place,
+                                                                leg.arrivalLocation
+                                                            )
+                                                        );
+                                                        updateLeg(
+                                                            index,
+                                                            "arrivalPlaceId",
+                                                            place.place_id || ""
+                                                        );
+                                                        const lat =
+                                                            place.geometry?.location?.lat();
+                                                        const lng =
+                                                            place.geometry?.location?.lng();
+                                                        if (
+                                                            typeof lat === "number" &&
+                                                            typeof lng === "number"
+                                                        ) {
+                                                            airportCoordinateRefs.current[
+                                                                index
+                                                            ] = {
+                                                                ...airportCoordinateRefs
+                                                                    .current[index],
+                                                                arrival: { lat, lng },
+                                                            };
+                                                            void resolveLegTimezone({
+                                                                index,
+                                                                timezoneKey:
+                                                                    "arrivalTimezone",
+                                                                lat,
+                                                                lng,
+                                                                date: leg.arrivalDate,
+                                                            });
+                                                        }
+                                                    }}
                                                     placeholder="Arrival airport, code, or city"
+                                                    types={["airport"]}
+                                                    required
                                                     className="rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                                    {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                 />
                                             </div>
 
@@ -1155,18 +1195,64 @@ export default function TransportationForm({
                                                               ? "Arrival destination"
                                                               : `Additional stop ${index}`}
                                                     </span>
-                                                    <input
-                                                        ref={(element) => {
-                                                            routeStopRefs.current[index] =
-                                                                element;
-                                                        }}
+                                                    <PlaceAutocompleteInput
                                                         value={stop.label}
-                                                        onChange={(event) => {
+                                                        onInputChange={(value) => {
                                                             updateRouteStop(
                                                                 index,
-                                                                event.target.value
+                                                                value
                                                             );
                                                             setHasUnsavedChanges(true);
+                                                        }}
+                                                        onPlaceSelect={(place) => {
+                                                            updateRouteStop(
+                                                                index,
+                                                                getGooglePlaceLabel(
+                                                                    place,
+                                                                    stop.label
+                                                                ),
+                                                                place.place_id || ""
+                                                            );
+                                                            const lat =
+                                                                place.geometry?.location?.lat();
+                                                            const lng =
+                                                                place.geometry?.location?.lng();
+                                                            if (
+                                                                typeof lat !== "number" ||
+                                                                typeof lng !== "number"
+                                                            ) {
+                                                                return;
+                                                            }
+                                                            if (isFirst) {
+                                                                airportCoordinateRefs.current[0] = {
+                                                                    ...airportCoordinateRefs
+                                                                        .current[0],
+                                                                    departure: { lat, lng },
+                                                                };
+                                                                void resolveLegTimezone({
+                                                                    index: 0,
+                                                                    timezoneKey:
+                                                                        "departureTimezone",
+                                                                    lat,
+                                                                    lng,
+                                                                    date: firstLeg.departureDate,
+                                                                });
+                                                            }
+                                                            if (isLast) {
+                                                                airportCoordinateRefs.current[0] = {
+                                                                    ...airportCoordinateRefs
+                                                                        .current[0],
+                                                                    arrival: { lat, lng },
+                                                                };
+                                                                void resolveLegTimezone({
+                                                                    index: 0,
+                                                                    timezoneKey:
+                                                                        "arrivalTimezone",
+                                                                    lat,
+                                                                    lng,
+                                                                    date: firstLeg.arrivalDate,
+                                                                });
+                                                            }
                                                         }}
                                                         placeholder={
                                                             isFirst
@@ -1175,8 +1261,12 @@ export default function TransportationForm({
                                                                   ? "Where are you arriving?"
                                                                   : "Additional stop"
                                                         }
+                                                        types={[
+                                                            "geocode",
+                                                            "establishment",
+                                                        ]}
+                                                        required={isFirst || isLast}
                                                         className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                                        {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                     />
                                                 </label>
                                                 <div className="flex items-end gap-2">
@@ -1260,11 +1350,240 @@ export default function TransportationForm({
                         {shouldShowDetails &&
                         mode !== "airplane" &&
                         !isTaxiOrCarMode ? (
-                            <div className="rounded-md border border-slate-200 p-4 text-sm text-slate-600">
-                                Add the departure and arrival fields above, then use the
-                                booking reference and notes fields below for anything
-                                else specific to this transportation.
+                            <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
+                                <div>
+                                    <p className="text-sm font-black text-slate-900">
+                                        Departure and arrival
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                                        Select both locations from the Google suggestions.
+                                    </p>
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <label className="block">
+                                        <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                            Departure location
+                                        </span>
+                                        <PlaceAutocompleteInput
+                                            value={firstLeg.departureLocation}
+                                            onInputChange={(value) => {
+                                                updateLeg(
+                                                    0,
+                                                    "departureLocation",
+                                                    value
+                                                );
+                                                updateLeg(0, "departurePlaceId", "");
+                                            }}
+                                            onPlaceSelect={(place) => {
+                                                updateLeg(
+                                                    0,
+                                                    "departureLocation",
+                                                    getGooglePlaceLabel(
+                                                        place,
+                                                        firstLeg.departureLocation
+                                                    )
+                                                );
+                                                updateLeg(
+                                                    0,
+                                                    "departurePlaceId",
+                                                    place.place_id || ""
+                                                );
+                                                const lat =
+                                                    place.geometry?.location?.lat();
+                                                const lng =
+                                                    place.geometry?.location?.lng();
+                                                if (
+                                                    typeof lat === "number" &&
+                                                    typeof lng === "number"
+                                                ) {
+                                                    airportCoordinateRefs.current[0] = {
+                                                        ...airportCoordinateRefs
+                                                            .current[0],
+                                                        departure: { lat, lng },
+                                                    };
+                                                    void resolveLegTimezone({
+                                                        index: 0,
+                                                        timezoneKey:
+                                                            "departureTimezone",
+                                                        lat,
+                                                        lng,
+                                                        date: firstLeg.departureDate,
+                                                    });
+                                                }
+                                            }}
+                                            placeholder="Departure station or location"
+                                            types={[
+                                                "geocode",
+                                                "establishment",
+                                            ]}
+                                            required
+                                            className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                        />
+                                    </label>
+                                    <label className="block">
+                                        <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                                            Arrival location
+                                        </span>
+                                        <PlaceAutocompleteInput
+                                            value={firstLeg.arrivalLocation}
+                                            onInputChange={(value) => {
+                                                updateLeg(0, "arrivalLocation", value);
+                                                updateLeg(0, "arrivalPlaceId", "");
+                                            }}
+                                            onPlaceSelect={(place) => {
+                                                updateLeg(
+                                                    0,
+                                                    "arrivalLocation",
+                                                    getGooglePlaceLabel(
+                                                        place,
+                                                        firstLeg.arrivalLocation
+                                                    )
+                                                );
+                                                updateLeg(
+                                                    0,
+                                                    "arrivalPlaceId",
+                                                    place.place_id || ""
+                                                );
+                                                const lat =
+                                                    place.geometry?.location?.lat();
+                                                const lng =
+                                                    place.geometry?.location?.lng();
+                                                if (
+                                                    typeof lat === "number" &&
+                                                    typeof lng === "number"
+                                                ) {
+                                                    airportCoordinateRefs.current[0] = {
+                                                        ...airportCoordinateRefs
+                                                            .current[0],
+                                                        arrival: { lat, lng },
+                                                    };
+                                                    void resolveLegTimezone({
+                                                        index: 0,
+                                                        timezoneKey:
+                                                            "arrivalTimezone",
+                                                        lat,
+                                                        lng,
+                                                        date: firstLeg.arrivalDate,
+                                                    });
+                                                }
+                                            }}
+                                            placeholder="Arrival station or location"
+                                            types={[
+                                                "geocode",
+                                                "establishment",
+                                            ]}
+                                            required
+                                            className="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                        />
+                                    </label>
+                                </div>
                             </div>
+                        ) : null}
+
+                        {shouldShowDetails && mode !== "airplane" ? (
+                            <div className="space-y-4 rounded-2xl border border-slate-200 p-4">
+                                <input
+                                    type="hidden"
+                                    name="leg_0_departure_location"
+                                    value={effectiveDepartureLocation}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="leg_0_arrival_location"
+                                    value={effectiveArrivalLocation}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="leg_0_departure_google_place_id"
+                                    value={effectiveDeparturePlaceId}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="leg_0_arrival_google_place_id"
+                                    value={effectiveArrivalPlaceId}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="leg_0_departure_timezone"
+                                    value={firstLeg.departureTimezone}
+                                />
+                                <input
+                                    type="hidden"
+                                    name="leg_0_arrival_timezone"
+                                    value={firstLeg.arrivalTimezone}
+                                />
+                                <div>
+                                    <p className="text-sm font-black text-slate-900">
+                                        Date and time
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                                        Add when this transportation departs and arrives.
+                                    </p>
+                                </div>
+                                <div className="grid gap-3 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <DatePickerField
+                                            name="leg_0_departure_date"
+                                            label="Departure date"
+                                            required
+                                            value={firstLeg.departureDate}
+                                            onChange={(value) =>
+                                                updateLeg(0, "departureDate", value)
+                                            }
+                                        />
+                                        <TimeInput
+                                            name="leg_0_departure_time"
+                                            aria-label="Departure time"
+                                            required
+                                            value={firstLeg.departureTime}
+                                            onChange={(event) =>
+                                                updateLeg(
+                                                    0,
+                                                    "departureTime",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className="w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                            {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <DatePickerField
+                                            name="leg_0_arrival_date"
+                                            label="Arrival date"
+                                            required
+                                            value={firstLeg.arrivalDate}
+                                            onChange={(value) =>
+                                                updateLeg(0, "arrivalDate", value)
+                                            }
+                                        />
+                                        <TimeInput
+                                            name="leg_0_arrival_time"
+                                            aria-label="Arrival time"
+                                            required
+                                            value={firstLeg.arrivalTime}
+                                            onChange={(event) =>
+                                                updateLeg(
+                                                    0,
+                                                    "arrivalTime",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className="w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                                            {...PASSWORD_MANAGER_IGNORE_PROPS}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {locationValidationError ? (
+                            <p
+                                role="alert"
+                                className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
+                            >
+                                {locationValidationError}
+                            </p>
                         ) : null}
 
                         {shouldShowDetails && (

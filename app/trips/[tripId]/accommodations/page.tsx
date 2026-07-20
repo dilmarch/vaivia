@@ -56,9 +56,10 @@ import {
 } from "@/lib/tripSlugUpdate";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
-import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
+import { assertDateRangeOrdered } from "@/lib/dateRange";
+import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 
 type PageProps = {
     params: Promise<{
@@ -358,6 +359,13 @@ async function updateTrip(formData: FormData) {
     const tripId = String(formData.get("trip_id") || "");
     const title = String(formData.get("title") || "");
     const slug = String(formData.get("slug") || "");
+    const startDate = String(formData.get("start_date") || "");
+    const endDate = String(formData.get("end_date") || "");
+    assertDateRangeOrdered(
+        startDate,
+        endDate,
+        "Trip end date cannot be before its start date."
+    );
     const { data: existingTripCover, error: existingTripCoverError } = await supabase
         .from("trips")
         .select("id,cover_image_source,cover_image_storage_path")
@@ -388,8 +396,8 @@ async function updateTrip(formData: FormData) {
     const payload: TripUpdatePayload = {
         title,
         destination: String(formData.get("destination") || ""),
-        start_date: String(formData.get("start_date") || "") || null,
-        end_date: String(formData.get("end_date") || "") || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
         notes: String(formData.get("notes") || ""),
         ...coverPayload,
     };
@@ -414,12 +422,14 @@ async function updateTrip(formData: FormData) {
             userId: user.id,
             storagePath: uploadedStoragePath,
         });
-        console.error("Error updating trip from accommodations page:", error);
+        console.error("Error updating trip from stays page:", error);
         if (isTripSlugConflictError(error)) {
             throw new Error(getTripSlugErrorMessage(error));
         }
         throw new Error("Could not update trip");
     }
+
+    await syncTripDestinationsFromForm({ supabase, tripId, formData });
 
     await cleanupReplacedTripCover({
         supabase,
@@ -453,7 +463,7 @@ async function deleteTrip(formData: FormData) {
         .eq("user_id", user.id);
 
     if (error) {
-        console.error("Error archiving trip from accommodations page:", error);
+        console.error("Error archiving trip from stays page:", error);
         throw new Error("Could not archive trip");
     }
 
@@ -563,15 +573,6 @@ async function updateAccommodation(formData: FormData) {
     const tripId = String(formData.get("trip_id") || "");
     const accommodationId = String(formData.get("accommodation_id") || "");
     const payload = buildAccommodationPayload(formData, tripId);
-    payload.trip_leg_id = await resolveTripLegIdForLocation({
-        supabase,
-        tripId,
-        explicitTripLegId: payload.trip_leg_id,
-        city: payload.city,
-        region: payload.region,
-        country: payload.country,
-        itemDate: payload.check_in_date,
-    });
     const validationErrors = validateAccommodationPayload(payload);
 
     if (validationErrors.length > 0) {
@@ -588,7 +589,7 @@ async function updateAccommodation(formData: FormData) {
         .eq("trip_id", tripId);
 
     if (error) {
-        console.error("Error updating accommodation:", {
+        console.error("Error updating stay:", {
             message: error.message,
             code: error.code,
             details: error.details,
@@ -599,61 +600,63 @@ async function updateAccommodation(formData: FormData) {
         });
         return {
             ok: false as const,
-            error: `Could not update accommodation: ${getAccommodationErrorMessage(
+            error: `Could not update stay: ${getAccommodationErrorMessage(
                 error.message
             )}`,
         };
     }
 
-    try {
-        await syncAutoBudgetExpense({
-            supabase,
-            userId: user.id,
+    if (!payload.is_planning_option) {
+        try {
+            await syncAutoBudgetExpense({
+                supabase,
+                userId: user.id,
+                tripId,
+                sourceType: "accommodation",
+                sourceId: accommodationId,
+                amount: payload.cost,
+                currency: payload.currency,
+                expenseDate: payload.check_in_date,
+                description: payload.hotel_name,
+                formData,
+            });
+        } catch (budgetError) {
+            console.error("Stay updated without budget sync:", {
+                message:
+                    budgetError instanceof Error
+                        ? budgetError.message
+                        : String(budgetError),
+                tripId,
+                accommodationId,
+                userId: user.id,
+            });
+            return {
+                ok: false as const,
+                error: "Stay saved, but its budget entry could not be updated.",
+            };
+        }
+
+        const participantsError = await replaceTripItemParticipantsFromForm({
             tripId,
-            sourceType: "accommodation",
-            sourceId: accommodationId,
-            amount: payload.cost,
-            currency: payload.currency,
-            expenseDate: payload.check_in_date,
-            description: payload.hotel_name,
+            itemType: "accommodation",
+            itemId: accommodationId,
             formData,
         });
-    } catch (budgetError) {
-        console.error("Accommodation updated without budget sync:", {
-            message:
-                budgetError instanceof Error
-                    ? budgetError.message
-                    : String(budgetError),
-            tripId,
-            accommodationId,
-            userId: user.id,
-        });
-        return {
-            ok: false as const,
-            error: "Accommodation saved, but its budget entry could not be updated.",
-        };
-    }
 
-    const participantsError = await replaceTripItemParticipantsFromForm({
-        tripId,
-        itemType: "accommodation",
-        itemId: accommodationId,
-        formData,
-    });
-
-    if (participantsError) {
-        console.error("Error updating accommodation participants:", {
-            message: participantsError.message,
-            code: participantsError.code,
-            details: participantsError.details,
-            hint: participantsError.hint,
-            tripId,
-            accommodationId,
-        });
-        return {
-            ok: false as const,
-            error: "Accommodation saved, but its traveler selection could not be updated.",
-        };
+        if (participantsError) {
+            console.error("Error updating stay participants:", {
+                message: participantsError.message,
+                code: participantsError.code,
+                details: participantsError.details,
+                hint: participantsError.hint,
+                tripId,
+                accommodationId,
+            });
+            return {
+                ok: false as const,
+                error: "Stay saved, but its traveler selection could not be updated.",
+            };
+        }
     }
 
     revalidatePath(`/trips/${tripId}/accommodations`);
@@ -680,7 +683,7 @@ async function deleteAccommodation(formData: FormData) {
         .eq("trip_id", tripId);
 
     if (error) {
-        console.error("Error deleting accommodation:", {
+        console.error("Error deleting stay:", {
             message: error.message,
             code: error.code,
             details: error.details,
@@ -689,13 +692,144 @@ async function deleteAccommodation(formData: FormData) {
             userId: user.id,
         });
         throw new Error(
-            `Could not delete accommodation: ${getAccommodationErrorMessage(
+            `Could not delete stay: ${getAccommodationErrorMessage(
                 error.message
             )}`
         );
     }
 
     revalidatePath(`/trips/${tripId}/accommodations`);
+}
+
+async function promoteAccommodationOption(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "");
+    const accommodationId = String(formData.get("accommodation_id") || "");
+    const status = String(formData.get("status") || "tentative");
+    const checkInTimeStart = String(
+        formData.get("check_in_time_start") || ""
+    ).trim();
+    const checkInTimeEnd = String(
+        formData.get("check_in_time_end") || ""
+    ).trim();
+    const checkOutTime = String(formData.get("check_out_time") || "").trim();
+    const costText = String(formData.get("cost") || "").trim();
+    const cost = costText ? Number(costText.replace(/,/g, "")) : null;
+    const currency = String(formData.get("currency") || "CAD")
+        .trim()
+        .toUpperCase();
+    const audienceModeValue = String(
+        formData.get("audience_mode") || "everyone"
+    );
+    const audienceMode =
+        audienceModeValue === "custom" || audienceModeValue === "just_me"
+            ? audienceModeValue
+            : "everyone";
+    const validStatuses = new Set(["tentative", "booked", "cancelled"]);
+    const validTime = (value: string) =>
+        !value || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+    if (!tripId || !accommodationId || !validStatuses.has(status)) {
+        return { ok: false as const, error: "Choose a valid stay and status." };
+    }
+    if (
+        !validTime(checkInTimeStart) ||
+        !validTime(checkInTimeEnd) ||
+        !validTime(checkOutTime)
+    ) {
+        return { ok: false as const, error: "Choose valid stay times." };
+    }
+    if (
+        checkInTimeStart &&
+        checkInTimeEnd &&
+        checkInTimeEnd <= checkInTimeStart
+    ) {
+        return {
+            ok: false as const,
+            error: "Check-in end time must be after check-in start time.",
+        };
+    }
+    if (cost !== null && (!Number.isFinite(cost) || cost <= 0)) {
+        return { ok: false as const, error: "Price must be greater than 0." };
+    }
+    if (cost !== null && !/^[A-Z]{3}$/.test(currency)) {
+        return { ok: false as const, error: "Choose a valid currency." };
+    }
+
+    const participantsError = await replaceTripItemParticipantsFromForm({
+        tripId,
+        itemType: "accommodation",
+        itemId: accommodationId,
+        formData,
+    });
+
+    if (participantsError) {
+        return {
+            ok: false as const,
+            error: "The guest selection could not be saved. Please try again.",
+        };
+    }
+
+    const { data, error } = await supabase
+        .from("trip_accommodations")
+        .update({
+            is_planning_option: false,
+            status: status as "tentative" | "booked" | "cancelled",
+            check_in_time_start: checkInTimeStart || null,
+            check_in_time_end: checkInTimeEnd || null,
+            check_out_time: checkOutTime || null,
+            cost,
+            currency: cost === null ? null : currency,
+            audience_mode: audienceMode,
+        })
+        .eq("id", accommodationId)
+        .eq("trip_id", tripId)
+        .eq("is_planning_option", true)
+        .select("id, hotel_name, check_in_date, cost, currency")
+        .maybeSingle();
+
+    if (error || !data) {
+        return {
+            ok: false as const,
+            error: "This stay option could not be added to the trip.",
+        };
+    }
+
+    try {
+        await syncAutoBudgetExpense({
+            supabase,
+            userId: user.id,
+            tripId,
+            sourceType: "accommodation",
+            sourceId: data.id,
+            amount: data.cost,
+            currency: data.currency,
+            expenseDate: data.check_in_date,
+            description: data.hotel_name,
+            formData,
+        });
+    } catch (budgetError) {
+        console.error("Promoted stay saved without budget sync:", {
+            message:
+                budgetError instanceof Error
+                    ? budgetError.message
+                    : String(budgetError),
+            tripId,
+            userId: user.id,
+        });
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+    revalidatePath(`/trips/${tripId}/accommodations`);
+    return { ok: true as const };
 }
 
 export default async function TripAccommodationsPage({
@@ -1003,7 +1137,7 @@ export default async function TripAccommodationsPage({
         .order("created_at", { ascending: true });
 
     if (error) {
-        console.error("Error loading accommodations:", {
+        console.error("Error loading stays:", {
             message: error.message,
             code: error.code,
             details: error.details,
@@ -1023,7 +1157,7 @@ export default async function TripAccommodationsPage({
             .eq("item_type", "accommodation");
 
     if (participantRowsError) {
-        console.warn("Could not load accommodation travelers for coverage timeline:", {
+        console.warn("Could not load stay travelers for coverage timeline:", {
             message: participantRowsError.message,
             code: participantRowsError.code,
             details: participantRowsError.details,
@@ -1090,7 +1224,7 @@ export default async function TripAccommodationsPage({
         .order("start_time", { ascending: true });
 
     if (scheduledMapItemsError) {
-        console.warn("Could not load scheduled items for accommodations map:", {
+        console.warn("Could not load scheduled items for stays map:", {
             message: scheduledMapItemsError.message,
             code: scheduledMapItemsError.code,
             details: scheduledMapItemsError.details,
@@ -1109,7 +1243,7 @@ export default async function TripAccommodationsPage({
         .order("created_at", { ascending: false });
 
     if (ideaMapItemsError) {
-        console.warn("Could not load ideas for accommodations map:", {
+        console.warn("Could not load ideas for stays map:", {
             message: ideaMapItemsError.message,
             code: ideaMapItemsError.code,
             details: ideaMapItemsError.details,
@@ -1128,7 +1262,7 @@ export default async function TripAccommodationsPage({
         .order("sort_order", { ascending: true });
 
     if (tripLegsError) {
-        console.warn("Could not load trip legs for accommodations hero:", {
+        console.warn("Could not load trip legs for stays hero:", {
             message: tripLegsError.message,
             code: tripLegsError.code,
             details: tripLegsError.details,
@@ -1156,7 +1290,7 @@ export default async function TripAccommodationsPage({
             .in("trip_leg_id", manualTripLegIds);
 
         if (memberLegRowsError) {
-            console.warn("Could not load trip leg members for accommodations hero:", {
+            console.warn("Could not load trip leg members for stays hero:", {
                 message: memberLegRowsError.message,
                 code: memberLegRowsError.code,
                 details: memberLegRowsError.details,
@@ -1190,38 +1324,6 @@ export default async function TripAccommodationsPage({
         );
     });
 
-    const accommodationLocations: TripLegLocation[] = (
-        (accommodations || []) as Array<{
-            id: string;
-            hotel_name?: string | null;
-            city?: string | null;
-            region?: string | null;
-            country?: string | null;
-            check_in_date?: string | null;
-            check_out_date?: string | null;
-            status?: string | null;
-        }>
-    )
-        .filter((accommodation) => accommodation.status !== "cancelled")
-        .map((accommodation) => {
-            const name =
-                accommodation.city ||
-                accommodation.region ||
-                accommodation.country ||
-                accommodation.hotel_name ||
-                "Accommodation";
-
-            return {
-                id: accommodation.id,
-                source: "accommodation" as const,
-                name,
-                cityName: accommodation.city || accommodation.region || name,
-                countryName: accommodation.country || null,
-                startDate: accommodation.check_in_date || null,
-                endDate: accommodation.check_out_date || null,
-            };
-        });
-
     const manualLocations: TripLegLocation[] = (
         (tripLegRows || []) as Array<{
             id: string;
@@ -1246,6 +1348,8 @@ export default async function TripAccommodationsPage({
             iconEmoji: leg.icon_emoji || null,
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
+            canDelete: leg.leg_type === "custom",
+            canClearDates: leg.leg_type === "custom",
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
             memberDatesByMemberId: Object.fromEntries(
                 (tripMemberIdsByLegId.get(leg.id) || []).map((memberId) => {
@@ -1291,62 +1395,31 @@ export default async function TripAccommodationsPage({
         };
     });
 
-    const accommodationLocationsWithManualLegs = accommodationLocations.map(
-        (accommodation) => {
-            const manualMatch = manualLocations.find((location) =>
-                !location.googlePlaceId && locationsMatch(accommodation, location)
-            );
-
-            return {
-                ...accommodation,
-                persistedLegId: manualMatch?.id || null,
-                startDate:
-                    accommodation.startDate || manualMatch?.startDate || null,
-                endDate: accommodation.endDate || manualMatch?.endDate || null,
-                memberIds: manualMatch?.memberIds || [],
-                memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
-            };
-        }
-    );
     const unmatchedManualLocations = manualLocations.filter(
         (manualLocation) =>
             Boolean(manualLocation.googlePlaceId) ||
-            (!accommodationLocations.some((accommodation) =>
-                locationsMatch(accommodation, manualLocation)
-            ) &&
-                !destinationLocations.some((destination) =>
-                    locationsMatch(destination, manualLocation)
-                ))
+            !destinationLocations.some((destination) =>
+                locationsMatch(destination, manualLocation)
+            )
     );
 
     const mergedDestinationLocations = destinationLocations.map((destination) => {
         const manualMatch = manualLocations.find((location) =>
             !location.googlePlaceId && locationsMatch(destination, location)
         );
-        const accommodationMatch = accommodationLocations.find((location) =>
-            locationsMatch(destination, location)
-        );
-
         return {
             ...destination,
             persistedLegId: manualMatch?.id || null,
-            startDate:
-                accommodationMatch?.startDate ||
-                manualMatch?.startDate ||
-                null,
-            endDate:
-                accommodationMatch?.endDate ||
-                manualMatch?.endDate ||
-                null,
+            canClearDates: manualMatch?.canClearDates || false,
+            startDate: manualMatch?.startDate || null,
+            endDate: manualMatch?.endDate || null,
             memberIds: manualMatch?.memberIds || [],
             memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
         };
     });
 
     const heroLocations = sortTripLegLocations(
-        destinationLocations.length > 0
-            ? [...mergedDestinationLocations, ...unmatchedManualLocations]
-            : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
+        [...mergedDestinationLocations, ...unmatchedManualLocations]
     );
     const visibleHeroLocations = heroLocations.filter((location) => {
         const hasExplicitSavedSelection =
@@ -1527,9 +1600,12 @@ export default async function TripAccommodationsPage({
                 countryName: accommodation.country || null,
                 place: {
                     id: `accommodation-${accommodation.id}`,
+                    recordId: accommodation.id,
                     type: "accommodation",
                     title: accommodation.hotel_name,
-                    subtitle: "Accommodation",
+                    subtitle: accommodation.is_planning_option
+                        ? "Stay option"
+                        : "Trip stay",
                     address: accommodation.address || null,
                     latitude,
                     longitude,
@@ -1540,6 +1616,13 @@ export default async function TripAccommodationsPage({
                         .filter(Boolean)
                         .join(" - "),
                     statusLabel: accommodation.status,
+                    checkInDate: accommodation.check_in_date,
+                    checkOutDate: accommodation.check_out_date,
+                    cost: accommodation.cost,
+                    currency: accommodation.currency,
+                    bookingUrl: accommodation.booking_url,
+                    isPlanningOption: accommodation.is_planning_option,
+                    accommodation,
                     googleMapsUrl,
                 },
             });
@@ -1738,7 +1821,7 @@ export default async function TripAccommodationsPage({
                             {tripRecord.title || "Untitled trip"}
                         </p>
                         <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
-                            Accommodations
+                            Stays
                         </h1>
                     </div>
                 </TripHeaderCover>
@@ -1808,7 +1891,7 @@ export default async function TripAccommodationsPage({
             <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6">
                 {error ? (
                     <div className="rounded-[1.5rem] border border-red-300/30 bg-red-950/70 p-5 text-sm font-semibold text-red-50">
-                        Could not load accommodations right now.
+                        Could not load stays right now.
                     </div>
                 ) : null}
 
@@ -1834,7 +1917,10 @@ export default async function TripAccommodationsPage({
                                 })
                             )}
                             accommodations={
-                                (accommodations || []) as TripAccommodation[]
+                                ((accommodations || []) as TripAccommodation[]).filter(
+                                    (accommodation) =>
+                                        !accommodation.is_planning_option
+                                )
                             }
                             participants={
                                 (accommodationParticipantRows || []) as AccommodationCoverageParticipant[]
@@ -1844,7 +1930,10 @@ export default async function TripAccommodationsPage({
                         <AccommodationManager
                             tripId={tripId}
                             accommodations={
-                                (accommodations || []) as TripAccommodation[]
+                                ((accommodations || []) as TripAccommodation[]).filter(
+                                    (accommodation) =>
+                                        !accommodation.is_planning_option
+                                )
                             }
                             createAction={createAccommodation}
                             updateAction={updateAccommodation}
@@ -1861,7 +1950,12 @@ export default async function TripAccommodationsPage({
                 ) : (
                     <AccommodationAreaMaps
                         cities={accommodationAreaMapCities}
-                        addAccommodationHref={`${accommodationsHref}?addAccommodation=1`}
+                        tripId={tripId}
+                        createAction={createAccommodation}
+                        updateAction={updateAccommodation}
+                        promoteAction={promoteAccommodationOption}
+                        audienceOptions={audienceOptions}
+                        currentUserTripMemberId={currentUserTripMemberId}
                     />
                 )}
             </div>

@@ -9,6 +9,7 @@ type PageProps = {
         add?: string;
         addedScenario?: string;
         addedTransportation?: string;
+        view?: string;
     }>;
 };
 

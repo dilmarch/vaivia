@@ -24,6 +24,7 @@ import MoveTripItemButton from "@/components/MoveTripItemButton";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
 import { DateInput } from "@/components/ui/date-input";
+import { DateRangeInputs } from "@/components/ui/date-range-inputs";
 import { TimeInput } from "@/components/ui/time-input";
 import {
     ACCOMMODATION_STATUS_OPTIONS,
@@ -35,6 +36,7 @@ import {
     type TripAccommodation,
 } from "@/lib/accommodations";
 import { COMMON_CURRENCIES, formatCurrency } from "@/lib/budget";
+import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import { getInitials } from "@/lib/travelers";
@@ -79,6 +81,8 @@ type PlaceFields = Pick<
 
 type ModalMode =
     { type: "add"; accommodation?: null } | { type: "edit"; accommodation: TripAccommodation };
+
+type AccommodationFormVariant = "trip" | "planning";
 
 type GooglePlacePhotoState = {
     url: string;
@@ -249,7 +253,7 @@ function GooglePlaceCoverPhoto({
                     });
                 } catch (legacyPlacesError) {
                     if (process.env.NODE_ENV === "development") {
-                        console.warn("Could not load Google Place accommodation photo:", {
+                        console.warn("Could not load Google Place stay photo:", {
                             placeId: accommodation.google_place_id,
                             error: legacyPlacesError,
                         });
@@ -553,6 +557,7 @@ function AccommodationForm({
     audienceOptions = [],
     audienceParticipants = [],
     currentUserTripMemberId = null,
+    variant = "trip",
     onClose,
 }: {
     tripId: string;
@@ -563,12 +568,17 @@ function AccommodationForm({
     audienceOptions?: TripAudienceOption[];
     audienceParticipants?: AccommodationAudienceParticipant[];
     currentUserTripMemberId?: string | null;
+    variant?: AccommodationFormVariant;
     onClose: () => void;
 }) {
     const accommodation = mode.type === "edit" ? mode.accommodation : null;
+    const isPlanningOption = variant === "planning";
     const [hotelName, setHotelName] = useState(accommodation?.hotel_name || "");
     const [address, setAddress] = useState(accommodation?.address || "");
     const [website, setWebsite] = useState(accommodation?.website || "");
+    const [bookingUrl, setBookingUrl] = useState(
+        accommodation?.booking_url || ""
+    );
     const [type, setType] = useState<AccommodationType>(
         accommodation?.accommodation_type || "other",
     );
@@ -617,6 +627,11 @@ function AccommodationForm({
         formData.set("hotel_name", hotelName);
         formData.set("address", address);
         formData.set("website", website);
+        formData.set("booking_url", bookingUrl);
+        formData.set(
+            "is_planning_option",
+            isPlanningOption ? "true" : "false"
+        );
 
         PLACE_FIELD_NAMES.forEach((fieldName) => {
             formData.set(fieldName, formValue(placeFields[fieldName]));
@@ -631,14 +646,15 @@ function AccommodationForm({
         const checkInStart = String(formData.get("check_in_time_start") || "");
         const checkInEnd = String(formData.get("check_in_time_end") || "");
         const websiteValue = String(formData.get("website") || "").trim();
+        const bookingUrlValue = String(formData.get("booking_url") || "").trim();
 
         if (!String(formData.get("hotel_name") || "").trim()) {
-            nextErrors.push("Accommodation name is required.");
+            nextErrors.push("Stay name is required.");
         }
         if (!checkInDate) nextErrors.push("Check-in date is required.");
         if (!checkOutDate) nextErrors.push("Check-out date is required.");
-        if (checkInDate && checkOutDate && checkOutDate <= checkInDate) {
-            nextErrors.push("Check-out date must be after check-in date.");
+        if (checkInDate && checkOutDate && checkOutDate < checkInDate) {
+            nextErrors.push("Check-out date cannot be before check-in date.");
         }
         if (freeCancellationEndsOn && checkInDate && freeCancellationEndsOn > checkInDate) {
             nextErrors.push("Free cancellation must end on or before check-in.");
@@ -653,6 +669,16 @@ function AccommodationForm({
             )
         ) {
             nextErrors.push("Website must be a valid URL.");
+        }
+        if (
+            bookingUrlValue &&
+            !/^https?:\/\/\S+\.\S+/i.test(
+                /^https?:\/\//i.test(bookingUrlValue)
+                    ? bookingUrlValue
+                    : `https://${bookingUrlValue}`
+            )
+        ) {
+            nextErrors.push("Booking link must be a valid URL.");
         }
         const costValue = String(formData.get("cost") || "").trim();
         if (costValue) {
@@ -693,7 +719,7 @@ function AccommodationForm({
                             const message =
                                 error instanceof Error
                                     ? error.message
-                                    : "Could not save accommodation.";
+                                    : "Could not save stay.";
                             setErrors([message]);
                         });
                 });
@@ -701,6 +727,11 @@ function AccommodationForm({
             className={modalBodyClass}
         >
             <input type="hidden" name="trip_id" value={tripId} />
+            <input
+                type="hidden"
+                name="is_planning_option"
+                value={isPlanningOption ? "true" : "false"}
+            />
             {accommodation ? (
                 <input type="hidden" name="accommodation_id" value={accommodation.id} />
             ) : null}
@@ -723,7 +754,7 @@ function AccommodationForm({
 
             <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-2 md:col-span-2">
-                    <span className={labelClass}>Hotel / accommodation name</span>
+                    <span className={labelClass}>Hotel / stay name</span>
                     <PlaceAutocompleteInput
                         id="hotelName"
                         value={hotelName}
@@ -751,38 +782,34 @@ function AccommodationForm({
                     />
                 </label>
 
-                <label className="space-y-2">
-                    <span className={labelClass}>Check-in date</span>
-                    <DateInput
-                        name="check_in_date"
-                        defaultValue={accommodation?.check_in_date || ""}
-                        required
-                        className={inputClass}
-                    />
-                </label>
+                <DateRangeInputs
+                    startName="check_in_date"
+                    endName="check_out_date"
+                    startLabel="Check-in date"
+                    endLabel="Check-out date"
+                    initialStartDate={accommodation?.check_in_date}
+                    initialEndDate={accommodation?.check_out_date}
+                    required
+                    className="grid gap-4 md:col-span-2 md:grid-cols-2"
+                    labelClassName={labelClass}
+                    inputClassName={inputClass}
+                />
 
-                <label className="space-y-2">
-                    <span className={labelClass}>Check-out date</span>
-                    <DateInput
-                        name="check_out_date"
-                        defaultValue={accommodation?.check_out_date || ""}
-                        required
-                        className={inputClass}
-                    />
-                </label>
+                {!isPlanningOption ? (
+                    <label className="space-y-2 md:col-span-2">
+                        <span className={labelClass}>Free cancellation ends</span>
+                        <DateInput
+                            name="free_cancellation_ends_on"
+                            defaultValue={accommodation?.free_cancellation_ends_on || ""}
+                            className={inputClass}
+                        />
+                        <span className="block text-xs font-bold text-slate-400">
+                            Optional. VAIVIA can remind you 48 hours before this date.
+                        </span>
+                    </label>
+                ) : null}
 
-                <label className="space-y-2 md:col-span-2">
-                    <span className={labelClass}>Free cancellation ends</span>
-                    <DateInput
-                        name="free_cancellation_ends_on"
-                        defaultValue={accommodation?.free_cancellation_ends_on || ""}
-                        className={inputClass}
-                    />
-                    <span className="block text-xs font-bold text-slate-400">
-                        Optional. VAIVIA can remind you 48 hours before this date.
-                    </span>
-                </label>
-
+                {!isPlanningOption ? (
                 <div className="grid gap-4 md:col-span-2 md:grid-cols-3">
                     <label className="space-y-2">
                         <span className={labelClass}>Check-in time start</span>
@@ -818,10 +845,15 @@ function AccommodationForm({
                             className={inputClass}
                         />
                     </label>
+                    <p className="text-xs font-bold text-slate-400 md:col-span-3">
+                        Times are interpreted in the stay location&apos;s time zone and
+                        adjust when you switch itinerary time zones.
+                    </p>
                 </div>
+                ) : null}
 
                 <fieldset className="space-y-2 md:col-span-2">
-                    <legend className={labelClass}>Accommodation type</legend>
+                    <legend className={labelClass}>Stay type</legend>
                     <input type="hidden" name="accommodation_type" value={type} />
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                         {ACCOMMODATION_TYPE_OPTIONS.map((option) => {
@@ -858,6 +890,7 @@ function AccommodationForm({
                     </div>
                 </fieldset>
 
+                {!isPlanningOption ? (
                 <label className="space-y-2">
                     <span className={labelClass}>Status</span>
                     <select
@@ -876,7 +909,11 @@ function AccommodationForm({
                         ))}
                     </select>
                 </label>
+                ) : (
+                    <input type="hidden" name="status" value="tentative" />
+                )}
 
+                {!isPlanningOption ? (
                 <div className="md:col-span-2">
                     <TripAudienceSelector
                         options={audienceOptions}
@@ -884,11 +921,14 @@ function AccommodationForm({
                         initialAudienceMode={accommodation?.audience_mode || "everyone"}
                         initialSelectedOptions={selectedAudienceOptions}
                         heading="Guests"
-                        description="Choose everyone, just yourself, or select individual guests for this accommodation."
+                        description="Choose everyone, just yourself, or select individual guests for this stay."
                         alwaysShowOptions
                         privateSectionId="accommodation-private-section"
                     />
                 </div>
+                ) : (
+                    <input type="hidden" name="audience_mode" value="everyone" />
+                )}
 
                 <div className="grid gap-3 md:col-span-2 md:grid-cols-[1fr_180px]">
                     <label className="space-y-2">
@@ -924,6 +964,7 @@ function AccommodationForm({
                     </label>
                 </div>
 
+                {!isPlanningOption ? (
                 <div className="md:col-span-2">
                     <CostAllocationFields
                         amount={costAmount}
@@ -932,6 +973,7 @@ function AccommodationForm({
                         tone="dark"
                     />
                 </div>
+                ) : null}
 
                 <label className="space-y-2 md:col-span-2">
                     <span className={labelClass}>Website</span>
@@ -941,6 +983,18 @@ function AccommodationForm({
                         value={website}
                         onChange={(event) => setWebsite(event.target.value)}
                         placeholder="https://example.com"
+                        className={inputClass}
+                    />
+                </label>
+
+                <label className="space-y-2 md:col-span-2">
+                    <span className={labelClass}>Booking link</span>
+                    <input
+                        type="text"
+                        name="booking_url"
+                        value={bookingUrl}
+                        onChange={(event) => setBookingUrl(event.target.value)}
+                        placeholder="https://booking.com/..."
                         className={inputClass}
                     />
                 </label>
@@ -957,10 +1011,10 @@ function AccommodationForm({
                     />
                     <span>
                         <span className="block text-sm font-black text-white">
-                            Private accommodation
+                            Private stay
                         </span>
                         <span className="text-sm font-semibold text-slate-400">
-                            Private accommodations are only visible to you.
+                            Private stays are only visible to you.
                         </span>
                     </span>
                 </label>
@@ -996,7 +1050,11 @@ function AccommodationForm({
                     disabled={isSaving}
                     className="rounded-full bg-lime-300 px-5 py-2 text-sm font-black text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                 >
-                    {isSaving ? "Saving..." : "Save accommodation"}
+                    {isSaving
+                        ? "Saving..."
+                        : isPlanningOption
+                          ? "Save stay option"
+                          : "Save stay"}
                 </button>
             </div>
         </form>
@@ -1013,6 +1071,7 @@ function AccommodationModal({
     audienceOptions,
     audienceParticipants,
     currentUserTripMemberId,
+    variant = "trip",
     onClose,
 }: {
     tripId: string;
@@ -1024,9 +1083,11 @@ function AccommodationModal({
     audienceOptions?: TripAudienceOption[];
     audienceParticipants?: AccommodationAudienceParticipant[];
     currentUserTripMemberId?: string | null;
+    variant?: AccommodationFormVariant;
     onClose: () => void;
 }) {
     const isEdit = mode.type === "edit";
+    const isPlanningOption = variant === "planning";
 
     return (
         <AnimatedModal
@@ -1039,16 +1100,24 @@ function AccommodationModal({
                 <>
                     <div className="vaivia-modal-header flex items-start justify-between gap-4">
                         <div>
-                            <p className="vaivia-modal-eyebrow">Accommodations</p>
+                            <p className="vaivia-modal-eyebrow">
+                                {isPlanningOption ? "Compare Stays" : "Stays"}
+                            </p>
                             <h2 id="accommodation-modal-title" className="vaivia-modal-title">
-                                {isEdit ? "Edit accommodation" : "Add accommodation"}
+                                {isEdit
+                                    ? isPlanningOption
+                                      ? "Edit stay option"
+                                      : "Edit stay"
+                                    : isPlanningOption
+                                      ? "Add stay option"
+                                      : "Add stay"}
                             </h2>
                         </div>
                         <button
                             type="button"
                             onClick={requestClose}
                             className="vaivia-modal-close"
-                            aria-label="Close accommodation modal"
+                            aria-label="Close stay modal"
                         >
                             <X className="h-5 w-5" aria-hidden="true" />
                         </button>
@@ -1062,6 +1131,7 @@ function AccommodationModal({
                         audienceOptions={audienceOptions}
                         audienceParticipants={audienceParticipants}
                         currentUserTripMemberId={currentUserTripMemberId}
+                        variant={variant}
                         onClose={requestClose}
                     />
                 </>
@@ -1078,6 +1148,7 @@ export function AccommodationCreateModal({
     audienceOptions,
     audienceParticipants,
     currentUserTripMemberId,
+    variant = "trip",
     onClose,
 }: {
     tripId: string;
@@ -1087,6 +1158,7 @@ export function AccommodationCreateModal({
     audienceOptions?: TripAudienceOption[];
     audienceParticipants?: AccommodationAudienceParticipant[];
     currentUserTripMemberId?: string | null;
+    variant?: AccommodationFormVariant;
     onClose: () => void;
 }) {
     return (
@@ -1100,6 +1172,32 @@ export function AccommodationCreateModal({
             audienceOptions={audienceOptions}
             audienceParticipants={audienceParticipants}
             currentUserTripMemberId={currentUserTripMemberId}
+            variant={variant}
+            onClose={onClose}
+        />
+    );
+}
+
+export function AccommodationEditModal({
+    tripId,
+    accommodation,
+    updateAction,
+    variant = "trip",
+    onClose,
+}: {
+    tripId: string;
+    accommodation: TripAccommodation;
+    updateAction: (formData: FormData) => Promise<AccommodationActionResult>;
+    variant?: AccommodationFormVariant;
+    onClose: () => void;
+}) {
+    return (
+        <AccommodationModal
+            tripId={tripId}
+            mode={{ type: "edit", accommodation }}
+            createAction={updateAction}
+            updateAction={updateAction}
+            variant={variant}
             onClose={onClose}
         />
     );
@@ -1248,7 +1346,7 @@ function AccommodationCard({
                     <div className="flex flex-wrap gap-2">
                         {accommodation.website ? (
                             <a
-                                href={accommodation.website}
+                                href={addVaiviaUtmAttribution(accommodation.website)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className={secondaryButtonClass}
@@ -1380,7 +1478,7 @@ export default function AccommodationManager({
                             Places to stay
                         </p>
                         <h2 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
-                            Accommodations
+                            Stays
                         </h2>
                     </div>
                     <button
@@ -1389,13 +1487,13 @@ export default function AccommodationManager({
                         className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
                     >
                         <Plus className="h-4 w-4" aria-hidden="true" />
-                        Add accommodation
+                        Add stay
                     </button>
                 </div>
 
                 {sortedAccommodations.length === 0 ? (
                     <div className="mt-8 rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.05] p-8 text-center">
-                        <h3 className="text-xl font-black">No accommodations yet.</h3>
+                        <h3 className="text-xl font-black">No stays yet.</h3>
                         <p className="mx-auto mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-400">
                             Add hotels, rentals, hostels, or places you’re staying so they’re easy
                             to find during your trip.
@@ -1454,7 +1552,7 @@ export default function AccommodationManager({
                             id="delete-accommodation-title"
                             className="text-xl font-black text-slate-950"
                         >
-                            Delete accommodation?
+                            Delete stay?
                         </h2>
                         <p className="mt-2 text-sm font-semibold text-slate-600">
                             This will remove {deleteTarget.hotel_name} from this trip.

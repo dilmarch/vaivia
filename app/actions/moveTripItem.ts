@@ -204,7 +204,7 @@ async function moveAccommodation({
         .eq("trip_id", currentTripId)
         .eq("id", itemId);
 
-    if (error) throw new Error(`Could not move accommodation: ${error.message}`);
+    if (error) throw new Error(`Could not move stay: ${error.message}`);
 }
 
 async function moveIdea({

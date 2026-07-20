@@ -137,7 +137,7 @@ export default function JourneyMap({
     return (
         <section className="mb-6 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3">
-                <h3 className="text-lg font-semibold text-slate-950">Journey map</h3>
+                <h3 className="text-lg font-semibold text-slate-950">Transport map</h3>
                 <p className="mt-1 text-sm text-slate-600">
                     {getRouteSummary(points)}
                 </p>
@@ -153,7 +153,7 @@ export default function JourneyMap({
                 />
             ) : (
                 <div className="flex min-h-48 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 px-4 text-center text-sm text-slate-500">
-                    Journey map preview is unavailable right now.
+                    Transport map preview is unavailable right now.
                 </div>
             )}
         </section>

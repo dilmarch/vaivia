@@ -717,6 +717,8 @@
       [class*=" bg-[#0"],
       [class^="bg-[#1"],
       [class*=" bg-[#1"],
+      [class^="bg-[#2"],
+      [class*=" bg-[#2"],
       [class^="bg-slate-800"],
       [class*=" bg-slate-800"],
       [class^="bg-slate-900"],
@@ -725,6 +727,10 @@
       [class*=" bg-slate-950"],
       [class^="bg-black"],
       [class*=" bg-black"],
+      [style*="background: #000"],
+      [style*="background-color: #000"],
+      [style*="background: rgb(0"],
+      [style*="background-color: rgb(0"],
       [class*="bg-[radial-gradient"][class*="#030"],
       [class*="bg-[radial-gradient"][class*="#050"],
       [class*="bg-[radial-gradient"][class*="#0c0"],
@@ -747,6 +753,8 @@
       [class*=" bg-[#0"],
       [class^="bg-[#1"],
       [class*=" bg-[#1"],
+      [class^="bg-[#2"],
+      [class*=" bg-[#2"],
       [class^="bg-slate-800"],
       [class*=" bg-slate-800"],
       [class^="bg-slate-900"],
@@ -755,6 +763,10 @@
       [class*=" bg-slate-950"],
       [class^="bg-black"],
       [class*=" bg-black"],
+      [style*="background: #000"],
+      [style*="background-color: #000"],
+      [style*="background: rgb(0"],
+      [style*="background-color: rgb(0"],
       [class*="bg-[radial-gradient"][class*="#030"],
       [class*="bg-[radial-gradient"][class*="#050"],
       [class*="bg-[radial-gradient"][class*="#0c0"],
@@ -954,16 +966,13 @@
     color: #111111 !important;
   }
 
-  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="dark"] .vaivia-trip-card-title,
-  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="dark"] .vaivia-trip-card-date {
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card .vaivia-trip-card-title,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card .vaivia-trip-card-date,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card .vaivia-trip-card-duration,
+  :root[data-vaivia-theme="brat"] .vaivia-trip-card .vaivia-trip-card-duration * {
     color: #8ace00 !important;
+    -webkit-text-fill-color: #8ace00 !important;
     text-shadow: 0 2px 18px rgb(0 0 0 / 0.82) !important;
-  }
-
-  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="light"] .vaivia-trip-card-title,
-  :root[data-vaivia-theme="brat"] .vaivia-trip-card[data-image-tone="light"] .vaivia-trip-card-date {
-    color: #050505 !important;
-    text-shadow: 0 1px 14px rgb(255 255 255 / 0.72) !important;
   }
 
   :root[data-vaivia-theme="brat"] .lucide-pencil {
@@ -2147,8 +2156,36 @@
       [class*=" bg-slate-900"],
       [class^="bg-slate-950"],
       [class*=" bg-slate-950"],
+      [class^="bg-gray-800"],
+      [class*=" bg-gray-800"],
+      [class^="bg-gray-900"],
+      [class*=" bg-gray-900"],
+      [class^="bg-gray-950"],
+      [class*=" bg-gray-950"],
+      [class^="bg-zinc-800"],
+      [class*=" bg-zinc-800"],
+      [class^="bg-zinc-900"],
+      [class*=" bg-zinc-900"],
+      [class^="bg-zinc-950"],
+      [class*=" bg-zinc-950"],
+      [class^="bg-neutral-800"],
+      [class*=" bg-neutral-800"],
+      [class^="bg-neutral-900"],
+      [class*=" bg-neutral-900"],
+      [class^="bg-neutral-950"],
+      [class*=" bg-neutral-950"],
+      [class^="bg-stone-800"],
+      [class*=" bg-stone-800"],
+      [class^="bg-stone-900"],
+      [class*=" bg-stone-900"],
+      [class^="bg-stone-950"],
+      [class*=" bg-stone-950"],
       [class^="bg-black"],
-      [class*=" bg-black"]
+      [class*=" bg-black"],
+      .bg-lime-300,
+      .bg-lime-200,
+      .bg-lime-100,
+      .vaivia-quick-add-bubble
     ),
   :root[data-vaivia-theme="brat"]
     :is(
@@ -2166,10 +2203,97 @@
       [class*=" bg-slate-900"],
       [class^="bg-slate-950"],
       [class*=" bg-slate-950"],
+      [class^="bg-gray-800"],
+      [class*=" bg-gray-800"],
+      [class^="bg-gray-900"],
+      [class*=" bg-gray-900"],
+      [class^="bg-gray-950"],
+      [class*=" bg-gray-950"],
+      [class^="bg-zinc-800"],
+      [class*=" bg-zinc-800"],
+      [class^="bg-zinc-900"],
+      [class*=" bg-zinc-900"],
+      [class^="bg-zinc-950"],
+      [class*=" bg-zinc-950"],
+      [class^="bg-neutral-800"],
+      [class*=" bg-neutral-800"],
+      [class^="bg-neutral-900"],
+      [class*=" bg-neutral-900"],
+      [class^="bg-neutral-950"],
+      [class*=" bg-neutral-950"],
+      [class^="bg-stone-800"],
+      [class*=" bg-stone-800"],
+      [class^="bg-stone-900"],
+      [class*=" bg-stone-900"],
+      [class^="bg-stone-950"],
+      [class*=" bg-stone-950"],
       [class^="bg-black"],
-      [class*=" bg-black"]
+      [class*=" bg-black"],
+      .bg-lime-300,
+      .bg-lime-200,
+      .bg-lime-100,
+      .vaivia-quick-add-bubble
     ) * {
     color: #8ace00 !important;
+    -webkit-text-fill-color: #8ace00 !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  /* Cover charcoal arbitrary utilities and dynamically rendered inline black
+     backgrounds that cannot be identified by a Tailwind class name. */
+  :root[data-vaivia-theme="brat"]
+    :is(button, a, [role="button"]):is(
+      [class^="bg-[#2"],
+      [class*=" bg-[#2"],
+      [style*="background: #000"],
+      [style*="background-color: #000"],
+      [style*="background: rgb(0"],
+      [style*="background-color: rgb(0"]
+    ),
+  :root[data-vaivia-theme="brat"]
+    :is(button, a, [role="button"]):is(
+      [class^="bg-[#2"],
+      [class*=" bg-[#2"],
+      [style*="background: #000"],
+      [style*="background-color: #000"],
+      [style*="background: rgb(0"],
+      [style*="background-color: rgb(0"]
+    ) * {
+    color: #8ace00 !important;
+    -webkit-text-fill-color: #8ace00 !important;
+    fill: currentColor !important;
+    stroke: currentColor !important;
+  }
+
+  /* Brat controls use one unambiguous treatment site-wide, regardless of the
+     component's default Tailwind background or hover state. */
+  :root[data-vaivia-theme="brat"]
+    :is(
+      button,
+      [role="button"],
+      input[type="button"],
+      input[type="submit"],
+      input[type="reset"]
+    ) {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border-color: rgb(138 206 0 / 0.48) !important;
+    color: #8ace00 !important;
+    -webkit-text-fill-color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"]
+    :is(
+      button,
+      [role="button"],
+      input[type="button"],
+      input[type="submit"],
+      input[type="reset"]
+    ) * {
+    color: #8ace00 !important;
+    -webkit-text-fill-color: #8ace00 !important;
+    fill: currentColor !important;
     stroke: currentColor !important;
   }
 
@@ -2348,6 +2472,141 @@
 
   .your-trips-scroll::-webkit-scrollbar {
     display: none;
+  }
+
+  .vaivia-accommodation-map .gm-style-iw-c {
+    padding: 0 !important;
+    overflow: visible !important;
+    border: 1px solid rgb(var(--vaivia-neon-rgb) / 0.38) !important;
+    border-radius: 1.25rem !important;
+    background: #160b20 !important;
+    box-shadow:
+      0 24px 60px rgb(0 0 0 / 0.45),
+      0 0 28px rgb(var(--vaivia-neon-rgb) / 0.13) !important;
+  }
+
+  .vaivia-accommodation-map .gm-style-iw-d {
+    max-height: none !important;
+    overflow: auto !important;
+    border-radius: 1.2rem !important;
+  }
+
+  .vaivia-accommodation-map .gm-style-iw-tc::after {
+    background: #160b20 !important;
+  }
+
+  .vaivia-accommodation-map .gm-ui-hover-effect {
+    top: 0.45rem !important;
+    right: 0.45rem !important;
+    width: 2rem !important;
+    height: 2rem !important;
+    min-height: 2rem !important;
+    border: 1px solid rgb(255 255 255 / 0.14) !important;
+    border-radius: 999px !important;
+    background: rgb(255 255 255 / 0.08) !important;
+    opacity: 1 !important;
+  }
+
+  .vaivia-accommodation-map .gm-ui-hover-effect > span {
+    margin: 0.5rem !important;
+    background-color: #e2e8f0 !important;
+  }
+
+  .vaivia-map-popover {
+    box-sizing: border-box;
+    min-width: 13rem;
+    max-width: 17.5rem;
+    padding: 1.15rem 3rem 1.15rem 1.15rem;
+    overflow-wrap: anywhere;
+    border-radius: 1.2rem;
+    background: #160b20;
+    color: #f8fafc;
+    font-family: var(--font-geist-sans), "Geist", ui-sans-serif, system-ui, sans-serif;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  .vaivia-map-popover__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 0.25rem 0.55rem;
+    border: 1px solid rgb(var(--vaivia-neon-rgb) / 0.32);
+    border-radius: 999px;
+    background: rgb(var(--vaivia-neon-rgb) / 0.11);
+    color: var(--vaivia-theme-accent-text-soft);
+    font-size: 0.625rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    line-height: 1.2;
+    text-transform: uppercase;
+  }
+
+  .vaivia-map-popover__title {
+    display: block;
+    margin-top: 0.65rem;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.25;
+  }
+
+  .vaivia-map-popover__address {
+    display: block;
+    margin-top: 0.4rem;
+    color: #cbd5e1;
+    font-size: 0.75rem;
+    font-weight: 650;
+    line-height: 1.45;
+  }
+
+  .vaivia-map-popover__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    min-height: 2.4rem;
+    margin-top: 0.9rem;
+    padding: 0.6rem 0.9rem;
+    border-radius: 999px;
+    background: var(--vaivia-theme-accent-bg);
+    box-shadow: 0 0 22px rgb(var(--vaivia-neon-rgb) / 0.2);
+    color: #020617;
+    font-size: 0.75rem;
+    font-weight: 900;
+    line-height: 1;
+    text-decoration: none;
+    transition: filter 160ms ease, transform 160ms ease;
+  }
+
+  .vaivia-map-popover__button:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+  }
+
+  .vaivia-map-popover__button:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 2px;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-accommodation-map .gm-style-iw-c,
+  :root[data-vaivia-theme="brat"] .vaivia-accommodation-map .gm-style-iw-tc::after,
+  :root[data-vaivia-theme="brat"] .vaivia-map-popover {
+    border-color: #000000 !important;
+    background: #8ace00 !important;
+    color: #000000 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-map-popover__eyebrow,
+  :root[data-vaivia-theme="brat"] .vaivia-map-popover__button {
+    border-color: #000000 !important;
+    background: #000000 !important;
+    color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-map-popover__title,
+  :root[data-vaivia-theme="brat"] .vaivia-map-popover__address {
+    color: #000000 !important;
   }
 
 }

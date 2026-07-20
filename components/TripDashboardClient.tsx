@@ -6,6 +6,7 @@ import {
     AlertTriangle,
     Archive,
     CheckCircle2,
+    CalendarDays,
     ChevronLeft,
     ChevronRight,
     Hotel,
@@ -23,7 +24,7 @@ import AnimatedModal from "@/components/AnimatedModal";
 import PassportStampCard from "@/components/PassportStamp";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
-import { DateInput } from "@/components/ui/date-input";
+import { DateRangeInputs } from "@/components/ui/date-range-inputs";
 import { useTripCoverImage } from "@/components/TripCoverImage";
 import {
     getTripHref,
@@ -115,15 +116,40 @@ export type DashboardWishlistItem = {
     completedAt?: string | null;
 };
 
+export type DashboardEvent = {
+    id: string;
+    slug: string;
+    title: string;
+    startsAt: string;
+    timezone: string;
+    venue: string;
+    status: string;
+    admissionType: "Ticket" | "RSVP";
+};
+
 type TripDashboardClientProps = {
     trips: DashboardTrip[];
     passportStamps: DashboardPassportStamp[];
     profile: DashboardProfileSummary;
     wishlistItems: DashboardWishlistItem[];
     currentUserId?: string | null;
+    events: DashboardEvent[];
+    canManageEvents: boolean;
     updateTripAction: (formData: FormData) => Promise<void>;
     deleteTripAction: (formData: FormData) => Promise<void>;
 };
+
+function DashboardEventsWidget({ events, canManageEvents }: { events: DashboardEvent[]; canManageEvents: boolean }) {
+    return (
+        <section className="rounded-[2rem] border border-white/10 bg-[#080511]/90 p-5 shadow-2xl shadow-black/25 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+                <div><p className="text-xs font-black uppercase tracking-[0.3em] text-lime-300">My Events</p><h2 className="mt-2 text-2xl font-black text-white">Next on the guest list</h2></div>
+                <div className="flex gap-3"><Link href="/my-events" className="rounded-full border border-white/15 px-4 py-2 text-xs font-black text-white">View all</Link>{canManageEvents ? <Link href="/organizer/events" className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950">Manage events</Link> : null}</div>
+            </div>
+            {events.length ? <div className="mt-5 grid gap-3 md:grid-cols-3">{events.slice(0, 3).map((event) => <Link key={`${event.admissionType}-${event.id}`} href="/my-events" className="rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 transition hover:border-lime-300/30"><CalendarDays className="h-5 w-5 text-lime-300" /><h3 className="mt-3 line-clamp-2 text-lg font-black text-white">{event.title}</h3><p className="mt-2 text-xs font-semibold text-slate-400">{new Intl.DateTimeFormat("en-CA", { dateStyle: "medium", timeStyle: "short", timeZone: event.timezone }).format(new Date(event.startsAt))}</p><p className="mt-1 truncate text-xs font-semibold text-slate-400">{event.venue}</p><span className="mt-3 inline-flex rounded-full bg-lime-300/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-lime-200">{event.admissionType} · {event.status.replace("_", " ")}</span></Link>)}</div> : <div className="mt-5 rounded-[1.5rem] border border-dashed border-white/15 p-5"><p className="text-sm font-semibold text-slate-400">No upcoming events yet.</p><Link href="/events" className="mt-3 inline-flex rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950">Browse events</Link></div>}
+        </section>
+    );
+}
 
 const fallbackAccentColors = [
     "var(--vaivia-neon-soft-solid)",
@@ -678,7 +704,7 @@ export function DashboardTripCard({
                 </div>
 
                 <div
-                    className={`absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
+                    className={`vaivia-trip-card-duration absolute z-20 flex h-20 w-20 flex-col items-center justify-center rounded-full text-slate-950 shadow-[0_0_34px_rgba(0,0,0,0.28)] transition duration-300 group-hover:scale-110 sm:h-16 sm:w-16 ${variant.daysCircleClass}`}
                     style={{ backgroundColor: accent }}
                 >
                     <span className="text-xl font-black leading-none">
@@ -1400,11 +1426,11 @@ function getDashboardTasks(trips: DashboardTrip[]) {
                 type: "accommodation",
                 title:
                     accommodations.length === 0
-                        ? "Add accommodations"
-                        : "Finish accommodation coverage",
+                        ? "Add stays"
+                        : "Finish stay coverage",
                 detail:
                     accommodations.length === 0
-                        ? `${tripTitle} has no accommodations added yet. You need somewhere to stay for ${formatTaskDateRanges(
+                        ? `${tripTitle} has no stays added yet. You need somewhere to stay for ${formatTaskDateRanges(
                               accommodationGaps
                           )}.`
                         : `You still need somewhere to stay for ${formatTaskDateRanges(
@@ -1751,6 +1777,8 @@ export default function TripDashboardClient({
     profile,
     wishlistItems,
     currentUserId,
+    events,
+    canManageEvents,
     updateTripAction,
     deleteTripAction,
 }: TripDashboardClientProps) {
@@ -1797,6 +1825,7 @@ export default function TripDashboardClient({
                     onEditTrip={openEditModal}
                     onShareTrip={setShareTrip}
                 />
+                <DashboardEventsWidget events={events} canManageEvents={canManageEvents} />
                 <div className="grid gap-6 lg:grid-cols-3">
                     <DashboardMonthCalendar trips={trips} />
                     <DashboardTaskList trips={trips} />
@@ -1945,39 +1974,19 @@ export default function TripDashboardClient({
                                 onChange={() => setHasUnsavedChanges(true)}
                             />
 
-                            <div className="grid gap-5 md:grid-cols-2">
-                                <div>
-                                    <label
-                                        htmlFor="tripEditStartDate"
-                                        className="block text-sm font-medium text-slate-700"
-                                    >
-                                        Start date
-                                    </label>
-                                    <DateInput
-                                        id="tripEditStartDate"
-                                        name="start_date"
-                                        defaultValue={selectedTrip.start_date || ""}
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        {...travelInputProps()}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label
-                                        htmlFor="tripEditEndDate"
-                                        className="block text-sm font-medium text-slate-700"
-                                    >
-                                        End date
-                                    </label>
-                                    <DateInput
-                                        id="tripEditEndDate"
-                                        name="end_date"
-                                        defaultValue={selectedTrip.end_date || ""}
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        {...travelInputProps()}
-                                    />
-                                </div>
-                            </div>
+                            <DateRangeInputs
+                                key={selectedTrip.id}
+                                startName="start_date"
+                                endName="end_date"
+                                startLabel="Start date"
+                                endLabel="End date"
+                                initialStartDate={selectedTrip.start_date}
+                                initialEndDate={selectedTrip.end_date}
+                                startId="tripEditStartDate"
+                                endId="tripEditEndDate"
+                                className="grid gap-5 md:grid-cols-2"
+                                inputClassName="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
 
                             <div>
                                 <label

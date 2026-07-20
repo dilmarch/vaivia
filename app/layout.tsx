@@ -17,7 +17,7 @@ const defaultUrl = process.env.VERCEL_URL
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
   title: "VAIVIA",
-  description: "Plan trips, itineraries, ideas, and journeys in one place.",
+  description: "Plan trips, itineraries, trip ideas, and transport in one place.",
   applicationName: "VAIVIA",
   manifest: "/manifest.webmanifest",
   appleWebApp: {

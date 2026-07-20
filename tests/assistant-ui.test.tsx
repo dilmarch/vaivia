@@ -78,10 +78,10 @@ describe("trip assistant interface", () => {
         render(<TripAssistant tripId="trip-a" tripTitle="Japan" />);
 
         expect(
-            await screen.findByText("The VAIVIA assistant is temporarily unavailable")
+            await screen.findByText("Ask Concierge is temporarily unavailable")
         ).toBeInTheDocument();
         expect(screen.getByText(/email importing are unaffected/i)).toBeInTheDocument();
-        expect(screen.getByLabelText("Ask the VAIVIA assistant")).toBeDisabled();
+        expect(screen.getByLabelText("Ask Concierge")).toBeDisabled();
     });
 
     it("keeps saved-trip questions available when only the Places key is missing", async () => {
@@ -95,7 +95,7 @@ describe("trip assistant interface", () => {
             await screen.findByText(/live nearby place discovery is temporarily unavailable/i)
         ).toBeInTheDocument();
         expect(screen.getByText(/saved-trip questions still work/i)).toBeInTheDocument();
-        expect(screen.getByLabelText("Ask the VAIVIA assistant")).not.toBeDisabled();
+        expect(screen.getByLabelText("Ask Concierge")).not.toBeDisabled();
     });
 
     it("shows the quota state", async () => {
@@ -110,7 +110,7 @@ describe("trip assistant interface", () => {
         render(<TripAssistant tripId="trip-a" tripTitle="Japan" />);
 
         expect(await screen.findByText(/reached today’s limit/i)).toBeInTheDocument();
-        expect(screen.getByLabelText("Ask the VAIVIA assistant")).toBeDisabled();
+        expect(screen.getByLabelText("Ask Concierge")).toBeDisabled();
     });
 
     it("creates a new persisted conversation", async () => {
@@ -135,7 +135,7 @@ describe("trip assistant interface", () => {
             expect.objectContaining({ method: "POST" })
         );
         await waitFor(() =>
-            expect(screen.getByLabelText("Ask the VAIVIA assistant")).toHaveFocus()
+            expect(screen.getByLabelText("Ask Concierge")).toHaveFocus()
         );
     });
 

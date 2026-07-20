@@ -4,11 +4,12 @@ import {
   getUserProfileDefaults,
   mergeProfileWithAuthDefaults,
 } from "@/lib/userProfileDefaults";
+import { normalizeAuthConfirmNext } from "@/lib/authConfirmRedirect";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") || "/";
+  const next = normalizeAuthConfirmNext(requestUrl.searchParams.get("next"), requestUrl.origin);
   const redirectTo = new URL(next, requestUrl.origin);
 
   if (!code) {

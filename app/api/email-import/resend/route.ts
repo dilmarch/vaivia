@@ -8,7 +8,11 @@ import { getResendClient } from "@/lib/email/resend";
 import { getEmailImportDomain } from "@/lib/emailImportAddresses";
 import {
     extractInboundRecipientToken,
+    getUtf8ByteLength,
     getInboundRecipientCandidates,
+    MAX_INBOUND_ATTACHMENTS,
+    MAX_INBOUND_EMAIL_BODY_BYTES,
+    MAX_INBOUND_WEBHOOK_BYTES,
     maskEmailAddress,
     normalizeEmailAddress,
     sanitizeServerError,
@@ -29,6 +33,7 @@ type DbError = {
 type MaybeSingleResult<T> = Promise<{
     data: T | null;
     error: DbError | null;
+    count?: number | null;
 }>;
 
 type InsertResult<T> = Promise<{
@@ -47,12 +52,17 @@ type TravelEmailImportRow = {
 
 type SelectChain<T> = {
     eq: (column: string, value: string | boolean) => SelectChain<T>;
+    gte: (column: string, value: string) => SelectChain<T>;
+    limit: (count: number) => SelectChain<T>;
     maybeSingle: () => MaybeSingleResult<T>;
 };
 
 type EmailImportWebhookSupabase = {
     from: (table: "travel_email_imports") => {
-        select: (columns: string) => SelectChain<TravelEmailImportRow>;
+        select: (
+            columns: string,
+            options?: { count?: "exact"; head?: boolean }
+        ) => SelectChain<TravelEmailImportRow>;
         insert: (values: Record<string, unknown>) => {
             select: (columns: string) => {
                 maybeSingle: () => InsertResult<TravelEmailImportRow>;
@@ -75,6 +85,9 @@ type EmailReceivedWebhookEvent = Extract<
 >;
 
 type ReceivedEmailEventData = EmailReceivedWebhookEvent["data"];
+
+const MAX_IMPORTS_PER_ALIAS_PER_HOUR = 60;
+const MAX_IMPORTS_PER_SENDER_AND_ALIAS_PER_HOUR = 20;
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
     return NextResponse.json(body, { status });
@@ -142,11 +155,55 @@ async function resolveRecipientUser(
     }
 
     console.info("Inbound travel email ignored: no active VAIVIA recipient.", {
-        providerEmailId,
+        eventPresent: Boolean(providerEmailId),
         recipients: candidates.map(maskEmailAddress),
     });
 
     return null;
+}
+
+async function isRateLimited(
+    supabase: EmailImportWebhookSupabase,
+    recipientAddress: string,
+    senderAddress: string | null
+) {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const aliasQuery = supabase
+        .from("travel_email_imports")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_email", recipientAddress)
+        .gte("created_at", since);
+    const senderQuery = senderAddress
+        ? supabase
+              .from("travel_email_imports")
+              .select("id", { count: "exact", head: true })
+              .eq("recipient_email", recipientAddress)
+              .eq("sender_email", senderAddress)
+              .gte("created_at", since)
+        : null;
+
+    const [aliasResult, senderResult] = await Promise.all([
+        aliasQuery as unknown as Promise<{
+            count: number | null;
+            error: DbError | null;
+        }>,
+        senderQuery
+            ? (senderQuery as unknown as Promise<{
+                  count: number | null;
+                  error: DbError | null;
+              }>)
+            : Promise.resolve({ count: 0, error: null }),
+    ]);
+
+    if (aliasResult.error || senderResult.error) {
+        throw new Error("Could not enforce inbound email rate limit.");
+    }
+
+    return (
+        (aliasResult.count || 0) >= MAX_IMPORTS_PER_ALIAS_PER_HOUR ||
+        (senderResult.count || 0) >=
+            MAX_IMPORTS_PER_SENDER_AND_ALIAS_PER_HOUR
+    );
 }
 
 function getEventEmailMetadata(data: ReceivedEmailEventData) {
@@ -211,7 +268,10 @@ async function insertFailedImport(
         provider_email_id: data.email_id,
         recipient_email: recipient.address,
         status: "failed",
-        extraction_error: sanitizeServerError(error),
+        extraction_error:
+            sanitizeServerError(error) === "resend_api_key_requires_full_access"
+                ? "resend_api_key_requires_full_access"
+                : "email_retrieval_failed",
         processed_at: new Date().toISOString(),
         ...getEventEmailMetadata(data),
     });
@@ -228,7 +288,7 @@ async function handleEmailReceived(
     const providerEmailId = event.data.email_id;
 
     if (!providerEmailId) {
-        return jsonResponse({ received: true, ignored: true, reason: "missing_email_id" });
+        return jsonResponse({ received: true, ignored: true });
     }
 
     if (await alreadyImported(supabase, providerEmailId)) {
@@ -243,7 +303,39 @@ async function handleEmailReceived(
     );
 
     if (!recipient) {
-        return jsonResponse({ received: true, ignored: true, reason: "no_active_recipient" });
+        return jsonResponse({ received: true, ignored: true });
+    }
+
+    const senderAddress = event.data.from
+        ? normalizeEmailAddress(event.data.from)
+        : null;
+    if (
+        await isRateLimited(
+            supabase,
+            recipient.address,
+            senderAddress
+        )
+    ) {
+        console.warn("inbound_travel_email_rate_limited", {
+            alias: maskEmailAddress(recipient.address),
+            hasSender: Boolean(senderAddress),
+        });
+        return jsonResponse({ received: true, ignored: true });
+    }
+
+    if ((event.data.attachments?.length || 0) > MAX_INBOUND_ATTACHMENTS) {
+        const insertResult = await insertFailedImport(
+            supabase,
+            event.data,
+            recipient,
+            new Error("attachment_limit_exceeded")
+        );
+        return jsonResponse({
+            received: true,
+            stored: insertResult.status === "inserted",
+            status: "failed",
+            alreadyProcessed: insertResult.status === "duplicate",
+        });
     }
 
     const { data: receivedEmail, error: receiveError } =
@@ -265,6 +357,27 @@ async function handleEmailReceived(
         });
     }
 
+    const bodyBytes =
+        getUtf8ByteLength(receivedEmail.text) +
+        getUtf8ByteLength(receivedEmail.html);
+    if (
+        bodyBytes > MAX_INBOUND_EMAIL_BODY_BYTES ||
+        (receivedEmail.attachments?.length || 0) > MAX_INBOUND_ATTACHMENTS
+    ) {
+        const insertResult = await insertFailedImport(
+            supabase,
+            event.data,
+            recipient,
+            new Error("email_size_limit_exceeded")
+        );
+        return jsonResponse({
+            received: true,
+            stored: insertResult.status === "inserted",
+            status: "failed",
+            alreadyProcessed: insertResult.status === "duplicate",
+        });
+    }
+
     const insertResult = await insertTravelEmailImport(supabase, {
         user_id: recipient.userId,
         provider: "resend",
@@ -277,12 +390,11 @@ async function handleEmailReceived(
     if (insertResult.status === "inserted" && insertResult.importId) {
         try {
             await processTravelEmailImport(insertResult.importId);
-        } catch (error) {
+        } catch {
             return jsonResponse({
                 received: true,
                 stored: true,
                 status: "failed",
-                error: sanitizeServerError(error),
             });
         }
     }
@@ -295,7 +407,18 @@ async function handleEmailReceived(
 }
 
 export async function POST(request: NextRequest) {
+    const contentLength = Number(request.headers.get("content-length") || "0");
+    if (
+        Number.isFinite(contentLength) &&
+        contentLength > MAX_INBOUND_WEBHOOK_BYTES
+    ) {
+        return jsonResponse({ error: "Webhook payload is too large." }, 413);
+    }
+
     const payload = await request.text();
+    if (getUtf8ByteLength(payload) > MAX_INBOUND_WEBHOOK_BYTES) {
+        return jsonResponse({ error: "Webhook payload is too large." }, 413);
+    }
     const id = request.headers.get("svix-id");
     const timestamp = request.headers.get("svix-timestamp");
     const signature = request.headers.get("svix-signature");
@@ -318,7 +441,7 @@ export async function POST(request: NextRequest) {
         });
     } catch (error) {
         console.warn("Invalid Resend inbound webhook signature.", {
-            error: sanitizeServerError(error),
+            errorType: error instanceof Error ? error.name : "unknown",
         });
         return jsonResponse({ error: "Invalid webhook signature." }, 401);
     }
@@ -331,8 +454,7 @@ export async function POST(request: NextRequest) {
         return await handleEmailReceived(event);
     } catch (error) {
         console.error("Could not process inbound travel email webhook.", {
-            error: sanitizeServerError(error),
-            providerEmailId: event.data.email_id,
+            errorType: error instanceof Error ? error.name : "unknown",
         });
         return jsonResponse({ error: "Could not process inbound travel email." }, 503);
     }

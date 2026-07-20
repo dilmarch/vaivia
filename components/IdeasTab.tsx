@@ -7,14 +7,18 @@ import {
     Search,
     SlidersHorizontal,
     Trash2,
+    X,
 } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
+import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
+import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
 import {
     IDEA_CATEGORIES,
     IDEA_AGE_POLICIES,
@@ -22,6 +26,7 @@ import {
     IDEA_TICKET_POLICIES,
     IDEA_TIME_OF_DAY_OPTIONS,
     IDEA_TIME_WINDOWS,
+    formatIdeaAvailabilityDateRange,
     formatIdeaAgePolicy,
     type IdeaDay,
     type IdeaTimeOfDay,
@@ -29,6 +34,8 @@ import {
     formatIdeaDayLabel,
     formatIdeaTicketPolicy,
     formatIdeaTimeLabel,
+    getIdeaDayForDate,
+    isIdeaAvailableOnDate,
     toIdeaDayValue,
     toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
@@ -53,26 +60,20 @@ type DayFilter =
     | "Weekdays"
     | "Weekends";
 
+type IdeaLocationTab = {
+    key: string;
+    label: string;
+    count: number;
+};
+
+const NO_IDEA_LOCATION_KEY = "no-location";
+
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
-}
-
-function getIdeaDayForDate(date: Date): IdeaDay {
-    const days: IdeaDay[] = [
-        "Sunday",
-        "Monday",
-        "Tuesday",
-        "Wednesday",
-        "Thursday",
-        "Friday",
-        "Saturday",
-    ];
-
-    return days[date.getDay()];
 }
 
 function addDays(date: Date, days: number) {
@@ -86,6 +87,63 @@ function parseTags(value: string) {
         .split(",")
         .map((tag) => tag.trim())
         .filter(Boolean);
+}
+
+function normalizeLocationPart(value?: string | null) {
+    return value?.trim().replace(/\s+/g, " ") || "";
+}
+
+function getIdeaLocationTab(idea: TripIdea) {
+    const city = normalizeLocationPart(idea.location_city);
+    const region = normalizeLocationPart(idea.location_region);
+    const country = normalizeLocationPart(idea.location_country);
+    const countryCode = normalizeLocationPart(idea.location_country_code);
+
+    if (city) {
+        return {
+            key: `city:${city.toLocaleLowerCase()}:${(
+                countryCode || country
+            ).toLocaleLowerCase()}`,
+            label: city,
+        };
+    }
+    if (region) {
+        return {
+            key: `region:${region.toLocaleLowerCase()}:${country.toLocaleLowerCase()}`,
+            label: region,
+        };
+    }
+    if (country) {
+        return {
+            key: `country:${country.toLocaleLowerCase()}`,
+            label: country,
+        };
+    }
+
+    return {
+        key: NO_IDEA_LOCATION_KEY,
+        label: "NO LOCATION",
+    };
+}
+
+function buildIdeaLocationTabs(ideas: TripIdea[]): IdeaLocationTab[] {
+    const tabsByKey = new Map<string, IdeaLocationTab>();
+
+    ideas.forEach((idea) => {
+        const location = getIdeaLocationTab(idea);
+        const existingTab = tabsByKey.get(location.key);
+
+        tabsByKey.set(location.key, {
+            ...location,
+            count: (existingTab?.count || 0) + 1,
+        });
+    });
+
+    return Array.from(tabsByKey.values()).sort((left, right) => {
+        if (left.key === NO_IDEA_LOCATION_KEY) return 1;
+        if (right.key === NO_IDEA_LOCATION_KEY) return -1;
+        return left.label.localeCompare(right.label);
+    });
 }
 
 function travelInputProps() {
@@ -136,6 +194,12 @@ function IdeaAvailabilityControls({
     const [selectedTimes, setSelectedTimes] = useState<string[]>(
         idea?.time_of_day || []
     );
+    const [availabilityStartDate, setAvailabilityStartDate] = useState(
+        idea?.availability_start_date || ""
+    );
+    const [availabilityEndDate, setAvailabilityEndDate] = useState(
+        idea?.availability_end_date || ""
+    );
 
     function toggleValue(
         value: string,
@@ -155,6 +219,44 @@ function IdeaAvailabilityControls({
 
     return (
         <div className="space-y-5">
+            <div>
+                <p className="text-sm font-medium text-slate-700">
+                    Date availability
+                </p>
+                <div className="mt-2 grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm text-slate-700">
+                        Start date
+                        <DateInput
+                            name="availability_start_date"
+                            value={availabilityStartDate}
+                            max={availabilityEndDate || undefined}
+                            onChange={(event) =>
+                                setAvailabilityStartDate(event.target.value)
+                            }
+                            {...travelInputProps()}
+                            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                        />
+                    </label>
+                    <label className="block text-sm text-slate-700">
+                        End date
+                        <DateInput
+                            name="availability_end_date"
+                            value={availabilityEndDate}
+                            min={availabilityStartDate || undefined}
+                            onChange={(event) =>
+                                setAvailabilityEndDate(event.target.value)
+                            }
+                            {...travelInputProps()}
+                            className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                        />
+                    </label>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                    Leave the weekdays below blank to make this available every day
+                    in the date range. Select weekdays to limit it to those days.
+                </p>
+            </div>
+
             <div>
                 <p className="text-sm font-medium text-slate-700">Days available</p>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -289,6 +391,7 @@ export function IdeaForm({
     deleteAction,
     moveItemAction,
     moveTargetTrips = [],
+    modal = false,
 }: {
     tripId: string;
     action: (formData: FormData) => Promise<void>;
@@ -297,6 +400,7 @@ export function IdeaForm({
     deleteAction?: (formData: FormData) => Promise<void>;
     moveItemAction?: (formData: FormData) => Promise<void>;
     moveTargetTrips?: MoveTargetTrip[];
+    modal?: boolean;
 }) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
@@ -365,7 +469,7 @@ export function IdeaForm({
             const place = autocomplete.getPlace();
             const name = place.name || "";
             const nextFormattedAddress = place.formatted_address || "";
-            const website = place.website || "";
+            const website = addVaiviaUtmAttribution(place.website);
             const lat = place.geometry?.location?.lat();
             const lng = place.geometry?.location?.lng();
             const locationParts = getLocationPartsFromPlace(place);
@@ -395,7 +499,14 @@ export function IdeaForm({
     }
 
     return (
-        <form action={action} className="space-y-5 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+        <form
+            action={action}
+            className={
+                modal
+                    ? "space-y-5"
+                    : "space-y-5 rounded-md border border-slate-200 bg-white p-4 shadow-sm"
+            }
+        >
             <Script
                 src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
                 strategy="afterInteractive"
@@ -771,7 +882,11 @@ export function IdeaForm({
                             type="submit"
                             formAction={deleteAction}
                             formNoValidate
-                            className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-500"
+                            className={
+                                modal
+                                    ? "vaivia-modal-button-danger"
+                                    : "inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-500"
+                            }
                         >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                             Yes, delete idea
@@ -779,7 +894,11 @@ export function IdeaForm({
                         <button
                             type="button"
                             onClick={() => setIsConfirmingDelete(false)}
-                            className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-900 transition hover:bg-red-100"
+                            className={
+                                modal
+                                    ? "vaivia-modal-button-secondary"
+                                    : "rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-900 transition hover:bg-red-100"
+                            }
                         >
                             Keep idea
                         </button>
@@ -793,7 +912,11 @@ export function IdeaForm({
                         <button
                             type="button"
                             onClick={() => setIsConfirmingDelete(true)}
-                            className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                            className={
+                                modal
+                                    ? "vaivia-modal-button-danger"
+                                    : "inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                            }
                         >
                             <Trash2 className="h-4 w-4" aria-hidden="true" />
                             Delete idea
@@ -809,23 +932,35 @@ export function IdeaForm({
                             targetTrips={moveTargetTrips}
                             moveAction={moveItemAction}
                             itemLabel={idea.title}
-                            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            className={
+                                modal
+                                    ? "vaivia-modal-button-secondary"
+                                    : "rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            }
                         />
                     ) : null}
                     {onCancel && (
                         <button
                             type="button"
                             onClick={onCancel}
-                            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            className={
+                                modal
+                                    ? "vaivia-modal-button-secondary"
+                                    : "rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                            }
                         >
                             Cancel
                         </button>
                     )}
                     <button
                         type="submit"
-                        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                        className={
+                            modal
+                                ? "vaivia-modal-button-primary"
+                                : "rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                        }
                     >
-                        {idea ? "Save idea" : "Add idea"}
+                        {idea ? "Save thing to do" : "Add thing to do"}
                     </button>
                 </div>
             </div>
@@ -854,21 +989,8 @@ function IdeaCard({
 }) {
     const [isEditing, setIsEditing] = useState(false);
 
-    if (isEditing) {
-        return (
-            <IdeaForm
-                tripId={tripId}
-                idea={idea}
-                action={updateIdeaAction}
-                onCancel={() => setIsEditing(false)}
-                deleteAction={deleteIdeaAction}
-                moveItemAction={moveItemAction}
-                moveTargetTrips={moveTargetTrips}
-            />
-        );
-    }
-
     return (
+        <>
         <article
             className={`relative overflow-hidden rounded-[1.75rem] border shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
                 idea.is_archived
@@ -988,6 +1110,16 @@ function IdeaCard({
                         {formatIdeaDayLabel(idea.days_available)}
                     </dd>
                 </div>
+                {(idea.availability_start_date || idea.availability_end_date) && (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
+                        <dt className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                            Date range
+                        </dt>
+                        <dd className="mt-1 text-slate-100">
+                            {formatIdeaAvailabilityDateRange(idea)}
+                        </dd>
+                    </div>
+                )}
                 <div className="rounded-2xl border border-white/10 bg-white/[0.055] p-3">
                     <dt className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                         Time
@@ -1041,7 +1173,7 @@ function IdeaCard({
                 <div className="mt-4 flex flex-wrap gap-2">
                     {idea.location_website && (
                         <a
-                            href={idea.location_website}
+                            href={addVaiviaUtmAttribution(idea.location_website)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
@@ -1051,7 +1183,7 @@ function IdeaCard({
                     )}
                     {idea.ticket_website && (
                         <a
-                            href={idea.ticket_website}
+                            href={addVaiviaUtmAttribution(idea.ticket_website)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="rounded-full bg-lime-300 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
@@ -1070,6 +1202,53 @@ function IdeaCard({
             />
             </div>
         </article>
+        {isEditing ? (
+            <AnimatedModal
+                onClose={() => setIsEditing(false)}
+                panelClassName="max-w-3xl"
+                labelledBy={`edit-idea-title-${idea.id}`}
+            >
+                {({ requestClose }) => (
+                    <>
+                        <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <p className="vaivia-modal-eyebrow">Trip Ideas</p>
+                                <h2
+                                    id={`edit-idea-title-${idea.id}`}
+                                    className="vaivia-modal-title"
+                                >
+                                    Edit thing to do
+                                </h2>
+                                <p className="mt-2 truncate text-sm font-semibold text-slate-300">
+                                    {idea.title}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                className="vaivia-modal-close"
+                                aria-label={`Close edit ${idea.title}`}
+                            >
+                                <X className="h-5 w-5" aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="vaivia-modal-body">
+                            <IdeaForm
+                                tripId={tripId}
+                                idea={idea}
+                                action={updateIdeaAction}
+                                onCancel={requestClose}
+                                deleteAction={deleteIdeaAction}
+                                moveItemAction={moveItemAction}
+                                moveTargetTrips={moveTargetTrips}
+                                modal
+                            />
+                        </div>
+                    </>
+                )}
+            </AnimatedModal>
+        ) : null}
+        </>
     );
 }
 
@@ -1088,19 +1267,34 @@ export default function IdeasTab({
     const [dayFilter, setDayFilter] = useState<DayFilter>("");
     const [tagFilter, setTagFilter] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
+    const [locationFilter, setLocationFilter] = useState("");
     const [showArchived, setShowArchived] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
     const visibleIdeas = showArchived
         ? ideas
         : ideas.filter((idea) => !idea.is_archived);
+    const locationTabs = buildIdeaLocationTabs(visibleIdeas);
+    const activeLocationFilter = locationTabs.some(
+        (tab) => tab.key === locationFilter
+    )
+        ? locationFilter
+        : "";
     const hasAnyActiveIdeas = ideas.some((idea) => !idea.is_archived);
-    const today = getIdeaDayForDate(new Date());
-    const tomorrow = getIdeaDayForDate(addDays(new Date(), 1));
-    const filteredIdeas = useMemo(() => {
+    const todayDate = new Date();
+    const tomorrowDate = addDays(todayDate, 1);
+    const today = getIdeaDayForDate(todayDate);
+    const filteredIdeas = (() => {
         const requestedTags = parseTags(tagFilter.toLowerCase());
         const query = searchQuery.trim().toLowerCase();
 
         return visibleIdeas.filter((idea) => {
+            if (
+                activeLocationFilter &&
+                getIdeaLocationTab(idea).key !== activeLocationFilter
+            ) {
+                return false;
+            }
+
             if (
                 query &&
                 ![
@@ -1135,17 +1329,18 @@ export default function IdeasTab({
             }
 
             if (dayFilter) {
-                if (dayFilter === "Today" && !idea.days_available.includes(today)) {
+                if (dayFilter === "Today" && !isIdeaAvailableOnDate(idea, todayDate)) {
                     return false;
                 }
                 if (
                     dayFilter === "Tomorrow" &&
-                    !idea.days_available.includes(tomorrow)
+                    !isIdeaAvailableOnDate(idea, tomorrowDate)
                 ) {
                     return false;
                 }
                 if (
                     dayFilter === "Weekdays" &&
+                    idea.days_available.length > 0 &&
                     !idea.days_available.some((day) =>
                         ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(
                             day
@@ -1156,6 +1351,7 @@ export default function IdeasTab({
                 }
                 if (
                     dayFilter === "Weekends" &&
+                    idea.days_available.length > 0 &&
                     !idea.days_available.some((day) =>
                         ["Saturday", "Sunday"].includes(day)
                     )
@@ -1164,6 +1360,7 @@ export default function IdeasTab({
                 }
                 if (
                     IDEA_DAYS.includes(dayFilter as IdeaDay) &&
+                    idea.days_available.length > 0 &&
                     !idea.days_available.includes(dayFilter as IdeaDay)
                 ) {
                     return false;
@@ -1181,28 +1378,69 @@ export default function IdeasTab({
 
             return true;
         });
-    }, [
-        categoryFilter,
-        dayFilter,
-        searchQuery,
-        tagFilter,
-        timeFilter,
-        today,
-        visibleIdeas,
-        tomorrow,
-    ]);
+    })();
 
     return (
         <section className="space-y-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h2 className="text-2xl font-black tracking-tight text-white">
-                        Ideas
+                        Things to Do
                     </h2>
                     <p className="mt-1 text-sm text-slate-300">
                         Browse loose possibilities for free time, rainy days, late
                         nights, and plans that are still taking shape.
                     </p>
+                </div>
+            </div>
+
+            <div className="overflow-x-auto pb-1">
+                <div
+                    role="tablist"
+                    aria-label="Filter things to do by location"
+                    className="flex min-w-max gap-2 rounded-[1.35rem] border border-white/10 bg-[#03030a] p-2 shadow-2xl shadow-black/20"
+                >
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-label={`All locations, ${visibleIdeas.length} things to do`}
+                        aria-selected={!activeLocationFilter}
+                        aria-controls="things-to-do-grid"
+                        onClick={() => setLocationFilter("")}
+                        className={`rounded-[0.95rem] px-4 py-2.5 text-xs font-black uppercase tracking-[0.16em] transition ${
+                            !activeLocationFilter
+                                ? "bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)]"
+                                : "text-slate-300 hover:bg-white/10 hover:text-white"
+                        }`}
+                    >
+                        ALL
+                        <span className="ml-2 opacity-70">{visibleIdeas.length}</span>
+                    </button>
+                    {locationTabs.map((tab) => {
+                        const isActive = activeLocationFilter === tab.key;
+
+                        return (
+                            <button
+                                key={tab.key}
+                                type="button"
+                                role="tab"
+                                aria-label={`${tab.label}, ${tab.count} ${
+                                    tab.count === 1 ? "thing" : "things"
+                                } to do`}
+                                aria-selected={isActive}
+                                aria-controls="things-to-do-grid"
+                                onClick={() => setLocationFilter(tab.key)}
+                                className={`rounded-[0.95rem] px-4 py-2.5 text-xs font-black uppercase tracking-[0.16em] transition ${
+                                    isActive
+                                        ? "bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)]"
+                                        : "text-slate-300 hover:bg-white/10 hover:text-white"
+                                }`}
+                            >
+                                {tab.label}
+                                <span className="ml-2 opacity-70">{tab.count}</span>
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
@@ -1321,10 +1559,11 @@ export default function IdeasTab({
                 </div>
             )}
 
+            <div id="things-to-do-grid" role="tabpanel" aria-live="polite">
             {!hasAnyActiveIdeas && !showArchived ? (
                 <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.045] p-8 text-center">
                     <h3 className="text-lg font-bold text-white">
-                        No ideas yet
+                        No trip ideas yet
                     </h3>
                     <p className="mt-2 text-sm text-slate-300">
                         Add a restaurant, museum, park walk, bar, or anything you might
@@ -1334,7 +1573,7 @@ export default function IdeasTab({
             ) : filteredIdeas.length === 0 ? (
                 <div className="rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.045] p-8 text-center">
                     <h3 className="text-lg font-bold text-white">
-                        No ideas match these filters
+                        No trip ideas match these filters
                     </h3>
                     <p className="mt-2 text-sm text-slate-300">
                         Try loosening the category, day, time, or tag filters.
@@ -1357,6 +1596,7 @@ export default function IdeasTab({
                     ))}
                 </div>
             )}
+            </div>
 
             <p className="text-xs text-slate-500">
                 Today is {today}. Filter snapshots use your computer date:{" "}

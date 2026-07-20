@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { isDateRangeOrdered } from "@/lib/dateRange";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
@@ -22,6 +23,7 @@ import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { resolveTripLegIdForDate } from "@/lib/tripLegs";
 import { maybeCreatePassportStampForTransportationArrival } from "@/lib/passportArrivalStamps";
+import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 
 type TripPayload = {
     user_id: string;
@@ -228,6 +230,15 @@ function getTripDateDestinationMatrix(formData: FormData) {
                 endDate: nextDate,
             };
         });
+    const datesOutOfOrder = timelineRows.some((row, index) => {
+        const previousDate = timelineRows[index - 1]?.date;
+        return Boolean(
+            index > 0 &&
+                previousDate &&
+                row.date &&
+                !isDateRangeOrdered(previousDate, row.date)
+        );
+    });
 
     return {
         knowsDates,
@@ -237,6 +248,8 @@ function getTripDateDestinationMatrix(formData: FormData) {
         legs,
         validationError: missingValidatedDestination
             ? "Choose each destination from the Google location list."
+            : datesOutOfOrder
+              ? "Trip and leg end dates cannot be before their start dates."
             : startDestination && returnDestination && (!startDate || !returnDate)
               ? "Add start and return dates for this trip."
               : "",
@@ -891,6 +904,19 @@ async function createTrip(
     }
 
     if (createdTrip?.id) {
+        try {
+            await syncTripDestinationsFromForm({
+                supabase,
+                tripId: createdTrip.id,
+                formData,
+            });
+        } catch (destinationError) {
+            console.warn(
+                "Error saving normalized trip destinations:",
+                destinationError
+            );
+        }
+
         if (matrix.legs.length > 0) {
             const now = new Date().toISOString();
             const { error: legsError } = await supabase.from("trip_legs").insert(

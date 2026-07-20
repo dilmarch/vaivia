@@ -304,7 +304,7 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
         {
             title: "Track essentials",
             description:
-                "Use your reminders and task list for accommodations, transportation, and the little things that make trips easier.",
+                "Use your reminders and task list for stays, transportation, and the little things that make trips easier.",
             icon: ListChecks,
             targetSelector: '[data-vaivia-mobile-tour-target="home-tasks"]',
             placement: "task-section",
@@ -316,7 +316,7 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
         {
             title: "Add trip items",
             description:
-                "Tap the green + button to add transportation, activities, ideas, accommodations, and more.",
+                "Tap the green + button to add transport, things to do, stays, and more.",
             icon: Plus,
             targetSelector: '[data-vaivia-mobile-tour-target="quick-add"]',
             placement: "bottom-right",
@@ -325,7 +325,7 @@ const MOBILE_TOUR_STEPS: Record<MobileTourKind, MobileTourStep[]> = {
         {
             title: "Open trip apps",
             description:
-                "Tap the ^ button to jump into itinerary, budget, accommodations, journey planning, food, and ideas.",
+                "Tap the ^ button to jump into itinerary, budget, stays, Compare Flights, Eat & Drink, and Trip Ideas.",
             icon: ChevronsUp,
             targetSelector: '[data-vaivia-mobile-tour-target="trip-apps"]',
             placement: "bottom-left",

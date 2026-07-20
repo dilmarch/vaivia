@@ -4,8 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+    getUsernameValidationError,
+    isUsernameConflictError,
+    normalizeUsername,
+} from "@/lib/usernames";
 
-const editableRoles = ["basic_user", "super_admin"] as const;
+const editableRoles = ["basic_user", "event_organizer", "super_admin"] as const;
 const frozenBanDuration = "876000h";
 
 export type AdminUserActionState = {
@@ -91,6 +96,12 @@ export async function updateAdminUser(
         const userId = getString(formData, "user_id");
         const currentRole = getString(formData, "current_role") || "basic_user";
         const role = getString(formData, "role") || "basic_user";
+        const username = normalizeUsername(getString(formData, "username"));
+        const usernameError = getUsernameValidationError(username);
+
+        if (usernameError) {
+            return { ok: false, message: usernameError };
+        }
 
         if (!editableRoles.includes(role as (typeof editableRoles)[number])) {
             return {
@@ -138,7 +149,7 @@ export async function updateAdminUser(
             target_user_id: userId,
             target_first_name: getString(formData, "first_name"),
             target_last_name: getString(formData, "last_name"),
-            target_username: getString(formData, "username"),
+            target_username: username,
             target_email: getString(formData, "email"),
             target_role: role,
         });
@@ -154,7 +165,9 @@ export async function updateAdminUser(
 
             return {
                 ok: false,
-                message: `Could not update user: ${error.message}`,
+                message: isUsernameConflictError(error)
+                    ? "That username is already taken."
+                    : "Could not update user.",
             };
         }
 

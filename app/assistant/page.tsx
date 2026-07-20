@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTripHref } from "@/lib/tripRoutes";
 
 export const metadata: Metadata = {
-    title: "Choose a trip for the VAIVIA assistant",
+    title: "Choose a trip for Ask Concierge",
 };
 
 const TRIP_DATE_FORMATTER = new Intl.DateTimeFormat("en", {
@@ -80,14 +80,14 @@ export default async function AssistantTripPickerPage() {
                         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
                             <div>
                                 <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-300">
-                                    VAIVIA travel assistant
+                                    Ask Concierge
                                 </p>
                                 <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl">
                                     Which trip are we talking about?
                                 </h1>
                                 <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-                                    Choose a trip so the assistant uses the right itinerary,
-                                    accommodations, ideas, and other saved trip details.
+                                    Choose a trip so your concierge uses the right itinerary,
+                                    stays, trip ideas, and other saved trip details.
                                 </p>
                             </div>
                             <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl border border-lime-300/25 bg-lime-300/10 text-lime-200 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.18)]">
@@ -108,7 +108,7 @@ export default async function AssistantTripPickerPage() {
                                     <Link
                                         key={trip.id}
                                         href={getTripHref(trip, "/assistant")}
-                                        aria-label={`Open the VAIVIA assistant for ${trip.title || trip.destination || "this trip"}`}
+                                        aria-label={`Open Ask Concierge for ${trip.title || trip.destination || "this trip"}`}
                                         className="group flex min-h-52 flex-col justify-between rounded-[1.75rem] border border-white/10 bg-slate-950/65 p-5 text-left shadow-xl shadow-black/20 transition hover:-translate-y-1 hover:border-lime-300/40 hover:bg-white/[0.08] focus:outline-none focus:ring-2 focus:ring-lime-300/55"
                                     >
                                         <div>
@@ -130,7 +130,7 @@ export default async function AssistantTripPickerPage() {
                                             </p>
                                         </div>
                                         <span className="mt-6 inline-flex items-center gap-2 text-sm font-black text-lime-200 transition group-hover:gap-3">
-                                            Open assistant
+                                            Ask Concierge
                                             <ArrowRight className="h-4 w-4" aria-hidden="true" />
                                         </span>
                                     </Link>
@@ -143,7 +143,7 @@ export default async function AssistantTripPickerPage() {
                                     Create a trip first
                                 </h2>
                                 <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-300">
-                                    The assistant is trip-specific, so it needs a trip with saved
+                                    Ask Concierge is trip-specific, so it needs a trip with saved
                                     details before you can start a conversation.
                                 </p>
                                 <Link

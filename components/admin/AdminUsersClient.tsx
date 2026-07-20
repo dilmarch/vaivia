@@ -66,7 +66,9 @@ function displayName(user: AdminUserRow) {
 }
 
 function roleLabel(role: string | null) {
-    return role === "super_admin" ? "Super admin" : "Basic user";
+    if (role === "super_admin") return "Super admin";
+    if (role === "event_organizer") return "Event organizer";
+    return "Basic user";
 }
 
 function authMethodLabel(method: string | null) {
@@ -221,6 +223,7 @@ function EditUserModal({
                                     className="mt-2 h-12 w-full rounded-2xl border border-white/10 bg-slate-950 px-4 text-sm font-black text-white outline-none transition focus:border-lime-300/50 focus:ring-2 focus:ring-lime-300/20"
                                 >
                                     <option value="basic_user">Basic user</option>
+                                    <option value="event_organizer">Event organizer</option>
                                     <option value="super_admin">Super admin</option>
                                 </select>
                             </label>

@@ -8,7 +8,7 @@ import { useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
-import { DateInput } from "@/components/ui/date-input";
+import { DateRangeInputs } from "@/components/ui/date-range-inputs";
 import {
     useTripCoverImage,
     type TripCoverTrip,
@@ -295,45 +295,18 @@ export default function TripHeaderCover({
                                 onChange={() => setHasUnsavedChanges(true)}
                             />
 
-                            <div className="grid gap-5 md:grid-cols-2">
-                                <div>
-                                    <label
-                                        htmlFor="tripHeaderEditStartDate"
-                                        className="block text-sm font-medium text-slate-700"
-                                    >
-                                        Start date
-                                    </label>
-                                    <DateInput
-                                        id="tripHeaderEditStartDate"
-                                        name="start_date"
-                                        defaultValue={trip.start_date || ""}
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        autoComplete="off"
-                                        data-form-type="other"
-                                        data-lpignore="true"
-                                        data-1p-ignore="true"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label
-                                        htmlFor="tripHeaderEditEndDate"
-                                        className="block text-sm font-medium text-slate-700"
-                                    >
-                                        End date
-                                    </label>
-                                    <DateInput
-                                        id="tripHeaderEditEndDate"
-                                        name="end_date"
-                                        defaultValue={trip.end_date || ""}
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        autoComplete="off"
-                                        data-form-type="other"
-                                        data-lpignore="true"
-                                        data-1p-ignore="true"
-                                    />
-                                </div>
-                            </div>
+                            <DateRangeInputs
+                                startName="start_date"
+                                endName="end_date"
+                                startLabel="Start date"
+                                endLabel="End date"
+                                initialStartDate={trip.start_date}
+                                initialEndDate={trip.end_date}
+                                startId="tripHeaderEditStartDate"
+                                endId="tripHeaderEditEndDate"
+                                className="grid gap-5 md:grid-cols-2"
+                                inputClassName="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
 
                             <div>
                                 <label

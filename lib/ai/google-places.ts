@@ -413,3 +413,34 @@ export async function getGooglePlaceDetails({
         ? { status: "success", data: place }
         : { status: "failure", code: "no_results" };
 }
+
+/**
+ * Refreshes a stored Place ID using Google's IDs-only field mask. The caller may
+ * persist the returned ID, but no other provider content is requested or stored.
+ */
+export async function refreshGooglePlaceId({
+    placeId,
+    signal,
+}: {
+    placeId: string;
+    signal?: AbortSignal;
+}): Promise<GooglePlacesResult<string>> {
+    const safePlaceId = cleanString(placeId, 255);
+    if (!safePlaceId) return { status: "failure", code: "provider_failure" };
+    const result = await placesFetch(
+        `${GOOGLE_PLACES_DETAILS_URL}/${encodeURIComponent(safePlaceId)}`,
+        {
+            method: "GET",
+            headers: { "X-Goog-FieldMask": "id" },
+        },
+        signal
+    );
+    if (result.status === "failure") return result;
+    const refreshedId = cleanString(
+        (result.data as { id?: unknown } | null)?.id,
+        255
+    );
+    return refreshedId
+        ? { status: "success", data: refreshedId }
+        : { status: "failure", code: "no_results" };
+}

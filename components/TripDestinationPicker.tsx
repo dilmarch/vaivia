@@ -4,9 +4,16 @@ import { ImagePlus, Search, UploadCloud, X } from "lucide-react";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+export type TripDestinationSelection = {
+    label: string;
+    placeId?: string | null;
+    countryCode?: string | null;
+    countryName?: string | null;
+};
+
 type TripDestinationPickerProps = {
     initialDestination?: string | null;
-    initialDestinations?: Array<{ label: string; placeId?: string | null }>;
+    initialDestinations?: TripDestinationSelection[];
     initialCoverImageUrl?: string | null;
     initialCoverImageSource?: string | null;
     initialCoverImageStoragePath?: string | null;
@@ -17,7 +24,7 @@ type TripDestinationPickerProps = {
     placeholder?: string;
     onChange?: () => void;
     onDestinationsChange?: (
-        destinations: Array<{ label: string; placeId?: string | null }>
+        destinations: TripDestinationSelection[]
     ) => void;
 };
 
@@ -25,6 +32,8 @@ type DestinationOption = {
     label: string;
     coverImageUrl: string;
     placeId?: string | null;
+    countryCode?: string | null;
+    countryName?: string | null;
 };
 
 type UnsplashResult = {
@@ -55,6 +64,18 @@ function getCountryFlag(place: google.maps.places.PlaceResult) {
     );
 
     return country?.short_name ? getFlagEmoji(country.short_name) : "";
+}
+
+function getCountryDetails(place: google.maps.places.PlaceResult) {
+    const country = place.address_components?.find((component) =>
+        component.types.includes("country")
+    );
+    const countryCode = country?.short_name?.trim().toUpperCase() || "";
+
+    return {
+        countryCode: /^[A-Z]{2}$/.test(countryCode) ? countryCode : null,
+        countryName: country?.long_name?.trim() || null,
+    };
 }
 
 function prependFlag(label: string, flag: string) {
@@ -116,6 +137,8 @@ export default function TripDestinationPicker({
             initialDestinations?.map((destination) => ({
                 label: destination.label,
                 placeId: destination.placeId || null,
+                countryCode: destination.countryCode || null,
+                countryName: destination.countryName || null,
                 coverImageUrl: "",
             })) || parseDestinations(initialDestination);
 
@@ -145,6 +168,8 @@ export default function TripDestinationPicker({
             ? initialDestinations!.map((destination) => ({
                   label: destination.label,
                   placeId: destination.placeId || null,
+                  countryCode: destination.countryCode || null,
+                  countryName: destination.countryName || null,
                   coverImageUrl: "",
               }))
             : parseDestinations(initialDestination);
@@ -186,6 +211,8 @@ export default function TripDestinationPicker({
             destinations.map((destination) => ({
                 label: destination.label,
                 placeId: destination.placeId || null,
+                countryCode: destination.countryCode || null,
+                countryName: destination.countryName || null,
             }))
         );
     }, [destinations, onDestinationsChange]);
@@ -242,6 +269,7 @@ export default function TripDestinationPicker({
                 getCountryFlag(place)
             );
             if (!label) return;
+            const country = getCountryDetails(place);
 
             const coverPhotoUrl =
                 place.photos?.[0]?.getUrl({
@@ -264,6 +292,8 @@ export default function TripDestinationPicker({
                     {
                         label,
                         placeId: place.place_id || null,
+                        countryCode: country.countryCode,
+                        countryName: country.countryName,
                         coverImageUrl: coverPhotoUrl,
                     },
                 ];
@@ -362,6 +392,18 @@ export default function TripDestinationPicker({
             />
 
             <input type="hidden" name="destination" value={destinationValue} />
+            <input
+                type="hidden"
+                name="destination_places_json"
+                value={JSON.stringify(
+                    destinations.map((destination) => ({
+                        label: destination.label,
+                        placeId: destination.placeId || null,
+                        countryCode: destination.countryCode || null,
+                        countryName: destination.countryName || null,
+                    }))
+                )}
+            />
             <input type="hidden" name="cover_image_source" value={selectedCoverSource} />
             <input
                 type="hidden"

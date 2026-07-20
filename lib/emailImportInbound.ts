@@ -2,6 +2,12 @@ import "server-only";
 
 export const EMAIL_IMPORT_LOCAL_PREFIX = "trips+";
 export const EMAIL_IMPORT_TOKEN_PATTERN = /^[a-f0-9]{48}$/;
+export const EMAIL_IMPORT_USERNAME_ALIAS_PATTERN =
+    /^[a-z0-9]+(?:[_-][a-z0-9]+)*\.[a-f0-9]{12}$/;
+export const MAX_INBOUND_RECIPIENT_CANDIDATES = 50;
+export const MAX_INBOUND_WEBHOOK_BYTES = 1_000_000;
+export const MAX_INBOUND_EMAIL_BODY_BYTES = 2_000_000;
+export const MAX_INBOUND_ATTACHMENTS = 25;
 
 export type InboundRecipientMatch = {
     address: string;
@@ -48,7 +54,7 @@ export function getInboundRecipientCandidates(source: RecipientSource) {
                     normalizeEmailAddress(candidate),
                 ])
         ).values()
-    );
+    ).slice(0, MAX_INBOUND_RECIPIENT_CANDIDATES);
 }
 
 export function extractInboundRecipientToken(
@@ -64,15 +70,25 @@ export function extractInboundRecipientToken(
     const domain = normalizedAddress.slice(atIndex + 1);
 
     if (domain.toLowerCase() !== expectedDomain.trim().toLowerCase()) return null;
-    if (!localPart.startsWith(EMAIL_IMPORT_LOCAL_PREFIX)) return null;
-
-    const token = localPart.slice(EMAIL_IMPORT_LOCAL_PREFIX.length);
-    if (!EMAIL_IMPORT_TOKEN_PATTERN.test(token)) return null;
+    const legacyToken = localPart.startsWith(EMAIL_IMPORT_LOCAL_PREFIX)
+        ? localPart.slice(EMAIL_IMPORT_LOCAL_PREFIX.length)
+        : null;
+    const token =
+        legacyToken && EMAIL_IMPORT_TOKEN_PATTERN.test(legacyToken)
+            ? legacyToken
+            : EMAIL_IMPORT_USERNAME_ALIAS_PATTERN.test(localPart)
+              ? localPart
+              : null;
+    if (!token) return null;
 
     return {
         address: normalizedAddress,
         token,
     };
+}
+
+export function getUtf8ByteLength(value: string | null | undefined) {
+    return value ? Buffer.byteLength(value, "utf8") : 0;
 }
 
 export function sanitizeServerError(error: unknown) {

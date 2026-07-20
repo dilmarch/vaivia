@@ -11,7 +11,6 @@ import {
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { createClient } from "@/lib/supabase/server";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
-import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
 
 export async function createAccommodation(
     formData: FormData
@@ -25,15 +24,6 @@ export async function createAccommodation(
 
     const tripId = String(formData.get("trip_id") || "");
     const payload = buildAccommodationPayload(formData, tripId);
-    payload.trip_leg_id = await resolveTripLegIdForLocation({
-        supabase,
-        tripId,
-        explicitTripLegId: payload.trip_leg_id,
-        city: payload.city,
-        region: payload.region,
-        country: payload.country,
-        itemDate: payload.check_in_date,
-    });
     const validationErrors = validateAccommodationPayload(payload);
 
     if (validationErrors.length > 0) {
@@ -47,7 +37,7 @@ export async function createAccommodation(
         .single();
 
     if (error) {
-        console.error("Error creating accommodation:", {
+        console.error("Error creating stay:", {
             message: error.message,
             code: error.code,
             details: error.details,
@@ -57,7 +47,7 @@ export async function createAccommodation(
         });
         return {
             ok: false,
-            error: `Could not create accommodation: ${getAccommodationErrorMessage(
+            error: `Could not create stay: ${getAccommodationErrorMessage(
                 error.message
             )}`,
         };
@@ -70,7 +60,7 @@ export async function createAccommodation(
 
     if (accommodationId) {
         const participantsError =
-            payload.audience_mode === "everyone"
+            payload.is_planning_option || payload.audience_mode === "everyone"
                 ? null
                 : await replaceTripItemParticipantsFromForm({
                       tripId,
@@ -80,7 +70,7 @@ export async function createAccommodation(
                   });
 
         if (participantsError) {
-            console.error("Error creating accommodation participants:", {
+            console.error("Error creating stay participants:", {
                 message: participantsError.message,
                 code: participantsError.code,
                 details: participantsError.details,
@@ -96,7 +86,7 @@ export async function createAccommodation(
                 .eq("trip_id", tripId);
 
             if (rollbackError) {
-                console.error("Error rolling back incomplete accommodation:", {
+                console.error("Error rolling back incomplete stay:", {
                     message: rollbackError.message,
                     code: rollbackError.code,
                     details: rollbackError.details,
@@ -108,11 +98,15 @@ export async function createAccommodation(
 
             return {
                 ok: false,
-                error: "Could not save who this accommodation is for. The accommodation was not created.",
+                error: "Could not save who this stay is for. The stay was not created.",
             };
         }
 
-        if (payload.cost !== null && payload.cost !== undefined) {
+        if (
+            !payload.is_planning_option &&
+            payload.cost !== null &&
+            payload.cost !== undefined
+        ) {
             try {
                 await syncAutoBudgetExpense({
                     supabase,
@@ -127,7 +121,7 @@ export async function createAccommodation(
                     formData,
                 });
             } catch (budgetError) {
-                console.error("Accommodation created without budget sync:", {
+                console.error("Stay created without budget sync:", {
                     message:
                         budgetError instanceof Error
                             ? budgetError.message

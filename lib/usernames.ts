@@ -1,4 +1,20 @@
-export const USERNAME_PATTERN = /^[a-z0-9][a-z0-9_-]{2,29}$/;
+export const USERNAME_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
+export const RESERVED_USERNAMES = new Set([
+  "admin",
+  "administrator",
+  "support",
+  "security",
+  "billing",
+  "help",
+  "contact",
+  "info",
+  "postmaster",
+  "abuse",
+  "privacy",
+  "legal",
+  "system",
+  "vaivia",
+]);
 
 export function normalizeUsername(value: string) {
   return value.trim().replace(/^@+/, "").toLowerCase();
@@ -10,8 +26,11 @@ export function getUsernameValidationError(value: string) {
   if (!username) return "Please create a username to continue.";
   if (username.length < 3) return "Username must be at least 3 characters.";
   if (username.length > 30) return "Username must be 30 characters or fewer.";
+  if (RESERVED_USERNAMES.has(username)) {
+    return "That username is reserved. Please choose another one.";
+  }
   if (!USERNAME_PATTERN.test(username)) {
-    return "Use 3-30 lowercase letters, numbers, underscores, or hyphens. Start with a letter or number.";
+    return "Use lowercase letters and numbers, with single underscores or hyphens only between them.";
   }
 
   return null;

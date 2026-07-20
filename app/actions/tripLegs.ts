@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { assertDateRangeOrdered } from "@/lib/dateRange";
 
 async function syncTripLegMembers({
     supabase,
@@ -162,6 +163,11 @@ export async function upsertTripLeg(formData: FormData) {
     const iconEmoji = String(formData.get("icon_emoji") || "").trim();
     const startDate = String(formData.get("start_date") || "").trim();
     const endDate = String(formData.get("end_date") || "").trim();
+    assertDateRangeOrdered(
+        startDate,
+        endDate,
+        "Trip leg end date cannot be before the start date."
+    );
     const tripMemberIds = Array.from(
         new Set(
             formData
@@ -258,23 +264,29 @@ export async function deleteTripLeg(formData: FormData) {
 
     if (!tripId || !tripLegId) throw new Error("Could not delete trip leg");
 
-    const { error } = await supabase
+    const { data: deletedLeg, error } = await supabase
         .from("trip_legs")
         .delete()
         .eq("id", tripLegId)
         .eq("trip_id", tripId)
-        .eq("leg_type", "custom");
+        .eq("leg_type", "custom")
+        .select("id")
+        .maybeSingle();
 
-    if (error) {
+    if (error || !deletedLeg) {
         console.error("Error deleting trip leg:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
+            message: error?.message,
+            code: error?.code,
+            details: error?.details,
+            hint: error?.hint,
             tripId,
             tripLegId,
         });
-        throw new Error("Could not delete trip leg");
+        throw new Error(
+            error
+                ? "Could not delete trip leg"
+                : "Only custom trip legs can be deleted here."
+        );
     }
 
     revalidatePath(revalidatePathname || `/trips/${tripId}`);

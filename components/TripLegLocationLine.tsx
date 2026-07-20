@@ -6,7 +6,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
-import { DateInput } from "@/components/ui/date-input";
+import { DateRangeInputs } from "@/components/ui/date-range-inputs";
 import { getInitials } from "@/lib/travelers";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 
@@ -23,6 +23,8 @@ export type TripLegLocation = {
     startDate?: string | null;
     endDate?: string | null;
     memberIds?: string[];
+    canDelete?: boolean;
+    canClearDates?: boolean;
     memberDatesByMemberId?: Record<
         string,
         {
@@ -248,6 +250,7 @@ export default function TripLegLocationLine({
     });
     const [addLegError, setAddLegError] = useState("");
     const [actionError, setActionError] = useState("");
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(
         () => new Set(memberOptions.map((member) => member.id))
     );
@@ -261,6 +264,7 @@ export default function TripLegLocationLine({
         setIsAddingLeg(false);
         setActionError("");
         setAddLegError("");
+        setIsConfirmingDelete(false);
         setSelectedLocationId(getLocationKey(location));
         setSelectedMemberIds(
             new Set(getInitialSelectedMemberIds(location, memberOptions))
@@ -286,6 +290,7 @@ export default function TripLegLocationLine({
         setIsAddingLeg(false);
         setActionError("");
         setAddLegError("");
+        setIsConfirmingDelete(false);
         setSelectedLocationId(getLocationKey(location));
         setSelectedMemberIds(
             new Set(getInitialSelectedMemberIds(location, memberOptions))
@@ -306,6 +311,7 @@ export default function TripLegLocationLine({
         });
         setAddLegError("");
         setActionError("");
+        setIsConfirmingDelete(false);
         setSelectedMemberIds(new Set(memberOptions.map((member) => member.id)));
         setIsOpen(true);
     }
@@ -328,7 +334,7 @@ export default function TripLegLocationLine({
                 router.refresh();
                 setIsOpen(false);
             } catch (error) {
-                console.error("Could not save trip leg:", error);
+                console.error("Could not update trip leg:", error);
                 setActionError(
                     error instanceof Error
                         ? error.message
@@ -366,11 +372,20 @@ export default function TripLegLocationLine({
         runFormAction(upsertLegAction, event.currentTarget);
     }
 
+    function handleClearLegDates(form: HTMLFormElement | null) {
+        if (!form) return;
+        const formData = new FormData(form);
+        formData.set("start_date", "");
+        formData.set("end_date", "");
+        runAction(upsertLegAction, formData);
+    }
+
     function renderModal() {
         return (
             <AnimatedModal
                 onClose={() => {
                     setIsOpen(false);
+                    setIsConfirmingDelete(false);
                     onOpenLocationHandled?.();
                 }}
                 panelClassName="max-w-3xl"
@@ -390,7 +405,7 @@ export default function TripLegLocationLine({
                                     Destination days
                                 </h2>
                                 <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-300">
-                                    Accommodation dates are used first. Add manual
+                                    Stay dates are used first. Add manual
                                     destination days for planning gaps and choose which
                                     trip mates are joining each leg.
                                 </p>
@@ -408,7 +423,7 @@ export default function TripLegLocationLine({
                         {accommodationLocations.length > 0 ? (
                             <section className="rounded-2xl border border-white/10 bg-white/[0.06] p-5 sm:p-6">
                                 <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200">
-                                    From accommodations
+                                    From stays
                                 </p>
                                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                                     {accommodationLocations.map((location) => (
@@ -540,24 +555,15 @@ export default function TripLegLocationLine({
                                             </p>
                                         ) : null}
                                     </label>
-                                    <label className="block">
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                            Start date
-                                        </span>
-                                        <DateInput
-                                            name="start_date"
-                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
-                                        />
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                            End date
-                                        </span>
-                                        <DateInput
-                                            name="end_date"
-                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
-                                        />
-                                    </label>
+                                    <DateRangeInputs
+                                        startName="start_date"
+                                        endName="end_date"
+                                        startLabel="Start date"
+                                        endLabel="End date"
+                                        className="grid gap-3 sm:col-span-2 sm:grid-cols-2"
+                                        labelClassName="text-xs font-black uppercase tracking-[0.18em] text-lime-200"
+                                        inputClassName="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
+                                    />
                                 </div>
 
                                 <div>
@@ -675,28 +681,18 @@ export default function TripLegLocationLine({
                                     </p>
                                 </div>
 
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                    <label className="block">
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                            Start date
-                                        </span>
-                                        <DateInput
-                                            name="start_date"
-                                            defaultValue={selectedLocation?.startDate || ""}
-                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
-                                        />
-                                    </label>
-                                    <label className="block">
-                                        <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
-                                            End date
-                                        </span>
-                                        <DateInput
-                                            name="end_date"
-                                            defaultValue={selectedLocation?.endDate || ""}
-                                            className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
-                                        />
-                                    </label>
-                                </div>
+                                <DateRangeInputs
+                                    key={selectedLocation.id}
+                                    startName="start_date"
+                                    endName="end_date"
+                                    startLabel="Start date"
+                                    endLabel="End date"
+                                    initialStartDate={selectedLocation.startDate}
+                                    initialEndDate={selectedLocation.endDate}
+                                    className="grid gap-3 sm:grid-cols-2"
+                                    labelClassName="text-xs font-black uppercase tracking-[0.18em] text-lime-200"
+                                    inputClassName="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
+                                />
 
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
@@ -722,42 +718,95 @@ export default function TripLegLocationLine({
                                     </div>
                                 </div>
 
-                                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
-                                    {selectedLocation ? (
+                                {isConfirmingDelete ? (
+                                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-300/25 bg-red-400/10 p-4">
+                                        <div>
+                                            <p className="text-sm font-black text-red-100">
+                                                Delete this leg?
+                                            </p>
+                                            <p className="mt-1 text-xs font-semibold text-red-100/75">
+                                                Traveler assignments are removed. Linked
+                                                trip items remain, but become unassigned.
+                                                This cannot be undone.
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setIsConfirmingDelete(false)
+                                                }
+                                                className="rounded-full border border-white/15 bg-white/[0.08] px-4 py-2 text-sm font-black text-white transition hover:bg-white/[0.14]"
+                                                disabled={isPending}
+                                            >
+                                                Keep leg
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(event) =>
+                                                    runFormAction(
+                                                        deleteLegAction,
+                                                        event.currentTarget.form
+                                                    )
+                                                }
+                                                className="inline-flex items-center gap-2 rounded-full bg-red-400 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-red-300 disabled:opacity-60"
+                                                disabled={isPending}
+                                            >
+                                                <Trash2
+                                                    className="h-4 w-4"
+                                                    aria-hidden="true"
+                                                />
+                                                {isPending
+                                                    ? "Deleting..."
+                                                    : "Delete leg"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={(event) =>
+                                                    handleClearLegDates(
+                                                        event.currentTarget.form
+                                                    )
+                                                }
+                                                className="rounded-full border border-white/15 bg-white/[0.08] px-4 py-2 text-sm font-black text-white transition hover:bg-white/[0.14] disabled:opacity-50"
+                                                disabled={
+                                                    isPending ||
+                                                    !selectedLocation.canClearDates
+                                                }
+                                            >
+                                                Clear dates
+                                            </button>
+                                            {selectedLocation.source === "manual" &&
+                                            selectedLocation.canDelete ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setIsConfirmingDelete(true)
+                                                    }
+                                                    className="inline-flex items-center gap-2 rounded-full border border-red-300/25 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20 disabled:opacity-50"
+                                                    disabled={isPending}
+                                                >
+                                                    <Trash2
+                                                        className="h-4 w-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                    Delete leg
+                                                </button>
+                                            ) : null}
+                                        </div>
                                         <button
-                                            type="button"
-                                            onClick={(event) =>
-                                                runFormAction(
-                                                    deleteLegAction,
-                                                    event.currentTarget.form
-                                                )
-                                            }
-                                            className="inline-flex items-center gap-2 rounded-full border border-red-300/25 bg-red-400/10 px-4 py-2 text-sm font-black text-red-100 transition hover:bg-red-400/20"
-                                            disabled={
-                                                isPending ||
-                                                !(
-                                                    selectedLocation.persistedLegId ||
-                                                    selectedLocation.source === "manual"
-                                                )
-                                            }
+                                            type="submit"
+                                            className="rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200 disabled:opacity-60"
+                                            disabled={isPending}
                                         >
-                                            <Trash2
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            />
-                                            Clear dates
+                                            {isPending ? "Saving..." : "Save leg"}
                                         </button>
-                                    ) : (
-                                        <span />
-                                    )}
-                                    <button
-                                        type="submit"
-                                        className="rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:bg-lime-200 disabled:opacity-60"
-                                        disabled={isPending}
-                                    >
-                                        {isPending ? "Saving..." : "Save leg"}
-                                    </button>
-                                </div>
+                                    </div>
+                                )}
                             </form>
                         ) : null}
                     </div>

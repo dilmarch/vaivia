@@ -123,13 +123,16 @@ export function SignUpForm({
   initialEmail = "",
   initialInvitationId = "",
   initialInviteType = "",
+  initialNext = "",
   ...props
 }: React.ComponentPropsWithoutRef<"div"> & {
   initialEmail?: string;
   initialInvitationId?: string;
   initialInviteType?: string;
+  initialNext?: string;
 }) {
   const router = useRouter();
+  const safeNext = initialNext.startsWith("/") && !initialNext.startsWith("//") ? initialNext : "";
   const isTripInviteSignup =
     initialInviteType === "trip_invite" || Boolean(initialInvitationId);
   const [step, setStep] = useState<SignupStep>("account");
@@ -291,7 +294,9 @@ export function SignUpForm({
         email: cleanEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: safeNext
+            ? `${window.location.origin}/auth/confirm?next=${encodeURIComponent(safeNext)}`
+            : `${window.location.origin}/`,
           data: {
             first_name: cleanFirstName,
             last_name: cleanLastName,
@@ -383,6 +388,12 @@ export function SignUpForm({
   async function advanceAfterPhoto() {
     if (!hasActiveSession) {
       setStep("confirm");
+      return;
+    }
+
+    if (safeNext) {
+      router.refresh();
+      router.push(safeNext);
       return;
     }
 
@@ -745,6 +756,9 @@ export function SignUpForm({
                   onChange={(event) => setUsername(event.target.value)}
                   onBlur={() => setUsername((current) => normalizeUsername(current))}
                   required
+                  minLength={3}
+                  maxLength={30}
+                  pattern="[a-z0-9]+(?:[_-][a-z0-9]+)*"
                   className="mt-2 w-full rounded-2xl border border-white/15 bg-slate-950/90 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-slate-500 focus:border-lime-300/55"
                   placeholder="dilmarch"
                   autoComplete="username"
@@ -954,7 +968,7 @@ export function SignUpForm({
 
               <div className="flex flex-wrap gap-3">
                 <Link
-                  href="/auth/login"
+                  href={`/auth/login${safeNext ? `?next=${encodeURIComponent(safeNext)}` : ""}`}
                   className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full bg-lime-300 px-6 text-sm font-black text-slate-950 transition hover:bg-lime-200"
                 >
                   Go to login
@@ -1124,7 +1138,7 @@ export function SignUpForm({
 
           <div className="mt-6 text-center text-sm font-semibold text-slate-400">
             Already have an account?{" "}
-            <Link href="/auth/login" className="text-lime-200 underline underline-offset-4">
+            <Link href={`/auth/login${safeNext ? `?next=${encodeURIComponent(safeNext)}` : ""}`} className="text-lime-200 underline underline-offset-4">
               Login
             </Link>
           </div>

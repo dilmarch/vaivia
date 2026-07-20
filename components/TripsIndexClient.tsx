@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
-import { DateInput } from "@/components/ui/date-input";
+import { DateRangeInputs } from "@/components/ui/date-range-inputs";
 import {
     DashboardTripCard,
     TripQuickInfoPanel,
@@ -403,39 +403,20 @@ export default function TripsIndexClient({
                                 onChange={() => setHasUnsavedChanges(true)}
                             />
 
-                            <div className="grid gap-5 md:grid-cols-2">
-                                <div>
-                                    <label
-                                        htmlFor="tripsIndexEditStartDate"
-                                        className="block text-sm font-bold text-slate-700"
-                                    >
-                                        Start date
-                                    </label>
-                                    <DateInput
-                                        id="tripsIndexEditStartDate"
-                                        name="start_date"
-                                        defaultValue={selectedTrip.start_date || ""}
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        {...travelInputProps()}
-                                    />
-                                </div>
-
-                                <div>
-                                    <label
-                                        htmlFor="tripsIndexEditEndDate"
-                                        className="block text-sm font-bold text-slate-700"
-                                    >
-                                        End date
-                                    </label>
-                                    <DateInput
-                                        id="tripsIndexEditEndDate"
-                                        name="end_date"
-                                        defaultValue={selectedTrip.end_date || ""}
-                                        className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
-                                        {...travelInputProps()}
-                                    />
-                                </div>
-                            </div>
+                            <DateRangeInputs
+                                key={selectedTrip.id}
+                                startName="start_date"
+                                endName="end_date"
+                                startLabel="Start date"
+                                endLabel="End date"
+                                initialStartDate={selectedTrip.start_date}
+                                initialEndDate={selectedTrip.end_date}
+                                startId="tripsIndexEditStartDate"
+                                endId="tripsIndexEditEndDate"
+                                className="grid gap-5 md:grid-cols-2"
+                                labelClassName="text-sm font-bold text-slate-700"
+                                inputClassName="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
+                            />
 
                             <div>
                                 <label

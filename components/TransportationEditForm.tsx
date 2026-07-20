@@ -42,6 +42,8 @@ type TransportationEditFormProps = {
     moveItemAction?: (formData: FormData) => Promise<void>;
     moveTargetTrips?: MoveTargetTrip[];
     initialItem: {
+        transportation_mode?: string | null;
+        transport_type?: string | null;
         status?: string | null;
         item_date?: string | null;
         end_date?: string | null;
@@ -109,6 +111,12 @@ export default function TransportationEditForm({
     const [costAmount, setCostAmount] = useState(
         initialItem.cost == null ? "" : String(initialItem.cost)
     );
+    const transportationMode =
+        initialItem.transportation_mode ||
+        (initialItem.transport_type === "flight"
+            ? "airplane"
+            : initialItem.transport_type) ||
+        "";
     const duration = getZonedDurationLabel({
         startDate: departureDate,
         startTime: departureTime,
@@ -137,6 +145,11 @@ export default function TransportationEditForm({
             <input type="hidden" name="item_id" value={itemId} />
             <input type="hidden" name="return_to" value={returnTo} />
             <input type="hidden" name="duration" value={duration} />
+            <input
+                type="hidden"
+                name="transportation_mode"
+                value={transportationMode}
+            />
 
             <TripAudienceSelector
                 options={audienceOptions}

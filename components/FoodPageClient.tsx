@@ -351,7 +351,7 @@ function FoodAddModal({
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
-                                Food
+                                Eat &amp; Drink
                             </p>
                             <h2 className="mt-2 text-3xl font-black">
                                 {step === "choose"
@@ -848,13 +848,24 @@ function FoodEditModal({
                             <>
                                 <label className="block text-sm font-black text-white">
                                     Address
+                                    {item.place_source === "google_place_assistant"
+                                        ? " (optional)"
+                                        : ""}
                                     <input
                                         name="formatted_address"
-                                        required
+                                        required={
+                                            item.place_source !== "google_place_assistant"
+                                        }
                                         defaultValue={item.formatted_address || ""}
                                         className="mt-2 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm text-white outline-none placeholder:text-slate-500"
                                     />
                                 </label>
+                                {item.place_source === "google_place_assistant" ? (
+                                    <p className="-mt-3 text-xs leading-5 text-slate-400">
+                                        VAIVIA keeps your label and Place ID. Live Google details
+                                        remain transient.
+                                    </p>
+                                ) : null}
                                 <input
                                     type="hidden"
                                     name="google_place_id"
@@ -1336,10 +1347,10 @@ export default function FoodPageClient({
             <div className="flex flex-wrap items-end justify-between gap-4">
                 <div>
                     <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
-                        Food
+                        Eat &amp; Drink
                     </p>
                     <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
-                        Food
+                        Eat &amp; Drink
                     </h1>
                     <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-300">
                         Save places to eat and local flavours to try.

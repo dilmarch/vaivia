@@ -30,6 +30,7 @@ function fakeDatabase(user: { id: string } | null = { id: USER_ID }) {
                     google_place_id: "ChIJVisibleHotel123",
                     latitude: 43.65,
                     longitude: -79.38,
+                    is_planning_option: false,
                     is_private: false,
                     created_by: USER_ID,
                 },
@@ -119,6 +120,11 @@ describe("trusted trip place anchors", () => {
                 value: TRIP_ID,
             });
         }
+        expect(database.filters).toContainEqual({
+            table: "trip_accommodations",
+            field: "is_planning_option",
+            value: false,
+        });
     });
 
     it("uses date and natural reference matching but returns safe ambiguity instead of guessing", () => {

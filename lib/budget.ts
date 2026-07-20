@@ -139,7 +139,7 @@ export type TripExpenseSettlement = {
 };
 
 export const DEFAULT_EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
-    accommodations: "Accommodations",
+    accommodations: "Stays",
     transportation: "Transportation",
     entertainment: "Entertainment",
     food: "Food",
@@ -152,7 +152,7 @@ export const DEFAULT_BUDGET_CATEGORIES: Array<{
     name: string;
     linkedExpenseCategory: ExpenseCategory;
 }> = [
-    { name: "Accommodations", linkedExpenseCategory: "accommodations" },
+    { name: "Stays", linkedExpenseCategory: "accommodations" },
     { name: "Transportation", linkedExpenseCategory: "transportation" },
     { name: "Food", linkedExpenseCategory: "food" },
     { name: "Drink", linkedExpenseCategory: "drink" },

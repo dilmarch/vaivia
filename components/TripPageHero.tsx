@@ -27,6 +27,8 @@ import {
 } from "@/lib/tripSlugUpdate";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
+import { assertDateRangeOrdered } from "@/lib/dateRange";
+import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 
 type TripPageHeroProps = {
     tripId: string;
@@ -268,6 +270,11 @@ async function updateTrip(formData: FormData) {
         notes: String(formData.get("notes") || ""),
         ...coverPayload,
     };
+    assertDateRangeOrdered(
+        payload.start_date || "",
+        payload.end_date || "",
+        "Trip end date cannot be before the start date."
+    );
     await addValidatedTripSlugToPayload(supabase, payload, {
         tripId,
         submittedSlug: slug,
@@ -301,6 +308,8 @@ async function updateTrip(formData: FormData) {
         }
         throw new Error("Could not update trip");
     }
+
+    await syncTripDestinationsFromForm({ supabase, tripId, formData });
 
     await cleanupReplacedTripCover({
         supabase,
@@ -600,6 +609,11 @@ async function upsertTripLeg(formData: FormData) {
     const iconEmoji = String(formData.get("icon_emoji") || "").trim();
     const startDate = String(formData.get("start_date") || "").trim();
     const endDate = String(formData.get("end_date") || "").trim();
+    assertDateRangeOrdered(
+        startDate,
+        endDate,
+        "Trip leg end date cannot be before the start date."
+    );
     const tripMemberIds = Array.from(
         new Set(
             formData
@@ -702,23 +716,29 @@ async function deleteTripLeg(formData: FormData) {
         throw new Error("Could not delete trip leg");
     }
 
-    const { error } = await supabase
+    const { data: deletedLeg, error } = await supabase
         .from("trip_legs")
         .delete()
         .eq("id", tripLegId)
         .eq("trip_id", tripId)
-        .eq("leg_type", "custom");
+        .eq("leg_type", "custom")
+        .select("id")
+        .maybeSingle();
 
-    if (error) {
+    if (error || !deletedLeg) {
         console.error("Error deleting trip leg:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
+            message: error?.message,
+            code: error?.code,
+            details: error?.details,
+            hint: error?.hint,
             tripId,
             tripLegId,
         });
-        throw new Error("Could not delete trip leg");
+        throw new Error(
+            error
+                ? "Could not delete trip leg"
+                : "Only custom trip legs can be deleted here."
+        );
     }
 
     revalidatePath(revalidatePathname || `/trips/${tripId}`);
@@ -970,55 +990,6 @@ export default async function TripPageHero({
         );
     });
 
-    const { data: accommodationLocationRows, error: accommodationLocationError } =
-        await supabase
-            .from("trip_accommodations")
-            .select("id,hotel_name,city,region,country,check_in_date,check_out_date")
-            .eq("trip_id", tripId)
-            .neq("status", "cancelled")
-            .order("check_in_date", { ascending: true });
-
-    if (accommodationLocationError) {
-        console.warn("Could not load accommodation locations for hero:", {
-            message: accommodationLocationError.message,
-            code: accommodationLocationError.code,
-            details: accommodationLocationError.details,
-            hint: accommodationLocationError.hint,
-            tripId,
-        });
-    }
-
-    const accommodationLocations: TripLegLocation[] = (
-        (accommodationLocationRows || []) as Array<{
-            id: string;
-            hotel_name?: string | null;
-            city?: string | null;
-            region?: string | null;
-            country?: string | null;
-            check_in_date?: string | null;
-            check_out_date?: string | null;
-        }>
-    )
-        .map((accommodation) => {
-            const name =
-                accommodation.city ||
-                accommodation.region ||
-                accommodation.country ||
-                accommodation.hotel_name ||
-                "Accommodation";
-
-            return {
-                id: accommodation.id,
-                source: "accommodation" as const,
-                name,
-                cityName: accommodation.city || accommodation.region || name,
-                countryName: accommodation.country || null,
-                startDate: accommodation.check_in_date || null,
-                endDate: accommodation.check_out_date || null,
-            };
-        })
-        .filter((location) => location.name.trim().length > 0);
-
     const manualLocations: TripLegLocation[] = (
         (tripLegRows || []) as Array<{
             id: string;
@@ -1043,6 +1014,8 @@ export default async function TripPageHero({
             iconEmoji: leg.icon_emoji || null,
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
+            canDelete: leg.leg_type === "custom",
+            canClearDates: leg.leg_type === "custom",
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
             memberDatesByMemberId: Object.fromEntries(
                 (tripMemberIdsByLegId.get(leg.id) || []).map((memberId) => {
@@ -1088,62 +1061,31 @@ export default async function TripPageHero({
         };
     });
 
-    const accommodationLocationsWithManualLegs = accommodationLocations.map(
-        (accommodation) => {
-            const manualMatch = manualLocations.find((location) =>
-                !location.googlePlaceId && locationsMatch(accommodation, location)
-            );
-
-            return {
-                ...accommodation,
-                persistedLegId: manualMatch?.id || null,
-                startDate:
-                    accommodation.startDate || manualMatch?.startDate || null,
-                endDate: accommodation.endDate || manualMatch?.endDate || null,
-                memberIds: manualMatch?.memberIds || [],
-                memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
-            };
-        }
-    );
     const unmatchedManualLocations = manualLocations.filter(
         (manualLocation) =>
             Boolean(manualLocation.googlePlaceId) ||
-            (!accommodationLocations.some((accommodation) =>
-                locationsMatch(accommodation, manualLocation)
-            ) &&
-                !destinationLocations.some((destination) =>
-                    locationsMatch(destination, manualLocation)
-                ))
+            !destinationLocations.some((destination) =>
+                locationsMatch(destination, manualLocation)
+            )
     );
 
     const mergedDestinationLocations = destinationLocations.map((destination) => {
         const manualMatch = manualLocations.find((location) =>
             !location.googlePlaceId && locationsMatch(destination, location)
         );
-        const accommodationMatch = accommodationLocations.find((location) =>
-            locationsMatch(destination, location)
-        );
-
         return {
             ...destination,
             persistedLegId: manualMatch?.id || null,
-            startDate:
-                accommodationMatch?.startDate ||
-                manualMatch?.startDate ||
-                null,
-            endDate:
-                accommodationMatch?.endDate ||
-                manualMatch?.endDate ||
-                null,
+            canClearDates: manualMatch?.canClearDates || false,
+            startDate: manualMatch?.startDate || null,
+            endDate: manualMatch?.endDate || null,
             memberIds: manualMatch?.memberIds || [],
             memberDatesByMemberId: manualMatch?.memberDatesByMemberId || {},
         };
     });
 
     const heroLocations = sortTripLegLocations(
-        destinationLocations.length > 0
-            ? [...mergedDestinationLocations, ...unmatchedManualLocations]
-            : [...accommodationLocationsWithManualLegs, ...unmatchedManualLocations]
+        [...mergedDestinationLocations, ...unmatchedManualLocations]
     );
     const currentUserTripMemberId =
         memberRowsByUserId.get(user.id)?.id || null;

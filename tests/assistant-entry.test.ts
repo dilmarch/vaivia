@@ -10,7 +10,7 @@ describe("assistant navigation entry", () => {
         const sidebar = read("components/AppSidebarNav.tsx");
 
         expect(sidebar).toMatch(
-            /label: "Travel Assistant",\s+href: "\/assistant",\s+icon: Bot/
+            /label: "Ask Concierge",\s+href: "\/assistant",\s+icon: Bot/
         );
         expect(sidebar).toContain('currentPathname === "/assistant"');
     });

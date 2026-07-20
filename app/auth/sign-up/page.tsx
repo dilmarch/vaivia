@@ -3,7 +3,7 @@ import { SignUpForm } from "@/components/sign-up-form";
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ email?: string; invitation?: string; invite?: string }>;
+  searchParams: Promise<{ email?: string; invitation?: string; invite?: string; next?: string }>;
 }) {
   const params = await searchParams;
 
@@ -19,6 +19,7 @@ export default async function Page({
           initialEmail={params.email || ""}
           initialInvitationId={params.invitation || ""}
           initialInviteType={params.invite || ""}
+          initialNext={params.next || ""}
         />
       </div>
     </main>

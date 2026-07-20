@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
+import {
+    AccommodationDetailsModal,
+    type AccommodationDetailRecord,
+} from "@/components/accommodations/AccommodationDetailsModal";
 import { AirlineIcon } from "@/components/AirlineIcon";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import JourneyMap from "@/components/JourneyMap";
@@ -37,9 +41,21 @@ import {
 } from "@/lib/airlineBrandTheme";
 import { getIataAirportCode } from "@/lib/airportCodes";
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
+import { stripStructuredFlightNotes } from "@/lib/flightNotes";
+import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
+import {
+    getLocalTimezone,
+    readSessionTimezone,
+    writeSessionTimezone,
+} from "@/lib/sessionTimezone";
 import type { SplitMethod } from "@/lib/budget";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
+import {
+    getTransportationModeEmoji,
+    getTransportationModeLabel,
+    resolveTransportationMode,
+} from "@/lib/transportationModes";
 import type {
     TransportationTraveler,
     TransportationTravelerOptions,
@@ -130,18 +146,9 @@ function getItineraryEditFormKey(item: ItineraryCalendarItem) {
     ].join(":");
 }
 
-export type CalendarAccommodation = {
-    id: string;
-    hotel_name: string;
-    city?: string | null;
-    region?: string | null;
-    country?: string | null;
-    address?: string | null;
-    check_in_date: string;
-    check_out_date: string;
-    check_in_time_start?: string | null;
-    check_out_time?: string | null;
-    status?: string | null;
+export type CalendarAccommodation = AccommodationDetailRecord & {
+    latitude?: number | null;
+    longitude?: number | null;
 };
 
 export type CalendarMemberLocationLeg = {
@@ -587,7 +594,7 @@ function getTripTimezone(items: ItineraryCalendarItem[]) {
     return sortItems(items).find((item) => item.timezone)?.timezone || null;
 }
 
-function getDisplayEventRange(
+export function getDisplayEventRange(
     item: ItineraryCalendarItem,
     displayTimezone: string
 ): DisplayEventRange {
@@ -779,15 +786,12 @@ function getItemCategoryColor(item: ItineraryCalendarItem) {
     return item.category_color_hex || FALLBACK_CATEGORY_COLOR;
 }
 
-function getTransportationEmoji(mode?: string | null) {
-    if (mode === "airplane") return "✈️";
-    if (mode === "train") return "🚆";
-    if (mode === "bus") return "🚌";
-    if (mode === "tram") return "🚊";
-    if (mode === "ferry") return "⛴️";
-    if (mode === "taxi") return "🚕";
-    if (mode === "bicycle") return "🚲";
-    return null;
+function getTransportationEmoji(mode?: string | null, title?: string | null) {
+    if (!mode) return null;
+    const emoji = getTransportationModeEmoji(
+        resolveTransportationMode(mode, title)
+    );
+    return emoji === "🧭" ? null : emoji;
 }
 
 type FlightLegDisplay = {
@@ -832,8 +836,10 @@ type FlightDisplayData = {
 };
 
 function isFlightTransportationItem(item: ItineraryCalendarItem) {
-    const mode = item.transportation_mode?.toLowerCase() || "";
-    return ["airplane", "flight", "plane"].includes(mode);
+    return (
+        resolveTransportationMode(item.transportation_mode, item.title) ===
+        "airplane"
+    );
 }
 
 function getNoteValue(notes: string | null | undefined, label: string) {
@@ -907,37 +913,10 @@ function parseGeneratedFlightLegs(notes?: string | null): FlightLegDisplay[] {
     return legs;
 }
 
-function isGeneratedFlightNotes(notes?: string | null) {
-    if (!notes?.trim()) return false;
-    const lines = notes
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-
-    return lines.every((line) =>
-        /^(Duration|Departure time zone|Arrival time zone|Flight legs|Leg \d+|Flight|Airline|Departure|Arrival|Departure terminal|Arrival terminal):/i.test(
-            line
-        )
-    );
-}
-
 function getDisplayNotes(item: ItineraryCalendarItem) {
     if (!item.notes) return "";
     if (!isFlightTransportationItem(item)) return item.notes;
-    if (isGeneratedFlightNotes(item.notes)) return "";
-
-    const generatedLinePattern =
-        /^(Duration|Departure time zone|Arrival time zone|Flight legs|Leg \d+|Flight|Airline|Departure|Arrival|Departure terminal|Arrival terminal):/i;
-    const customLines = item.notes
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line && !generatedLinePattern.test(line));
-
-    if (customLines.length > 0) {
-        return customLines.join("\n");
-    }
-
-    return "";
+    return stripStructuredFlightNotes(item.notes);
 }
 
 function formatOptionalDate(date?: string | null) {
@@ -950,12 +929,6 @@ function getDateDifferenceDays(startDate?: string, endDate?: string) {
         (parseDateKey(endDate).getTime() - parseDateKey(startDate).getTime()) /
             86400000
     );
-}
-
-function getTransportationModeLabel(mode?: string | null) {
-    if (mode === "airplane" || mode === "flight") return "Flight";
-    if (!mode) return "Transportation";
-    return mode[0].toUpperCase() + mode.slice(1);
 }
 
 function getFlightDisplayData(item: ItineraryCalendarItem): FlightDisplayData | null {
@@ -1858,12 +1831,14 @@ function EventCardActions({
     compact?: boolean;
     onOpen: (item: ItineraryCalendarItem) => void;
 }) {
-    const ticketWebsite = getTicketWebsite(item);
+    const rawTicketWebsite = getTicketWebsite(item);
+    const ticketWebsite = addVaiviaUtmAttribution(rawTicketWebsite);
     const mapsUrl = getLocationMapsUrl(item);
-    const venueWebsite =
-        item.location_website && item.location_website !== ticketWebsite
+    const venueWebsite = addVaiviaUtmAttribution(
+        item.location_website && item.location_website !== rawTicketWebsite
             ? item.location_website
-            : "";
+            : ""
+    );
     const buttonClass = `inline-flex items-center justify-center rounded-md border text-xs font-semibold transition ${
         compact ? "min-h-7 px-2 py-1" : "min-h-8 px-3 py-1.5"
     }`;
@@ -1929,6 +1904,11 @@ function EventCard({
     onOpen: (item: ItineraryCalendarItem) => void;
 }) {
     if (item.accommodation_hold_kind) {
+        const mapsUrl = item.location_website || getLocationMapsUrl(item);
+        const actionClass = `inline-flex items-center justify-center rounded-md border border-lime-200/25 bg-slate-950/50 font-black text-lime-100 transition hover:border-lime-200/50 hover:bg-slate-950/70 ${
+            compact ? "min-h-7 px-2 py-1 text-[10px]" : "min-h-8 px-3 py-1.5 text-xs"
+        }`;
+
         return (
             <div
                 data-accommodation-hold={item.accommodation_hold_kind}
@@ -1949,7 +1929,7 @@ function EventCard({
                     >
                         🏨
                     </span>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold uppercase tracking-wide text-lime-200">
                             {timeLabel ||
                                 `${formatTime(item.start_time)} - ${formatTime(
@@ -1970,16 +1950,38 @@ function EventCard({
                         ) : null}
                         {!compact ? (
                             <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-lime-200/75">
-                                Synced from accommodation details
+                                Synced from stay details
                             </p>
                         ) : null}
+                        <div className={`${compact ? "mt-2" : "mt-3"} flex flex-wrap gap-2`}>
+                            <button
+                                type="button"
+                                onClick={() => onOpen(item)}
+                                className={actionClass}
+                            >
+                                Details
+                            </button>
+                            {mapsUrl ? (
+                                <a
+                                    href={mapsUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={actionClass}
+                                >
+                                    Location
+                                </a>
+                            ) : null}
+                        </div>
                     </div>
                 </div>
             </div>
         );
     }
 
-    const transportationEmoji = getTransportationEmoji(item.transportation_mode);
+    const transportationEmoji = getTransportationEmoji(
+        item.transportation_mode,
+        item.title
+    );
     const flightDisplay = getFlightDisplayData(item);
     const displayNotes = getDisplayNotes(item);
     const noteLines = displayNotes
@@ -2143,7 +2145,7 @@ function EventCard({
                 <div className="flex min-w-0 gap-3">
                     {flightDisplay && compact ? (
                         <FlightIconStack flight={flightDisplay} />
-                    ) : item.transportation_mode === "airplane" ? (
+                    ) : isFlightTransportationItem(item) ? (
                         <AirlineLogo
                             airlineCode={item.airline_code}
                             airlineName={item.airline_name}
@@ -2691,8 +2693,8 @@ function ItineraryItemModal({
     const [isEditingTransportation, setIsEditingTransportation] = useState(false);
     const savedCoverImage = getUsableSavedCoverImage(item);
     const [coverImageUrl, setCoverImageUrl] = useState<string | null>(savedCoverImage);
-    const ticketWebsite = getTicketWebsite(item);
-    const locationWebsite = item.location_website || "";
+    const ticketWebsite = addVaiviaUtmAttribution(getTicketWebsite(item));
+    const locationWebsite = addVaiviaUtmAttribution(item.location_website);
     const flightDisplay = getFlightDisplayData(item);
     const displayNotes = getDisplayNotes(item);
     const airlineTheme = flightDisplay
@@ -3699,6 +3701,7 @@ function WeekViewFixedRail({
 export default function ItineraryCalendar({
     tripId,
     items,
+    accommodations = [],
     memberLocations = [],
     tripStartDate,
     tripDestination,
@@ -3724,8 +3727,15 @@ export default function ItineraryCalendar({
     onEditMemberLocationLeg,
 }: ItineraryCalendarProps) {
     const [view, setView] = useState<CalendarView>(defaultView);
+
+    useEffect(() => {
+        if (!listOnly) setView(defaultView);
+    }, [defaultView, listOnly]);
+
     const effectiveView: CalendarView = listOnly ? "list" : view;
-    const showHeaderDateSubtitle = title.trim().toLowerCase() !== "journey";
+    const normalizedTitle = title.trim().toLowerCase();
+    const showHeaderDateSubtitle =
+        normalizedTitle !== "journey" && normalizedTitle !== "transport";
     const [browserTimezone, setBrowserTimezone] = useState("UTC");
     const [activeTimezone, setActiveTimezone] = useState("UTC");
     const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -3743,6 +3753,9 @@ export default function ItineraryCalendar({
     const [selectedItem, setSelectedItem] = useState<ItineraryCalendarItem | null>(
         null
     );
+    const [selectedAccommodationId, setSelectedAccommodationId] = useState<
+        string | null
+    >(null);
     const [editingItem, setEditingItem] = useState<ItineraryCalendarItem | null>(
         null
     );
@@ -3756,6 +3769,19 @@ export default function ItineraryCalendar({
         () => new Map(items.map((item) => [item.id, item])),
         [items]
     );
+    const accommodationsById = useMemo(
+        () =>
+            new Map(
+                accommodations.map((accommodation) => [
+                    accommodation.id,
+                    accommodation,
+                ])
+            ),
+        [accommodations]
+    );
+    const selectedAccommodation = selectedAccommodationId
+        ? accommodationsById.get(selectedAccommodationId) || null
+        : null;
     const primaryDestination = useMemo(
         () => parseDestinationList(tripDestination)[0] || "",
         [tripDestination]
@@ -3780,6 +3806,14 @@ export default function ItineraryCalendar({
             return itemsById.get(current.id) || null;
         });
     }, [itemsById]);
+
+    function openCalendarItem(item: ItineraryCalendarItem) {
+        if (item.accommodation_hold_kind && item.accommodation_id) {
+            setSelectedAccommodationId(item.accommodation_id);
+            return;
+        }
+        setSelectedItem(item);
+    }
 
     const selectedDaySuggestionItems = useMemo(() => {
         const selectedDateKey = getLocalDateKey(anchorDate);
@@ -3862,8 +3896,32 @@ export default function ItineraryCalendar({
         [destinationTimezones]
     );
     const timezoneOptions = useMemo(
-        () => [currentTimezoneOption, ...destinationTimezoneOptions],
-        [currentTimezoneOption, destinationTimezoneOptions]
+        () => {
+            const baseOptions = [
+                currentTimezoneOption,
+                ...destinationTimezoneOptions,
+            ];
+
+            if (
+                !activeTimezone ||
+                baseOptions.some(
+                    (option) => option.timezone === activeTimezone
+                )
+            ) {
+                return baseOptions;
+            }
+
+            return [
+                ...baseOptions,
+                {
+                    key: `session-${activeTimezone}`,
+                    timezone: activeTimezone,
+                    cityLabel: getTimezoneDisplayName(activeTimezone),
+                    metadataLabel: "Session selection",
+                },
+            ];
+        },
+        [activeTimezone, currentTimezoneOption, destinationTimezoneOptions]
     );
     const listStartKey = getLocalDateKey(listStartDate);
     const todayKey = getLocalDateKey(new Date());
@@ -3920,7 +3978,9 @@ export default function ItineraryCalendar({
     }, [displayTimezone, items, listEndDate, listOnly]);
 
     useEffect(() => {
-        setBrowserTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+        const localTimezone = getLocalTimezone();
+        setBrowserTimezone(localTimezone);
+        setActiveTimezone(readSessionTimezone() || localTimezone);
     }, []);
 
     useEffect(() => {
@@ -4087,6 +4147,7 @@ export default function ItineraryCalendar({
 
     function changeActiveTimezone(nextTimezone: string) {
         setActiveTimezone(nextTimezone);
+        writeSessionTimezone(nextTimezone);
         setMotionKey((key) => key + 1);
     }
 
@@ -4286,7 +4347,7 @@ export default function ItineraryCalendar({
                             groupedEarlierItems={groupedEarlierItems}
                             groupedUpcomingItems={groupedUpcomingItems}
                             hasFutureItems={hasFutureItems}
-                            onOpenItem={setSelectedItem}
+                            onOpenItem={openCalendarItem}
                         />
                         <div ref={loadMoreRef} className="h-1" />
                     </div>
@@ -4301,7 +4362,7 @@ export default function ItineraryCalendar({
                                     items={scheduledItems}
                                     displayTimezone={displayTimezone}
                                     showDateHeader
-                                    onOpenItem={setSelectedItem}
+                                    onOpenItem={openCalendarItem}
                                 />
                             </div>
                         </div>
@@ -4334,7 +4395,7 @@ export default function ItineraryCalendar({
                                         items={items}
                                         memberLocations={memberLocations}
                                         displayTimezone={displayTimezone}
-                                        onOpenItem={setSelectedItem}
+                                        onOpenItem={openCalendarItem}
                                         onEditMemberLocationLeg={
                                             onEditMemberLocationLeg
                                         }
@@ -4348,6 +4409,12 @@ export default function ItineraryCalendar({
                 )}
             </div>
 
+            {selectedAccommodation ? (
+                <AccommodationDetailsModal
+                    accommodation={selectedAccommodation}
+                    onClose={() => setSelectedAccommodationId(null)}
+                />
+            ) : null}
             {selectedItem && (
                 <ItineraryItemModal
                     item={selectedItem}

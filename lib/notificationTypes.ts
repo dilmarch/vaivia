@@ -33,7 +33,7 @@ export const NOTIFICATION_TYPE_OPTIONS = [
     {
         type: "trip_item_added",
         label: "Trip items added",
-        description: "New itinerary, food, accommodation, or transportation items.",
+        description: "New itinerary, food, stay, or transportation items.",
     },
     {
         type: "trip_item_updated",
@@ -49,7 +49,7 @@ export const NOTIFICATION_TYPE_OPTIONS = [
         type: "accommodation_cancellation_reminder",
         label: "Free cancellation reminders",
         description:
-            "48 hours before free cancellation ends for an accommodation booking.",
+            "48 hours before free cancellation ends for a stay booking.",
     },
     {
         type: "trip_slug_changed",

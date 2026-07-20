@@ -48,7 +48,14 @@ type ItineraryQuickAddProps = {
     onboardingProgress?: OnboardingProgress | null;
 };
 
-type QuickAddInitialAction = "transportation" | "scheduled" | "idea" | "expense";
+type QuickAddInitialAction =
+    | "transportation"
+    | "scheduled"
+    | "idea"
+    | "things"
+    | "expense";
+
+type ThingsToDoTiming = "flexible" | "anytime";
 
 type TourSection = {
     label: string;
@@ -78,12 +85,15 @@ export default function ItineraryQuickAdd({
     const [isOpen, setIsOpen] = useState(false);
     const [itemOpenSignal, setItemOpenSignal] = useState(0);
     const [itemSubmitLabel, setItemSubmitLabel] = useState(
-        "Add scheduled activity/event"
+        "Add fixed-time activity"
     );
     const [isTransportationOpen, setIsTransportationOpen] = useState(false);
     const [isAccommodationOpen, setIsAccommodationOpen] = useState(false);
     const [isExpenseOpen, setIsExpenseOpen] = useState(false);
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
+    const [isThingsToDoOpen, setIsThingsToDoOpen] = useState(false);
+    const [thingsToDoTiming, setThingsToDoTiming] =
+        useState<ThingsToDoTiming>("flexible");
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
     const [isOnboardingPromptHidden, setIsOnboardingPromptHidden] =
         useState(false);
@@ -113,7 +123,7 @@ export default function ItineraryQuickAdd({
             icon: CalendarCheck,
         },
         {
-            label: "Ideas",
+            label: "Trip Ideas",
             title: "Maybe-list magic",
             description:
                 "Save places, activities, and loose possibilities without locking them onto the itinerary yet.",
@@ -121,8 +131,8 @@ export default function ItineraryQuickAdd({
             icon: Lightbulb,
         },
         {
-            label: "Journey",
-            title: "Transportation planning",
+            label: "Transport",
+            title: "Compare Flights",
             description:
                 "Compare routes, flights, trains, ferry ideas, round trips, pros and cons, and then add the winner to your itinerary.",
             href: `/trips/${tripId}?tab=journey-planning`,
@@ -138,14 +148,14 @@ export default function ItineraryQuickAdd({
         },
         {
             label: "Stays",
-            title: "Accommodations",
+            title: "Stays",
             description:
                 "Keep hotels, home stays, check-in details, addresses, and booking notes together.",
             href: `/trips/${tripId}/accommodations`,
             icon: BedDouble,
         },
         {
-            label: "Food",
+            label: "Eat & Drink",
             title: "Restaurants and things to try",
             description:
                 "Collect restaurants, dishes, cafes, and food ideas so the good stuff does not disappear into a chat thread.",
@@ -191,6 +201,18 @@ export default function ItineraryQuickAdd({
         setIsOpen(false);
     }
 
+    function openThingsToDoChooser() {
+        setIsThingsToDoOpen(true);
+        setIsOpen(false);
+    }
+
+    function openIdeaForm(timing: ThingsToDoTiming) {
+        if (!createIdeaAction) return;
+        setThingsToDoTiming(timing);
+        setIsThingsToDoOpen(false);
+        setIsIdeaOpen(true);
+    }
+
     async function finishOnboarding({ showAround = false } = {}) {
         if (onboardingProgress) {
             const supabase = createClient();
@@ -231,9 +253,14 @@ export default function ItineraryQuickAdd({
         } else if (initialAction === "expense") {
             setIsExpenseOpen(true);
         } else if (initialAction === "idea") {
-            if (createIdeaAction) setIsIdeaOpen(true);
+            if (createIdeaAction) {
+                setThingsToDoTiming("flexible");
+                setIsIdeaOpen(true);
+            }
+        } else if (initialAction === "things") {
+            setIsThingsToDoOpen(true);
         } else {
-            openItineraryForm("Add scheduled activity/event");
+            openItineraryForm("Add fixed-time activity");
         }
 
         const nextParams = new URLSearchParams(searchParams.toString());
@@ -283,6 +310,100 @@ export default function ItineraryQuickAdd({
                     onClose={() => setIsExpenseOpen(false)}
                 />
             ) : null}
+            {isThingsToDoOpen ? (
+                <AnimatedModal
+                    onClose={() => setIsThingsToDoOpen(false)}
+                    panelClassName="max-w-2xl"
+                    labelledBy="things-to-do-timing-title"
+                >
+                    {({ requestClose }) => (
+                        <>
+                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="vaivia-modal-eyebrow">Add things to do</p>
+                                    <h2
+                                        id="things-to-do-timing-title"
+                                        className="vaivia-modal-title"
+                                    >
+                                        When can this happen?
+                                    </h2>
+                                    <p className="mt-2 text-sm text-slate-300">
+                                        Choose the timing that best fits this plan.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={requestClose}
+                                    className="vaivia-modal-close"
+                                    aria-label="Close add things to do"
+                                >
+                                    <X className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <div className="vaivia-modal-body grid gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsThingsToDoOpen(false);
+                                        openItineraryForm("Add fixed-time activity");
+                                    }}
+                                    className="group flex items-start gap-4 rounded-[1.25rem] border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-lime-300/45 hover:bg-lime-300/[0.09]"
+                                >
+                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-200">
+                                        <CalendarCheck className="h-5 w-5" aria-hidden="true" />
+                                    </span>
+                                    <span>
+                                        <span className="block text-base font-black text-white">
+                                            Fixed time
+                                        </span>
+                                        <span className="mt-1 block text-sm leading-6 text-slate-300">
+                                            Happens at a particular date and time, such as a
+                                            concert, tour or market.
+                                        </span>
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => openIdeaForm("flexible")}
+                                    disabled={!createIdeaAction}
+                                    className="group flex items-start gap-4 rounded-[1.25rem] border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-lime-300/45 hover:bg-lime-300/[0.09] disabled:cursor-not-allowed disabled:opacity-45"
+                                >
+                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-200">
+                                        <Lightbulb className="h-5 w-5" aria-hidden="true" />
+                                    </span>
+                                    <span>
+                                        <span className="block text-base font-black text-white">
+                                            Flexible time
+                                        </span>
+                                        <span className="mt-1 block text-sm leading-6 text-slate-300">
+                                            Can be fitted anywhere within an available window,
+                                            such as visiting a museum or viewpoint.
+                                        </span>
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => openIdeaForm("anytime")}
+                                    disabled={!createIdeaAction}
+                                    className="group flex items-start gap-4 rounded-[1.25rem] border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-lime-300/45 hover:bg-lime-300/[0.09] disabled:cursor-not-allowed disabled:opacity-45"
+                                >
+                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-200">
+                                        <Map className="h-5 w-5" aria-hidden="true" />
+                                    </span>
+                                    <span>
+                                        <span className="block text-base font-black text-white">
+                                            Anytime during trip
+                                        </span>
+                                        <span className="mt-1 block text-sm leading-6 text-slate-300">
+                                            Can take place anytime during your trip.
+                                        </span>
+                                    </span>
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </AnimatedModal>
+            ) : null}
             {isIdeaOpen && createIdeaAction && (
                 <AnimatedModal
                     onClose={() => setIsIdeaOpen(false)}
@@ -300,17 +421,19 @@ export default function ItineraryQuickAdd({
                                     id="quick-add-idea-title"
                                     className="vaivia-modal-title"
                                 >
-                                    Add activity idea
+                                    Add thing to do
                                 </h2>
                                 <p className="mt-2 text-sm text-slate-300">
-                                    Save a loose idea for this trip.
+                                    {thingsToDoTiming === "anytime"
+                                        ? "Save something that can happen anytime during this trip."
+                                        : "Save a flexible plan for an available window."}
                                 </p>
                             </div>
                             <button
                                 type="button"
                                 onClick={requestClose}
                                 className="vaivia-modal-close"
-                                aria-label="Close add activity idea"
+                                aria-label="Close add thing to do"
                             >
                                 <X className="h-4 w-4" aria-hidden="true" />
                             </button>
@@ -349,7 +472,7 @@ export default function ItineraryQuickAdd({
                                 </h2>
                                 <p className="vaivia-modal-subtitle">
                                     Keep planning here, or explore budget, stays,
-                                    food, and journey options whenever you need
+                                    Eat & Drink, and transport options whenever you need
                                     them.
                                 </p>
                             </div>
@@ -535,18 +658,14 @@ export default function ItineraryQuickAdd({
                         <div className="mt-4 grid gap-2">
                             <button
                                 type="button"
-                                onClick={() =>
-                                    openItineraryForm(
-                                        "Add scheduled activity/event"
-                                    )
-                                }
+                                onClick={openThingsToDoChooser}
                                 className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-left transition hover:border-lime-300/35 hover:bg-white/[0.1]"
                             >
                                 <span className="block text-sm font-black">
-                                    Add a plan
+                                    Add things to do
                                 </span>
                                 <span className="mt-0.5 block text-xs font-semibold text-slate-400">
-                                    Something happening on a date
+                                    Fixed, flexible, or anytime plans
                                 </span>
                             </button>
                             <button
@@ -561,23 +680,7 @@ export default function ItineraryQuickAdd({
                                     Add transportation
                                 </span>
                                 <span className="mt-0.5 block text-xs font-semibold text-slate-400">
-                                    A flight, train, drive, or other journey
-                                </span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (createIdeaAction) setIsIdeaOpen(true);
-                                    setIsOpen(false);
-                                }}
-                                disabled={!createIdeaAction}
-                                className="rounded-2xl border border-white/10 bg-white/[0.06] p-3 text-left transition hover:border-lime-300/35 hover:bg-white/[0.1] disabled:opacity-50"
-                            >
-                                <span className="block text-sm font-black">
-                                    Save an idea
-                                </span>
-                                <span className="mt-0.5 block text-xs font-semibold text-slate-400">
-                                    Somewhere you might go
+                                    A flight, train, drive, or other transport option
                                 </span>
                             </button>
                         </div>
@@ -609,7 +712,7 @@ export default function ItineraryQuickAdd({
                             }}
                             className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
-                            Add accommodation
+                            Add stay
                         </button>
                         <button
                             type="button"
@@ -630,25 +733,10 @@ export default function ItineraryQuickAdd({
                         </Link>
                         <button
                             type="button"
-                            onClick={() =>
-                                openItineraryForm("Add scheduled activity/event")
-                            }
+                            onClick={openThingsToDoChooser}
                             className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
                         >
-                            Add scheduled activity/event
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (createIdeaAction) {
-                                    setIsIdeaOpen(true);
-                                }
-                                setIsOpen(false);
-                            }}
-                            disabled={!createIdeaAction}
-                            className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50 md:text-right"
-                        >
-                            Add activity idea
+                            Add things to do
                         </button>
                         <button
                             type="button"

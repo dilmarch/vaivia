@@ -335,9 +335,20 @@ async function callGeminiForImport(importRow: TravelEmailImportForProcessing) {
                                     "arrival_date (YYYY-MM-DD), arrival_time (HH:MM 24-hour local), " +
                                     "departure_timezone, arrival_timezone, departure_terminal, arrival_terminal, " +
                                     "seat_number, cabin_class, reservation_code, cost, currency, " +
-                                    "visa_requirements, luggage_requirements, notes, status. " +
+                                    "visa_requirements, luggage_requirements (text), traveler_names (array of full names), notes, status. " +
+                                    "Use IANA time zone IDs for departure_timezone and arrival_timezone. " +
+                                    "When a time zone is not printed, derive it from the airport code or airport location. " +
                                     "If the email only contains an airport code, put that code in the location field. " +
-                                    "Do not invent Google place IDs or passenger-sensitive details. " +
+                                    "Capture luggage_requirements whenever the confirmation states checked baggage, " +
+                                    "carry-on, personal-item, weight, quantity, or size allowances; preserve fare-specific details. " +
+                                    "Capture traveler_names only from passenger or traveler names explicitly printed in the confirmation. " +
+                                    "For a flight confirmation, put the overall booking_total and currency in summary when present. " +
+                                    "When one booking total covers multiple flight items, also put cost and currency on the first flight item only; do not repeat that total on later flight items. " +
+                                    "Use notes only for relevant information that has no dedicated extracted_data key. " +
+                                    "Never repeat airline, flight, route, date, time, time zone, terminal, seat, cabin, reservation, price, " +
+                                    "traveler, visa, luggage, or status details in notes. " +
+                                    "Default status to booked for a valid confirmation unless the email clearly says it was cancelled. " +
+                                    "Do not invent Google place IDs or passenger names. " +
                                     "Do not include markdown. Email content follows:\n\n" +
                                     emailText,
                             },

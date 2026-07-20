@@ -305,6 +305,7 @@ export default function ShareTripModal({
                                 "id,hotel_name,city,region,country,check_in_date,check_out_date,status"
                             )
                             .eq("trip_id", tripId)
+                            .eq("is_planning_option", false)
                             .order("check_in_date", {
                                 ascending: true,
                                 nullsFirst: false,
@@ -475,7 +476,7 @@ export default function ShareTripModal({
         return (
             stay.hotel_name ||
             [stay.city, stay.region, stay.country].filter(Boolean).join(", ") ||
-            "Accommodation"
+            "Stay"
         );
     }
 
@@ -583,7 +584,7 @@ export default function ShareTripModal({
                                                 : "text-slate-500"
                                         }
                                     >
-                                        2 Journey
+                                        2 Transport
                                     </span>
                                     <span>/</span>
                                     <span
@@ -602,7 +603,7 @@ export default function ShareTripModal({
                                         <p className="text-sm leading-6 text-slate-600">
                                             Invite a friend to collaborate on this trip.
                                             You’ll choose exactly which legs, journey
-                                            items, and stays they are added to before the
+                                            transport items, and stays they are added to before the
                                             invite is sent.
                                         </p>
 
@@ -867,7 +868,7 @@ export default function ShareTripModal({
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
                                                     <h3 className="text-lg font-black text-slate-950">
-                                                        Journey items
+                                                        Transport items
                                                     </h3>
                                                     <p className="mt-1 text-sm leading-6 text-slate-600">
                                                         Select flights, trains, buses, or
@@ -938,7 +939,7 @@ export default function ShareTripModal({
                                                     Add them to stays
                                                 </h3>
                                                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                                                    Select accommodations this invitee
+                                                    Select stays this invitee
                                                     should be assigned to, or choose none.
                                                 </p>
                                             </div>
@@ -987,7 +988,7 @@ export default function ShareTripModal({
                                                 })
                                             ) : (
                                                 <p className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
-                                                    No accommodations have been added yet.
+                                                    No stays have been added yet.
                                                 </p>
                                             )}
                                         </div>

@@ -16,7 +16,7 @@ You are responsible for keeping your login credentials secure and for activity t
 
 ## Information VAIVIA stores
 
-Depending on the features you use, VAIVIA may store account details, profile information, trips, destinations, itinerary items, transportation plans, accommodations, budgets, expenses, passport stamp records, bucket list items, friend connections, feature suggestions, notification settings, theme preferences, and consent choices.
+Depending on the features you use, VAIVIA may store account details, profile information, trips, destinations, itinerary items, transportation plans, stays, budgets, expenses, passport stamp records, bucket list items, friend connections, feature suggestions, notification settings, theme preferences, and consent choices.
 
 ## Privacy rights
 
@@ -24,7 +24,7 @@ People in Canada, the United States, the United Kingdom, the European Economic A
 
 ## Access and portability exports
 
-Settings → Privacy & Data lets you request a downloadable copy of personal information associated with your VAIVIA account. Automated exports generally include structured JSON and CSV files for account profile details, preferences, trips, itinerary and planning records, transportation, accommodations, ideas, food, budgets, expenses, passport stamps, bucket list items, friend relationships and invitations, notification preferences and history, consent records, activity records maintained by VAIVIA, and eligible uploaded files you own.
+Settings → Privacy & Data lets you request a downloadable copy of personal information associated with your VAIVIA account. Automated exports generally include structured JSON and CSV files for account profile details, preferences, trips, itinerary and planning records, transportation, stays, ideas, food, budgets, expenses, passport stamps, bucket list items, friend relationships and invitations, notification preferences and history, consent records, activity records maintained by VAIVIA, and eligible uploaded files you own.
 
 VAIVIA may withhold, redact, or summarize third-party data, another person's private profile details, legally privileged material, fraud or security information, secrets, session tokens, password hashes, push subscription encryption secrets, and information that applicable law allows or requires VAIVIA not to disclose. Export archives are generated server-side, stored privately, and made available through short-lived authenticated links. They are normally available for 7 days before expiring.
 

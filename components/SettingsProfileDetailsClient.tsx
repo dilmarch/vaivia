@@ -21,8 +21,11 @@ function getMessageText(message?: string) {
   if (message === "saved") return "Profile details saved.";
   if (message === "username-required") return "Please enter a username.";
   if (message === "username-taken") return "That username is already taken.";
+  if (message === "username-reserved") {
+    return "That username is reserved. Please choose another one.";
+  }
   if (message === "username-invalid") {
-    return "Use 3-30 lowercase letters, numbers, underscores, or hyphens. Start with a letter or number.";
+    return "Use 3-30 lowercase letters or numbers, with single underscores or hyphens only between them.";
   }
   if (message === "email-invalid") return "Enter a valid email address.";
   if (message === "email-unavailable") {
@@ -103,6 +106,9 @@ export default function SettingsProfileDetailsClient({
               defaultValue={profile?.username || ""}
               autoComplete="username"
               required
+              minLength={3}
+              maxLength={30}
+              pattern="[a-z0-9]+(?:[_-][a-z0-9]+)*"
               className="w-full bg-transparent text-sm font-bold text-white outline-none placeholder:text-slate-500"
             />
           </div>

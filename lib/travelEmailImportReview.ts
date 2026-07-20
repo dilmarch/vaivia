@@ -1,10 +1,7 @@
 import type { Json } from "@/src/types/supabase";
-import {
-    getJsonNumber,
-    getJsonString,
-    isJsonRecord,
-} from "@/lib/travelEmailImports";
+import { getJsonString, isJsonRecord } from "@/lib/travelEmailImports";
 import { getAirlineCodeFromFlightNumber, getAirlineNameFromCode } from "@/lib/airlineIcons";
+import { stripStructuredFlightNotes } from "@/lib/flightNotes";
 
 export type EditableImportedFlight = {
     itemId: string;
@@ -13,7 +10,15 @@ export type EditableImportedFlight = {
     airlineCode: string;
     flightNumber: string;
     departureLocation: string;
+    departureFormattedAddress: string;
+    departureGooglePlaceId: string;
+    departureLat: string;
+    departureLng: string;
     arrivalLocation: string;
+    arrivalFormattedAddress: string;
+    arrivalGooglePlaceId: string;
+    arrivalLat: string;
+    arrivalLng: string;
     departureDate: string;
     departureTime: string;
     arrivalDate: string;
@@ -69,6 +74,134 @@ function normalizeFlightNumber(value: string, airlineCode: string) {
     return compact;
 }
 
+function getJsonStringList(data: Json, keys: string[]) {
+    if (!isJsonRecord(data)) return [];
+
+    for (const key of keys) {
+        const value = data[key];
+        if (Array.isArray(value)) {
+            return value
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+        if (typeof value === "string" && value.trim()) {
+            return value
+                .split(/\n|;|,(?=\s*[A-Za-z])/)
+                .map((item) => item.trim())
+                .filter(Boolean);
+        }
+    }
+
+    return [];
+}
+
+export function getImportedTravelerNames(data: Json) {
+    return getJsonStringList(data, [
+        "traveler_names",
+        "traveller_names",
+        "passenger_names",
+        "passengers",
+        "travelers",
+    ]);
+}
+
+const IMPORT_PRICE_KEYS = [
+    "booking_total",
+    "grand_total",
+    "total_amount",
+    "total_price",
+    "total",
+    "cost",
+    "price",
+    "amount",
+];
+
+const IMPORT_CURRENCY_KEYS = ["currency", "currency_code"];
+
+function parseImportedMoney(value: Json | undefined) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value !== "string") return null;
+
+    const match = value.replace(/\u00a0/g, " ").match(/-?\d[\d, ]*(?:\.\d+)?/);
+    if (!match) return null;
+    const amount = Number(match[0].replace(/[ ,]/g, ""));
+    return Number.isFinite(amount) ? amount : null;
+}
+
+function getImportedPrice(record: Record<string, Json>) {
+    for (const key of IMPORT_PRICE_KEYS) {
+        const amount = parseImportedMoney(record[key]);
+        if (amount !== null) return amount;
+    }
+    return null;
+}
+
+function getImportedCurrency(record: Record<string, Json>) {
+    const explicit = getJsonString(record, IMPORT_CURRENCY_KEYS)
+        .trim()
+        .toUpperCase();
+    if (/^[A-Z]{3}$/.test(explicit)) return explicit;
+
+    for (const key of IMPORT_PRICE_KEYS) {
+        const value = record[key];
+        if (typeof value !== "string") continue;
+        const currencyMatch = value.toUpperCase().match(/\b[A-Z]{3}\b/);
+        if (currencyMatch) return currencyMatch[0];
+    }
+    return "";
+}
+
+function getConfirmationPriceRecords(data: Json | null | undefined) {
+    if (!isJsonRecord(data)) return [];
+
+    const records: Record<string, Json>[] = [data];
+    const summary = data.summary;
+    if (isJsonRecord(summary)) {
+        records.unshift(summary);
+        for (const key of ["pricing", "payment", "fare", "totals"]) {
+            const nested = summary[key];
+            if (isJsonRecord(nested)) records.unshift(nested);
+        }
+    }
+    return records;
+}
+
+/**
+ * Airline confirmations commonly quote one booking total for several segments.
+ * Keep that total on the first reviewed flight so it is not double-counted.
+ */
+export function applyConfirmationPriceToFlights(
+    flights: EditableImportedFlight[],
+    importData: Json | null | undefined
+) {
+    if (flights.length === 0) return flights;
+
+    const confirmationRecords = getConfirmationPriceRecords(importData);
+    const confirmationRecord = confirmationRecords.find(
+        (record) => getImportedPrice(record) !== null
+    );
+    const pricedFlight = flights.find((flight) => flight.cost.trim());
+    const amount = confirmationRecord
+        ? getImportedPrice(confirmationRecord)
+        : pricedFlight
+          ? parseImportedMoney(pricedFlight.cost)
+          : null;
+
+    if (amount === null) return flights;
+
+    const currency =
+        (confirmationRecord && getImportedCurrency(confirmationRecord)) ||
+        pricedFlight?.currency ||
+        flights[0].currency;
+
+    return flights.map((flight, index) => ({
+        ...flight,
+        cost: index === 0 ? String(amount) : "",
+        currency: index === 0 && currency ? currency : flight.currency,
+    }));
+}
+
 export function getEditableImportedFlight(
     itemId: string,
     extractedData: Json,
@@ -98,7 +231,8 @@ export function getEditableImportedFlight(
     ]);
     const arrivalDate =
         getJsonString(source, ["arrival_date", "arrive_date"]) || departureDate;
-    const total = getJsonNumber(source, ["cost", "total", "total_price", "price", "amount"]);
+    const total = getImportedPrice(isJsonRecord(source) ? source : {});
+    const importedStatus = clean(getJsonString(source, ["status"]));
 
     return {
         itemId,
@@ -115,6 +249,14 @@ export function getEditableImportedFlight(
                 "departure_location",
             ])
         ),
+        departureFormattedAddress: clean(
+            getJsonString(source, ["departure_formatted_address"])
+        ),
+        departureGooglePlaceId: clean(
+            getJsonString(source, ["departure_google_place_id"])
+        ),
+        departureLat: clean(getJsonString(source, ["departure_lat"])),
+        departureLng: clean(getJsonString(source, ["departure_lng"])),
         arrivalLocation: clean(
             getJsonString(source, [
                 "arrival_airport",
@@ -124,6 +266,14 @@ export function getEditableImportedFlight(
                 "arrival_location",
             ])
         ),
+        arrivalFormattedAddress: clean(
+            getJsonString(source, ["arrival_formatted_address"])
+        ),
+        arrivalGooglePlaceId: clean(
+            getJsonString(source, ["arrival_google_place_id"])
+        ),
+        arrivalLat: clean(getJsonString(source, ["arrival_lat"])),
+        arrivalLng: clean(getJsonString(source, ["arrival_lng"])),
         departureDate: clean(departureDate),
         departureTime: normalizeTime(
             getJsonString(source, [
@@ -168,12 +318,19 @@ export function getEditableImportedFlight(
                 "luggage_requirements",
                 "luggage_requirement",
                 "baggage_info",
+                "baggage_allowance",
+                "checked_baggage",
                 "baggage",
                 "luggage",
             ])
         ),
-        notes: clean(getJsonString(source, ["notes"])),
-        status: clean(getJsonString(source, ["status"])) || "planned",
+        notes: stripStructuredFlightNotes(
+            clean(getJsonString(source, ["notes"]))
+        ),
+        status:
+            !importedStatus || importedStatus === "planned"
+                ? "booked"
+                : importedStatus,
     };
 }
 

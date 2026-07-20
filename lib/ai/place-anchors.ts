@@ -103,6 +103,7 @@ export async function loadTripPlaceContext(
                 .from("trip_accommodations")
                 .select("hotel_name,address,city,region,country,check_in_date,check_out_date,google_place_id,latitude,longitude,is_private,created_by")
                 .eq("trip_id", tripId)
+                .eq("is_planning_option", false)
                 .limit(100),
             supabase
                 .from("itinerary_items")

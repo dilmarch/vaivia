@@ -116,6 +116,19 @@ Never place the Resend API key in source code, commit it, prefix it with
 Resend itself, but server-side processors that use service-role Supabase helpers
 still require the existing server-only Supabase service role environment variable.
 
+### Inbound travel-email forwarding
+
+Inbound travel confirmations use the same Resend Receiving domain and provider.
+Configure `RESEND_WEBHOOK_SECRET` and `EMAIL_IMPORT_DOMAIN` as server-only values
+alongside `RESEND_API_KEY`. Resend must send verified `email.received` webhooks to
+`/api/email-import/resend`.
+
+New addresses use `<normalized-username>.<12-character-random-suffix>@<domain>`.
+Legacy `trips+<48-character-token>@<domain>` addresses remain valid. A username
+change creates a new primary address while the old address stays active; rotation
+also keeps the previous address active unless the user explicitly confirms its
+deactivation. Alias records are never reassigned to another user.
+
 ## VAIVIA assistant
 
 The trip assistant uses dedicated server-only credentials. Phase 2A performs
@@ -167,3 +180,53 @@ Please file feedback and issues over on the [Supabase GitHub org](https://github
 - [Next.js Subscription Payments Starter](https://github.com/vercel/nextjs-subscription-payments)
 - [Cookie-based Auth and the Next.js 13 App Router (free course)](https://youtube.com/playlist?list=PL5S4mPUpp4OtMhpnp93EFSo42iQ40XjbF)
 - [Supabase Auth and the Next.js App Router](https://github.com/supabase/supabase/tree/master/examples/auth/nextjs)
+# VAIVIA Events
+
+VAIVIA Events is a separate product area from Trips. Public discovery lives at
+`/events`; attendees manage saved events, RSVPs, and tickets at `/my-events`;
+authorized staff use `/organizer/events`. Only a super admin can assign the
+global `event_organizer` role from Admin → Users.
+
+## Event payments and Stripe webhook
+
+Paid tickets use VAIVIA's standard Stripe account and Stripe Checkout. The
+implementation does not use Stripe Connect, transfers, destination charges, or
+organizer payouts. Configure these server-only values in the deployment:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `NEXT_PUBLIC_APP_URL`
+
+Register `POST /api/events/stripe/webhook` in Stripe for
+`checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed`, `checkout.session.expired`,
+`charge.refunded`, and `charge.dispute.created`. The route verifies Stripe's
+raw-body signature and is idempotent. A Vercel cron calls
+`/api/events/orders/release-expired` every ten minutes; it uses `CRON_SECRET` or
+the optional `EVENTS_MAINTENANCE_SECRET` override.
+The same protected maintenance schedule publishes events whose status is
+`scheduled` once their configured publication time is reached.
+
+## Event wallet setup
+
+Apple Wallet needs an Apple Developer membership, a Wallet Pass Type ID, its
+Pass Type ID certificate and private key, the Apple Team ID, and the current
+Apple WWDR intermediate certificate. Store their base64-encoded contents and
+password only in server-side `APPLE_WALLET_*` environment variables listed in
+`.env.example`. Never commit certificate files. Until every value is present,
+the ticket page deliberately shows “Apple Wallet isn’t configured yet”.
+
+Google Wallet needs an approved Google Wallet issuer account, an Event Ticket
+class named `<issuer-id>.vaivia_events`, and a Google Cloud service account with
+access to that issuer. Configure `GOOGLE_WALLET_ISSUER_ID`,
+`GOOGLE_WALLET_SERVICE_ACCOUNT_EMAIL`, and `GOOGLE_WALLET_PRIVATE_KEY` on the
+server. Until approval and credentials are present, the Google Wallet action is
+disabled rather than pretending the integration is ready.
+
+## Event email and storage setup
+
+Event invitations, confirmations, cancellations, refunds, and void notices use
+the existing Resend configuration and VAIVIA email layout. Event covers are
+stored in the private `event-covers` Supabase bucket and delivered through
+short-lived signed URLs. Organizer CSV exports are generated per authenticated
+request and are never written to public storage.

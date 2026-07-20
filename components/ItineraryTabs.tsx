@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import IdeasTab from "@/components/IdeasTab";
 import ItineraryCalendar, {
     type CalendarAccommodation,
@@ -22,6 +22,7 @@ import type { TransportationTravelerOptions } from "@/lib/travelers";
 import type { OnboardingProgress } from "@/lib/onboarding";
 import { buildItineraryTimezoneHints } from "@/lib/itineraryTimezoneHints";
 import { buildAccommodationItineraryHolds } from "@/lib/accommodationItineraryHolds";
+import { resolveAccommodationTimezones } from "@/lib/accommodationTimezones";
 
 type ItineraryTabsProps = {
     tripId: string;
@@ -65,7 +66,12 @@ type ItineraryTabsProps = {
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
 type CalendarView = "list" | "day" | "week";
-type QuickAddInitialAction = "transportation" | "scheduled" | "idea" | "expense";
+type QuickAddInitialAction =
+    | "transportation"
+    | "scheduled"
+    | "idea"
+    | "things"
+    | "expense";
 
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
@@ -160,6 +166,36 @@ export default function ItineraryTabs({
         () => buildItineraryTimezoneHints(items, tripEndDate),
         [items, tripEndDate]
     );
+    const [resolvedAccommodationTimezones, setResolvedAccommodationTimezones] =
+        useState<Record<string, string>>({});
+    useEffect(() => {
+        let isCancelled = false;
+
+        void resolveAccommodationTimezones(accommodations).then((timezones) => {
+            if (!isCancelled) setResolvedAccommodationTimezones(timezones);
+        });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [accommodations]);
+    const accommodationTimezones = useMemo(
+        () =>
+            Object.fromEntries(
+                accommodations.map((accommodation) => [
+                    accommodation.id,
+                    resolvedAccommodationTimezones[accommodation.id] ||
+                        itineraryTimezoneHints[accommodation.check_in_date] ||
+                        itineraryTimezoneHints[accommodation.check_out_date] ||
+                        null,
+                ])
+            ),
+        [
+            accommodations,
+            itineraryTimezoneHints,
+            resolvedAccommodationTimezones,
+        ]
+    );
     const currentUserTraveler = useMemo(
         () =>
             currentUserTripMemberId
@@ -182,9 +218,13 @@ export default function ItineraryTabs({
     const itineraryItems = useMemo(
         () => [
             ...items,
-            ...buildAccommodationItineraryHolds({ accommodations, items }),
+            ...buildAccommodationItineraryHolds({
+                accommodations,
+                items,
+                timezoneByAccommodationId: accommodationTimezones,
+            }),
         ],
-        [accommodations, items]
+        [accommodationTimezones, accommodations, items]
     );
     const currentTravelerTransportationItems = useMemo(
         () =>
@@ -248,7 +288,7 @@ export default function ItineraryTabs({
                                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                             }`}
                         >
-                            Journey
+                            Transport
                         </Link>
                         <Link
                             href={`/trips/${tripId}?tab=journey-planning`}
@@ -263,7 +303,7 @@ export default function ItineraryTabs({
                                     : "text-slate-300 hover:bg-white/10 hover:text-white"
                             }`}
                         >
-                            Journey Planning
+                            Compare Flights
                         </Link>
                     </div>
 
@@ -272,7 +312,7 @@ export default function ItineraryTabs({
                             <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-3 text-white shadow-xl shadow-black/20">
                                 <div>
                                     <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
-                                        Journey view
+                                        Transport view
                                     </p>
                                     <p className="mt-1 text-sm font-semibold text-slate-300">
                                         {showAllJourneyItems
@@ -291,7 +331,7 @@ export default function ItineraryTabs({
                                                 : "text-slate-300 hover:bg-white/10 hover:text-white"
                                         }`}
                                     >
-                                        My journey
+                                        My transport
                                     </button>
                                     <button
                                         type="button"
@@ -313,7 +353,7 @@ export default function ItineraryTabs({
                                 accommodations={accommodations}
                                 tripStartDate={tripStartDate}
                                 tripDestination={tripDestination}
-                                title="Journey"
+                                title="Transport"
                                 listOnly
                                 deleteAction={deleteItineraryAction}
                                 createAction={createItineraryAction}
