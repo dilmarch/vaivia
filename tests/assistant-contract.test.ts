@@ -70,7 +70,7 @@ describe("trip context privacy boundary", () => {
         expect(SENSITIVE_TRIP_CONTEXT_EXCLUSIONS.join(" ")).toContain("service credentials");
     });
 
-    it("contains the complete read-only Phase 1 system rules", () => {
+    it("contains the complete read-only Phase 2A system and live-place rules", () => {
         const instruction = buildVaiviaAssistantSystemInstruction({
             current_date_utc: "2026-07-18",
             trip: { title: "Japan" },
@@ -80,7 +80,12 @@ describe("trip context privacy boundary", () => {
             "authoritative",
             "Never invent or assume bookings",
             "reasonable inference",
-            "no live web or place search",
+            "narrowly scoped read-only Google Places functions",
+            "no general web/search grounding",
+            "straight-line distance only",
+            "Never invent coordinates",
+            "Never expose internal provider identifiers",
+            "Never infer or claim that a place is queer-owned",
             "You are read-only",
             "missing accommodation nights",
             "transportation conflicts",

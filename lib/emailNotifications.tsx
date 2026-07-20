@@ -67,6 +67,7 @@ function getActionLabel(notificationType: string) {
     if (notificationType.includes("friend")) return "View friends";
     if (notificationType.includes("passport")) return "View passport";
     if (notificationType.includes("terms")) return "Review terms";
+    if (notificationType.includes("accommodation")) return "View booking";
     if (notificationType.includes("trip")) return "Open trip";
     return "Open VAIVIA";
 }

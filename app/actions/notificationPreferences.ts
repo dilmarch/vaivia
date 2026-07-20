@@ -1,11 +1,17 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
     NOTIFICATION_TYPES,
+    getDefaultNotificationPreference,
     isKnownNotificationType,
+    isRequiredNotificationType,
 } from "@/lib/notificationTypes";
+import type { Database } from "@/src/types/supabase";
+
+type NotificationPreferencesClient = Pick<SupabaseClient<Database>, "from">;
 
 type PushSubscriptionPayload = {
     endpoint?: string;
@@ -27,19 +33,30 @@ export async function saveNotificationPreferences(formData: FormData) {
     const pushTypes = new Set(formData.getAll("push").map(String));
     const emailTypes = new Set(formData.getAll("email").map(String));
     const now = new Date().toISOString();
+    const database = supabase as NotificationPreferencesClient;
 
-    const rows = NOTIFICATION_TYPES.map((notificationType) => ({
-        user_id: user.id,
-        notification_type: notificationType,
-        in_app_enabled: inAppTypes.has(notificationType),
-        push_enabled: pushTypes.has(notificationType),
-        email_enabled: emailTypes.has(notificationType),
-        updated_at: now,
-    }));
+    const rows = NOTIFICATION_TYPES.map((notificationType) => {
+        const requiredPreference = getDefaultNotificationPreference(
+            notificationType
+        );
 
-    const { error } = await (supabase.from as any)(
-        "user_notification_preferences"
-    ).upsert(rows, {
+        return {
+            user_id: user.id,
+            notification_type: notificationType,
+            in_app_enabled: isRequiredNotificationType(notificationType)
+                ? requiredPreference.inAppEnabled
+                : inAppTypes.has(notificationType),
+            push_enabled: isRequiredNotificationType(notificationType)
+                ? requiredPreference.pushEnabled
+                : pushTypes.has(notificationType),
+            email_enabled: isRequiredNotificationType(notificationType)
+                ? requiredPreference.emailEnabled
+                : emailTypes.has(notificationType),
+            updated_at: now,
+        };
+    });
+
+    const { error } = await database.from("user_notification_preferences").upsert(rows, {
         onConflict: "user_id,notification_type",
     });
 
@@ -80,7 +97,9 @@ export async function savePushSubscription(
     }
 
     const now = new Date().toISOString();
-    const { error } = await (supabase.from as any)("user_push_subscriptions")
+    const database = supabase as NotificationPreferencesClient;
+    const { error } = await database
+        .from("user_push_subscriptions")
         .upsert(
             {
                 user_id: user.id,
@@ -113,11 +132,11 @@ export async function savePushSubscription(
             push_enabled: true,
             updated_at: now,
         }));
-        const { error: preferenceError } = await (supabase.from as any)(
-            "user_notification_preferences"
-        ).upsert(preferenceRows, {
-            onConflict: "user_id,notification_type",
-        });
+        const { error: preferenceError } = await database
+            .from("user_notification_preferences")
+            .upsert(preferenceRows, {
+                onConflict: "user_id,notification_type",
+            });
 
         if (preferenceError) {
             console.error("Could not enable push notification preferences:", {
@@ -144,7 +163,9 @@ export async function revokePushSubscription(endpoint?: string | null) {
 
     if (!user) return { ok: false, error: "Unauthorized" };
 
-    const query = (supabase.from as any)("user_push_subscriptions")
+    const database = supabase as NotificationPreferencesClient;
+    const query = database
+        .from("user_push_subscriptions")
         .update({
             revoked_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -186,6 +207,10 @@ export async function saveSingleNotificationPreference({
 }) {
     if (!isKnownNotificationType(notificationType)) {
         return { ok: false, error: "Unknown notification type." };
+    }
+
+    if (isRequiredNotificationType(notificationType) && !enabled) {
+        return { ok: false, error: "This notification is required." };
     }
 
     const formData = new FormData();

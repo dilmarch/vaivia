@@ -17,6 +17,7 @@ function response(body: unknown, status = 200) {
 function bootstrap(overrides: Record<string, unknown> = {}) {
     return {
         configured: true,
+        placesConfigured: true,
         trip: { id: "trip-a", title: "Japan" },
         conversations: [],
         activeConversationId: null,
@@ -79,6 +80,20 @@ describe("trip assistant interface", () => {
         ).toBeInTheDocument();
         expect(screen.getByText(/email importing are unaffected/i)).toBeInTheDocument();
         expect(screen.getByLabelText("Ask the VAIVIA assistant")).toBeDisabled();
+    });
+
+    it("keeps saved-trip questions available when only the Places key is missing", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(() => response(bootstrap({ placesConfigured: false })))
+        );
+        render(<TripAssistant tripId="trip-a" tripTitle="Japan" />);
+
+        expect(
+            await screen.findByText(/live nearby place discovery is temporarily unavailable/i)
+        ).toBeInTheDocument();
+        expect(screen.getByText(/saved-trip questions still work/i)).toBeInTheDocument();
+        expect(screen.getByLabelText("Ask the VAIVIA assistant")).not.toBeDisabled();
     });
 
     it("shows the quota state", async () => {
@@ -163,6 +178,55 @@ describe("trip assistant interface", () => {
             action: "message",
             conversationId: null,
         });
+    });
+
+    it("renders persisted live place cards with attribution, caveats and no write actions", async () => {
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(() =>
+                response(
+                    bootstrap({
+                        activeConversationId: CONVERSATION_A,
+                        messages: [
+                            {
+                                id: "assistant-place-message",
+                                role: "assistant",
+                                status: "complete",
+                                content: "Here is a nearby option.",
+                                created_at: "2026-07-18T00:01:00Z",
+                                recommendations: [
+                                    {
+                                        recommendationId: "assistant-place-message:0",
+                                        name: "Green Room Café",
+                                        category: "Cafe",
+                                        address: "12 King St",
+                                        matchReason: "A well-rated café near your hotel.",
+                                        distance: "130 m straight-line",
+                                        rating: 4.7,
+                                        userRatingCount: 420,
+                                        priceLevel: "$$",
+                                        hoursSummary:
+                                            "Monday: 8:00 AM–6:00 PM (verify for your visit)",
+                                        mapsUrl: "https://maps.google.com/?cid=123",
+                                        alreadySaved: false,
+                                    },
+                                ],
+                            },
+                        ],
+                    })
+                )
+            )
+        );
+        render(<TripAssistant tripId="trip-a" tripTitle="Japan" />);
+
+        expect(await screen.findByText("Green Room Café")).toBeInTheDocument();
+        expect(screen.getByText("Google Maps")).toBeInTheDocument();
+        expect(screen.getByText("130 m straight-line")).toBeInTheDocument();
+        expect(screen.getByText(/verify for your visit/i)).toBeInTheDocument();
+        expect(
+            screen.getByRole("link", { name: "Open Green Room Café in Google Maps" })
+        ).toHaveAttribute("href", "https://maps.google.com/?cid=123");
+        expect(screen.queryByRole("button", { name: /save|book|add/i })).toBeNull();
     });
 
     it("reopens a conversation and confirms before deleting it", async () => {

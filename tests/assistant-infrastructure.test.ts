@@ -45,7 +45,22 @@ describe("assistant credential and dependency isolation", () => {
         );
         expect(example).toContain("GEMINI_ASSISTANT_MODEL=\n");
         expect(example).toContain("AI_DAILY_MESSAGE_LIMIT=\n");
+        expect(example).toContain("GOOGLE_PLACES_API_KEY=\n");
         expect(example).not.toContain("NEXT_PUBLIC_GEMINI");
+        expect(example).not.toContain("NEXT_PUBLIC_GOOGLE_PLACES");
+    });
+
+    it("isolates live discovery to its dedicated server-only Places credential", () => {
+        const places = read("lib/ai/google-places.ts");
+        const clientFiles = [
+            read("components/assistant/TripAssistant.tsx"),
+            read("components/assistant/PlaceRecommendationCards.tsx"),
+        ].join("\n");
+
+        expect(places).toContain("process.env.GOOGLE_PLACES_API_KEY");
+        expect(places).not.toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
+        expect(places).not.toContain("GOOGLE_MAPS_SERVER_API_KEY");
+        expect(clientFiles).not.toMatch(/GOOGLE_PLACES_API_KEY|google_place_id/i);
     });
 });
 
@@ -148,5 +163,36 @@ describe("assistant database and read-only safeguards", () => {
             )
         ).toBe(true);
         expect(route).not.toMatch(/console\.(?:log|info|warn|error)/);
+    });
+
+    it("adds bounded JSONB metadata and metadata-only external usage counters without weakening RLS", () => {
+        const migration = read(
+            "supabase/migrations/20260719220015_add_assistant_places_phase_two_a.sql"
+        );
+        expect(migration).toContain("metadata jsonb not null default '{}'::jsonb");
+        expect(migration).toContain("jsonb_typeof(metadata) = 'object'");
+        expect(migration).toContain("octet_length(metadata::text) <= 16384");
+        expect(migration).toContain("external_tool_calls between 0 and 4");
+        expect(migration).toContain("external_place_results between 0 and 20");
+        expect(migration).toContain(
+            "revoke all on table public.ai_messages from authenticated"
+        );
+        expect(migration).toContain("grant update (status)");
+        expect(migration).not.toMatch(/rating|opening_hours|formatted_address/i);
+
+        const scopeIndexMigration = read(
+            "supabase/migrations/20260719220719_replace_assistant_message_scope_index.sql"
+        );
+        expect(scopeIndexMigration).toContain(
+            "(conversation_id, trip_id, user_id)"
+        );
+
+        const metadataGrantMigration = read(
+            "supabase/migrations/20260719221123_restrict_assistant_message_metadata_writes.sql"
+        );
+        expect(metadataGrantMigration).toContain(
+            "revoke insert on table public.ai_messages from authenticated"
+        );
+        expect(metadataGrantMigration).not.toMatch(/grant insert \([^)]*metadata/i);
     });
 });

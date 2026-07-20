@@ -15,6 +15,8 @@ import type { TransportationTravelerOptions } from "@/lib/travelers";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
 import Portal from "@/components/Portal";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 import { COMMON_CURRENCIES } from "@/lib/budget";
 
 type TransportationFormProps = {
@@ -232,9 +234,8 @@ function DatePickerField({
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     {label}
                 </p>
-                <input
+                <DateInput
                     aria-label={`Choose ${label.toLowerCase()}`}
-                    type="date"
                     required={required}
                     value={datePickerValue}
                     onChange={(event) => handleDatePickerChange(event.target.value)}
@@ -956,10 +957,9 @@ export default function TransportationForm({
                                                             updateLeg(index, "departureDate", value)
                                                         }
                                                     />
-                                                    <input
+                                                    <TimeInput
                                                         id={`flightLeg${index}DepartureTime`}
                                                         name={`leg_${index}_departure_time`}
-                                                        type="time"
                                                         required
                                                         value={leg.departureTime}
                                                         onChange={(event) =>
@@ -979,10 +979,9 @@ export default function TransportationForm({
                                                             updateLeg(index, "arrivalDate", value)
                                                         }
                                                     />
-                                                    <input
+                                                    <TimeInput
                                                         id={`flightLeg${index}ArrivalTime`}
                                                         name={`leg_${index}_arrival_time`}
-                                                        type="time"
                                                         required
                                                         value={leg.arrivalTime}
                                                         onChange={(event) =>

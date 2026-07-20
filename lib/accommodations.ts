@@ -19,6 +19,10 @@ export type AccommodationType =
 export type AccommodationStatus =
     (typeof ACCOMMODATION_STATUS_OPTIONS)[number]["value"];
 
+export type AccommodationActionResult =
+    | { ok: true }
+    | { ok: false; error: string };
+
 export type TripAccommodation = {
     id: string;
     trip_id: string;
@@ -37,8 +41,10 @@ export type TripAccommodation = {
     longitude?: number | null;
     check_in_date: string;
     check_out_date: string;
+    free_cancellation_ends_on?: string | null;
     check_in_time_start?: string | null;
     check_in_time_end?: string | null;
+    check_out_time?: string | null;
     accommodation_type: AccommodationType;
     status: AccommodationStatus;
     website?: string | null;
@@ -89,6 +95,12 @@ export function getAccommodationErrorMessage(message?: string | null) {
 
     if (value.includes("check_out") || value.includes("after check_in")) {
         return "Check-out date must be after check-in date.";
+    }
+    if (
+        value.includes("free_cancellation") ||
+        value.includes("cancellation_before_checkin")
+    ) {
+        return "Free cancellation must end on or before check-in.";
     }
     if (value.includes("check_in_time") || value.includes("time")) {
         return "Check-in end time must be after check-in start time.";
@@ -150,13 +162,19 @@ export function buildAccommodationPayload(
         longitude: longitudeText ? Number(longitudeText) : null,
         check_in_date: String(formData.get("check_in_date") || ""),
         check_out_date: String(formData.get("check_out_date") || ""),
+        free_cancellation_ends_on: nullableString(
+            formData.get("free_cancellation_ends_on")
+        ),
         check_in_time_start: nullableString(formData.get("check_in_time_start")),
         check_in_time_end: nullableString(formData.get("check_in_time_end")),
+        check_out_time: nullableString(formData.get("check_out_time")),
         accommodation_type: accommodationType,
         status,
         website: normalizeWebsiteUrl(formData.get("website")),
         cost: costText ? Number(costText.replace(/,/g, "")) : null,
-        currency: nullableString(formData.get("currency"))?.toUpperCase() || null,
+        currency: costText
+            ? nullableString(formData.get("currency"))?.toUpperCase() || null
+            : null,
         is_private:
             formData.get("is_private") === "on" ||
             formData.get("is_private") === "true",
@@ -184,6 +202,13 @@ export function validateAccommodationPayload(
         payload.check_out_date <= payload.check_in_date
     ) {
         errors.push("Check-out date must be after check-in date.");
+    }
+    if (
+        payload.free_cancellation_ends_on &&
+        payload.check_in_date &&
+        payload.free_cancellation_ends_on > payload.check_in_date
+    ) {
+        errors.push("Free cancellation must end on or before check-in.");
     }
     if (
         payload.check_in_time_start &&

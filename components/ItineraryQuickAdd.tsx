@@ -19,6 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { createAccommodation } from "@/app/actions/accommodations";
 import { AccommodationCreateModal } from "@/components/accommodations/AccommodationManager";
 import AnimatedModal from "@/components/AnimatedModal";
+import QuickAddExpenseModal from "@/components/budget/QuickAddExpenseModal";
 import FeatureSuggestionModal from "@/components/FeatureSuggestionModal";
 import { IdeaForm } from "@/components/IdeasTab";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
@@ -42,11 +43,12 @@ type ItineraryQuickAddProps = {
     travelerOptions?: TransportationTravelerOptions;
     audienceOptions?: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
+    itineraryTimezoneHints?: Record<string, string>;
     initialAction?: QuickAddInitialAction | null;
     onboardingProgress?: OnboardingProgress | null;
 };
 
-type QuickAddInitialAction = "transportation" | "scheduled" | "idea";
+type QuickAddInitialAction = "transportation" | "scheduled" | "idea" | "expense";
 
 type TourSection = {
     label: string;
@@ -66,6 +68,7 @@ export default function ItineraryQuickAdd({
     travelerOptions = { users: [], familyMembers: [] },
     audienceOptions = [],
     currentUserTripMemberId = null,
+    itineraryTimezoneHints,
     initialAction = null,
     onboardingProgress = null,
 }: ItineraryQuickAddProps) {
@@ -79,6 +82,7 @@ export default function ItineraryQuickAdd({
     );
     const [isTransportationOpen, setIsTransportationOpen] = useState(false);
     const [isAccommodationOpen, setIsAccommodationOpen] = useState(false);
+    const [isExpenseOpen, setIsExpenseOpen] = useState(false);
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
     const [isOnboardingPromptHidden, setIsOnboardingPromptHidden] =
@@ -224,6 +228,8 @@ export default function ItineraryQuickAdd({
 
         if (initialAction === "transportation") {
             setIsTransportationOpen(true);
+        } else if (initialAction === "expense") {
+            setIsExpenseOpen(true);
         } else if (initialAction === "idea") {
             if (createIdeaAction) setIsIdeaOpen(true);
         } else {
@@ -250,6 +256,7 @@ export default function ItineraryQuickAdd({
                 categories={categories}
                 audienceOptions={audienceOptions}
                 currentUserTripMemberId={currentUserTripMemberId}
+                itineraryTimezoneHints={itineraryTimezoneHints}
             />
             <TransportationForm
                 tripId={tripId}
@@ -270,6 +277,12 @@ export default function ItineraryQuickAdd({
                     onClose={() => setIsAccommodationOpen(false)}
                 />
             )}
+            {isExpenseOpen ? (
+                <QuickAddExpenseModal
+                    tripId={tripId}
+                    onClose={() => setIsExpenseOpen(false)}
+                />
+            ) : null}
             {isIdeaOpen && createIdeaAction && (
                 <AnimatedModal
                     onClose={() => setIsIdeaOpen(false)}
@@ -598,13 +611,16 @@ export default function ItineraryQuickAdd({
                         >
                             Add accommodation
                         </button>
-                        <Link
-                            href={`/trips/${tripId}/budget/expenses?addExpense=1`}
+                        <button
+                            type="button"
                             className="animate-vaivia-add-fan-out vaivia-quick-add-bubble block rounded-full border border-white/30 bg-lime-300 px-5 py-2.5 text-center text-sm font-bold text-slate-950 transition hover:-translate-y-0.5 hover:bg-lime-200 md:text-right"
-                            onClick={() => setIsOpen(false)}
+                            onClick={() => {
+                                setIsExpenseOpen(true);
+                                setIsOpen(false);
+                            }}
                         >
                             Add expense
-                        </Link>
+                        </button>
                         <Link
                             href={`/trips/${tripId}/food?addFood=1`}
                             onClick={() => setIsOpen(false)}

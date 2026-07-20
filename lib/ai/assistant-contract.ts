@@ -16,6 +16,7 @@ export type AssistantMessage = {
     status: "pending" | "complete" | "failed";
     content: string;
     created_at: string;
+    recommendations?: import("@/lib/ai/places-contract").AssistantPlaceRecommendation[];
 };
 
 export type AssistantUsage = {

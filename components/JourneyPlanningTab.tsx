@@ -12,6 +12,8 @@ import {
 import { Copy, GripVertical, Pencil } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 import {
     getAirlineNameFromCode,
     inferAirlineCodeFromFlightNumber,
@@ -3445,8 +3447,7 @@ export default function JourneyPlanningTab({
                                                             </div>
 
                                                             <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                                                                <input
-                                                                    type="date"
+                                                                <DateInput
                                                                     value={
                                                                         leg.departureDate
                                                                     }
@@ -3461,8 +3462,7 @@ export default function JourneyPlanningTab({
                                                                     className="cursor-pointer rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white [color-scheme:dark]"
                                                                     {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                                 />
-                                                                <input
-                                                                    type="date"
+                                                                <DateInput
                                                                     value={
                                                                         leg.arrivalDate
                                                                     }
@@ -3477,8 +3477,7 @@ export default function JourneyPlanningTab({
                                                                     className="cursor-pointer rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white [color-scheme:dark]"
                                                                     {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                                 />
-                                                                <input
-                                                                    type="time"
+                                                                <TimeInput
                                                                     value={
                                                                         leg.departureTime
                                                                     }
@@ -3493,8 +3492,7 @@ export default function JourneyPlanningTab({
                                                                     className="rounded-xl border border-white/10 bg-[#0c0115]/70 px-3 py-2 text-sm text-white"
                                                                     {...PASSWORD_MANAGER_IGNORE_PROPS}
                                                                 />
-                                                                <input
-                                                                    type="time"
+                                                                <TimeInput
                                                                     value={
                                                                         leg.arrivalTime
                                                                     }

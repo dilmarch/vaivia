@@ -53,6 +53,16 @@ export type TripBudget = {
     is_active: boolean;
 };
 
+export type TripBudgetCategory = {
+    id: string;
+    trip_id: string;
+    name: string;
+    linked_expense_category: ExpenseCategory;
+    sort_order: number;
+    is_default: boolean;
+    is_archived: boolean;
+};
+
 export type TripBudgetLineItem = {
     id: string;
     budget_id: string;
@@ -114,6 +124,18 @@ export type TripExpenseSplit = {
     currency: string;
     amount_in_reporting_currency?: number | null;
     is_included: boolean;
+};
+
+export type TripExpenseSettlement = {
+    id: string;
+    trip_id: string;
+    paid_by_participant_value: string;
+    received_by_participant_value: string;
+    amount: number;
+    reporting_currency: string;
+    settled_on: string;
+    created_by: string;
+    created_at?: string | null;
 };
 
 export const DEFAULT_EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {

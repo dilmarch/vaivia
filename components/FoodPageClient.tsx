@@ -6,6 +6,7 @@ import { Check, ChevronLeft, Coffee, ExternalLink, MapPin, Pencil, Plus, Trash2,
 import { useEffect, useMemo, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import FoodReactionBar from "@/components/FoodReactionBar";
+import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import {
@@ -1113,7 +1114,7 @@ function FoodCard({
 
     return (
         <article
-            className={`relative rounded-[1.75rem] border p-5 shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
+            className={`relative overflow-hidden rounded-[1.75rem] border shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
                 item.current_user_tried
                     ? "border-white/10 bg-[#03030a]/70 opacity-85"
                     : "border-white/10 bg-[#03030a]/90"
@@ -1130,6 +1131,14 @@ function FoodCard({
                     onClose={() => setIsEditing(false)}
                 />
             ) : null}
+            {item.item_type === "place" && item.google_place_id ? (
+                <GooglePlaceCoverPhoto
+                    placeId={item.google_place_id}
+                    fallbackSourceUrl={item.google_maps_url}
+                    alt={`${item.name} from Google Maps`}
+                />
+            ) : null}
+            <div className="relative p-5">
             <button
                 type="button"
                 onClick={() => setIsEditing(true)}
@@ -1280,6 +1289,7 @@ function FoodCard({
                 <p className="text-xs font-semibold text-slate-400">
                     {item.tried_count || 0} tried
                 </p>
+            </div>
             </div>
         </article>
     );

@@ -29,6 +29,7 @@ import TransportationForm, {
     type FlightLeg,
     type TransportationFormInitialValues,
 } from "@/components/TransportationForm";
+import { DateInput } from "@/components/ui/date-input";
 import {
     ensureReadableColor,
     getAirlineBrandTheme,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/airlineBrandTheme";
 import { getIataAirportCode } from "@/lib/airportCodes";
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
+import type { SplitMethod } from "@/lib/budget";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
 import type {
@@ -71,6 +73,8 @@ export type ItineraryCalendarItem = {
     ticket_website?: string | null;
     location_website?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
     notes?: string | null;
     formatted_address?: string | null;
     google_place_id?: string | null;
@@ -92,8 +96,17 @@ export type ItineraryCalendarItem = {
     departure_terminal?: string | null;
     arrival_terminal?: string | null;
     source_table?: "itinerary_items" | "transportation_items";
+    accommodation_id?: string | null;
+    accommodation_hold_kind?: "check_in" | "check_out" | null;
     is_private?: boolean | null;
     audience_mode?: TripAudienceMode | null;
+    linked_expense?: {
+        amount: number;
+        currency: string;
+        splitMethod: SplitMethod;
+        payerValue?: string | null;
+        participantValues?: string[];
+    } | null;
 };
 
 function getAudienceOptionKey(option: Pick<TripAudienceOption, "kind" | "id">) {
@@ -111,6 +124,8 @@ function getItineraryEditFormKey(item: ItineraryCalendarItem) {
         item.id,
         item.audience_mode || "everyone",
         item.is_private ? "private" : "shared",
+        item.linked_expense?.amount ?? "no-expense",
+        item.linked_expense?.splitMethod || "",
         selectedAudienceSignature,
     ].join(":");
 }
@@ -124,6 +139,8 @@ export type CalendarAccommodation = {
     address?: string | null;
     check_in_date: string;
     check_out_date: string;
+    check_in_time_start?: string | null;
+    check_out_time?: string | null;
     status?: string | null;
 };
 
@@ -293,9 +310,38 @@ function isEventbriteImageProxyUrl(url: string) {
 }
 
 function getUsableSavedCoverImage(item: ItineraryCalendarItem) {
+    if (item.cover_image_source === "upload") return null;
     if (!item.cover_image_url) return null;
     if (isEventbriteImageProxyUrl(item.cover_image_url)) return null;
     return item.cover_image_url;
+}
+
+async function getUploadedCoverImage({
+    tripId,
+    itemId,
+    coverImageSource,
+    coverImageStoragePath,
+}: {
+    tripId: string;
+    itemId: string;
+    coverImageSource?: string | null;
+    coverImageStoragePath?: string | null;
+}) {
+    if (coverImageSource !== "upload" || !coverImageStoragePath) {
+        return null;
+    }
+
+    try {
+        const response = await fetch(
+            `/api/trips/${tripId}/itinerary/${itemId}/cover`,
+            { cache: "no-store" }
+        );
+        if (!response.ok) return null;
+        const data = (await response.json()) as { signedUrl?: string | null };
+        return data.signedUrl || null;
+    } catch {
+        return null;
+    }
 }
 
 async function getPreviewImage(url: string) {
@@ -700,7 +746,7 @@ function PrivateLockBadge({
     if (iconOnly) {
         return (
             <span
-                className={`inline-flex items-center justify-center rounded-full border border-white/20 bg-slate-950/85 text-lime-200 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.16)] ${
+                className={`vaivia-private-tag inline-flex items-center justify-center rounded-full border border-white/20 bg-slate-950/85 text-lime-200 shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.16)] ${
                     compact ? "h-7 w-7" : "h-8 w-8"
                 } ${className}`}
                 title="Private item"
@@ -713,7 +759,7 @@ function PrivateLockBadge({
 
     return (
         <span
-            className={`inline-flex items-center gap-1 rounded-full border border-white/20 bg-slate-950/80 font-bold uppercase tracking-[0.12em] text-lime-100 shadow-sm ${
+            className={`vaivia-private-tag inline-flex items-center gap-1 rounded-full border border-white/20 bg-slate-950/80 font-bold uppercase tracking-[0.12em] text-lime-100 shadow-sm ${
                 compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-xs"
             } ${className}`}
             title="Private item"
@@ -1251,8 +1297,9 @@ function FlightListCard({
 
     return (
         <div
+            data-itinerary-status={item.status.toLowerCase()}
             style={cardThemeStyle}
-            className="relative rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
+            className="vaivia-airline-branded-card relative rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
         >
             <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
                 {item.is_private ? <PrivateLockBadge compact iconOnly /> : null}
@@ -1282,11 +1329,11 @@ function FlightListCard({
                             />
                         </div>
                         <div className="min-w-0">
-                            <h3 className="font-semibold text-[var(--airline-card-text)]">
+                            <h3 className="vaivia-airline-card-text font-semibold text-[var(--airline-card-text)]">
                                 {flight.titleLabel}
                             </h3>
                             {flight.routeLabel && (
-                                <p className="mt-1 text-sm text-[var(--airline-card-muted)]">
+                                <p className="vaivia-airline-card-muted mt-1 text-sm text-[var(--airline-card-muted)]">
                                     {flight.routeLabel}
                                 </p>
                             )}
@@ -1328,7 +1375,7 @@ function FlightListCard({
                     </div>
 
                     {flight.duration && (
-                        <div className="rounded-full bg-[var(--airline-card-primary)] px-3 py-1 text-center text-xs font-semibold text-[var(--airline-card-primary-text)] shadow-sm">
+                        <div className="vaivia-airline-card-primary-chip rounded-full bg-[var(--airline-card-primary)] px-3 py-1 text-center text-xs font-semibold text-[var(--airline-card-primary-text)] shadow-sm">
                             {flight.duration}
                         </div>
                     )}
@@ -1366,7 +1413,7 @@ function FlightListCard({
                     </div>
                 ) : (
                     arrivalDateLabel && (
-                        <p className="mt-3 text-xs font-medium text-[var(--airline-card-muted)]">
+                        <p className="vaivia-airline-card-muted mt-3 text-xs font-medium text-[var(--airline-card-muted)]">
                             Arrives {arrivalDateLabel}
                         </p>
                     )
@@ -1881,6 +1928,57 @@ function EventCard({
     timeLabel?: string;
     onOpen: (item: ItineraryCalendarItem) => void;
 }) {
+    if (item.accommodation_hold_kind) {
+        return (
+            <div
+                data-accommodation-hold={item.accommodation_hold_kind}
+                className={`relative w-full overflow-hidden rounded-[1.25rem] border border-lime-300/25 border-l-[16px] border-l-lime-300 bg-lime-300/10 text-left text-white shadow-[0_18px_45px_rgba(0,0,0,0.22)] ${
+                    fillHeight ? "flex h-full flex-col justify-start" : ""
+                }`}
+            >
+                <div
+                    className={`flex min-h-0 gap-3 ${
+                        compact ? "p-3" : "p-4"
+                    } ${fillHeight ? "flex-1" : ""}`}
+                >
+                    <span
+                        className={`flex shrink-0 items-center justify-center rounded-md border border-lime-200/25 bg-lime-300/10 ${
+                            compact ? "h-8 w-8 text-base" : "h-10 w-10 text-xl"
+                        }`}
+                        aria-hidden="true"
+                    >
+                        🏨
+                    </span>
+                    <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-wide text-lime-200">
+                            {timeLabel ||
+                                `${formatTime(item.start_time)} - ${formatTime(
+                                    item.end_time
+                                )}`}
+                        </p>
+                        <h3
+                            className={`mt-1 font-semibold text-white ${
+                                compact ? "text-sm" : "text-base"
+                            }`}
+                        >
+                            {item.title}
+                        </h3>
+                        {!compact && item.location ? (
+                            <p className="mt-1 text-xs text-slate-300">
+                                {item.location}
+                            </p>
+                        ) : null}
+                        {!compact ? (
+                            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-lime-200/75">
+                                Synced from accommodation details
+                            </p>
+                        ) : null}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     const transportationEmoji = getTransportationEmoji(item.transportation_mode);
     const flightDisplay = getFlightDisplayData(item);
     const displayNotes = getDisplayNotes(item);
@@ -1926,8 +2024,9 @@ function EventCard({
     if (flightDisplay && compact) {
         return (
             <div
+                data-itinerary-status={item.status.toLowerCase()}
                 style={flightCardThemeStyle}
-                className={`relative w-full rounded-md border border-slate-200 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                className={`vaivia-airline-branded-card relative w-full rounded-md border border-slate-200 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                     fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
                 }`}
             >
@@ -1955,20 +2054,20 @@ function EventCard({
                             <FlightIconStack flight={flightDisplay} />
                             <div className="min-w-0">
                                 {transportationDepartureLabel && (
-                                    <p className="text-sm font-semibold text-[var(--airline-card-text)]">
+                                    <p className="vaivia-airline-card-text text-sm font-semibold text-[var(--airline-card-text)]">
                                         Departs {transportationDepartureLabel}
                                     </p>
                                 )}
-                                <h3 className="mt-1 text-sm font-semibold text-[var(--airline-card-text)]">
+                                <h3 className="vaivia-airline-card-text mt-1 text-sm font-semibold text-[var(--airline-card-text)]">
                                     {flightDisplay.flightNumber || item.title}
                                 </h3>
                                 {(flightDisplay.routeCodeLabel || item.location) && (
-                                    <p className="mt-1 truncate text-xs text-[var(--airline-card-muted)]">
+                                    <p className="vaivia-airline-card-muted mt-1 truncate text-xs text-[var(--airline-card-muted)]">
                                         {flightDisplay.routeCodeLabel || item.location}
                                     </p>
                                 )}
                                 {flightDisplay.duration && (
-                                    <p className="mt-1 text-xs font-semibold text-[var(--airline-card-text)]">
+                                    <p className="vaivia-airline-card-text mt-1 text-xs font-semibold text-[var(--airline-card-text)]">
                                         Duration: {flightDisplay.duration}
                                     </p>
                                 )}
@@ -2006,6 +2105,7 @@ function EventCard({
 
     return (
         <div
+            data-itinerary-status={item.status.toLowerCase()}
             style={
                 flightCardThemeStyle ||
                 ({
@@ -2614,15 +2714,27 @@ function ItineraryItemModal({
         let isMounted = true;
 
         async function resolveCoverImage() {
-            const eventbriteImage = isEventbriteUrl(ticketWebsite)
+            const uploadedCoverImage = await getUploadedCoverImage({
+                tripId,
+                itemId: item.id,
+                coverImageSource: item.cover_image_source,
+                coverImageStoragePath: item.cover_image_storage_path,
+            });
+            const eventbriteImage = uploadedCoverImage
+                ? null
+                : isEventbriteUrl(ticketWebsite)
                 ? await getPreviewImage(ticketWebsite)
                 : null;
 
-            const locationImage = eventbriteImage
+            const locationImage = uploadedCoverImage || eventbriteImage
                 ? null
                 : await getPreviewImage(locationWebsite);
 
-            const nextCoverImage = eventbriteImage || locationImage || savedCoverImage;
+            const nextCoverImage =
+                uploadedCoverImage ||
+                eventbriteImage ||
+                locationImage ||
+                savedCoverImage;
 
             if (isMounted) {
                 setCoverImageUrl(nextCoverImage);
@@ -2634,7 +2746,15 @@ function ItineraryItemModal({
         return () => {
             isMounted = false;
         };
-    }, [locationWebsite, savedCoverImage, ticketWebsite]);
+    }, [
+        item.cover_image_source,
+        item.cover_image_storage_path,
+        item.id,
+        locationWebsite,
+        savedCoverImage,
+        ticketWebsite,
+        tripId,
+    ]);
 
     return (
         <AnimatedModal
@@ -4073,10 +4193,9 @@ export default function ItineraryCalendar({
 
                                 <label className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 text-sm font-bold text-slate-200">
                                     <span>Date</span>
-                                    <input
+                                    <DateInput
                                         id="itineraryViewDate"
                                         name="itineraryViewDate"
-                                        type="date"
                                         autoComplete="off"
                                         data-form-type="other"
                                         data-lpignore="true"

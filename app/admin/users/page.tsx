@@ -83,7 +83,7 @@ export default async function AdminUsersPage() {
                     </div>
                 </header>
 
-                <AdminUsersClient users={users} />
+                <AdminUsersClient users={users} currentUserId={user.id} />
             </div>
         </main>
     );

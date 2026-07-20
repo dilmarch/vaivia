@@ -10,21 +10,30 @@ import {
     parseAssistantMessage,
 } from "@/lib/ai/assistant-contract";
 import {
-    generateGeminiAssistantResponse,
     getAiDailyMessageLimit,
-    getGeminiAssistantGenerationConfig,
     getGeminiAssistantModel,
     isGeminiAssistantConfigured,
     VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
     type GeminiAssistantGenerationResult,
     type GeminiAssistantTokenUsage,
 } from "@/lib/ai/gemini-assistant";
+import { isGooglePlacesConfigured } from "@/lib/ai/google-places";
+import {
+    generateTripAssistantResponse,
+    hydratePersistedPlaceRecommendations,
+    type AssistantPlacesGenerationResult,
+    type AssistantPlacesToolUsage,
+} from "@/lib/ai/places-orchestrator";
+import { parsePlacesMessageMetadata } from "@/lib/ai/places-contract";
 import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
 import { buildVaiviaAssistantSystemInstruction } from "@/lib/ai/system-instruction";
 import { loadTripAssistantContext } from "@/lib/ai/trip-context";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { resolveTripRouteParam } from "@/lib/tripRoutes";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type RouteContext = { params: Promise<{ tripId: string }> };
 type ConversationRow = {
@@ -35,6 +44,13 @@ type ConversationRow = {
     created_at: string;
     updated_at: string;
     last_message_at: string | null;
+};
+type AssistantMessageRow = {
+    id: string;
+    role: string;
+    status: string;
+    content: string;
+    created_at: string;
 };
 
 const AI_USAGE_RESERVATION_TTL_MS = 5 * 60 * 1_000;
@@ -67,7 +83,9 @@ async function authenticateTrip(context: RouteContext) {
     return { supabase, user, trip: resolved.trip };
 }
 
-function generationFailureResponse(generation: GeminiAssistantGenerationResult) {
+function generationFailureResponse(
+    generation: GeminiAssistantGenerationResult | AssistantPlacesGenerationResult
+) {
     if (generation.status === "success") return null;
 
     const mapping = {
@@ -91,6 +109,7 @@ async function completeUsageEvent({
     errorCode,
     model,
     tokenUsage,
+    toolUsage,
 }: {
     usageEventId: string;
     userId: string;
@@ -99,6 +118,7 @@ async function completeUsageEvent({
     errorCode?: string;
     model?: string;
     tokenUsage?: GeminiAssistantTokenUsage;
+    toolUsage?: AssistantPlacesToolUsage;
 }) {
     try {
         const serviceSupabase = createServiceRoleClient();
@@ -112,6 +132,8 @@ async function completeUsageEvent({
                 candidate_token_count: tokenUsage?.candidateTokenCount ?? null,
                 thoughts_token_count: tokenUsage?.thoughtsTokenCount ?? null,
                 total_token_count: tokenUsage?.totalTokenCount ?? null,
+                external_tool_calls: toolUsage?.externalToolCalls ?? 0,
+                external_place_results: toolUsage?.placeResults ?? 0,
                 completed_at: new Date().toISOString(),
             })
             .eq("id", usageEventId)
@@ -190,12 +212,16 @@ export async function GET(request: NextRequest, context: RouteContext) {
         status: string;
         content: string;
         created_at: string;
+        metadata?: unknown;
+        recommendations?: Awaited<
+            ReturnType<typeof hydratePersistedPlaceRecommendations>
+        >;
     }> = [];
 
     if (requestedConversation) {
         const messagesResult = await supabase
             .from("ai_messages")
-            .select("id,role,status,content,created_at")
+            .select("id,role,status,content,created_at,metadata")
             .eq("conversation_id", requestedConversation.id)
             .eq("trip_id", trip.id)
             .eq("user_id", user.id)
@@ -205,13 +231,49 @@ export async function GET(request: NextRequest, context: RouteContext) {
         if (messagesResult.error) {
             return safeError("Unable to load the conversation", 500, "load_failed");
         }
-        messages = (messagesResult.data || []).reverse();
+        const orderedMessages = (messagesResult.data || []).reverse();
+        let refreshBudget = 20;
+        const refreshReferences = new Map<
+            string,
+            NonNullable<ReturnType<typeof parsePlacesMessageMetadata>>
+        >();
+        for (const row of [...orderedMessages].reverse()) {
+            const metadata = parsePlacesMessageMetadata(row.metadata);
+            if (!metadata || refreshBudget <= 0) continue;
+            const recommendations = metadata.recommendations.slice(0, refreshBudget);
+            refreshBudget -= recommendations.length;
+            if (recommendations.length > 0) {
+                refreshReferences.set(row.id, { ...metadata, recommendations });
+            }
+        }
+        messages = await Promise.all(
+            orderedMessages.map(async (row) => {
+                const metadata = refreshReferences.get(row.id);
+                const recommendations =
+                    metadata && isGooglePlacesConfigured()
+                        ? await hydratePersistedPlaceRecommendations({
+                              metadata,
+                              messageId: row.id,
+                              signal: request.signal,
+                          })
+                        : [];
+                return {
+                    id: row.id,
+                    role: row.role,
+                    status: row.status,
+                    content: row.content,
+                    created_at: row.created_at,
+                    ...(recommendations.length > 0 ? { recommendations } : {}),
+                };
+            })
+        );
     }
 
     const used =
         (succeededUsageResult.count || 0) + (activeReservationResult.count || 0);
     return NextResponse.json({
         configured: isGeminiAssistantConfigured(),
+        placesConfigured: isGooglePlacesConfigured(),
         trip: { id: trip.id, title: trip.title },
         conversations,
         activeConversationId: requestedConversation?.id || null,
@@ -457,14 +519,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
     contents.push({ role: "user", parts: [{ text: message }] });
 
     const systemInstruction = buildVaiviaAssistantSystemInstruction(tripContext);
-    const generation = await generateGeminiAssistantResponse({
+    const generation = await generateTripAssistantResponse({
+        supabase,
+        tripId: trip.id,
         contents,
-        config: {
-            ...getGeminiAssistantGenerationConfig(),
-            systemInstruction,
-        },
+        systemInstruction,
         signal: request.signal,
     });
+    if (generation.toolUsage.externalToolCalls > 0) {
+        logAssistantDiagnostic({
+            stage: "places_tool",
+            code:
+                generation.toolUsage.placeResults > 0
+                    ? "places_tool_completed"
+                    : "places_tool_no_results",
+            externalToolCalls: generation.toolUsage.externalToolCalls,
+            externalPlaceResults: generation.toolUsage.placeResults,
+        });
+    }
 
     const conversationPayload = updatedConversation || conversation;
     if (generation.status !== "success") {
@@ -503,6 +575,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             tripId: trip.id,
             outcome: "failed",
             errorCode: failure.code,
+            toolUsage: generation.toolUsage,
         });
         return NextResponse.json(
             {
@@ -522,19 +595,29 @@ export async function POST(request: NextRequest, context: RouteContext) {
         );
     }
 
-    const { data: assistantMessage, error: assistantInsertError } = await supabase
-        .from("ai_messages")
-        .insert({
-            conversation_id: conversation.id,
-            trip_id: trip.id,
-            user_id: user.id,
-            role: "assistant",
-            status: "complete",
-            content: generation.message,
-            model: generation.model,
-        })
-        .select("id,role,status,content,created_at")
-        .single();
+    let assistantMessage: AssistantMessageRow | null = null;
+    let assistantInsertError: unknown = null;
+    try {
+        const serviceSupabase = createServiceRoleClient();
+        const result = await serviceSupabase
+            .from("ai_messages")
+            .insert({
+                conversation_id: conversation.id,
+                trip_id: trip.id,
+                user_id: user.id,
+                role: "assistant",
+                status: "complete",
+                content: generation.message,
+                model: generation.model,
+                metadata: generation.metadata,
+            })
+            .select("id,role,status,content,created_at")
+            .single();
+        assistantMessage = result.data;
+        assistantInsertError = result.error;
+    } catch (error) {
+        assistantInsertError = error;
+    }
     if (assistantInsertError || !assistantMessage) {
         logAssistantDiagnostic({
             stage: "assistant_message_persistence",
@@ -553,6 +636,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             tripId: trip.id,
             outcome: "failed",
             errorCode: "assistant_message_persistence_failed",
+            toolUsage: generation.toolUsage,
         });
         return NextResponse.json(
             {
@@ -583,6 +667,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
             tripId: trip.id,
             outcome: "failed",
             errorCode: "message_status_persistence_failed",
+            toolUsage: generation.toolUsage,
         });
         return NextResponse.json(
             {
@@ -603,12 +688,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
         outcome: "succeeded",
         model: generation.model,
         tokenUsage: generation.tokenUsage,
+        toolUsage: generation.toolUsage,
     });
 
     const payload = {
         conversation: conversationPayload,
         userMessage: { ...userMessage, status: "complete" },
-        assistantMessage,
+        assistantMessage: {
+            ...assistantMessage,
+            ...(generation.recommendations.length > 0
+                ? { recommendations: generation.recommendations }
+                : {}),
+        },
         usage: {
             limit: dailyLimit,
             used: usage.used,

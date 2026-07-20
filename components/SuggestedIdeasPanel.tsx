@@ -4,6 +4,8 @@ import { Check, Lock } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 import {
     IDEA_TIME_EXACT_WINDOWS,
     type IdeaTimeOfDay,
@@ -353,7 +355,7 @@ function IdeaSuggestionCard({
                             </span>
                         ) : null}
                         {idea.is_private ? (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white">
+                            <span className="vaivia-private-tag inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white">
                                 <Lock className="h-3 w-3" aria-hidden="true" />
                                 Private
                             </span>
@@ -493,9 +495,8 @@ function IdeaSuggestionCard({
                     />
                     <label className="block text-[11px] font-semibold text-slate-300">
                         Date
-                        <input
+                        <DateInput
                             name="item_date"
-                            type="date"
                             defaultValue={selectedDateKey}
                             required
                             {...travelInputProps()}
@@ -505,9 +506,8 @@ function IdeaSuggestionCard({
                     <div className="grid grid-cols-2 gap-2">
                         <label className="block text-[11px] font-semibold text-slate-300">
                             Start
-                            <input
+                            <TimeInput
                                 name="start_time"
-                                type="time"
                                 defaultValue={getDefaultStartTime(firstTime)}
                                 required
                                 {...travelInputProps()}
@@ -516,9 +516,8 @@ function IdeaSuggestionCard({
                         </label>
                         <label className="block text-[11px] font-semibold text-slate-300">
                             End
-                            <input
+                            <TimeInput
                                 name="end_time"
-                                type="time"
                                 defaultValue={getDefaultEndTime(firstTime)}
                                 required
                                 {...travelInputProps()}

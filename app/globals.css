@@ -708,6 +708,69 @@
     color: #111111 !important;
   }
 
+  /* Catch every near-black structural utility, including arbitrary values added
+     after this theme was introduced. Interactive controls may keep their black
+     treatment, but containers must stay inside the brat green palette. */
+  :root[data-vaivia-theme="brat"]
+    :is(
+      [class^="bg-[#0"],
+      [class*=" bg-[#0"],
+      [class^="bg-[#1"],
+      [class*=" bg-[#1"],
+      [class^="bg-slate-800"],
+      [class*=" bg-slate-800"],
+      [class^="bg-slate-900"],
+      [class*=" bg-slate-900"],
+      [class^="bg-slate-950"],
+      [class*=" bg-slate-950"],
+      [class^="bg-black"],
+      [class*=" bg-black"],
+      [class*="bg-[radial-gradient"][class*="#030"],
+      [class*="bg-[radial-gradient"][class*="#050"],
+      [class*="bg-[radial-gradient"][class*="#0c0"],
+      [class*="bg-[radial-gradient"][class*="#111827"],
+      [class*="bg-[radial-gradient"][class*="#172033"],
+      [class*="bg-[linear-gradient"][class*="#030"],
+      [class*="bg-[linear-gradient"][class*="#050"],
+      [class*="bg-[linear-gradient"][class*="#0c0"],
+      [class*="bg-[linear-gradient"][class*="#111827"],
+      [class*="bg-[linear-gradient"][class*="#172033"]
+    ):not(button):not(a):not([role="button"]) {
+    background: #5f9200 !important;
+    background-color: #5f9200 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"]
+    :is(
+      [class^="bg-[#0"],
+      [class*=" bg-[#0"],
+      [class^="bg-[#1"],
+      [class*=" bg-[#1"],
+      [class^="bg-slate-800"],
+      [class*=" bg-slate-800"],
+      [class^="bg-slate-900"],
+      [class*=" bg-slate-900"],
+      [class^="bg-slate-950"],
+      [class*=" bg-slate-950"],
+      [class^="bg-black"],
+      [class*=" bg-black"],
+      [class*="bg-[radial-gradient"][class*="#030"],
+      [class*="bg-[radial-gradient"][class*="#050"],
+      [class*="bg-[radial-gradient"][class*="#0c0"],
+      [class*="bg-[radial-gradient"][class*="#111827"],
+      [class*="bg-[radial-gradient"][class*="#172033"],
+      [class*="bg-[linear-gradient"][class*="#030"],
+      [class*="bg-[linear-gradient"][class*="#050"],
+      [class*="bg-[linear-gradient"][class*="#0c0"],
+      [class*="bg-[linear-gradient"][class*="#111827"],
+      [class*="bg-[linear-gradient"][class*="#172033"]
+    ):not(button):not(a):not([role="button"])
+    * {
+    color: #111111 !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
+  }
+
   :root[data-vaivia-theme="brat"] .bg-\[\#0c0115\] *,
   :root[data-vaivia-theme="brat"] .bg-\[\#080511\] *,
   :root[data-vaivia-theme="brat"] .bg-\[\#03030a\] *,
@@ -786,11 +849,14 @@
   :root[data-vaivia-theme="brat"] .bg-lime-200:is(button, a, [role="button"]),
   :root[data-vaivia-theme="brat"] .bg-lime-100:is(button, a, [role="button"]),
   :root[data-vaivia-theme="brat"] .vaivia-quick-add-bubble,
-  :root[data-vaivia-theme="brat"] .bg-black,
-  :root[data-vaivia-theme="brat"] .bg-black\/20,
-  :root[data-vaivia-theme="brat"] .bg-black\/30,
-  :root[data-vaivia-theme="brat"] .bg-black\/40,
-  :root[data-vaivia-theme="brat"] .bg-black\/50 {
+  :root[data-vaivia-theme="brat"] .bg-black:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/10:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/20:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/30:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/35:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/40:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/50:is(button, a, [role="button"]),
+  :root[data-vaivia-theme="brat"] .bg-black\/65:is(button, a, [role="button"]) {
     background: #000000 !important;
     background-color: #000000 !important;
     color: #8ace00 !important;
@@ -800,12 +866,35 @@
   :root[data-vaivia-theme="brat"] .bg-lime-200:is(button, a, [role="button"]) *,
   :root[data-vaivia-theme="brat"] .bg-lime-100:is(button, a, [role="button"]) *,
   :root[data-vaivia-theme="brat"] .vaivia-quick-add-bubble *,
-  :root[data-vaivia-theme="brat"] .bg-black *,
-  :root[data-vaivia-theme="brat"] .bg-black\/20 *,
-  :root[data-vaivia-theme="brat"] .bg-black\/30 *,
-  :root[data-vaivia-theme="brat"] .bg-black\/40 *,
-  :root[data-vaivia-theme="brat"] .bg-black\/50 * {
+  :root[data-vaivia-theme="brat"] .bg-black:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/10:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/20:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/30:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/35:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/40:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/50:is(button, a, [role="button"]) *,
+  :root[data-vaivia-theme="brat"] .bg-black\/65:is(button, a, [role="button"]) * {
     color: #8ace00 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-black\/10:not(button):not(a):not([role="button"]) {
+    background: rgb(95 146 0 / 0.1) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-black\/20:not(button):not(a):not([role="button"]) {
+    background: rgb(95 146 0 / 0.2) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-black\/30:not(button):not(a):not([role="button"]) {
+    background: rgb(95 146 0 / 0.3) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-black\/35:not(button):not(a):not([role="button"]) {
+    background: rgb(95 146 0 / 0.35) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .bg-black\/40:not(button):not(a):not([role="button"]) {
+    background: rgb(95 146 0 / 0.4) !important;
   }
 
   :root[data-vaivia-theme="brat"] .bg-\[\#8ACE00\],
@@ -820,18 +909,20 @@
   }
 
   :root[data-vaivia-theme="brat"] .group\/sidebar,
-  :root[data-vaivia-theme="brat"] aside.group\/sidebar {
+  :root[data-vaivia-theme="brat"] aside.group\/sidebar,
+  :root[data-vaivia-theme="brat"] .vaivia-assistant-conversation-panel {
     background:
-      radial-gradient(circle at top left, rgb(138 206 0 / 0.18), transparent 34%),
-      linear-gradient(180deg, rgb(0 0 0 / 0.96), rgb(0 0 0 / 0.92)) !important;
-    border-color: rgb(138 206 0 / 0.28) !important;
-    color: #8ace00 !important;
+      radial-gradient(circle at top left, rgb(255 255 255 / 0.18), transparent 34%),
+      linear-gradient(180deg, #6faa00, #5f9200) !important;
+    border-color: rgb(17 17 17 / 0.24) !important;
+    color: #111111 !important;
   }
 
   :root[data-vaivia-theme="brat"] .group\/sidebar *,
-  :root[data-vaivia-theme="brat"] aside.group\/sidebar * {
-    color: #8ace00 !important;
-    border-color: rgb(138 206 0 / 0.26) !important;
+  :root[data-vaivia-theme="brat"] aside.group\/sidebar *,
+  :root[data-vaivia-theme="brat"] .vaivia-assistant-conversation-panel * {
+    color: #111111 !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
   }
 
   :root[data-vaivia-theme="brat"] .group\/sidebar .text-slate-300,
@@ -842,8 +933,10 @@
   :root[data-vaivia-theme="brat"] .group\/sidebar a,
   :root[data-vaivia-theme="brat"] .group\/sidebar button,
   :root[data-vaivia-theme="brat"] .group\/sidebar svg,
-  :root[data-vaivia-theme="brat"] .group\/sidebar span {
-    color: #8ace00 !important;
+  :root[data-vaivia-theme="brat"] .group\/sidebar span,
+  :root[data-vaivia-theme="brat"] .vaivia-assistant-conversation-panel [class*="text-"],
+  :root[data-vaivia-theme="brat"] .vaivia-assistant-conversation-panel svg {
+    color: #111111 !important;
     stroke: currentColor !important;
   }
 
@@ -912,12 +1005,14 @@
     color: #242424 !important;
   }
 
-  :root[data-vaivia-theme="brat"] .group\/sidebar [class*="text-lime"],
-  :root[data-vaivia-theme="brat"] .bg-black [class*="text-lime"],
-  :root[data-vaivia-theme="brat"] .bg-black\/20 [class*="text-lime"],
-  :root[data-vaivia-theme="brat"] .bg-black\/30 [class*="text-lime"],
-  :root[data-vaivia-theme="brat"] .bg-black\/40 [class*="text-lime"],
-  :root[data-vaivia-theme="brat"] .bg-black\/50 [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/10:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/20:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/30:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/35:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/40:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/50:is(button, a, [role="button"]) [class*="text-lime"],
+  :root[data-vaivia-theme="brat"] .bg-black\/65:is(button, a, [role="button"]) [class*="text-lime"],
   :root[data-vaivia-theme="brat"] .bg-lime-300:is(button, a, [role="button"]) [class*="text-lime"],
   :root[data-vaivia-theme="brat"] .bg-lime-200:is(button, a, [role="button"]) [class*="text-lime"],
   :root[data-vaivia-theme="brat"] .bg-lime-100:is(button, a, [role="button"]) [class*="text-lime"],
@@ -993,6 +1088,89 @@
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar button:not(.bg-lime-300):not(.bg-lime-200):not(.bg-lime-100),
   :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar a:not(.bg-lime-300):not(.bg-lime-200):not(.bg-lime-100) {
     color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-itinerary-calendar [data-itinerary-status="tentative"]:not(.vaivia-airline-branded-card) {
+    background-image: repeating-linear-gradient(
+      135deg,
+      #8ace00 0,
+      #8ace00 10px,
+      #79b900 10px,
+      #79b900 20px
+    ) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-airline-branded-card {
+    background-color: var(--airline-card-accent) !important;
+    border-left-color: var(--airline-card-primary) !important;
+    color: var(--airline-card-text) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-airline-card-text {
+    color: var(--airline-card-text) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-airline-card-muted {
+    color: var(--airline-card-muted) !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-airline-card-primary-chip {
+    background: var(--airline-card-primary) !important;
+    background-color: var(--airline-card-primary) !important;
+    color: var(--airline-card-primary-text) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-private-tag {
+    background: #8ace00 !important;
+    background-color: #8ace00 !important;
+    border-color: rgb(17 17 17 / 0.34) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-private-tag * {
+    color: #111111 !important;
+    stroke: currentColor !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-stay-coverage-date-header {
+    background: #8ace00 !important;
+    background-color: #8ace00 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-stay-coverage-column-header {
+    background: #79b900 !important;
+    background-color: #79b900 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] :is(.vaivia-stay-coverage-date-header, .vaivia-stay-coverage-column-header) * {
+    color: #111111 !important;
+    stroke: currentColor !important;
+  }
+
+  :root[data-vaivia-theme] .vaivia-stay-coverage-missing,
+  :root[data-vaivia-theme] .vaivia-stay-coverage-missing * {
+    color: #ffffff !important;
+    stroke: currentColor !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-settle-up-footer {
+    background: #79b900 !important;
+    background-color: #79b900 !important;
+    border-color: rgb(17 17 17 / 0.24) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-settle-up-cancel {
+    background: #8ace00 !important;
+    background-color: #8ace00 !important;
+    border-color: rgb(17 17 17 / 0.34) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-settle-up-cancel:hover {
+    background: #a7f000 !important;
+    background-color: #a7f000 !important;
   }
 
   :root[data-vaivia-theme="brat"] .vaivia-theme-selector {
@@ -1536,6 +1714,28 @@
     color: rgb(248 250 252);
   }
 
+  :root[data-vaivia-theme="brat"] select[id*="category"]:not([data-vaivia-native-select]) {
+    background-color: #8ace00 !important;
+    background-image:
+      linear-gradient(45deg, transparent 50%, #111111 50%),
+      linear-gradient(135deg, #111111 50%, transparent 50%),
+      linear-gradient(to right, rgb(17 17 17 / 0.24), rgb(17 17 17 / 0.24)) !important;
+    border-color: rgb(17 17 17 / 0.32) !important;
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+    color-scheme: light;
+  }
+
+  :root[data-vaivia-theme="brat"] select[id*="category"]:not([data-vaivia-native-select]):hover {
+    background-color: #a7f000 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] select[id*="category"]:not([data-vaivia-native-select]) option {
+    background: #8ace00 !important;
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+  }
+
   .vaivia-modal-panel :where(input, select, textarea),
   .vaivia-modal-confirm :where(input, select, textarea) {
     @apply border-white/15 bg-slate-950/90 text-white shadow-inner shadow-black/25 placeholder:text-slate-400/80 focus:border-lime-300/55 focus:ring-2 focus:ring-lime-300/15;
@@ -1858,6 +2058,119 @@
       0 12px 22px rgb(0 0 0 / 0.38),
       0 0 40px rgb(var(--vaivia-neon-rgb) / 0.38),
       inset 0 1px 0 rgb(255 255 255 / 0.42);
+  }
+
+  :root[data-vaivia-theme="brat"]
+    :is(
+      .vaivia-modal-panel,
+      .vaivia-modal-body,
+      .vaivia-modal-confirm,
+      .vaivia-modal-footer
+    ) {
+    background: #5f9200 !important;
+    background-color: #5f9200 !important;
+    border-color: rgb(17 17 17 / 0.22) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-modal-backdrop {
+    background: rgb(95 146 0 / 0.76) !important;
+    background-color: rgb(95 146 0 / 0.76) !important;
+  }
+
+  :root[data-vaivia-theme="brat"]
+    :is(.vaivia-modal-panel, .vaivia-modal-body, .vaivia-modal-confirm, .vaivia-modal-footer)
+    * {
+    color: #111111 !important;
+    border-color: rgb(17 17 17 / 0.2) !important;
+  }
+
+  :root[data-vaivia-theme="brat"]
+    :is(input, textarea, select):not([type="checkbox"]):not([type="radio"]):not(
+      [type="color"]
+    ):not([type="file"]):not([data-vaivia-native-select]) {
+    background-color: #79b900 !important;
+    border-color: rgb(17 17 17 / 0.28) !important;
+    color: #111111 !important;
+    -webkit-text-fill-color: #111111 !important;
+    color-scheme: light;
+  }
+
+  :root[data-vaivia-theme="brat"] select:not([data-vaivia-native-select]) option {
+    background: #79b900 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .pac-container {
+    background:
+      radial-gradient(circle at 85% 0%, rgb(255 255 255 / 0.16), transparent 28%),
+      linear-gradient(180deg, #6faa00, #5f9200) !important;
+    border-color: rgb(17 17 17 / 0.28) !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] :is(.pac-item, .pac-item-query, .pac-matched) {
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] :is(.pac-item:hover, .pac-item-selected) {
+    background: #a7f000 !important;
+    color: #111111 !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-quick-add-menu-panel {
+    background:
+      radial-gradient(circle at 88% 16%, rgb(255 255 255 / 0.16), transparent 36%),
+      linear-gradient(145deg, #6faa00, #5f9200) !important;
+    border-color: rgb(17 17 17 / 0.24) !important;
+  }
+
+  :root[data-vaivia-theme="brat"] .vaivia-quick-add-menu-panel::before {
+    background: rgb(95 146 0 / 0.45) !important;
+  }
+
+  /* Dark buttons are the sole exception to brat's green-surface rule. Keep
+     their labels and icons readable even when nested inside a green panel. */
+  :root[data-vaivia-theme="brat"]
+    :is(
+      button,
+      a,
+      [role="button"]
+    ):is(
+      [class^="bg-[#0"],
+      [class*=" bg-[#0"],
+      [class^="bg-[#1"],
+      [class*=" bg-[#1"],
+      [class^="bg-slate-800"],
+      [class*=" bg-slate-800"],
+      [class^="bg-slate-900"],
+      [class*=" bg-slate-900"],
+      [class^="bg-slate-950"],
+      [class*=" bg-slate-950"],
+      [class^="bg-black"],
+      [class*=" bg-black"]
+    ),
+  :root[data-vaivia-theme="brat"]
+    :is(
+      button,
+      a,
+      [role="button"]
+    ):is(
+      [class^="bg-[#0"],
+      [class*=" bg-[#0"],
+      [class^="bg-[#1"],
+      [class*=" bg-[#1"],
+      [class^="bg-slate-800"],
+      [class*=" bg-slate-800"],
+      [class^="bg-slate-900"],
+      [class*=" bg-slate-900"],
+      [class^="bg-slate-950"],
+      [class*=" bg-slate-950"],
+      [class^="bg-black"],
+      [class*=" bg-black"]
+    ) * {
+    color: #8ace00 !important;
+    stroke: currentColor !important;
   }
 
   .vaivia-mobile-quick-add-button {

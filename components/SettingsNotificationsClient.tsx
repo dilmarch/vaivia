@@ -8,7 +8,8 @@ import {
     savePushSubscription,
 } from "@/app/actions/notificationPreferences";
 import {
-    NOTIFICATION_TYPE_OPTIONS,
+    CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS,
+    getDefaultNotificationPreference,
     type NotificationPreference,
 } from "@/lib/notificationTypes";
 
@@ -56,21 +57,24 @@ export default function SettingsNotificationsClient({
 
         return {
             in_app: new Set<string>(
-                NOTIFICATION_TYPE_OPTIONS.filter(
+                CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
                     (option) =>
-                        preferencesByType.get(option.type)?.inAppEnabled ?? true
+                        preferencesByType.get(option.type)?.inAppEnabled ??
+                        getDefaultNotificationPreference(option.type).inAppEnabled
                 ).map((option) => option.type)
             ),
             push: new Set<string>(
-                NOTIFICATION_TYPE_OPTIONS.filter(
+                CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
                     (option) =>
-                        preferencesByType.get(option.type)?.pushEnabled ?? false
+                        preferencesByType.get(option.type)?.pushEnabled ??
+                        getDefaultNotificationPreference(option.type).pushEnabled
                 ).map((option) => option.type)
             ),
             email: new Set<string>(
-                NOTIFICATION_TYPE_OPTIONS.filter(
+                CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
                     (option) =>
-                        preferencesByType.get(option.type)?.emailEnabled ?? true
+                        preferencesByType.get(option.type)?.emailEnabled ??
+                        getDefaultNotificationPreference(option.type).emailEnabled
                 ).map((option) => option.type)
             ),
         };
@@ -93,7 +97,10 @@ export default function SettingsNotificationsClient({
     );
     const isConfigured = Boolean(vapidPublicKey);
     const allNotificationTypes = useMemo(
-        () => NOTIFICATION_TYPE_OPTIONS.map((option) => option.type),
+        () =>
+            CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.map(
+                (option) => option.type
+            ),
         []
     );
     const channelSelections = {
@@ -355,7 +362,7 @@ export default function SettingsNotificationsClient({
                 </div>
 
                 <div className="mt-5 space-y-3">
-                    {NOTIFICATION_TYPE_OPTIONS.map((option) => {
+                    {CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.map((option) => {
                         return (
                             <div
                                 key={option.type}

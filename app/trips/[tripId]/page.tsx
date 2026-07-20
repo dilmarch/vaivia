@@ -33,6 +33,11 @@ import {
     deleteOwnedTripCoverObject,
 } from "@/lib/tripCovers";
 import {
+    buildItineraryCoverPayloadFromForm,
+    cleanupReplacedItineraryCover,
+    deleteItineraryCoverObject,
+} from "@/lib/itineraryCovers";
+import {
     loadOnboardingProgress,
     markOnboardingStepCompleted,
 } from "@/lib/onboarding";
@@ -109,6 +114,7 @@ import {
 import type {
     BudgetParticipant,
     TripExpense,
+    TripExpenseSettlement,
     TripExpenseSplit,
 } from "@/lib/budget";
 import { calculateBudgetTotals } from "@/lib/budget";
@@ -170,6 +176,8 @@ type ItineraryItemPayload = {
     ticket_website?: string | null;
     location_website?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
     transportation_mode?: string | null;
     airline_name?: string | null;
     airline_code?: string | null;
@@ -447,6 +455,8 @@ const REMOVABLE_LEGACY_ITINERARY_COLUMNS = new Set([
     "ticket_website",
     "location_website",
     "cover_image_url",
+    "cover_image_source",
+    "cover_image_storage_path",
     "transportation_mode",
     "airline_name",
     "airline_code",
@@ -484,6 +494,8 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
         ticket_website,
         location_website,
         cover_image_url,
+        cover_image_source,
+        cover_image_storage_path,
         transportation_mode,
         airline_name,
         airline_code,
@@ -494,6 +506,8 @@ function removeOptionalLinkColumns(payload: ItineraryItemPayload) {
     void ticket_website;
     void location_website;
     void cover_image_url;
+    void cover_image_source;
+    void cover_image_storage_path;
     void transportation_mode;
     void airline_name;
     void airline_code;
@@ -1146,6 +1160,11 @@ function parseTagsInput(value: string) {
 
 function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
     const tags = parseTagsInput((formData.get("tags") as string) || "");
+    const requestedTitle = ((formData.get("title") as string) || "").trim();
+    const location = ((formData.get("location") as string) || "").trim();
+    const formattedAddress = (
+        (formData.get("formatted_address") as string) || ""
+    ).trim();
     const daysOfWeek = [
         ...parseFormStringArray(formData, "days_of_week"),
         ...parseFormStringArray(formData, "days_available"),
@@ -1162,7 +1181,7 @@ function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
     return {
         created_by: userId,
         trip_id: formData.get("trip_id") as string,
-        title: ((formData.get("title") as string) || "").trim(),
+        title: requestedTitle || location || formattedAddress || "Activity idea",
         description: ((formData.get("description") as string) || "").trim() || null,
         category: (formData.get("category") as string) || "Other",
         tags,
@@ -1176,9 +1195,8 @@ function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
         ],
         opens_at: (formData.get("opens_at") as string) || null,
         closes_at: (formData.get("closes_at") as string) || null,
-        location: ((formData.get("location") as string) || "").trim() || null,
-        formatted_address:
-            ((formData.get("formatted_address") as string) || "").trim() || null,
+        location: location || null,
+        formatted_address: formattedAddress || null,
         google_place_id:
             ((formData.get("google_place_id") as string) || "").trim() || null,
         location_lat: formData.get("location_lat")
@@ -1333,11 +1351,13 @@ function getExpenseSplitValueForMobile(split: TripExpenseSplit) {
 function getMobileSettlementSummaries({
     expenses,
     splits,
+    settlementPayments,
     participants,
     currency,
 }: {
     expenses: TripExpense[];
     splits: TripExpenseSplit[];
+    settlementPayments: TripExpenseSettlement[];
     participants: BudgetParticipant[];
     currency: string;
 }) {
@@ -1370,6 +1390,19 @@ function getMobileSettlementSummaries({
             Number(split.split_amount || 0) *
                 Number(expense?.exchange_rate_used || 1);
         balances.set(splitValue, (balances.get(splitValue) || 0) - amount);
+    });
+
+    settlementPayments.forEach((settlement) => {
+        balances.set(
+            settlement.paid_by_participant_value,
+            (balances.get(settlement.paid_by_participant_value) || 0) +
+                settlement.amount
+        );
+        balances.set(
+            settlement.received_by_participant_value,
+            (balances.get(settlement.received_by_participant_value) || 0) -
+                settlement.amount
+        );
     });
 
     const debtors = Array.from(balances.entries())
@@ -2051,10 +2084,11 @@ async function createItineraryItem(formData: FormData) {
     const timezoneSource = formData.get("timezone_source") as string;
     const ticketWebsite = formData.get("ticket_website") as string;
     const locationWebsite = formData.get("location_website") as string;
-    const coverImageUrl = formData.get("cover_image_url") as string;
     const url = ticketWebsite || (formData.get("url") as string);
     const endDate = formData.get("end_date") as string;
     const notes = formData.get("notes") as string;
+    const eventCost = formData.get("cost");
+    const eventCurrency = formData.get("currency");
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
@@ -2064,6 +2098,12 @@ async function createItineraryItem(formData: FormData) {
         tripId,
         explicitTripLegId: String(formData.get("trip_leg_id") || ""),
         itemDate,
+    });
+    const coverResult = await buildItineraryCoverPayloadFromForm({
+        supabase,
+        userId: user.id,
+        tripId,
+        formData,
     });
 
     const payload: ItineraryItemPayload = {
@@ -2087,7 +2127,7 @@ async function createItineraryItem(formData: FormData) {
         url: url || null,
         ticket_website: ticketWebsite || null,
         location_website: locationWebsite || null,
-        cover_image_url: coverImageUrl || null,
+        ...coverResult.payload,
         is_private: isPrivate,
         audience_mode: audience.audienceMode,
         trip_leg_id: tripLegId,
@@ -2101,6 +2141,12 @@ async function createItineraryItem(formData: FormData) {
     const error = insertResult.error;
 
     if (error) {
+        if (coverResult.uploadedStoragePath) {
+            await deleteItineraryCoverObject({
+                supabase,
+                storagePath: coverResult.uploadedStoragePath,
+            });
+        }
         console.error("Error creating itinerary item:", {
             authenticatedUserId: user.id,
             tripId,
@@ -2119,6 +2165,19 @@ async function createItineraryItem(formData: FormData) {
         typeof insertResult.data?.id === "string" ? insertResult.data.id : "";
 
     if (itineraryItemId) {
+        await syncAutoBudgetExpense({
+            supabase,
+            userId: user.id,
+            tripId,
+            sourceType: "itinerary_event",
+            sourceId: itineraryItemId,
+            amount: eventCost,
+            currency: eventCurrency,
+            expenseDate: itemDate,
+            description: title,
+            formData,
+        });
+
         const participantsError = await replaceTripItemParticipants({
             tripId,
             itemType: "itinerary",
@@ -2201,10 +2260,11 @@ async function updateItineraryItem(formData: FormData) {
     const timezoneSource = formData.get("timezone_source") as string;
     const ticketWebsite = formData.get("ticket_website") as string;
     const locationWebsite = formData.get("location_website") as string;
-    const coverImageUrl = formData.get("cover_image_url") as string;
     const url = ticketWebsite || (formData.get("url") as string);
     const endDate = formData.get("end_date") as string;
     const notes = formData.get("notes") as string;
+    const eventCost = formData.get("cost");
+    const eventCurrency = formData.get("currency");
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
@@ -2214,6 +2274,29 @@ async function updateItineraryItem(formData: FormData) {
         tripId,
         explicitTripLegId: String(formData.get("trip_leg_id") || ""),
         itemDate,
+    });
+    const { data: oldCover, error: oldCoverError } = await supabase
+        .from("itinerary_items")
+        .select("cover_image_source,cover_image_storage_path")
+        .eq("id", itemId)
+        .eq("trip_id", tripId)
+        .maybeSingle();
+
+    if (oldCoverError || !oldCover) {
+        console.error("Could not load itinerary cover before update:", {
+            message: oldCoverError?.message,
+            code: oldCoverError?.code,
+            tripId,
+            itemId,
+        });
+        throw new Error("Could not update itinerary item.");
+    }
+
+    const coverResult = await buildItineraryCoverPayloadFromForm({
+        supabase,
+        userId: user.id,
+        tripId,
+        formData,
     });
 
     const payload: ItineraryItemPayload = {
@@ -2236,7 +2319,7 @@ async function updateItineraryItem(formData: FormData) {
         url: url || null,
         ticket_website: ticketWebsite || null,
         location_website: locationWebsite || null,
-        cover_image_url: coverImageUrl || null,
+        ...coverResult.payload,
         is_private: isPrivate,
         audience_mode: audience.audienceMode,
         trip_leg_id: tripLegId,
@@ -2246,6 +2329,12 @@ async function updateItineraryItem(formData: FormData) {
     const error = await updateItineraryPayloadWithFallback(payload, itemId, tripId);
 
     if (error) {
+        if (coverResult.uploadedStoragePath) {
+            await deleteItineraryCoverObject({
+                supabase,
+                storagePath: coverResult.uploadedStoragePath,
+            });
+        }
         console.error("Error updating itinerary item:", {
             authenticatedUserId: user.id,
             tripId,
@@ -2260,6 +2349,25 @@ async function updateItineraryItem(formData: FormData) {
             }`
         );
     }
+
+    await cleanupReplacedItineraryCover({
+        supabase,
+        oldCover,
+        nextPayload: coverResult.payload,
+    });
+
+    await syncAutoBudgetExpense({
+        supabase,
+        userId: user.id,
+        tripId,
+        sourceType: "itinerary_event",
+        sourceId: itemId,
+        amount: eventCost,
+        currency: eventCurrency,
+        expenseDate: itemDate,
+        description: title,
+        formData,
+    });
 
     const participantsError = await replaceTripItemParticipants({
         tripId,
@@ -3613,6 +3721,55 @@ async function updateTripIdea(formData: FormData) {
     );
 }
 
+async function deleteTripIdea(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const tripId = String(formData.get("trip_id") || "");
+    const ideaId = String(formData.get("idea_id") || "");
+
+    if (!tripId || !ideaId) {
+        throw new Error("Could not delete trip idea");
+    }
+
+    const { data: deletedIdea, error } = await supabase
+        .from("trip_ideas")
+        .delete()
+        .eq("id", ideaId)
+        .eq("trip_id", tripId)
+        .select("id")
+        .maybeSingle();
+
+    if (error || !deletedIdea) {
+        console.error("Error deleting trip idea:", {
+            message: error?.message || "No matching idea was deleted",
+            code: error?.code,
+            details: error?.details,
+            hint: error?.hint,
+            tripId,
+            ideaId,
+            userId: user.id,
+        });
+        throw new Error("Could not delete trip idea");
+    }
+
+    redirect(
+        getTransportationReturnPath(
+            formData,
+            tripId,
+            `/trips/${tripId}?tab=ideas`
+        )
+    );
+}
+
 async function toggleTripIdeaAttended(formData: FormData) {
     "use server";
 
@@ -3912,7 +4069,8 @@ async function TripDetailContent({
     const initialQuickAddAction =
         resolvedSearchParams.add === "transportation" ||
         resolvedSearchParams.add === "scheduled" ||
-        resolvedSearchParams.add === "idea"
+        resolvedSearchParams.add === "idea" ||
+        resolvedSearchParams.add === "expense"
             ? resolvedSearchParams.add
             : null;
     const addedJourneyScenarioId =
@@ -4543,7 +4701,7 @@ async function TripDetailContent({
     const { data: accommodationRows, error: accommodationsError } = await supabase
         .from("trip_accommodations")
         .select(
-            "id,hotel_name,city,region,country,address,check_in_date,check_out_date,status"
+            "id,hotel_name,city,region,country,address,check_in_date,check_in_time_start,check_out_date,check_out_time,status"
         )
         .eq("trip_id", tripId)
         .order("check_in_date", { ascending: true });
@@ -5080,6 +5238,38 @@ async function TripDetailContent({
         return a.title.localeCompare(b.title);
     });
 
+    const tripMemberValueByUserId = new Map(
+        tripMemberTravelerOptions
+            .filter((traveler) => traveler.user_id && traveler.trip_member_id)
+            .map((traveler) => [
+                traveler.user_id as string,
+                `member:${traveler.trip_member_id as string}`,
+            ])
+    );
+    const normalizeExpenseAudienceValue = (value: string) => {
+        if (!value.startsWith("member_user:")) return value;
+        return tripMemberValueByUserId.get(value.slice("member_user:".length)) || value;
+    };
+    const itineraryExpenseByItemId = new Map(
+        mobileExpenseData.expenses
+            .filter(
+                (expense) =>
+                    expense.source_type === "itinerary_event" &&
+                    expense.itinerary_event_id
+            )
+            .map((expense) => [expense.itinerary_event_id as string, expense])
+    );
+    const expenseSplitValuesByExpenseId = new Map<string, string[]>();
+    mobileExpenseData.splits.forEach((split) => {
+        const value = normalizeExpenseAudienceValue(
+            getExpenseSplitValueForMobile(split)
+        );
+        if (!value) return;
+        const current = expenseSplitValuesByExpenseId.get(split.expense_id) || [];
+        current.push(value);
+        expenseSplitValuesByExpenseId.set(split.expense_id, current);
+    });
+
     const calendarItems = [
         ...(((itineraryItems || []) as ItineraryCalendarItem[]).map((item) => {
             const itemParticipants =
@@ -5093,6 +5283,8 @@ async function TripDetailContent({
                       : itemParticipants.length > 0
                         ? itemParticipants
                         : everyoneAssignedTravelers;
+
+            const linkedExpense = itineraryExpenseByItemId.get(item.id);
 
             return {
                 ...item,
@@ -5113,6 +5305,18 @@ async function TripDetailContent({
                 category_owner_id:
                     categoriesById.get(String(item.category_id || ""))?.user_id || null,
                 source_table: "itinerary_items" as const,
+                linked_expense: linkedExpense
+                    ? {
+                          amount: linkedExpense.amount,
+                          currency: linkedExpense.currency,
+                          splitMethod: linkedExpense.split_method,
+                          payerValue: normalizeExpenseAudienceValue(
+                              getExpensePayerValueForMobile(linkedExpense)
+                          ),
+                          participantValues:
+                              expenseSplitValuesByExpenseId.get(linkedExpense.id) || [],
+                      }
+                    : null,
             };
         })),
         ...((transportationItems || []) as Record<string, unknown>[]).map((item) => {
@@ -5264,6 +5468,7 @@ async function TripDetailContent({
     const mobileSettlementSummaries = getMobileSettlementSummaries({
         expenses: mobileExpenseData.expenses,
         splits: mobileExpenseData.splits,
+        settlementPayments: mobileExpenseData.settlements,
         participants: mobileBudgetParticipants,
         currency: mobileBudgetCurrency,
     });
@@ -5799,7 +6004,7 @@ async function TripDetailContent({
                                     mobileExpenseTotal,
                                     mobileBudgetCurrency
                                 )} tracked so far.`}
-                                href={getTripHref(trip, "/budget/expenses")}
+                                href={getTripHref(trip, "?add=expense")}
                                 icon={ReceiptText}
                                 buttonLabel="Add expense"
                             />
@@ -5837,6 +6042,7 @@ async function TripDetailContent({
                         tripLegMemberOptions={tripLegMemberOptions}
                         ideas={ideas}
                         tripStartDate={displayTripStartDate}
+                        tripEndDate={displayTripEndDate}
                         tripDestination={trip.destination}
                         deleteItineraryAction={deleteItineraryItem}
                         upsertTripLegAction={upsertTripLeg}
@@ -5849,6 +6055,7 @@ async function TripDetailContent({
                         undoJourneyTransportationAction={undoJourneyTransportationItem}
                         createIdeaAction={createTripIdea}
                         updateIdeaAction={updateTripIdea}
+                        deleteIdeaAction={deleteTripIdea}
                         moveItemAction={moveTripItem}
                         moveTargetTrips={moveTargetTrips}
                         toggleIdeaReactionAction={toggleTripIdeaReaction}

@@ -1,10 +1,21 @@
 "use client";
 
-import { AlertTriangle, Lock, Plus, X } from "lucide-react";
+import {
+    AlertTriangle,
+    ImagePlus,
+    Lock,
+    Plus,
+    UploadCloud,
+    X,
+} from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
+import { COMMON_CURRENCIES, type SplitMethod } from "@/lib/budget";
 import {
     FALLBACK_CATEGORY_LABEL,
     type UserCategory,
@@ -30,6 +41,8 @@ type InitialItem = {
     ticket_website?: string | null;
     location_website?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
     notes?: string | null;
     google_place_id?: string | null;
     location_lat?: number | null;
@@ -38,6 +51,13 @@ type InitialItem = {
     is_private?: boolean | null;
     audience_mode?: TripAudienceMode | null;
     audience_selected_options?: TripAudienceOption[];
+    linked_expense?: {
+        amount: number;
+        currency: string;
+        splitMethod: SplitMethod;
+        payerValue?: string | null;
+        participantValues?: string[];
+    } | null;
 };
 
 type ItineraryItemFormProps = {
@@ -54,6 +74,7 @@ type ItineraryItemFormProps = {
     categories?: UserCategory[];
     audienceOptions?: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
+    itineraryTimezoneHints?: Record<string, string>;
 };
 
 type TimezoneOption = {
@@ -69,6 +90,7 @@ type TimezoneOptionGroup = {
 };
 
 const DEFAULT_TIMEZONE = "America/St_Johns";
+const EMPTY_ITINERARY_TIMEZONE_HINTS: Record<string, string> = {};
 
 const FALLBACK_TIMEZONES = [
     DEFAULT_TIMEZONE,
@@ -233,12 +255,16 @@ export default function ItineraryItemForm({
     categories = [],
     audienceOptions = [],
     currentUserTripMemberId = null,
+    itineraryTimezoneHints = EMPTY_ITINERARY_TIMEZONE_HINTS,
 }: ItineraryItemFormProps) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
     const isEditMode = Boolean(initialItem) && !duplicateMode;
     const isClosableEditModal = isEditMode && Boolean(onClose);
     const formRef = useRef<HTMLFormElement | null>(null);
+    const coverFileInputRef = useRef<HTMLInputElement | null>(null);
+    const coverObjectUrlRef = useRef<string | null>(null);
+    const manualTimezoneDateRef = useRef<string | null>(null);
     const returnTo = useMemo(() => {
         const query = searchParams.toString();
         return `${pathname || ""}${query ? `?${query}` : ""}`;
@@ -250,6 +276,14 @@ export default function ItineraryItemForm({
     const [endTime, setEndTime] = useState(cleanTime(initialItem?.end_time));
     const [endsNextDay, setEndsNextDay] = useState(Boolean(initialItem?.end_date));
     const [endDate, setEndDate] = useState(initialItem?.end_date || "");
+    const [costAmount, setCostAmount] = useState(
+        initialItem?.linked_expense?.amount == null
+            ? ""
+            : String(initialItem.linked_expense.amount)
+    );
+    const [costCurrency, setCostCurrency] = useState(
+        initialItem?.linked_expense?.currency || "CAD"
+    );
 
     const [timezone, setTimezone] = useState(
         initialItem?.timezone || DEFAULT_TIMEZONE
@@ -285,6 +319,16 @@ export default function ItineraryItemForm({
     const [coverImageUrl, setCoverImageUrl] = useState(
         initialItem?.cover_image_url || ""
     );
+    const [coverSource, setCoverSource] = useState<"upload" | "external" | "">(
+        initialItem?.cover_image_source === "upload"
+            ? "upload"
+            : initialItem?.cover_image_url
+              ? "external"
+              : ""
+    );
+    const [uploadedCoverPreviewUrl, setUploadedCoverPreviewUrl] = useState("");
+    const [coverRemoveRequested, setCoverRemoveRequested] = useState(false);
+    const [coverUploadError, setCoverUploadError] = useState("");
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(isEditMode || duplicateMode);
     const [isModalClosing, setIsModalClosing] = useState(false);
@@ -314,6 +358,51 @@ export default function ItineraryItemForm({
 
     const endTimeIsBeforeStartTime =
         startTime && endTime && endTime < startTime && !endsNextDay;
+    const coverPreviewUrl =
+        coverSource === "upload" ? uploadedCoverPreviewUrl : coverImageUrl;
+
+    function clearCoverObjectUrl() {
+        if (!coverObjectUrlRef.current) return;
+        URL.revokeObjectURL(coverObjectUrlRef.current);
+        coverObjectUrlRef.current = null;
+    }
+
+    function handleCoverUpload(file: File | null) {
+        setCoverUploadError("");
+        if (!file) return;
+
+        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+            setCoverUploadError("Upload a JPEG, PNG, or WebP image.");
+            if (coverFileInputRef.current) coverFileInputRef.current.value = "";
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+            setCoverUploadError("Cover photos must be 10 MB or smaller.");
+            if (coverFileInputRef.current) coverFileInputRef.current.value = "";
+            return;
+        }
+
+        clearCoverObjectUrl();
+        const objectUrl = URL.createObjectURL(file);
+        coverObjectUrlRef.current = objectUrl;
+        setUploadedCoverPreviewUrl(objectUrl);
+        setCoverImageUrl("");
+        setCoverSource("upload");
+        setCoverRemoveRequested(false);
+        setHasUnsavedChanges(true);
+    }
+
+    function removeCoverPhoto() {
+        clearCoverObjectUrl();
+        if (coverFileInputRef.current) coverFileInputRef.current.value = "";
+        setUploadedCoverPreviewUrl("");
+        setCoverImageUrl("");
+        setCoverSource("");
+        setCoverRemoveRequested(true);
+        setCoverUploadError("");
+        setHasUnsavedChanges(true);
+    }
 
     function resetFormState() {
         formRef.current?.reset();
@@ -322,8 +411,15 @@ export default function ItineraryItemForm({
         setEndTime(cleanTime(initialItem?.end_time));
         setEndsNextDay(Boolean(initialItem?.end_date));
         setEndDate(initialItem?.end_date || "");
+        setCostAmount(
+            initialItem?.linked_expense?.amount == null
+                ? ""
+                : String(initialItem.linked_expense.amount)
+        );
+        setCostCurrency(initialItem?.linked_expense?.currency || "CAD");
         setTimezone(initialItem?.timezone || DEFAULT_TIMEZONE);
         setTimezoneSource(initialItem?.timezone_source || "manual");
+        manualTimezoneDateRef.current = null;
         setTimezoneError("");
         setLocationName(initialItem?.location || "");
         setFormattedAddress(initialItem?.formatted_address || "");
@@ -333,6 +429,17 @@ export default function ItineraryItemForm({
         setTicketWebsite(initialItem?.ticket_website || initialItem?.url || "");
         setLocationWebsite(initialItem?.location_website || "");
         setCoverImageUrl(initialItem?.cover_image_url || "");
+        clearCoverObjectUrl();
+        setUploadedCoverPreviewUrl("");
+        setCoverSource(
+            initialItem?.cover_image_source === "upload"
+                ? "upload"
+                : initialItem?.cover_image_url
+                  ? "external"
+                  : ""
+        );
+        setCoverRemoveRequested(false);
+        setCoverUploadError("");
         setHasUnsavedChanges(false);
     }
 
@@ -373,7 +480,11 @@ export default function ItineraryItemForm({
         setLocationLat("");
         setLocationLng("");
         setLocationWebsite("");
-        setCoverImageUrl("");
+        if (coverSource !== "upload") {
+            setCoverImageUrl("");
+            setCoverSource("");
+            setCoverRemoveRequested(true);
+        }
         setHasUnsavedChanges(true);
     }
 
@@ -490,8 +601,10 @@ export default function ItineraryItemForm({
 
             setLocationWebsite(website);
 
-            if (coverPhotoUrl) {
+            if (coverPhotoUrl && coverSource !== "upload") {
                 setCoverImageUrl(coverPhotoUrl);
+                setCoverSource("external");
+                setCoverRemoveRequested(false);
             }
 
             if (latString && lngString) {
@@ -502,7 +615,42 @@ export default function ItineraryItemForm({
         return () => {
             listener.remove();
         };
-    }, [detectTimezoneFromLocation, isGoogleReady, isModalOpen]);
+    }, [coverSource, detectTimezoneFromLocation, isGoogleReady, isModalOpen]);
+
+    useEffect(() => {
+        if (
+            !itemId ||
+            initialItem?.cover_image_source !== "upload" ||
+            !initialItem.cover_image_storage_path
+        ) {
+            return;
+        }
+
+        let isMounted = true;
+
+        fetch(`/api/trips/${tripId}/itinerary/${itemId}/cover`, {
+            cache: "no-store",
+        })
+            .then(async (response) => {
+                if (!response.ok) return null;
+                return (await response.json()) as { signedUrl?: string | null };
+            })
+            .then((payload) => {
+                if (isMounted && payload?.signedUrl) {
+                    setUploadedCoverPreviewUrl(payload.signedUrl);
+                }
+            })
+            .catch(() => undefined);
+
+        return () => {
+            isMounted = false;
+        };
+    }, [
+        initialItem?.cover_image_source,
+        initialItem?.cover_image_storage_path,
+        itemId,
+        tripId,
+    ]);
 
     useEffect(() => {
         if (endsNextDay && startDate && !endDate) {
@@ -523,9 +671,35 @@ export default function ItineraryItemForm({
     }, [startDate, timezone]);
 
     useEffect(() => {
+        if (
+            !isModalOpen ||
+            isEditMode ||
+            duplicateMode ||
+            !startDate ||
+            manualTimezoneDateRef.current === startDate
+        ) {
+            return;
+        }
+
+        const itineraryTimezone = itineraryTimezoneHints[startDate];
+        if (!itineraryTimezone) return;
+
+        setTimezone(itineraryTimezone);
+        setTimezoneSource("itinerary");
+        setTimezoneError("");
+    }, [
+        duplicateMode,
+        isEditMode,
+        isModalOpen,
+        itineraryTimezoneHints,
+        startDate,
+    ]);
+
+    useEffect(() => {
         if (isEditMode || openSignal === 0) return;
         if (previousOpenSignalRef.current === openSignal) return;
         previousOpenSignalRef.current = openSignal;
+        manualTimezoneDateRef.current = null;
         setStartDate(defaultDate);
         setEndDate("");
         setIsModalClosing(false);
@@ -536,6 +710,9 @@ export default function ItineraryItemForm({
         return () => {
             if (closeTimerRef.current) {
                 clearTimeout(closeTimerRef.current);
+            }
+            if (coverObjectUrlRef.current) {
+                URL.revokeObjectURL(coverObjectUrlRef.current);
             }
         };
     }, []);
@@ -670,17 +847,19 @@ export default function ItineraryItemForm({
                         >
                             {endsNextDay ? "Start date" : "Date"}
                         </label>
-                        <input
+                        <DateInput
                             id="itineraryItemDate"
                             name="item_date"
-                            type="date"
                             required
                             autoComplete="off"
                             data-form-type="other"
                             data-lpignore="true"
                             data-1p-ignore="true"
                             value={startDate}
-                            onChange={(event) => setStartDate(event.target.value)}
+                            onChange={(event) => {
+                                manualTimezoneDateRef.current = null;
+                                setStartDate(event.target.value);
+                            }}
                             className={FIELD_CLASS}
                         />
                     </div>
@@ -693,10 +872,9 @@ export default function ItineraryItemForm({
                             >
                                 End date
                             </label>
-                            <input
+                            <DateInput
                                 id="itineraryItemEndDate"
                                 name="end_date"
-                                type="date"
                                 required
                                 autoComplete="off"
                                 data-form-type="other"
@@ -717,10 +895,9 @@ export default function ItineraryItemForm({
                             >
                                 Start time, optional
                             </label>
-                            <input
+                            <TimeInput
                                 id="start_time"
                                 name="start_time"
-                                type="time"
                                 value={startTime}
                                 onChange={(event) => setStartTime(event.target.value)}
                                 className={FIELD_CLASS}
@@ -734,10 +911,9 @@ export default function ItineraryItemForm({
                             >
                                 End time, optional
                             </label>
-                            <input
+                            <TimeInput
                                 id="end_time"
                                 name="end_time"
-                                type="time"
                                 value={endTime}
                                 onChange={(event) => setEndTime(event.target.value)}
                                 className={FIELD_CLASS}
@@ -838,6 +1014,78 @@ export default function ItineraryItemForm({
                         privateSectionId="itinerary-private-section"
                     />
 
+                    <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4">
+                        <div>
+                            <h3 className="text-sm font-black uppercase tracking-wide text-slate-200">
+                                Expenses
+                            </h3>
+                            <p className={HELP_TEXT_CLASS}>
+                                Add a cost now to link this event directly to the
+                                trip expense tracker.
+                            </p>
+                        </div>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_10rem]">
+                            <div>
+                                <label htmlFor="itineraryItemCost" className={LABEL_CLASS}>
+                                    Amount, optional
+                                </label>
+                                <input
+                                    id="itineraryItemCost"
+                                    name="cost"
+                                    inputMode="decimal"
+                                    min="0"
+                                    value={costAmount}
+                                    onChange={(event) =>
+                                        setCostAmount(event.target.value)
+                                    }
+                                    placeholder="0.00"
+                                    className={FIELD_CLASS}
+                                />
+                            </div>
+                            <div>
+                                <label
+                                    htmlFor="itineraryItemCurrency"
+                                    className={LABEL_CLASS}
+                                >
+                                    Currency
+                                </label>
+                                <select
+                                    id="itineraryItemCurrency"
+                                    name="currency"
+                                    value={costCurrency}
+                                    onChange={(event) =>
+                                        setCostCurrency(event.target.value)
+                                    }
+                                    className={FIELD_CLASS}
+                                >
+                                    {COMMON_CURRENCIES.map((currency) => (
+                                        <option key={currency} value={currency}>
+                                            {currency}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <CostAllocationFields
+                                amount={costAmount}
+                                participants={audienceOptions}
+                                currentUserTripMemberId={currentUserTripMemberId}
+                                initialSplitMethod={
+                                    initialItem?.linked_expense?.splitMethod ||
+                                    "just_me"
+                                }
+                                initialSelectedParticipantValues={
+                                    initialItem?.linked_expense
+                                        ?.participantValues || []
+                                }
+                                initialPayerValue={
+                                    initialItem?.linked_expense?.payerValue || null
+                                }
+                            />
+                        </div>
+                    </section>
+
                     <label
                         id="itinerary-private-section"
                         className="flex scroll-mt-24 items-start gap-3 rounded-xl border border-white/10 bg-white/[0.06] p-4 text-sm text-slate-300 shadow-inner shadow-black/10"
@@ -898,7 +1146,12 @@ export default function ItineraryItemForm({
                         <input
                             type="hidden"
                             name="cover_image_url"
-                            value={coverImageUrl}
+                            value={coverSource === "external" ? coverImageUrl : ""}
+                        />
+                        <input
+                            type="hidden"
+                            name="cover_remove"
+                            value={coverRemoveRequested ? "true" : "false"}
                         />
 
                         {(locationName || formattedAddress || googlePlaceId) && (
@@ -945,6 +1198,7 @@ export default function ItineraryItemForm({
                             onChange={(event) => {
                                 setTimezone(event.target.value);
                                 setTimezoneSource("manual");
+                                manualTimezoneDateRef.current = startDate || null;
                             }}
                             className={FIELD_CLASS}
                         >
@@ -969,6 +1223,14 @@ export default function ItineraryItemForm({
                             {!isDetectingTimezone && timezoneSource === "auto" && (
                                 <p>Time zone auto-detected from the selected location.</p>
                             )}
+
+                            {!isDetectingTimezone &&
+                                timezoneSource === "itinerary" && (
+                                    <p>
+                                        Time zone matched to this date from your
+                                        itinerary. You can override it.
+                                    </p>
+                                )}
 
                             {!isDetectingTimezone && timezoneSource === "manual" && (
                                 <p>You can manually override the time zone.</p>
@@ -1018,6 +1280,82 @@ export default function ItineraryItemForm({
                             <input type="hidden" name="url" value={ticketWebsite} />
                         </div>
                     </div>
+
+                    <section className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4">
+                        <div className="flex items-center gap-2">
+                            <ImagePlus
+                                className="h-4 w-4 text-lime-200"
+                                aria-hidden="true"
+                            />
+                            <h3 className="text-sm font-black uppercase tracking-wide text-slate-200">
+                                Cover photo, optional
+                            </h3>
+                        </div>
+
+                        {coverPreviewUrl ? (
+                            <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-slate-950">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={coverPreviewUrl}
+                                    alt="Event cover preview"
+                                    className="aspect-video w-full object-cover"
+                                />
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => coverFileInputRef.current?.click()}
+                                className="mt-3 flex aspect-video w-full items-center justify-center rounded-xl border border-dashed border-white/15 bg-slate-950/60 text-sm font-bold text-slate-400 transition hover:border-lime-300/40 hover:text-lime-100"
+                            >
+                                Add a custom cover photo
+                            </button>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => coverFileInputRef.current?.click()}
+                                className={SUBTLE_BUTTON_CLASS}
+                            >
+                                <span className="inline-flex items-center gap-2">
+                                    <UploadCloud
+                                        className="h-4 w-4"
+                                        aria-hidden="true"
+                                    />
+                                    {coverPreviewUrl ? "Change photo" : "Upload photo"}
+                                </span>
+                            </button>
+                            {coverPreviewUrl ? (
+                                <button
+                                    type="button"
+                                    onClick={removeCoverPhoto}
+                                    className="rounded-xl border border-red-400/30 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-100 transition hover:bg-red-500/20"
+                                >
+                                    Remove photo
+                                </button>
+                            ) : null}
+                        </div>
+
+                        <input
+                            ref={coverFileInputRef}
+                            name="cover_upload_file"
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="sr-only"
+                            onChange={(event) =>
+                                handleCoverUpload(event.target.files?.[0] || null)
+                            }
+                        />
+                        <p className={HELP_TEXT_CLASS}>
+                            JPEG, PNG, or WebP. Maximum 10 MB. A custom upload
+                            replaces the automatic venue or website image.
+                        </p>
+                        {coverUploadError ? (
+                            <p className="mt-2 text-xs font-bold text-red-200">
+                                {coverUploadError}
+                            </p>
+                        ) : null}
+                    </section>
 
                     <div>
                         <label

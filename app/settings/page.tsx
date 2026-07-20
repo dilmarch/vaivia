@@ -720,6 +720,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                 ? "financial"
                 : params.section === "time-date"
                   ? "time-date"
+                  : params.section === "language"
+                    ? "language"
                   : params.section === "security"
                     ? "security"
                     : params.section === "notifications" ||
@@ -869,6 +871,16 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             }`}
                         >
                             Time/date
+                        </Link>
+                        <Link
+                            href="/settings?section=language"
+                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
+                                activeSection === "language"
+                                    ? "bg-lime-300 text-slate-950"
+                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                            }`}
+                        >
+                            Language
                         </Link>
                         <Link
                             href="/settings?section=security"
@@ -1138,6 +1150,20 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                 initialUnit={countdownDisplayMode}
                                 updateAction={updateCountdownDisplayMode}
                             />
+                        </div>
+                    ) : activeSection === "language" ? (
+                        <div className="space-y-6">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
+                                    Language
+                                </p>
+                                <h1 className="mt-2 text-3xl font-black">
+                                    Language
+                                </h1>
+                                <p className="mt-2 text-slate-400">
+                                    Coming soon
+                                </p>
+                            </div>
                         </div>
                     ) : activeSection === "security" ? (
                         <div className="space-y-6">

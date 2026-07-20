@@ -100,6 +100,7 @@ export type Database = {
           conversation_id: string
           created_at: string
           id: string
+          metadata: Json
           model: string | null
           role: string
           status: string
@@ -111,6 +112,7 @@ export type Database = {
           conversation_id: string
           created_at?: string
           id?: string
+          metadata?: Json
           model?: string | null
           role: string
           status?: string
@@ -122,6 +124,7 @@ export type Database = {
           conversation_id?: string
           created_at?: string
           id?: string
+          metadata?: Json
           model?: string | null
           role?: string
           status?: string
@@ -152,6 +155,8 @@ export type Database = {
           conversation_id: string | null
           error_code: string | null
           event_type: string
+          external_place_results: number
+          external_tool_calls: number
           id: string
           model: string
           occurred_at: string
@@ -169,6 +174,8 @@ export type Database = {
           conversation_id?: string | null
           error_code?: string | null
           event_type?: string
+          external_place_results?: number
+          external_tool_calls?: number
           id?: string
           model: string
           occurred_at?: string
@@ -186,6 +193,8 @@ export type Database = {
           conversation_id?: string | null
           error_code?: string | null
           event_type?: string
+          external_place_results?: number
+          external_tool_calls?: number
           id?: string
           model?: string
           occurred_at?: string
@@ -1823,6 +1832,50 @@ export type Database = {
           },
           {
             foreignKeyName: "trip_expense_receipts_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      trip_expense_settlements: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string
+          id: string
+          paid_by_participant_value: string
+          received_by_participant_value: string
+          reporting_currency: string
+          settled_on: string
+          trip_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          paid_by_participant_value: string
+          received_by_participant_value: string
+          reporting_currency: string
+          settled_on?: string
+          trip_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string
+          id?: string
+          paid_by_participant_value?: string
+          received_by_participant_value?: string
+          reporting_currency?: string
+          settled_on?: string
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trip_expense_settlements_trip_id_fkey"
             columns: ["trip_id"]
             isOneToOne: false
             referencedRelation: "trips"

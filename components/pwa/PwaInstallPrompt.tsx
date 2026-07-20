@@ -1,9 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import Link from "next/link";
-import { Download, ExternalLink, Share, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Share, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useStandaloneMode } from "@/hooks/useStandaloneMode";
 
 type BeforeInstallPromptChoice = {
@@ -60,12 +59,10 @@ export default function PwaInstallPrompt() {
     const [installEvent, setInstallEvent] =
         useState<BeforeInstallPromptEvent | null>(null);
     const [isVisible, setIsVisible] = useState(false);
-    const [showOpenAppPill, setShowOpenAppPill] = useState(false);
     const [showIosSteps, setShowIosSteps] = useState(false);
     const [isDismissed, setIsDismissed] = useState(false);
     const supportsIosInstructions = useMemo(isIosSafari, []);
     const isAuthRoute = pathname?.startsWith("/auth");
-    const initialPathnameRef = useRef(pathname);
 
     useEffect(() => {
         function handleBeforeInstallPrompt(event: Event) {
@@ -76,7 +73,6 @@ export default function PwaInstallPrompt() {
         function handleInstalled() {
             window.localStorage.setItem(INSTALLED_KEY, "true");
             setIsVisible(false);
-            setShowOpenAppPill(false);
             setInstallEvent(null);
             trackPwaEvent("app_installed");
         }
@@ -133,22 +129,6 @@ export default function PwaInstallPrompt() {
         supportsIosInstructions,
     ]);
 
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        if (isStandalone || isAuthRoute) return;
-        if (pathname !== initialPathnameRef.current) {
-            setShowOpenAppPill(false);
-            return;
-        }
-        if (!hasKnownInstall()) return;
-
-        const timer = window.setTimeout(() => {
-            setShowOpenAppPill(true);
-        }, 900);
-
-        return () => window.clearTimeout(timer);
-    }, [isAuthRoute, isStandalone, pathname]);
-
     function dismissPrompt() {
         window.localStorage.setItem(DISMISS_KEY, String(Date.now()));
         setIsVisible(false);
@@ -176,21 +156,6 @@ export default function PwaInstallPrompt() {
         }
         setInstallEvent(null);
         setIsVisible(false);
-    }
-
-    if (showOpenAppPill && !isStandalone && !isAuthRoute) {
-        return (
-            <div className="fixed bottom-[calc(6.35rem+var(--safe-area-bottom))] left-1/2 z-[70] -translate-x-1/2 md:bottom-6 md:left-auto md:right-6 md:translate-x-0">
-                <Link
-                    href="/"
-                    onClick={() => setShowOpenAppPill(false)}
-                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-full border border-white/15 bg-slate-950/85 px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-lime-100 shadow-[0_18px_44px_rgba(0,0,0,0.42)] backdrop-blur-xl transition hover:border-lime-300/35 hover:bg-slate-900"
-                >
-                    <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                    Go to app
-                </Link>
-            </div>
-        );
     }
 
     if (!isVisible || isStandalone || isAuthRoute) return null;

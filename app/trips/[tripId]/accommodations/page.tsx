@@ -7,7 +7,15 @@ import AccommodationAreaMaps, {
     type AccommodationAreaMapCity,
     type AccommodationAreaMapPlace,
 } from "@/components/accommodations/AccommodationAreaMaps";
+import AccommodationCoverageTimeline, {
+    type AccommodationCoverageLeg,
+    type AccommodationCoverageParticipant,
+    type AccommodationCoverageTraveler,
+} from "@/components/accommodations/AccommodationCoverageTimeline";
 import AccommodationManager from "@/components/accommodations/AccommodationManager";
+import AccommodationPageTabs, {
+    type AccommodationPageTab,
+} from "@/components/accommodations/AccommodationPageTabs";
 import TripCountdown from "@/components/TripCountdown";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripHeaderCover from "@/components/TripHeaderCover";
@@ -31,6 +39,10 @@ import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
 import {
+    getMapCoordinate,
+    hasMappableCoordinatePair,
+} from "@/lib/mapCoordinates";
+import {
     buildTripCoverPayloadFromForm,
     cleanupReplacedTripCover,
     deleteOwnedTripCoverObject,
@@ -51,6 +63,9 @@ import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
 type PageProps = {
     params: Promise<{
         tripId: string;
+    }>;
+    searchParams: Promise<{
+        tab?: string | string[];
     }>;
 };
 
@@ -233,15 +248,6 @@ function getAreaMapKey(value?: string | null) {
         .replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "")
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "");
-}
-
-function getCoordinate(value: unknown) {
-    const numberValue = typeof value === "number" ? value : Number(value);
-    return Number.isFinite(numberValue) ? numberValue : null;
-}
-
-function isMappableCoordinate(latitude: unknown, longitude: unknown) {
-    return getCoordinate(latitude) !== null && getCoordinate(longitude) !== null;
 }
 
 function buildGoogleMapsUrl(
@@ -569,7 +575,7 @@ async function updateAccommodation(formData: FormData) {
     const validationErrors = validateAccommodationPayload(payload);
 
     if (validationErrors.length > 0) {
-        throw new Error(validationErrors.join(" "));
+        return { ok: false as const, error: validationErrors.join(" ") };
     }
 
     const { trip_id: _tripId, ...updatePayload } = payload;
@@ -591,25 +597,42 @@ async function updateAccommodation(formData: FormData) {
             accommodationId,
             userId: user.id,
         });
-        throw new Error(
-            `Could not update accommodation: ${getAccommodationErrorMessage(
+        return {
+            ok: false as const,
+            error: `Could not update accommodation: ${getAccommodationErrorMessage(
                 error.message
-            )}`
-        );
+            )}`,
+        };
     }
 
-    await syncAutoBudgetExpense({
-        supabase,
-        userId: user.id,
-        tripId,
-        sourceType: "accommodation",
-        sourceId: accommodationId,
-        amount: payload.cost,
-        currency: payload.currency,
-        expenseDate: payload.check_in_date,
-        description: payload.hotel_name,
-        formData,
-    });
+    try {
+        await syncAutoBudgetExpense({
+            supabase,
+            userId: user.id,
+            tripId,
+            sourceType: "accommodation",
+            sourceId: accommodationId,
+            amount: payload.cost,
+            currency: payload.currency,
+            expenseDate: payload.check_in_date,
+            description: payload.hotel_name,
+            formData,
+        });
+    } catch (budgetError) {
+        console.error("Accommodation updated without budget sync:", {
+            message:
+                budgetError instanceof Error
+                    ? budgetError.message
+                    : String(budgetError),
+            tripId,
+            accommodationId,
+            userId: user.id,
+        });
+        return {
+            ok: false as const,
+            error: "Accommodation saved, but its budget entry could not be updated.",
+        };
+    }
 
     const participantsError = await replaceTripItemParticipantsFromForm({
         tripId,
@@ -627,14 +650,14 @@ async function updateAccommodation(formData: FormData) {
             tripId,
             accommodationId,
         });
-        throw new Error(
-            `Could not update accommodation participants: ${
-                participantsError.message ?? "Unknown Supabase error"
-            }`
-        );
+        return {
+            ok: false as const,
+            error: "Accommodation saved, but its traveler selection could not be updated.",
+        };
     }
 
     revalidatePath(`/trips/${tripId}/accommodations`);
+    return { ok: true as const };
 }
 
 async function deleteAccommodation(formData: FormData) {
@@ -675,8 +698,16 @@ async function deleteAccommodation(formData: FormData) {
     revalidatePath(`/trips/${tripId}/accommodations`);
 }
 
-export default async function TripAccommodationsPage({ params }: PageProps) {
-    const { tripId: tripRouteParam } = await params;
+export default async function TripAccommodationsPage({
+    params,
+    searchParams,
+}: PageProps) {
+    const [{ tripId: tripRouteParam }, resolvedSearchParams] = await Promise.all([
+        params,
+        searchParams,
+    ]);
+    const activeAccommodationTab: AccommodationPageTab =
+        resolvedSearchParams.tab === "planning" ? "planning" : "stays";
     const supabase = await createClient();
     const {
         data: { user },
@@ -691,7 +722,12 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
     }
 
     if (resolvedTrip.shouldRedirect) {
-        redirect(getTripHref(resolvedTrip.trip, "/accommodations"));
+        const canonicalHref = getTripHref(resolvedTrip.trip, "/accommodations");
+        redirect(
+            activeAccommodationTab === "planning"
+                ? `${canonicalHref}?tab=planning`
+                : canonicalHref
+        );
     }
 
     const tripId = resolvedTrip.tripId;
@@ -714,6 +750,7 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         user_id?: string | null;
         created_at?: string | null;
     };
+    const accommodationsHref = getTripHref(tripRecord, "/accommodations");
 
     const { data: tripMemberRows } = await supabase
         .from("trip_members")
@@ -856,6 +893,59 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                 ? invitation.invited_by
                 : null,
     }));
+    const pendingInvitationIds = (
+        (pendingInvitationRows || []) as Array<Record<string, unknown>>
+    ).flatMap((invitation) =>
+        typeof invitation.id === "string" ? [invitation.id] : []
+    );
+    const {
+        data: pendingInvitationLegRows,
+        error: pendingInvitationLegRowsError,
+    } = pendingInvitationIds.length > 0
+        ? await supabase
+              .from("trip_invitation_legs")
+              .select("invitation_id,trip_leg_id")
+              .eq("trip_id", tripId)
+              .eq("is_included", true)
+              .in("invitation_id", pendingInvitationIds)
+        : { data: [], error: null };
+
+    if (pendingInvitationLegRowsError) {
+        console.warn("Could not load pending invitation legs for coverage timeline:", {
+            message: pendingInvitationLegRowsError.message,
+            code: pendingInvitationLegRowsError.code,
+            details: pendingInvitationLegRowsError.details,
+            hint: pendingInvitationLegRowsError.hint,
+            tripId,
+        });
+    }
+
+    const pendingInvitationLegIdsByInvitationId = new Map<string, string[]>();
+    if (!pendingInvitationLegRowsError) {
+        (
+            (pendingInvitationLegRows || []) as Array<{
+                invitation_id: string;
+                trip_leg_id: string;
+            }>
+        ).forEach((row) => {
+            const legIds =
+                pendingInvitationLegIdsByInvitationId.get(row.invitation_id) || [];
+            legIds.push(row.trip_leg_id);
+            pendingInvitationLegIdsByInvitationId.set(row.invitation_id, legIds);
+        });
+    }
+    const pendingInvitationScopeById = new Map(
+        ((pendingInvitationRows || []) as Array<Record<string, unknown>>)
+            .filter(
+                (invitation) =>
+                    typeof invitation.id === "string" &&
+                    typeof invitation.invitation_scope === "string"
+            )
+            .map((invitation) => [
+                invitation.id as string,
+                invitation.invitation_scope as string,
+            ])
+    );
     const audienceOptions: TripAudienceOption[] = [
         ...(tripMembers
             .map((member): TripAudienceOption | null => {
@@ -921,6 +1011,73 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
             tripId,
             userId: user.id,
         });
+    }
+
+    const { data: accommodationParticipantRows, error: participantRowsError } =
+        await supabase
+            .from("trip_item_participants")
+            .select(
+                "item_id,participant_kind,trip_member_id,user_id,invitation_id,family_member_id,guest_name"
+            )
+            .eq("trip_id", tripId)
+            .eq("item_type", "accommodation");
+
+    if (participantRowsError) {
+        console.warn("Could not load accommodation travelers for coverage timeline:", {
+            message: participantRowsError.message,
+            code: participantRowsError.code,
+            details: participantRowsError.details,
+            hint: participantRowsError.hint,
+            tripId,
+        });
+    }
+
+    const memberUserIdByMembershipId = new Map(
+        memberRows
+            .filter((member) => Boolean(member.id) && Boolean(member.user_id))
+            .map((member) => [member.id as string, member.user_id as string])
+    );
+    const accommodationCoverageTravelers: AccommodationCoverageTraveler[] =
+        audienceOptions.map((option) => ({
+            kind: option.kind,
+            id: option.id,
+            userId:
+                option.kind === "member"
+                    ? memberUserIdByMembershipId.get(option.id) || null
+                    : null,
+            displayName: option.displayName,
+            avatarUrl: option.avatarUrl || null,
+            secondaryLabel: option.secondaryLabel || null,
+            isCurrentUser: option.isCurrentUser,
+            requiredLegIds:
+                option.kind === "invitation" &&
+                !pendingInvitationLegRowsError &&
+                pendingInvitationScopeById.get(option.id) === "selected_legs"
+                    ? pendingInvitationLegIdsByInvitationId.get(option.id) || []
+                    : undefined,
+        }));
+
+    if (!accommodationCoverageTravelers.some((traveler) => traveler.isCurrentUser)) {
+        const currentMember = tripMembers.find((member) => member.user_id === user.id);
+        if (currentMember) {
+            accommodationCoverageTravelers.unshift({
+                kind: "member",
+                id: currentMember.trip_member_id || `user:${user.id}`,
+                userId: user.id,
+                displayName:
+                    [currentMember.first_name, currentMember.last_name]
+                        .filter(Boolean)
+                        .join(" ")
+                        .trim() ||
+                    currentMember.username ||
+                    "You",
+                avatarUrl: currentMember.avatar_url || null,
+                secondaryLabel: currentMember.username
+                    ? `@${currentMember.username}`
+                    : null,
+                isCurrentUser: true,
+            });
+        }
     }
 
     const { data: scheduledMapItems, error: scheduledMapItemsError } = await supabase
@@ -1338,11 +1495,14 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         .filter(
             (accommodation) =>
                 accommodation.status !== "cancelled" &&
-                isMappableCoordinate(accommodation.latitude, accommodation.longitude)
+                hasMappableCoordinatePair(
+                    accommodation.latitude,
+                    accommodation.longitude
+                )
         )
         .forEach((accommodation) => {
-            const latitude = getCoordinate(accommodation.latitude);
-            const longitude = getCoordinate(accommodation.longitude);
+            const latitude = getMapCoordinate(accommodation.latitude);
+            const longitude = getMapCoordinate(accommodation.longitude);
             if (latitude === null || longitude === null) return;
 
             const fallbackCityName =
@@ -1400,10 +1560,12 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         location_lng?: number | null;
         trip_leg_id?: string | null;
     }>)
-        .filter((item) => isMappableCoordinate(item.location_lat, item.location_lng))
+        .filter((item) =>
+            hasMappableCoordinatePair(item.location_lat, item.location_lng)
+        )
         .forEach((item) => {
-            const latitude = getCoordinate(item.location_lat);
-            const longitude = getCoordinate(item.location_lng);
+            const latitude = getMapCoordinate(item.location_lat);
+            const longitude = getMapCoordinate(item.location_lng);
             if (latitude === null || longitude === null) return;
 
             const fallbackCityName =
@@ -1452,10 +1614,12 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
         location_country?: string | null;
         trip_leg_id?: string | null;
     }>)
-        .filter((idea) => isMappableCoordinate(idea.location_lat, idea.location_lng))
+        .filter((idea) =>
+            hasMappableCoordinatePair(idea.location_lat, idea.location_lng)
+        )
         .forEach((idea) => {
-            const latitude = getCoordinate(idea.location_lat);
-            const longitude = getCoordinate(idea.location_lng);
+            const latitude = getMapCoordinate(idea.location_lat);
+            const longitude = getMapCoordinate(idea.location_lng);
             if (latitude === null || longitude === null) return;
 
             const fallbackCityName =
@@ -1648,19 +1812,58 @@ export default async function TripAccommodationsPage({ params }: PageProps) {
                     </div>
                 ) : null}
 
-                <AccommodationManager
-                    tripId={tripId}
-                    accommodations={(accommodations || []) as TripAccommodation[]}
-                    createAction={createAccommodation}
-                    updateAction={updateAccommodation}
-                    deleteAction={deleteAccommodation}
-                    moveItemAction={moveTripItem}
-                    moveTargetTrips={moveTargetTrips}
-                    audienceOptions={audienceOptions}
-                    currentUserTripMemberId={currentUserTripMemberId}
+                <AccommodationPageTabs
+                    activeTab={activeAccommodationTab}
+                    baseHref={accommodationsHref}
                 />
 
-                <AccommodationAreaMaps cities={accommodationAreaMapCities} />
+                {activeAccommodationTab === "stays" ? (
+                    <>
+                        <AccommodationCoverageTimeline
+                            tripStartDate={tripRecord.start_date}
+                            tripEndDate={tripRecord.end_date}
+                            travelers={accommodationCoverageTravelers}
+                            legs={manualLocations.map(
+                                (location): AccommodationCoverageLeg => ({
+                                    id: location.id,
+                                    startDate: location.startDate || null,
+                                    endDate: location.endDate || null,
+                                    memberIds: location.memberIds || [],
+                                    memberDatesByMemberId:
+                                        location.memberDatesByMemberId || {},
+                                })
+                            )}
+                            accommodations={
+                                (accommodations || []) as TripAccommodation[]
+                            }
+                            participants={
+                                (accommodationParticipantRows || []) as AccommodationCoverageParticipant[]
+                            }
+                        />
+
+                        <AccommodationManager
+                            tripId={tripId}
+                            accommodations={
+                                (accommodations || []) as TripAccommodation[]
+                            }
+                            createAction={createAccommodation}
+                            updateAction={updateAccommodation}
+                            deleteAction={deleteAccommodation}
+                            moveItemAction={moveTripItem}
+                            moveTargetTrips={moveTargetTrips}
+                            audienceOptions={audienceOptions}
+                            audienceParticipants={
+                                (accommodationParticipantRows || []) as AccommodationCoverageParticipant[]
+                            }
+                            currentUserTripMemberId={currentUserTripMemberId}
+                        />
+                    </>
+                ) : (
+                    <AccommodationAreaMaps
+                        cities={accommodationAreaMapCities}
+                        addAccommodationHref={`${accommodationsHref}?addAccommodation=1`}
+                    />
+                )}
             </div>
         </main>
     );

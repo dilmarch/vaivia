@@ -116,6 +116,25 @@ Never place the Resend API key in source code, commit it, prefix it with
 Resend itself, but server-side processors that use service-role Supabase helpers
 still require the existing server-only Supabase service role environment variable.
 
+## VAIVIA assistant
+
+The trip assistant uses dedicated server-only credentials. Phase 2A can perform
+bounded, read-only live place discovery through Google Places API (New); it does
+not search the general web, calculate routes, make bookings, or modify trip data.
+
+```env
+GEMINI_ASSISTANT_API_KEY=
+GEMINI_ASSISTANT_MODEL=
+AI_DAILY_MESSAGE_LIMIT=
+GOOGLE_PLACES_API_KEY=
+```
+
+`GOOGLE_PLACES_API_KEY` must be a dedicated key restricted to the Places API
+(New) and to the deployment's server environment. It is never exposed through a
+`NEXT_PUBLIC_` variable. There is no separate daily Places allowance in Phase
+2A: the existing per-user assistant quota and the hard limit of four external
+tool calls (twenty unique candidates) per request bound usage.
+
 ## Feedback and issues
 
 Please file feedback and issues over on the [Supabase GitHub org](https://github.com/supabase/supabase/issues/new/choose).

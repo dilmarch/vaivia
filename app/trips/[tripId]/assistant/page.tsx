@@ -28,7 +28,7 @@ export default async function TripAssistantPage({ params }: PageProps) {
     }
 
     return (
-        <main className="h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(var(--vaivia-neon-rgb),0.08),transparent_35%),#030712] px-3 pb-[calc(5.5rem+var(--safe-area-bottom))] pt-[calc(4.5rem+var(--safe-area-top))] sm:px-5 md:pb-5 md:pl-28 md:pt-5">
+        <main className="vaivia-page-bg h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_top,rgba(var(--vaivia-neon-rgb),0.08),transparent_35%),#030712] px-3 pb-[calc(5.5rem+var(--safe-area-bottom))] pt-[calc(4.5rem+var(--safe-area-top))] sm:px-5 md:pb-5 md:pl-28 md:pt-5">
             <TripAssistant
                 key={resolved.trip.id}
                 tripId={resolved.trip.id}

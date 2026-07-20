@@ -3,6 +3,7 @@ import "server-only";
 import { processNotificationEmailOutbox } from "@/lib/emailNotifications";
 import { processExternalInviteEmailOutbox } from "@/lib/externalInviteEmails";
 import { processNotificationPushOutbox } from "@/lib/pushNotifications";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 
 type QueueResult = {
     id: string;
@@ -12,7 +13,7 @@ type QueueResult = {
     sentCount?: number;
 };
 
-type QueueChannel = "push" | "email";
+type QueueChannel = "reminder" | "push" | "email";
 
 type QueueError = {
     channel: QueueChannel;
@@ -30,6 +31,7 @@ type QueueCounts = {
 export type NotificationQueueProcessResult = {
     ok: boolean;
     processed: number;
+    remindersQueued: number;
     counts: QueueCounts;
     push: {
         processed: number;
@@ -98,6 +100,21 @@ function getQueueError(channel: QueueChannel, reason: unknown): QueueError {
 }
 
 export async function processNotificationQueues(limit = 25) {
+    let remindersQueued = 0;
+    let reminderError: QueueError | null = null;
+
+    try {
+        const supabase = createServiceRoleClient();
+        const { data, error } = await supabase.rpc(
+            "queue_due_accommodation_cancellation_reminders"
+        );
+
+        if (error) throw new Error(error.message);
+        remindersQueued = typeof data === "number" ? data : Number(data || 0);
+    } catch (error) {
+        reminderError = getQueueError("reminder", error);
+    }
+
     const [pushResult, emailResult, externalEmailResult] = await Promise.allSettled([
         processNotificationPushOutbox(limit),
         processNotificationEmailOutbox(limit),
@@ -118,6 +135,7 @@ export async function processNotificationQueues(limit = 25) {
     const externalEmailCounts = summarizeQueueResults(externalEmailResults);
     const combinedEmailCounts = combineCounts(emailCounts, externalEmailCounts);
     const errors = [
+        reminderError,
         pushResult.status === "rejected"
             ? getQueueError("push", pushResult.reason)
             : null,
@@ -132,6 +150,7 @@ export async function processNotificationQueues(limit = 25) {
     return {
         ok: errors.length === 0,
         processed: pushResults.length + emailResults.length + externalEmailResults.length,
+        remindersQueued,
         counts: combineCounts(pushCounts, combinedEmailCounts),
         push: {
             processed: pushResults.length,

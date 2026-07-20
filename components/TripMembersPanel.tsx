@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
+import { Check, Loader2, Pencil, Plus, Trash2, UserPlus, X } from "lucide-react";
 import Portal from "@/components/Portal";
 import ShareTripModal from "@/components/ShareTripModal";
 import { createClient } from "@/lib/supabase/client";
@@ -45,6 +45,21 @@ export type TripHeaderInvitation = {
     label: string;
     invited_by?: string | null;
     created_at?: string | null;
+};
+
+type InvitationLegOption = {
+    id: string;
+    name: string;
+    start_date?: string | null;
+    end_date?: string | null;
+    icon_emoji?: string | null;
+    city_name?: string | null;
+    country_code?: string | null;
+};
+
+type InvitationLegAssignment = {
+    trip_leg_id: string;
+    is_included?: boolean | null;
 };
 
 type TripMembersPanelProps = {
@@ -182,6 +197,17 @@ export default function TripMembersPanel({
     const [isRemovingFamilyMember, setIsRemovingFamilyMember] = useState(false);
     const [removeFamilyMemberError, setRemoveFamilyMemberError] = useState("");
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [selectedInvitation, setSelectedInvitation] =
+        useState<TripHeaderInvitation | null>(null);
+    const [invitationLegOptions, setInvitationLegOptions] = useState<
+        InvitationLegOption[]
+    >([]);
+    const [selectedInvitationLegIds, setSelectedInvitationLegIds] = useState<
+        Set<string>
+    >(() => new Set());
+    const [isLoadingInvitationLegs, setIsLoadingInvitationLegs] = useState(false);
+    const [isSavingInvitationLegs, setIsSavingInvitationLegs] = useState(false);
+    const [invitationLegError, setInvitationLegError] = useState("");
     const [cancelTripInviteTarget, setCancelTripInviteTarget] =
         useState<TripHeaderInvitation | null>(null);
     const [cancelledTripInviteIds, setCancelledTripInviteIds] = useState<string[]>(
@@ -248,6 +274,74 @@ export default function TripMembersPanel({
             isActive = false;
         };
     }, [currentUserId, friendCandidateIds]);
+
+    useEffect(() => {
+        if (!selectedInvitation) {
+            setInvitationLegOptions([]);
+            setSelectedInvitationLegIds(new Set());
+            setInvitationLegError("");
+            return;
+        }
+
+        let isActive = true;
+        const invitationId = selectedInvitation.id;
+
+        async function loadInvitationLegs() {
+            const supabase = createClient();
+            setIsLoadingInvitationLegs(true);
+            setInvitationLegError("");
+
+            const [legsResult, assignmentsResult] = await Promise.all([
+                supabase
+                    .from("trip_legs")
+                    .select(
+                        "id,name,start_date,end_date,icon_emoji,city_name,country_code,leg_type,sort_order"
+                    )
+                    .eq("trip_id", tripId)
+                    .neq("leg_type", "accommodation")
+                    .order("start_date", { ascending: true, nullsFirst: false })
+                    .order("sort_order", { ascending: true }),
+                supabase
+                    .from("trip_invitation_legs")
+                    .select("trip_leg_id,is_included")
+                    .eq("trip_id", tripId)
+                    .eq("invitation_id", invitationId),
+            ]);
+
+            if (!isActive) return;
+
+            setIsLoadingInvitationLegs(false);
+            if (legsResult.error || assignmentsResult.error) {
+                console.warn("Could not load trip invitation legs:", {
+                    legsError: legsResult.error,
+                    assignmentsError: assignmentsResult.error,
+                    tripId,
+                    invitationId,
+                });
+                setInvitationLegError(
+                    "Could not load this invitation's trip legs. Please try again."
+                );
+                return;
+            }
+
+            setInvitationLegOptions(
+                (legsResult.data || []) as InvitationLegOption[]
+            );
+            setSelectedInvitationLegIds(
+                new Set(
+                    ((assignmentsResult.data || []) as InvitationLegAssignment[])
+                        .filter((assignment) => assignment.is_included !== false)
+                        .map((assignment) => assignment.trip_leg_id)
+                )
+            );
+        }
+
+        void loadInvitationLegs();
+
+        return () => {
+            isActive = false;
+        };
+    }, [selectedInvitation, tripId]);
 
     if (
         members.length === 0 &&
@@ -403,7 +497,58 @@ export default function TripMembersPanel({
 
         setCancelledTripInviteIds((current) => [...current, invitation.id]);
         setCancelTripInviteTarget(null);
+        setSelectedInvitation(null);
         router.refresh();
+    }
+
+    function toggleInvitationLeg(legId: string) {
+        setSelectedInvitationLegIds((current) => {
+            const next = new Set(current);
+            if (next.has(legId)) next.delete(legId);
+            else next.add(legId);
+            return next;
+        });
+    }
+
+    async function saveInvitationLegs() {
+        if (!selectedInvitation || isSavingInvitationLegs) return;
+
+        setIsSavingInvitationLegs(true);
+        setInvitationLegError("");
+
+        try {
+            const response = await fetch(
+                `/api/trips/${encodeURIComponent(tripId)}/invitations`,
+                {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        invitation_id: selectedInvitation.id,
+                        target_leg_ids: Array.from(selectedInvitationLegIds),
+                    }),
+                }
+            );
+            const result = (await response.json().catch(() => null)) as {
+                error?: string;
+            } | null;
+
+            if (!response.ok) {
+                throw new Error(
+                    result?.error || "Could not update this invitation's trip legs."
+                );
+            }
+
+            setSelectedInvitation(null);
+            router.refresh();
+        } catch (error) {
+            setInvitationLegError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not update this invitation's trip legs."
+            );
+        } finally {
+            setIsSavingInvitationLegs(false);
+        }
     }
 
     return (
@@ -429,48 +574,46 @@ export default function TripMembersPanel({
                             </span>
                         </button>
                         {visibleInvitations.map((invitation) => {
-                            const canCancelInvitation =
+                            const canManageInvitation =
                                 invitation.invited_by === currentUserId ||
                                 tripOwnerId === currentUserId;
 
-                            if (canCancelInvitation) {
+                            if (canManageInvitation) {
                                 return (
                                     <span
                                         key={invitation.id}
-                                        className="relative inline-flex"
+                                        className="group/invite relative inline-flex"
                                     >
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setInvitationLegError("");
+                                                setSelectedInvitation(invitation);
+                                            }}
+                                            className="relative inline-flex !h-11 !min-h-11 w-11 items-center justify-center overflow-hidden rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)] transition hover:border-lime-300/40 hover:bg-lime-300/10 focus:outline-none focus:ring-2 focus:ring-lime-200/50"
+                                            title={`Edit ${invitation.label}'s trip legs`}
+                                            aria-label={`Edit which trip legs ${invitation.label} is invited to`}
+                                        >
+                                            {getInvitationInitial(invitation)}
+                                            <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-950/75 opacity-0 transition group-hover/invite:opacity-100">
+                                                <Pencil
+                                                    className="h-4 w-4 text-lime-200"
+                                                    aria-hidden="true"
+                                                />
+                                            </span>
+                                        </button>
                                         <button
                                             type="button"
                                             onClick={() => {
                                                 setTripInviteCancelError("");
                                                 setCancelTripInviteTarget(invitation);
                                             }}
-                                            className="relative inline-flex !h-11 !min-h-11 w-11 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)] transition hover:border-red-200/40 hover:bg-red-400/10 focus:outline-none focus:ring-2 focus:ring-red-200/50 sm:hidden"
-                                            title="Cancel pending invitation"
+                                            className="absolute -right-1 -top-1 hidden !h-5 !min-h-5 !w-5 !min-w-5 items-center justify-center rounded-full border border-red-200/30 bg-slate-950 p-0 text-[10px] font-black leading-none text-red-100 opacity-0 shadow-xl shadow-black/35 transition hover:bg-red-400/20 group-hover/invite:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200/50 sm:flex"
                                             aria-label={`Cancel pending trip invitation for ${invitation.label}`}
+                                            title="Cancel invite"
                                         >
-                                            {getInvitationInitial(invitation)}
+                                            ×
                                         </button>
-
-                                        <span
-                                            className="group/invite relative hidden h-11 w-11 items-center justify-center rounded-full border-2 border-white/15 bg-white/[0.08] text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.22)] sm:inline-flex"
-                                            title="Pending invitation"
-                                            aria-label="Pending trip invitation"
-                                        >
-                                            {getInvitationInitial(invitation)}
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setTripInviteCancelError("");
-                                                    setCancelTripInviteTarget(invitation);
-                                                }}
-                                                className="absolute -right-1 -top-1 flex !h-5 !min-h-5 !w-5 !min-w-5 items-center justify-center rounded-full border border-red-200/30 bg-slate-950 p-0 text-[10px] font-black leading-none text-red-100 opacity-0 shadow-xl shadow-black/35 transition hover:bg-red-400/20 group-hover/invite:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-red-200/50"
-                                                aria-label="Cancel pending trip invitation"
-                                                title="Cancel invite"
-                                            >
-                                                ×
-                                            </button>
-                                        </span>
                                     </span>
                                 );
                             }
@@ -637,6 +780,198 @@ export default function TripMembersPanel({
                 availableFamilyMembers={availableFamilyMembers}
                 addFamilyMemberAction={addFamilyMemberAction}
             />
+
+            {selectedInvitation ? (
+                <Portal>
+                    <div
+                        className="vaivia-modal-backdrop"
+                        onClick={() => {
+                            if (!isSavingInvitationLegs) {
+                                setSelectedInvitation(null);
+                            }
+                        }}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="trip-invitation-legs-title"
+                            className="vaivia-modal-panel max-w-lg"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-white/15 bg-slate-950 text-sm font-black uppercase text-lime-200 shadow-[0_0_24px_rgba(0,0,0,0.26)]">
+                                        {getInvitationInitial(selectedInvitation)}
+                                    </span>
+                                    <div>
+                                        <p className="vaivia-modal-eyebrow">
+                                            Pending invite
+                                        </p>
+                                        <h2
+                                            id="trip-invitation-legs-title"
+                                            className="vaivia-modal-title"
+                                        >
+                                            {selectedInvitation.label}&apos;s trip legs
+                                        </h2>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedInvitation(null)}
+                                    disabled={isSavingInvitationLegs}
+                                    className="vaivia-modal-close"
+                                    aria-label="Close invitation leg editor"
+                                >
+                                    <X className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+
+                            <div className="vaivia-modal-body space-y-5">
+                                <div>
+                                    <p className="text-sm font-black text-slate-950">
+                                        Which legs are they invited to?
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">
+                                        Select or deselect any part of the trip. These
+                                        choices will apply when they accept the invite.
+                                    </p>
+                                </div>
+
+                                {isLoadingInvitationLegs ? (
+                                    <div className="flex min-h-36 items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 text-sm font-bold text-slate-600">
+                                        <Loader2
+                                            className="mr-2 h-4 w-4 animate-spin"
+                                            aria-hidden="true"
+                                        />
+                                        Loading trip legs
+                                    </div>
+                                ) : invitationLegOptions.length > 0 ? (
+                                    <div className="space-y-2">
+                                        {invitationLegOptions.map((leg) => {
+                                            const isSelected =
+                                                selectedInvitationLegIds.has(leg.id);
+
+                                            return (
+                                                <button
+                                                    key={leg.id}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        toggleInvitationLeg(leg.id)
+                                                    }
+                                                    aria-pressed={isSelected}
+                                                    className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition ${
+                                                        isSelected
+                                                            ? "border-lime-500/40 bg-lime-50"
+                                                            : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
+                                                    }`}
+                                                >
+                                                    <span
+                                                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${
+                                                            isSelected
+                                                                ? "border-lime-500 bg-lime-300 text-slate-950"
+                                                                : "border-slate-300 bg-white text-transparent"
+                                                        }`}
+                                                        aria-hidden="true"
+                                                    >
+                                                        <Check className="h-4 w-4" />
+                                                    </span>
+                                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-xl text-lime-200">
+                                                        {leg.icon_emoji || "📍"}
+                                                    </span>
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="block truncate text-sm font-black text-slate-950">
+                                                            {leg.city_name || leg.name}
+                                                        </span>
+                                                        <span className="mt-0.5 block text-xs font-semibold text-slate-500">
+                                                            {formatLegDateRange(
+                                                                leg.start_date,
+                                                                leg.end_date
+                                                            )}
+                                                            {leg.country_code
+                                                                ? ` · ${leg.country_code}`
+                                                                : ""}
+                                                        </span>
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <p className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm font-semibold leading-6 text-slate-600">
+                                        Add a trip leg first, then you can assign this
+                                        invitation to it.
+                                    </p>
+                                )}
+
+                                {!isLoadingInvitationLegs &&
+                                invitationLegOptions.length > 0 &&
+                                selectedInvitationLegIds.size === 0 ? (
+                                    <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                                        No legs are selected. They can still receive the
+                                        invitation, but will not be included in any trip
+                                        leg.
+                                    </p>
+                                ) : null}
+
+                                {invitationLegError ? (
+                                    <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+                                        {invitationLegError}
+                                    </p>
+                                ) : null}
+
+                                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedInvitation(null);
+                                            setTripInviteCancelError("");
+                                            setCancelTripInviteTarget(
+                                                selectedInvitation
+                                            );
+                                        }}
+                                        disabled={isSavingInvitationLegs}
+                                        className="rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                                    >
+                                        Cancel invitation
+                                    </button>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setSelectedInvitation(null)
+                                            }
+                                            disabled={isSavingInvitationLegs}
+                                            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                                        >
+                                            Close
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void saveInvitationLegs()}
+                                            disabled={
+                                                isLoadingInvitationLegs ||
+                                                isSavingInvitationLegs ||
+                                                Boolean(invitationLegError)
+                                            }
+                                            className="inline-flex items-center gap-2 rounded-xl bg-lime-300 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {isSavingInvitationLegs ? (
+                                                <Loader2
+                                                    className="h-4 w-4 animate-spin"
+                                                    aria-hidden="true"
+                                                />
+                                            ) : null}
+                                            {isSavingInvitationLegs
+                                                ? "Saving"
+                                                : "Save legs"}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            ) : null}
 
             {confirmingFriend ? (
                 <Portal>

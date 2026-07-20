@@ -12,6 +12,11 @@ type InviteRequestBody = {
     target_accommodation_item_ids?: unknown;
 };
 
+type UpdateInviteLegsRequestBody = {
+    invitation_id?: unknown;
+    target_leg_ids?: unknown;
+};
+
 function getStringArray(value: unknown) {
     return Array.isArray(value)
         ? value.filter((item): item is string => typeof item === "string")
@@ -29,6 +34,7 @@ function getInviteErrorStatus(message: string) {
 
     if (
         normalized.includes("do not have access") ||
+        normalized.includes("do not have permission") ||
         normalized.includes("blocked") ||
         normalized.includes("cannot invite")
     ) {
@@ -134,4 +140,70 @@ export async function POST(
         invitationId,
         externalEmailProcessed,
     });
+}
+
+export async function PATCH(
+    request: Request,
+    { params }: { params: Promise<{ tripId: string }> }
+) {
+    const { tripId } = await params;
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    let body: UpdateInviteLegsRequestBody;
+    try {
+        body = (await request.json()) as UpdateInviteLegsRequestBody;
+    } catch {
+        return NextResponse.json(
+            { error: "Invitation leg selections are required." },
+            { status: 400 }
+        );
+    }
+
+    const invitationId =
+        typeof body.invitation_id === "string" ? body.invitation_id.trim() : "";
+    if (!invitationId) {
+        return NextResponse.json(
+            { error: "Invitation ID is required." },
+            { status: 400 }
+        );
+    }
+
+    const { data: selectedLegCount, error } = await supabase.rpc(
+        "update_trip_invitation_leg_assignments",
+        {
+            target_trip_id: tripId,
+            target_invitation_id: invitationId,
+            target_leg_ids: getStringArray(body.target_leg_ids),
+        }
+    );
+
+    if (error) {
+        console.error("Could not update trip invitation legs:", {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint,
+            tripId,
+            invitationId,
+        });
+
+        return NextResponse.json(
+            {
+                error: error.message,
+                code: error.code,
+                details: error.details,
+                hint: error.hint,
+            },
+            { status: getInviteErrorStatus(error.message) }
+        );
+    }
+
+    return NextResponse.json({ selectedLegCount });
 }

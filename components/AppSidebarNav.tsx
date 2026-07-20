@@ -39,7 +39,6 @@ type AppSidebarNavProps = {
     joinedAt?: string | null;
     profile?: Partial<UserProfile> | null;
     preferences?: Partial<UserPreferences> | null;
-    firstTripId?: string | null;
 };
 
 type NavItem = {
@@ -124,8 +123,9 @@ function getNavItems(pathname: string, isSuperAdmin: boolean): NavItem[] {
                 : []),
             {
                 label: "Travel Assistant",
+                href: "/assistant",
                 icon: Bot,
-                disabled: true,
+                match: (currentPathname) => currentPathname === "/assistant",
             },
         ];
 

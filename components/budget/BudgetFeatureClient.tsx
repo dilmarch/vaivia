@@ -1,7 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -16,9 +15,13 @@ import {
     X,
 } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
+import { BudgetParticipantDropdown } from "@/components/budget/BudgetParticipantDropdown";
+import { ExpenseCategoryPicker } from "@/components/budget/ExpenseCategoryPicker";
+import { DateInput } from "@/components/ui/date-input";
 import {
     createBudget,
     createExpense,
+    createExpenseSettlement,
     deleteExpense,
     updateExpense,
     updateBudget,
@@ -36,8 +39,10 @@ import {
     type ExpenseCategory,
     type SplitMethod,
     type TripBudget,
+    type TripBudgetCategory,
     type TripBudgetLineItem,
     type TripExpense,
+    type TripExpenseSettlement,
     type TripExpenseSplit,
 } from "@/lib/budget";
 import { getInitials } from "@/lib/travelers";
@@ -48,8 +53,10 @@ type BudgetFeatureProps = {
     tripTitle: string;
     budget: TripBudget | null;
     lineItems: TripBudgetLineItem[];
+    expenseCategories?: TripBudgetCategory[];
     expenses: TripExpense[];
     splits?: TripExpenseSplit[];
+    settlementPayments?: TripExpenseSettlement[];
     participants: BudgetParticipant[];
     defaultCurrency: string;
     mode: "budget" | "expenses";
@@ -58,7 +65,9 @@ type BudgetFeatureProps = {
 type ExpenseModalMode = "add" | "edit" | "duplicate";
 
 type Settlement = {
+    fromValue: string;
     from: string;
+    toValue: string;
     to: string;
     amount: number;
 };
@@ -248,17 +257,23 @@ function calculateExpenseBalances({
     expenses,
     splits,
     participants,
+    settlementPayments,
 }: {
     expenses: TripExpense[];
     splits: TripExpenseSplit[];
     participants: BudgetParticipant[];
+    settlementPayments: TripExpenseSettlement[];
 }) {
-    const balances = new Map<string, { label: string; amount: number }>();
+    const balances = new Map<
+        string,
+        { value: string; label: string; amount: number }
+    >();
     const expenseById = new Map(expenses.map((expense) => [expense.id, expense]));
 
     function ensureBalance(value: string) {
         if (!balances.has(value)) {
             balances.set(value, {
+                value,
                 label: getParticipantLabelFromValue(value, participants),
                 amount: 0,
             });
@@ -286,6 +301,15 @@ function calculateExpenseBalances({
         splitBalance.amount -= getSplitReportingAmount(split, expenseById);
     });
 
+    settlementPayments.forEach((settlement) => {
+        const payerBalance = ensureBalance(settlement.paid_by_participant_value);
+        const recipientBalance = ensureBalance(
+            settlement.received_by_participant_value
+        );
+        payerBalance.amount += Number(settlement.amount || 0);
+        recipientBalance.amount -= Number(settlement.amount || 0);
+    });
+
     return [...balances.values()]
         .filter((balance) => Math.abs(balance.amount) >= 0.01)
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
@@ -295,12 +319,19 @@ function calculateExpenseSettlements({
     expenses,
     splits,
     participants,
+    settlementPayments,
 }: {
     expenses: TripExpense[];
     splits: TripExpenseSplit[];
     participants: BudgetParticipant[];
+    settlementPayments: TripExpenseSettlement[];
 }) {
-    const balances = calculateExpenseBalances({ expenses, splits, participants });
+    const balances = calculateExpenseBalances({
+        expenses,
+        splits,
+        participants,
+        settlementPayments,
+    });
     const debtors = balances
         .filter((balance) => balance.amount < -0.01)
         .map((balance) => ({ ...balance, amount: Math.abs(balance.amount) }));
@@ -318,7 +349,9 @@ function calculateExpenseSettlements({
 
         if (amount >= 0.01) {
             settlements.push({
+                fromValue: debtor.value,
                 from: debtor.label,
+                toValue: creditor.value,
                 to: creditor.label,
                 amount,
             });
@@ -891,6 +924,7 @@ export function AddExpenseModal({
     tripId,
     reportingCurrency,
     budgetCategories = [],
+    expenseCategories = [],
     participants,
     onClose,
     mode = "add",
@@ -907,6 +941,7 @@ export function AddExpenseModal({
     tripId: string;
     reportingCurrency: string;
     budgetCategories?: TripBudgetLineItem[];
+    expenseCategories?: TripBudgetCategory[];
     participants: BudgetParticipant[];
     onClose: () => void;
     mode?: ExpenseModalMode;
@@ -940,10 +975,29 @@ export function AddExpenseModal({
         participants.find((participant) => participant.isCurrentUser) ||
         participants[0] ||
         null;
-    const selectedSplitValues = new Set(
+    const savedSplitValues = new Set(
         expenseSplits.map(getParticipantValueForSplit).filter(Boolean)
     );
-    const hasSavedSplits = selectedSplitValues.size > 0;
+    const hasSavedSplits = savedSplitValues.size > 0;
+    const allParticipantValues = participants.map(participantValue);
+    const currentUserParticipantValue = currentUserParticipant
+        ? participantValue(currentUserParticipant)
+        : "";
+    const [selectedSplitValues, setSelectedSplitValues] = useState<Set<string>>(
+        () => {
+            if (expense?.split_method === "just_me") {
+                return new Set(
+                    currentUserParticipantValue ? [currentUserParticipantValue] : []
+                );
+            }
+
+            return new Set(
+                hasSavedSplits
+                    ? Array.from(savedSplitValues)
+                    : allParticipantValues
+            );
+        }
+    );
     const payerDefault =
         getExpensePayerValue(expense) ||
         (currentUserParticipant ? participantValue(currentUserParticipant) : "");
@@ -962,16 +1016,63 @@ export function AddExpenseModal({
     const resolvedCategory = expense?.category || defaultCategory;
     const resolvedBudgetCategoryId =
         expense?.budget_category_id ||
+        expenseCategories.find(
+            (category) => category.linked_expense_category === resolvedCategory
+        )?.id ||
         budgetCategories.find(
             (category) => category.linked_expense_category === resolvedCategory
         )?.category_id ||
         "";
+    const resolvedExpenseCategories =
+        expenseCategories.length > 0
+            ? expenseCategories
+            : budgetCategories
+                  .filter(
+                      (category): category is TripBudgetLineItem & {
+                          category_id: string;
+                      } => Boolean(category.category_id)
+                  )
+                  .map((category) => ({
+                      id: category.category_id,
+                      trip_id: category.trip_id,
+                      name: category.name,
+                      linked_expense_category:
+                          category.linked_expense_category,
+                      sort_order: category.sort_order,
+                      is_default: false,
+                      is_archived: false,
+                  }));
     const resolvedSourceType = expense?.source_type || defaultSourceType;
     const resolvedTransportationItemId =
         expense?.transportation_item_id || transportationItemId || "";
     const resolvedItineraryEventId =
         expense?.itinerary_event_id || itineraryEventId || "";
     const resolvedAccommodationId = expense?.accommodation_id || accommodationId || "";
+
+    function chooseSplitMethod(nextSplitMethod: SplitMethod) {
+        setSplitMethod(nextSplitMethod);
+
+        if (nextSplitMethod === "equal") {
+            setSelectedSplitValues(new Set(allParticipantValues));
+        } else if (nextSplitMethod === "just_me") {
+            setSelectedSplitValues(
+                new Set(
+                    currentUserParticipantValue
+                        ? [currentUserParticipantValue]
+                        : []
+                )
+            );
+        }
+    }
+
+    function toggleSplitParticipant(value: string, isChecked: boolean) {
+        setSelectedSplitValues((current) => {
+            const next = new Set(current);
+            if (isChecked) next.add(value);
+            else next.delete(value);
+            return next;
+        });
+    }
 
     return (
         <AnimatedModal
@@ -1045,8 +1146,7 @@ export function AddExpenseModal({
                     </div>
                     <div className="grid gap-4 md:grid-cols-3">
                         <Field label="Date">
-                            <input
-                                type="date"
+                            <DateInput
                                 name="expense_date"
                                 defaultValue={resolvedDate}
                                 className={inputClass}
@@ -1113,52 +1213,16 @@ export function AddExpenseModal({
                             required
                         />
                     </Field>
-                    <div className="grid gap-4 md:grid-cols-3">
-                        <Field label="Category">
-                            {budgetCategories.length > 0 ? (
-                                <>
-                                    <input
-                                        type="hidden"
-                                        name="category"
-                                        value={resolvedCategory}
-                                    />
-                                    <select
-                                        name="budget_category_id"
-                                        defaultValue={resolvedBudgetCategoryId}
-                                        className={selectClass}
-                                        required
-                                    >
-                                        {budgetCategories.map((category) => (
-                                            <option
-                                                key={category.id}
-                                                value={category.category_id || ""}
-                                                className="bg-slate-950 text-white"
-                                            >
-                                                {category.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </>
-                            ) : (
-                                <select
-                                    name="category"
-                                    defaultValue={resolvedCategory}
-                                    className={selectClass}
-                                >
-                                    {Object.entries(DEFAULT_EXPENSE_CATEGORY_LABELS).map(
-                                        ([value, label]) => (
-                                            <option
-                                                key={value}
-                                                value={value}
-                                                className="bg-slate-950 text-white"
-                                            >
-                                                {label}
-                                            </option>
-                                        )
-                                    )}
-                                </select>
-                            )}
-                        </Field>
+                    <div className="grid gap-4 md:grid-cols-2">
+                        <div className="md:col-span-2">
+                            <ExpenseCategoryPicker
+                                tripId={tripId}
+                                reportingCurrency={reportingCurrency}
+                                categories={resolvedExpenseCategories}
+                                defaultBudgetCategoryId={resolvedBudgetCategoryId}
+                                defaultExpenseCategory={resolvedCategory}
+                            />
+                        </div>
                         <div>
                             <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                 Paid by
@@ -1212,7 +1276,7 @@ export function AddExpenseModal({
                                         <button
                                             key={option.value}
                                             type="button"
-                                            onClick={() => setSplitMethod(option.value)}
+                                            onClick={() => chooseSplitMethod(option.value)}
                                             aria-pressed={isSelected}
                                             className={`rounded-2xl border px-3 py-2 text-left transition ${
                                                 isSelected
@@ -1269,14 +1333,18 @@ export function AddExpenseModal({
                                     >
                                         <input
                                             type="checkbox"
-                                            name="included_participants"
-                                            value={value}
-                                            defaultChecked={
+                                            name={
                                                 splitMethod === "just_me"
-                                                    ? isCurrentUser
-                                                    : hasSavedSplits
-                                                      ? selectedSplitValues.has(value)
-                                                      : true
+                                                    ? undefined
+                                                    : "included_participants"
+                                            }
+                                            value={value}
+                                            checked={selectedSplitValues.has(value)}
+                                            onChange={(event) =>
+                                                toggleSplitParticipant(
+                                                    value,
+                                                    event.target.checked
+                                                )
                                             }
                                             disabled={splitMethod === "just_me"}
                                             className="h-4 w-4 accent-lime-300"
@@ -1408,15 +1476,276 @@ function SummaryCard({
     );
 }
 
-function RunningTotalCard({
-    settlements,
+const EXPENSE_CHART_COLORS = [
+    "#bef264",
+    "#22d3ee",
+    "#c084fc",
+    "#fb7185",
+    "#fbbf24",
+    "#60a5fa",
+    "#a3e635",
+];
+
+function ExpenseCategoryPieChart({
+    expenses,
     reportingCurrency,
 }: {
-    settlements: Settlement[];
+    expenses: TripExpense[];
     reportingCurrency: string;
 }) {
+    const amounts = expenses.reduce<Map<ExpenseCategory, number>>(
+        (totals, expense) => {
+            totals.set(
+                expense.category,
+                (totals.get(expense.category) || 0) +
+                    getExpenseReportingAmount(expense)
+            );
+            return totals;
+        },
+        new Map()
+    );
+    const entries = Array.from(amounts.entries())
+        .filter(([, amount]) => amount > 0)
+        .sort(([, firstAmount], [, secondAmount]) =>
+            secondAmount - firstAmount
+        );
+    const total = entries.reduce((sum, [, amount]) => sum + amount, 0);
+
+    if (total <= 0) return null;
+
+    let cursor = 0;
+    const segments = entries.map(([, amount], index) => {
+        const start = cursor;
+        cursor += (amount / total) * 100;
+        return `${EXPENSE_CHART_COLORS[index % EXPENSE_CHART_COLORS.length]} ${start}% ${cursor}%`;
+    });
+
+    return (
+        <section className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
+            <div>
+                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
+                    Category distribution
+                </p>
+                <h2 className="mt-2 text-2xl font-black text-white">
+                    Where the trip money went
+                </h2>
+            </div>
+            <div className="mt-6 grid items-center gap-6 md:grid-cols-[minmax(12rem,18rem)_1fr]">
+                <div
+                    role="img"
+                    aria-label={`Expense distribution across ${entries.length} categories`}
+                    className="mx-auto aspect-square w-full max-w-64 rounded-full border-4 border-[#140a1f] bg-clip-padding shadow-[0_0_40px_rgba(var(--vaivia-neon-rgb),0.12)]"
+                    style={{
+                        backgroundImage: `conic-gradient(${segments.join(", ")})`,
+                    }}
+                />
+                <div className="grid gap-3 sm:grid-cols-2">
+                    {entries.map(([category, amount], index) => (
+                        <div
+                            key={category}
+                            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3"
+                        >
+                            <div className="flex min-w-0 items-center gap-3">
+                                <span
+                                    className="h-3 w-3 shrink-0 rounded-full"
+                                    style={{
+                                        backgroundColor:
+                                            EXPENSE_CHART_COLORS[
+                                                index % EXPENSE_CHART_COLORS.length
+                                            ],
+                                    }}
+                                    aria-hidden="true"
+                                />
+                                <span className="truncate text-sm font-black text-white">
+                                    {DEFAULT_EXPENSE_CATEGORY_LABELS[category]}
+                                </span>
+                            </div>
+                            <div className="shrink-0 text-right">
+                                <p className="text-sm font-black text-white">
+                                    {formatCurrency(amount, reportingCurrency)}
+                                </p>
+                                <p className="text-[11px] font-bold text-slate-400">
+                                    {formatPercent((amount / total) * 100)}
+                                </p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function SettleUpModal({
+    tripId,
+    participants,
+    reportingCurrency,
+    suggestedSettlement,
+    onClose,
+}: {
+    tripId: string;
+    participants: BudgetParticipant[];
+    reportingCurrency: string;
+    suggestedSettlement?: Settlement;
+    onClose: () => void;
+}) {
+    const participantValues = participants.map(participantValue);
+    const currentParticipant =
+        participants.find((participant) => participant.isCurrentUser) ||
+        participants[0];
+    const defaultPayer =
+        suggestedSettlement?.fromValue ||
+        (currentParticipant ? participantValue(currentParticipant) : "");
+    const defaultRecipient =
+        suggestedSettlement?.toValue ||
+        participantValues.find((value) => value !== defaultPayer) ||
+        defaultPayer;
+    const [paidBy, setPaidBy] = useState(defaultPayer);
+    const [receivedBy, setReceivedBy] = useState(defaultRecipient);
+    const participantOptions = participants.map((participant) => ({
+        value: participantValue(participant),
+        label: getBudgetParticipantLabel(participant) || participant.label,
+        avatarLabel: participant.label,
+        avatarUrl: participant.avatarUrl,
+    }));
+
+    return (
+        <AnimatedModal
+            onClose={onClose}
+            panelClassName="max-w-xl"
+            labelledBy="settle-up-title"
+        >
+            {({ requestClose }) => (
+                <>
+                    <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                        <div>
+                            <p className="vaivia-modal-eyebrow">Trip balances</p>
+                            <h2 id="settle-up-title" className="vaivia-modal-title">
+                                Settle up
+                            </h2>
+                            <p className="mt-2 text-sm font-semibold text-slate-300">
+                                Record money that was sent between trip members.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={requestClose}
+                            className="vaivia-modal-close"
+                            aria-label="Close settle up"
+                        >
+                            <X className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                    </div>
+                    <form
+                        action={async (formData) => {
+                            await createExpenseSettlement(formData);
+                            requestClose();
+                        }}
+                        className={budgetModalBodyClass}
+                    >
+                        <input type="hidden" name="trip_id" value={tripId} />
+                        <input
+                            type="hidden"
+                            name="reporting_currency"
+                            value={reportingCurrency}
+                        />
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <BudgetParticipantDropdown
+                                name="paid_by_participant_value"
+                                label="Sent by"
+                                options={participantOptions}
+                                value={paidBy}
+                                onValueChange={(nextPaidBy) => {
+                                    setPaidBy(nextPaidBy);
+                                    if (nextPaidBy === receivedBy) {
+                                        setReceivedBy(
+                                            participantValues.find(
+                                                (value) => value !== nextPaidBy
+                                            ) || nextPaidBy
+                                        );
+                                    }
+                                }}
+                            />
+                            <BudgetParticipantDropdown
+                                name="received_by_participant_value"
+                                label="Sent to"
+                                options={participantOptions}
+                                value={receivedBy}
+                                onValueChange={setReceivedBy}
+                                disabledValue={paidBy}
+                            />
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <Field label={`Amount (${reportingCurrency})`}>
+                                <input
+                                    name="amount"
+                                    inputMode="decimal"
+                                    defaultValue={
+                                        suggestedSettlement
+                                            ? suggestedSettlement.amount.toFixed(2)
+                                            : ""
+                                    }
+                                    placeholder="0.00"
+                                    className={inputClass}
+                                    required
+                                />
+                            </Field>
+                            <Field label="Date sent">
+                                <DateInput
+                                    name="settled_on"
+                                    defaultValue={getLocalDateKey()}
+                                    className={inputClass}
+                                    required
+                                />
+                            </Field>
+                        </div>
+                        <div className="vaivia-settle-up-footer vaivia-modal-footer sticky bottom-0 -mx-6 vaivia-modal-actions">
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                className="vaivia-settle-up-cancel vaivia-modal-button-secondary"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={participants.length < 2 || paidBy === receivedBy}
+                                className="vaivia-modal-button-primary disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Save settlement
+                            </button>
+                        </div>
+                    </form>
+                </>
+            )}
+        </AnimatedModal>
+    );
+}
+
+function RunningTotalCard({
+    tripId,
+    settlements,
+    participants,
+    reportingCurrency,
+}: {
+    tripId: string;
+    settlements: Settlement[];
+    participants: BudgetParticipant[];
+    reportingCurrency: string;
+}) {
+    const [isSettlingUp, setIsSettlingUp] = useState(false);
+
     return (
         <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 text-white shadow-2xl shadow-black/30">
+            {isSettlingUp ? (
+                <SettleUpModal
+                    tripId={tripId}
+                    participants={participants}
+                    reportingCurrency={reportingCurrency}
+                    suggestedSettlement={settlements[0]}
+                    onClose={() => setIsSettlingUp(false)}
+                />
+            ) : null}
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                     <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
@@ -1426,9 +1755,19 @@ function RunningTotalCard({
                         Who owes whom
                     </h2>
                 </div>
-                <p className="text-xs font-bold text-slate-400">
-                    Net of paid expenses and assigned splits
-                </p>
+                <div className="flex flex-wrap items-center gap-3">
+                    <p className="text-xs font-bold text-slate-400">
+                        Net of expenses, assigned splits, and recorded payments
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => setIsSettlingUp(true)}
+                        disabled={participants.length < 2}
+                        className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        Settle up
+                    </button>
+                </div>
             </div>
             {settlements.length > 0 ? (
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1464,8 +1803,10 @@ function BudgetDashboard({
     tripTitle,
     budget,
     lineItems,
+    expenseCategories = [],
     expenses,
     splits = [],
+    settlementPayments = [],
     participants,
     defaultCurrency,
 }: BudgetFeatureProps) {
@@ -1481,6 +1822,7 @@ function BudgetDashboard({
         expenses,
         splits,
         participants,
+        settlementPayments,
     });
 
     return (
@@ -1507,6 +1849,7 @@ function BudgetDashboard({
                     tripId={tripId}
                     reportingCurrency={reportingCurrency}
                     budgetCategories={lineItems}
+                    expenseCategories={expenseCategories}
                     participants={participants}
                     onClose={() => setIsAddingExpense(false)}
                 />
@@ -1601,7 +1944,9 @@ function BudgetDashboard({
                                     />
                                 </div>
                                 <RunningTotalCard
+                                    tripId={tripId}
                                     settlements={settlements}
+                                    participants={participants}
                                     reportingCurrency={reportingCurrency}
                                 />
                                 <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
@@ -1673,7 +2018,9 @@ function BudgetDashboard({
                             />
                         </div>
                         <RunningTotalCard
+                            tripId={tripId}
                             settlements={settlements}
+                            participants={participants}
                             reportingCurrency={reportingCurrency}
                         />
                         <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
@@ -1732,34 +2079,82 @@ function BudgetDashboard({
                                                               item.planned_amount
                                                           )) *
                                                       100
-                                                    : 0;
+                                                    : actual > 0
+                                                      ? 100
+                                                      : 0;
+                                            const isOverBudget = actual > Number(
+                                                item.planned_amount || 0
+                                            );
+                                            const categoryProgressWidth = `${Math.min(
+                                                Math.max(percent, 0),
+                                                100
+                                            )}%`;
                                             return (
-                                                <tr key={item.id} className="text-white">
-                                                    <td className="px-5 py-4 font-bold">
-                                                        {item.name}
-                                                    </td>
-                                                    <td className="px-5 py-4">
-                                                        {formatCurrency(
-                                                            item.planned_amount,
-                                                            reportingCurrency
-                                                        )}
-                                                    </td>
-                                                    <td className="px-5 py-4">
-                                                        {formatCurrency(
-                                                            actual,
-                                                            reportingCurrency
-                                                        )}
-                                                    </td>
-                                                    <td className="px-5 py-4">
-                                                        {formatCurrency(
-                                                            remaining,
-                                                            reportingCurrency
-                                                        )}
-                                                    </td>
-                                                    <td className="px-5 py-4">
-                                                        {formatPercent(percent)}
-                                                    </td>
-                                                </tr>
+                                                <Fragment key={item.id}>
+                                                    <tr className="text-white">
+                                                        <td className="px-5 pb-2 pt-4 font-bold">
+                                                            {item.name}
+                                                        </td>
+                                                        <td className="px-5 pb-2 pt-4">
+                                                            {formatCurrency(
+                                                                item.planned_amount,
+                                                                reportingCurrency
+                                                            )}
+                                                        </td>
+                                                        <td
+                                                            className={`px-5 pb-2 pt-4 font-bold ${
+                                                                isOverBudget
+                                                                    ? "text-red-300"
+                                                                    : ""
+                                                            }`}
+                                                        >
+                                                            {formatCurrency(
+                                                                actual,
+                                                                reportingCurrency
+                                                            )}
+                                                        </td>
+                                                        <td
+                                                            className={`px-5 pb-2 pt-4 ${
+                                                                isOverBudget
+                                                                    ? "text-red-300"
+                                                                    : ""
+                                                            }`}
+                                                        >
+                                                            {formatCurrency(
+                                                                remaining,
+                                                                reportingCurrency
+                                                            )}
+                                                        </td>
+                                                        <td
+                                                            className={`px-5 pb-2 pt-4 font-bold ${
+                                                                isOverBudget
+                                                                    ? "text-red-300"
+                                                                    : ""
+                                                            }`}
+                                                        >
+                                                            {formatPercent(percent)}
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td
+                                                            colSpan={5}
+                                                            className="px-5 pb-4 pt-1"
+                                                        >
+                                                            <div className="h-2 overflow-hidden rounded-full bg-slate-950/80 shadow-inner shadow-black/40">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all ${
+                                                                        isOverBudget
+                                                                            ? "bg-red-400 shadow-[0_0_20px_rgba(248,113,113,0.28)]"
+                                                                            : "bg-lime-300 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.24)]"
+                                                                    }`}
+                                                                    style={{
+                                                                        width: categoryProgressWidth,
+                                                                    }}
+                                                                />
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                </Fragment>
                                             );
                                         })}
                                     </tbody>
@@ -1779,8 +2174,10 @@ function ExpensesDashboard({
     tripTitle,
     budget,
     lineItems,
+    expenseCategories = [],
     expenses,
     splits = [],
+    settlementPayments = [],
     participants,
     defaultCurrency,
 }: BudgetFeatureProps) {
@@ -1799,6 +2196,7 @@ function ExpensesDashboard({
         expenses,
         splits,
         participants,
+        settlementPayments,
     });
 
     useEffect(() => {
@@ -1814,6 +2212,7 @@ function ExpensesDashboard({
                     tripId={tripId}
                     reportingCurrency={reportingCurrency}
                     budgetCategories={lineItems}
+                    expenseCategories={expenseCategories}
                     participants={participants}
                     onClose={() => setIsAddingExpense(false)}
                 />
@@ -1823,6 +2222,7 @@ function ExpensesDashboard({
                     tripId={tripId}
                     reportingCurrency={reportingCurrency}
                     budgetCategories={lineItems}
+                    expenseCategories={expenseCategories}
                     participants={participants}
                     mode="edit"
                     expense={editingExpense}
@@ -1837,6 +2237,7 @@ function ExpensesDashboard({
                     tripId={tripId}
                     reportingCurrency={reportingCurrency}
                     budgetCategories={lineItems}
+                    expenseCategories={expenseCategories}
                     participants={participants}
                     mode="duplicate"
                     expense={duplicatingExpense}
@@ -1954,7 +2355,13 @@ function ExpensesDashboard({
                     <SummaryCard label="Expenses" value={String(expenses.length)} />
                 </div>
                 <RunningTotalCard
+                    tripId={tripId}
                     settlements={settlements}
+                    participants={participants}
+                    reportingCurrency={reportingCurrency}
+                />
+                <ExpenseCategoryPieChart
+                    expenses={expenses}
                     reportingCurrency={reportingCurrency}
                 />
                 {expenses.length === 0 ? (

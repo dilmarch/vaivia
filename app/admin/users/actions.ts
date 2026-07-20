@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service";
 
 const editableRoles = ["basic_user", "super_admin"] as const;
+const frozenBanDuration = "876000h";
 
 export type AdminUserActionState = {
     ok: boolean;
@@ -45,6 +47,18 @@ type AdminUserRpcClient = {
 
 function getString(formData: FormData, key: string) {
     return String(formData.get(key) || "").trim();
+}
+
+function isUuid(value: string) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        value
+    );
+}
+
+function isFutureDate(value?: string | null) {
+    if (!value) return false;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) && timestamp > Date.now();
 }
 
 async function requireSuperAdmin() {
@@ -195,6 +209,87 @@ export async function updateAdminUser(
                 error instanceof Error
                     ? error.message
                     : "Could not update user.",
+        };
+    }
+}
+
+export async function setAdminUserFrozen(
+    _previousState: AdminUserActionState,
+    formData: FormData
+): Promise<AdminUserActionState> {
+    try {
+        const { user } = await requireSuperAdmin();
+        const userId = getString(formData, "user_id");
+        const shouldFreeze = getString(formData, "freeze") === "true";
+
+        if (!isUuid(userId)) {
+            return {
+                ok: false,
+                message: "Choose a valid user account.",
+            };
+        }
+
+        if (userId === user.id) {
+            return {
+                ok: false,
+                message: "You cannot freeze your own administrator account.",
+            };
+        }
+
+        const adminSupabase = createServiceRoleClient();
+        const { error: updateError } =
+            await adminSupabase.auth.admin.updateUserById(userId, {
+                ban_duration: shouldFreeze ? frozenBanDuration : "none",
+            });
+
+        if (updateError) {
+            console.error("Could not update user freeze status:", {
+                message: updateError.message,
+                code: updateError.code,
+                userId,
+                shouldFreeze,
+            });
+            return {
+                ok: false,
+                message: `Could not ${shouldFreeze ? "freeze" : "unfreeze"} user: ${updateError.message}`,
+            };
+        }
+
+        const { data: savedUserData, error: verifyError } =
+            await adminSupabase.auth.admin.getUserById(userId);
+        const savedIsFrozen = isFutureDate(savedUserData.user?.banned_until);
+
+        if (verifyError || savedIsFrozen !== shouldFreeze) {
+            console.error("Could not verify user freeze status:", {
+                message: verifyError?.message,
+                code: verifyError?.code,
+                userId,
+                shouldFreeze,
+                savedIsFrozen,
+            });
+            return {
+                ok: false,
+                message:
+                    "The account update ran, but VAIVIA could not confirm the new login status. Please refresh and check again.",
+            };
+        }
+
+        revalidatePath("/admin/users");
+        revalidatePath("/admin");
+
+        return {
+            ok: true,
+            message: shouldFreeze
+                ? "User frozen. Supabase Auth will reject new sign-ins and session refreshes."
+                : "User unfrozen. They can sign in again.",
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            message:
+                error instanceof Error
+                    ? error.message
+                    : "Could not update the user login status.",
         };
     }
 }

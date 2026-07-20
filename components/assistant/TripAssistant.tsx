@@ -18,6 +18,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import SafeMarkdown from "@/components/assistant/SafeMarkdown";
+import PlaceRecommendationCards from "@/components/assistant/PlaceRecommendationCards";
 import type {
     AssistantConversation,
     AssistantMessage,
@@ -29,10 +30,12 @@ export const ASSISTANT_STARTER_PROMPTS = [
     "Review my itinerary",
     "What still needs planning?",
     "Find gaps or conflicts",
+    "Find cafés near my accommodation",
 ] as const;
 
 type BootstrapPayload = {
     configured: boolean;
+    placesConfigured: boolean;
     trip: { id: string; title: string };
     conversations: AssistantConversation[];
     activeConversationId: string | null;
@@ -69,6 +72,7 @@ export default function TripAssistant({
     const [messages, setMessages] = useState<AssistantMessage[]>([]);
     const [usage, setUsage] = useState<AssistantUsage>({ limit: 50, used: 0, remaining: 50 });
     const [configured, setConfigured] = useState(true);
+    const [placesConfigured, setPlacesConfigured] = useState(true);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
@@ -110,6 +114,7 @@ export default function TripAssistant({
                 if (controller.signal.aborted) return;
                 shouldAutoScrollRef.current = true;
                 setConfigured(payload.configured);
+                setPlacesConfigured(payload.placesConfigured);
                 setConversations(payload.conversations);
                 setActiveConversationId(payload.activeConversationId);
                 setMessages(payload.messages);
@@ -150,6 +155,7 @@ export default function TripAssistant({
         setLastFailedMessage(null);
         setIsConversationPanelOpen(false);
         setConfigured(true);
+        setPlacesConfigured(true);
         shouldAutoScrollRef.current = true;
         void loadAssistant();
         return () => loadAbortRef.current?.abort();
@@ -345,7 +351,7 @@ export default function TripAssistant({
 
                 <aside
                     id="assistant-conversation-panel"
-                    className={`fixed inset-y-0 left-0 z-40 flex w-[min(20rem,86vw)] flex-col border-r border-white/10 bg-[#070b17] p-4 transition-transform md:static md:w-72 md:translate-x-0 ${
+                    className={`vaivia-assistant-conversation-panel fixed inset-y-0 left-0 z-40 flex w-[min(20rem,86vw)] flex-col border-r border-white/10 bg-[#070b17] p-4 transition-transform md:static md:w-72 md:translate-x-0 ${
                         isConversationPanelOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
                     aria-label="Assistant conversations"
@@ -453,7 +459,7 @@ export default function TripAssistant({
                             </p>
                         </div>
                         <span className="hidden rounded-full border border-lime-300/20 bg-lime-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-lime-200 sm:inline-flex">
-                            Phase 1
+                            Phase 2A
                         </span>
                     </header>
 
@@ -488,8 +494,9 @@ export default function TripAssistant({
                                         Ask about {tripTitle}
                                     </h2>
                                     <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-400">
-                                        I can organize and explain what is already saved in this
-                                        trip. I can’t make changes or check live information.
+                                        I can explain what is saved in this trip and find live
+                                        nearby places around saved trip locations. I can’t make
+                                        changes, bookings, or route searches.
                                     </p>
                                 </div>
                                 <div className="mt-7 grid gap-3 sm:grid-cols-2">
@@ -524,7 +531,14 @@ export default function TripAssistant({
                                             }`}
                                         >
                                             {message.role === "assistant" ? (
-                                                <SafeMarkdown content={message.content} />
+                                                <div>
+                                                    <SafeMarkdown content={message.content} />
+                                                    <PlaceRecommendationCards
+                                                        recommendations={
+                                                            message.recommendations || []
+                                                        }
+                                                    />
+                                                </div>
                                             ) : (
                                                 <div>
                                                     <p className="whitespace-pre-wrap">
@@ -555,7 +569,7 @@ export default function TripAssistant({
                                 {isSending ? (
                                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                                         <Loader2 className="h-4 w-4 animate-spin text-lime-300" aria-hidden="true" />
-                                        Reading your saved trip…
+                                        Reading your trip and approved live sources…
                                     </div>
                                 ) : null}
                                 <div ref={bottomRef} />
@@ -586,6 +600,15 @@ export default function TripAssistant({
                     </div>
 
                     <footer className="border-t border-white/10 bg-slate-950/60 p-3 pb-[calc(0.75rem+var(--safe-area-bottom))] sm:p-5">
+                        {configured && !placesConfigured ? (
+                            <p
+                                role="status"
+                                className="mx-auto mb-3 max-w-3xl text-center text-xs font-bold text-amber-200"
+                            >
+                                Live nearby place discovery is temporarily unavailable. Saved-trip
+                                questions still work.
+                            </p>
+                        ) : null}
                         {quotaReached ? (
                             <p className="mx-auto mb-3 max-w-3xl text-center text-xs font-bold text-amber-200">
                                 You’ve reached today’s limit. Your allowance resets at 00:00 UTC.
@@ -640,7 +663,11 @@ export default function TripAssistant({
                             <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-lime-300/70" aria-hidden="true" />
                             <span>
                                 Your allowlisted trip details and questions are sent to Google
-                                Gemini. Sensitive details are excluded. Answers may be inaccurate.{" "}
+                                Gemini. For explicit nearby discovery, a trusted saved trip
+                                location and bounded query are sent server-side to Google Places.
+                                Sensitive details and precise coordinates are not sent to Gemini
+                                or exposed in the browser. Answers and live details may be
+                                inaccurate.{" "}
                                 <Link
                                     href="/terms"
                                     className="font-bold text-slate-300 underline underline-offset-2 hover:text-white"

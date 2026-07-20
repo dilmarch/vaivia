@@ -23,6 +23,7 @@ import AnimatedModal from "@/components/AnimatedModal";
 import PassportStampCard from "@/components/PassportStamp";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
+import { DateInput } from "@/components/ui/date-input";
 import { useTripCoverImage } from "@/components/TripCoverImage";
 import {
     getTripHref,
@@ -1264,15 +1265,20 @@ function normalizeDashboardText(value?: string | null) {
         .trim();
 }
 
-function getDateRangeGap(
+type DashboardDateGap = {
+    start: Date;
+    end: Date;
+};
+
+function getDateRangeGaps(
     tripStartDate?: string | null,
     tripEndDate?: string | null,
     accommodations: NonNullable<DashboardTrip["planning"]>["accommodations"] = []
-) {
+): DashboardDateGap[] {
     const start = parseTripPlainDate(tripStartDate);
     const returnDate = parseTripPlainDate(tripEndDate || tripStartDate);
 
-    if (!start || !returnDate || returnDate <= start) return null;
+    if (!start || !returnDate || returnDate <= start) return [];
 
     const lastRequiredNight = addDays(returnDate, -1);
 
@@ -1293,10 +1299,11 @@ function getDateRangeGap(
         .sort((a, b) => a.start.getTime() - b.start.getTime());
 
     if (activeStays.length === 0) {
-        return { start, end: lastRequiredNight };
+        return [{ start, end: lastRequiredNight }];
     }
 
     const cursor = new Date(start);
+    const gaps: DashboardDateGap[] = [];
 
     for (const stay of activeStays) {
         const stayStart = new Date(Math.max(stay.start.getTime(), start.getTime()));
@@ -1305,21 +1312,24 @@ function getDateRangeGap(
         if (stayEnd <= start || stayStart >= returnDate) continue;
 
         if (stayStart > cursor) {
-            return { start: cursor, end: addDays(stayStart, -1) };
+            gaps.push({
+                start: new Date(cursor),
+                end: addDays(stayStart, -1),
+            });
         }
 
         if (stayEnd > cursor) {
             cursor.setTime(stayEnd.getTime());
         }
 
-        if (cursor >= returnDate) return null;
+        if (cursor >= returnDate) return gaps;
     }
 
     if (cursor < returnDate) {
-        return { start: cursor, end: lastRequiredNight };
+        gaps.push({ start: new Date(cursor), end: lastRequiredNight });
     }
 
-    return null;
+    return gaps;
 }
 
 function formatTaskDateRange(start: Date, end: Date) {
@@ -1333,6 +1343,15 @@ function formatTaskDateRange(start: Date, end: Date) {
     }
 
     return `${formatter.format(start)}-${formatter.format(end)}`;
+}
+
+function formatTaskDateRanges(gaps: DashboardDateGap[]) {
+    const labels = gaps.map((gap) => formatTaskDateRange(gap.start, gap.end));
+
+    if (labels.length <= 1) return labels[0] || "";
+    if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+
+    return `${labels.slice(0, -1).join(", ")}, and ${labels.at(-1)}`;
 }
 
 function getMissingTransportationDestinations(trip: DashboardTrip) {
@@ -1367,13 +1386,13 @@ function getDashboardTasks(trips: DashboardTrip[]) {
         const tripTitle = trip.title || getPrimaryDestination(trip);
         const accommodations = trip.planning?.accommodations || [];
         const displayDateRange = getTripDisplayDateRange(trip);
-        const accommodationGap = getDateRangeGap(
+        const accommodationGaps = getDateRangeGaps(
             displayDateRange.startDate,
             displayDateRange.endDate,
             accommodations
         );
 
-        if (accommodationGap) {
+        if (accommodationGaps.length > 0) {
             tasks.push({
                 id: `${trip.id}-accommodation-gap`,
                 tripId: trip.id,
@@ -1385,10 +1404,11 @@ function getDashboardTasks(trips: DashboardTrip[]) {
                         : "Finish accommodation coverage",
                 detail:
                     accommodations.length === 0
-                        ? `${tripTitle} has no accommodations added yet.`
-                        : `You still need somewhere to stay for ${formatTaskDateRange(
-                              accommodationGap.start,
-                              accommodationGap.end
+                        ? `${tripTitle} has no accommodations added yet. You need somewhere to stay for ${formatTaskDateRanges(
+                              accommodationGaps
+                          )}.`
+                        : `You still need somewhere to stay for ${formatTaskDateRanges(
+                              accommodationGaps
                           )}.`,
                 href: getTripHref(trip, "/accommodations"),
             });
@@ -1933,10 +1953,9 @@ export default function TripDashboardClient({
                                     >
                                         Start date
                                     </label>
-                                    <input
+                                    <DateInput
                                         id="tripEditStartDate"
                                         name="start_date"
-                                        type="date"
                                         defaultValue={selectedTrip.start_date || ""}
                                         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                         {...travelInputProps()}
@@ -1950,10 +1969,9 @@ export default function TripDashboardClient({
                                     >
                                         End date
                                     </label>
-                                    <input
+                                    <DateInput
                                         id="tripEditEndDate"
                                         name="end_date"
-                                        type="date"
                                         defaultValue={selectedTrip.end_date || ""}
                                         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                         {...travelInputProps()}

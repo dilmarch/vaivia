@@ -275,7 +275,6 @@ export default async function AppNav() {
                 joinedAt={user?.created_at}
                 profile={profile}
                 preferences={preferences}
-                firstTripId={upcomingTrips[0]?.id || null}
             />
             {user ? (
                 <>

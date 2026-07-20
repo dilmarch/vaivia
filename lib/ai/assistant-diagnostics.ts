@@ -6,6 +6,7 @@ export type AssistantDiagnosticStage =
   | "quota_reservation"
   | "user_message_persistence"
   | "gemini_generate_content"
+  | "places_tool"
   | "assistant_message_persistence"
   | "request_finalization";
 
@@ -26,6 +27,8 @@ export type AssistantDiagnostic = {
   elapsedMs?: number;
   contextCharacters?: number;
   historyMessageCount?: number;
+  externalToolCalls?: number;
+  externalPlaceResults?: number;
 };
 
 function sanitizeDiagnosticMessage(message: string | null | undefined) {

@@ -13,7 +13,9 @@ type TripAudienceSelectorProps = {
     currentUserTripMemberId?: string | null;
     initialAudienceMode?: TripAudienceMode | null;
     initialSelectedOptions?: TripAudienceOption[];
+    heading?: string;
     description?: string;
+    alwaysShowOptions?: boolean;
     privateSectionId?: string;
     onAudienceModeChange?: (mode: TripAudienceMode) => void;
 };
@@ -46,7 +48,9 @@ export default function TripAudienceSelector({
     currentUserTripMemberId,
     initialAudienceMode = "everyone",
     initialSelectedOptions = [],
+    heading = "Who is this for?",
     description = "Choose who should see this item when trip sharing is enabled.",
+    alwaysShowOptions = false,
     onAudienceModeChange,
 }: TripAudienceSelectorProps) {
     const defaultMode = initialAudienceMode || "everyone";
@@ -88,6 +92,15 @@ export default function TripAudienceSelector({
         if (audienceMode === "everyone") return [];
         return options.filter((option) => selectedKeys.has(optionKey(option)));
     }, [audienceMode, options, selectedKeys]);
+    const visibleSelectedKeys = useMemo(() => {
+        if (audienceMode === "everyone") {
+            return new Set(options.map(optionKey));
+        }
+        if (audienceMode === "just_me") {
+            return new Set(currentUserKey ? [currentUserKey] : []);
+        }
+        return selectedKeys;
+    }, [audienceMode, currentUserKey, options, selectedKeys]);
     const hasTripAudienceChoices = options.some(
         (option) => !(option.kind === "member" && option.isCurrentUser)
     );
@@ -101,18 +114,27 @@ export default function TripAudienceSelector({
     }
 
     function toggleOption(option: TripAudienceOption) {
-        if (audienceMode === "just_me") return;
+        if (!alwaysShowOptions && audienceMode === "just_me") return;
 
         setSelectedKeys((current) => {
-            const next = new Set(current);
+            const next =
+                audienceMode === "everyone"
+                    ? new Set(options.map(optionKey))
+                    : audienceMode === "just_me"
+                      ? new Set(currentUserKey ? [currentUserKey] : [])
+                      : new Set(current);
             const key = optionKey(option);
             if (next.has(key)) next.delete(key);
             else next.add(key);
             return next;
         });
+        if (alwaysShowOptions && audienceMode !== "custom") {
+            setAudienceMode("custom");
+            onAudienceModeChange?.("custom");
+        }
     }
 
-    if (!hasTripAudienceChoices) {
+    if (!hasTripAudienceChoices && !alwaysShowOptions) {
         return <input type="hidden" name="audience_mode" value="everyone" />;
     }
 
@@ -120,7 +142,15 @@ export default function TripAudienceSelector({
         <section className="rounded-2xl border border-slate-700/70 bg-slate-950 p-4 text-white shadow-xl shadow-black/20">
             <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <p className="text-sm font-black text-white">Who is this for?</p>
+                    <p
+                        className={
+                            alwaysShowOptions
+                                ? "text-xs font-black uppercase tracking-[0.22em] text-lime-200/80"
+                                : "text-sm font-black text-white"
+                        }
+                    >
+                        {heading}
+                    </p>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-300">
                         {description}
                     </p>
@@ -150,45 +180,71 @@ export default function TripAudienceSelector({
                 </span>
             ))}
 
-            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <div
+                className={`mt-4 grid gap-2 ${
+                    alwaysShowOptions ? "sm:grid-cols-2" : "sm:grid-cols-3"
+                }`}
+            >
                 {[
                     { value: "everyone", label: "Everyone", icon: Users },
                     { value: "just_me", label: "Just me", icon: UserRoundCheck },
-                    { value: "custom", label: "Custom", icon: Users },
+                    ...(alwaysShowOptions
+                        ? []
+                        : [{ value: "custom", label: "Custom", icon: Users }]),
                 ].map(({ value, label, icon: Icon }) => (
                     <button
                         key={value}
                         type="button"
                         onClick={() => setMode(value as TripAudienceMode)}
-                        className={`inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-black transition ${
-                            audienceMode === value
-                                ? "border-lime-300/40 bg-lime-300 text-slate-950"
-                                : "border-slate-700 bg-slate-900 text-slate-100 hover:border-lime-300/30 hover:bg-slate-800"
+                        aria-pressed={audienceMode === value}
+                        className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-black transition ${
+                            alwaysShowOptions
+                                ? audienceMode === value
+                                    ? "border-lime-300/45 bg-lime-300/10 text-white"
+                                    : "border-slate-700 bg-slate-900 text-slate-100 hover:border-lime-300/30 hover:bg-slate-800"
+                                : audienceMode === value
+                                  ? "justify-center border-lime-300/40 bg-lime-300 text-slate-950"
+                                  : "justify-center border-slate-700 bg-slate-900 text-slate-100 hover:border-lime-300/30 hover:bg-slate-800"
                         }`}
                     >
+                        {alwaysShowOptions ? (
+                            <span
+                                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                                    audienceMode === value
+                                        ? "border-lime-300 bg-lime-300 text-slate-950"
+                                        : "border-slate-600 bg-slate-950 text-transparent"
+                                }`}
+                                aria-hidden="true"
+                            >
+                                <Check className="h-3.5 w-3.5" />
+                            </span>
+                        ) : null}
                         <Icon className="h-4 w-4" aria-hidden="true" />
                         {label}
                     </button>
                 ))}
             </div>
 
-            {audienceMode === "just_me" ? (
+            {audienceMode === "just_me" && !alwaysShowOptions ? (
                 <div className="mt-4 rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm font-semibold text-slate-200">
                     Only you are selected. Want to mark this private too?
                 </div>
             ) : null}
 
-            {audienceMode === "custom" ? (
+            {audienceMode === "custom" || alwaysShowOptions ? (
                 <div className="mt-4 space-y-4">
                     <div className="flex flex-wrap gap-2">
                         {options.length > 0 ? (
                             options.map((option) => {
-                                const isSelected = selectedKeys.has(optionKey(option));
+                                const isSelected = visibleSelectedKeys.has(
+                                    optionKey(option)
+                                );
                                 return (
                                     <button
                                         key={optionKey(option)}
                                         type="button"
                                         onClick={() => toggleOption(option)}
+                                        aria-pressed={isSelected}
                                         className={`inline-flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-sm font-bold transition ${
                                             isSelected
                                                 ? "border-lime-300/40 bg-lime-300 text-slate-950"

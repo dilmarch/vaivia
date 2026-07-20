@@ -9,6 +9,9 @@ type CostAllocationFieldsProps = {
     amount: string;
     participants: TripAudienceOption[];
     currentUserTripMemberId?: string | null;
+    initialSplitMethod?: SplitMethod;
+    initialSelectedParticipantValues?: string[];
+    initialPayerValue?: string | null;
     tone?: "dark" | "light";
 };
 
@@ -103,9 +106,13 @@ export default function CostAllocationFields({
     amount,
     participants,
     currentUserTripMemberId = null,
+    initialSplitMethod = "just_me",
+    initialSelectedParticipantValues = [],
+    initialPayerValue = null,
     tone = "dark",
 }: CostAllocationFieldsProps) {
-    const [splitMethod, setSplitMethod] = useState<SplitMethod>("just_me");
+    const [splitMethod, setSplitMethod] =
+        useState<SplitMethod>(initialSplitMethod);
     const hasAmount = parsePositiveAmount(amount) > 0;
     const options = useMemo(
         () =>
@@ -120,9 +127,62 @@ export default function CostAllocationFields({
                 participant.kind === "member" &&
                 participant.id === currentUserTripMemberId
         ) || options.find((participant) => participant.isCurrentUser) || options[0];
+    const currentParticipant =
+        options.find((participant) =>
+            isCurrentUserParticipant(participant, currentUserTripMemberId)
+        ) || defaultPayer;
+    const currentParticipantValue = currentParticipant
+        ? participantValue(currentParticipant)
+        : "";
     const [selectedPayer, setSelectedPayer] = useState(
-        defaultPayer ? participantValue(defaultPayer) : ""
+        initialPayerValue &&
+            options.some(
+                (participant) => participantValue(participant) === initialPayerValue
+            )
+            ? initialPayerValue
+            : defaultPayer
+              ? participantValue(defaultPayer)
+              : ""
     );
+    const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(
+        () => {
+            const availableValues = new Set(options.map(participantValue));
+            const savedValues = initialSelectedParticipantValues.filter((value) =>
+                availableValues.has(value)
+            );
+
+            if (initialSplitMethod === "just_me") {
+                return new Set(currentParticipantValue ? [currentParticipantValue] : []);
+            }
+
+            return new Set(
+                savedValues.length > 0
+                    ? savedValues
+                    : options.map(participantValue)
+            );
+        }
+    );
+
+    function chooseSplitMethod(nextSplitMethod: SplitMethod) {
+        setSplitMethod(nextSplitMethod);
+
+        if (nextSplitMethod === "equal") {
+            setSelectedParticipants(new Set(options.map(participantValue)));
+        } else if (nextSplitMethod === "just_me") {
+            setSelectedParticipants(
+                new Set(currentParticipantValue ? [currentParticipantValue] : [])
+            );
+        }
+    }
+
+    function toggleParticipant(value: string, isChecked: boolean) {
+        setSelectedParticipants((current) => {
+            const next = new Set(current);
+            if (isChecked) next.add(value);
+            else next.delete(value);
+            return next;
+        });
+    }
 
     if (!hasAmount) return null;
 
@@ -211,7 +271,7 @@ export default function CostAllocationFields({
                                 <button
                                     key={option.value}
                                     type="button"
-                                    onClick={() => setSplitMethod(option.value)}
+                                    onClick={() => chooseSplitMethod(option.value)}
                                     aria-pressed={isSelected}
                                     className={`rounded-2xl border px-3 py-2 text-left transition ${
                                         isSelected
@@ -241,11 +301,11 @@ export default function CostAllocationFields({
                     </div>
 
                     <div className="grid gap-2 md:grid-cols-2">
-                        {splitMethod === "just_me" && defaultPayer ? (
+                        {splitMethod === "just_me" && currentParticipant ? (
                             <input
                                 type="hidden"
                                 name="included_participants"
-                                value={participantValue(defaultPayer)}
+                                value={participantValue(currentParticipant)}
                             />
                         ) : null}
                         {options.map((participant) => {
@@ -272,12 +332,18 @@ export default function CostAllocationFields({
                                 >
                                     <input
                                         type="checkbox"
-                                        name="included_participants"
-                                        value={value}
-                                        defaultChecked={
+                                        name={
                                             splitMethod === "just_me"
-                                                ? isCurrentUser
-                                                : true
+                                                ? undefined
+                                                : "included_participants"
+                                        }
+                                        value={value}
+                                        checked={selectedParticipants.has(value)}
+                                        onChange={(event) =>
+                                            toggleParticipant(
+                                                value,
+                                                event.target.checked
+                                            )
                                         }
                                         disabled={splitMethod === "just_me"}
                                         className="h-4 w-4 accent-lime-300"

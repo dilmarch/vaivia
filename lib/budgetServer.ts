@@ -6,8 +6,10 @@ import {
     type BudgetParticipant,
     type ExpenseCategory,
     type TripBudget,
+    type TripBudgetCategory,
     type TripBudgetLineItem,
     type TripExpense,
+    type TripExpenseSettlement,
     type TripExpenseSplit,
 } from "@/lib/budget";
 
@@ -98,6 +100,20 @@ export function normalizeBudgetLineItem(row: Record<string, unknown>) {
         notes: typeof row.notes === "string" ? row.notes : null,
         sort_order: toNumber(row.sort_order),
     } satisfies TripBudgetLineItem;
+}
+
+export function normalizeBudgetCategory(row: Record<string, unknown>) {
+    return {
+        id: String(row.id),
+        trip_id: String(row.trip_id),
+        name: String(row.name || "Expense category"),
+        linked_expense_category: String(
+            row.linked_expense_category || "other"
+        ) as ExpenseCategory,
+        sort_order: toNumber(row.sort_order),
+        is_default: row.is_default === true,
+        is_archived: row.is_archived === true,
+    } satisfies TripBudgetCategory;
 }
 
 export function normalizeExpense(row: Record<string, unknown>) {
@@ -199,16 +215,42 @@ export function normalizeExpenseSplit(row: Record<string, unknown>) {
     } satisfies TripExpenseSplit;
 }
 
+export function normalizeExpenseSettlement(row: Record<string, unknown>) {
+    return {
+        id: String(row.id),
+        trip_id: String(row.trip_id),
+        paid_by_participant_value: String(row.paid_by_participant_value),
+        received_by_participant_value: String(row.received_by_participant_value),
+        amount: toNumber(row.amount),
+        reporting_currency: normalizeCurrency(
+            String(row.reporting_currency || "CAD")
+        ),
+        settled_on: String(row.settled_on),
+        created_by: String(row.created_by),
+        created_at: typeof row.created_at === "string" ? row.created_at : null,
+    } satisfies TripExpenseSettlement;
+}
+
 export async function loadTripBudgetData(tripId: string) {
     const supabase = await createUntypedSupabaseClient();
-    const [{ data: budgetRow }, { data: lineRows }, { data: expenseRows }] =
-        await Promise.all([
+    const [
+        { data: budgetRow },
+        { data: categoryRows },
+        { data: lineRows },
+        { data: expenseRows },
+    ] = await Promise.all([
             supabase
                 .from("trip_budgets")
                 .select("*")
                 .eq("trip_id", tripId)
                 .eq("is_active", true)
                 .maybeSingle(),
+            supabase
+                .from("trip_budget_categories")
+                .select("*")
+                .eq("trip_id", tripId)
+                .eq("is_archived", false)
+                .order("sort_order", { ascending: true }),
             supabase
                 .from("trip_budget_line_items")
                 .select("*")
@@ -224,6 +266,9 @@ export async function loadTripBudgetData(tripId: string) {
 
     return {
         budget: normalizeBudget(budgetRow),
+        categories: ((categoryRows || []) as Record<string, unknown>[]).map(
+            normalizeBudgetCategory
+        ),
         lineItems: ((lineRows || []) as Record<string, unknown>[]).map(
             normalizeBudgetLineItem
         ),
@@ -235,7 +280,8 @@ export async function loadTripBudgetData(tripId: string) {
 
 export async function loadTripExpenseData(tripId: string) {
     const supabase = await createUntypedSupabaseClient();
-    const [{ data: expenseRows }, { data: splitRows }] = await Promise.all([
+    const [{ data: expenseRows }, { data: splitRows }, { data: settlementRows }] =
+        await Promise.all([
         supabase
             .from("trip_expenses")
             .select("*")
@@ -246,6 +292,11 @@ export async function loadTripExpenseData(tripId: string) {
             .from("trip_expense_splits")
             .select("*")
             .eq("trip_id", tripId),
+        supabase
+            .from("trip_expense_settlements")
+            .select("*")
+            .eq("trip_id", tripId)
+            .order("settled_on", { ascending: false }),
     ]);
 
     return {
@@ -254,6 +305,9 @@ export async function loadTripExpenseData(tripId: string) {
         ),
         splits: ((splitRows || []) as Record<string, unknown>[]).map(
             normalizeExpenseSplit
+        ),
+        settlements: ((settlementRows || []) as Record<string, unknown>[]).map(
+            normalizeExpenseSettlement
         ),
     };
 }

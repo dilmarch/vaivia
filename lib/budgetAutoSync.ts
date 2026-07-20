@@ -13,7 +13,10 @@ import {
     type UntypedSupabaseClient,
 } from "@/lib/budgetServer";
 
-type AutoBudgetSourceType = "transportation" | "accommodation";
+type AutoBudgetSourceType =
+    | "transportation"
+    | "accommodation"
+    | "itinerary_event";
 
 type SyncAutoBudgetExpenseInput = {
     supabase: unknown;
@@ -29,17 +32,22 @@ type SyncAutoBudgetExpenseInput = {
 };
 
 function getSourceColumn(sourceType: AutoBudgetSourceType) {
-    return sourceType === "transportation"
-        ? "transportation_item_id"
-        : "accommodation_id";
+    if (sourceType === "transportation") return "transportation_item_id";
+    if (sourceType === "itinerary_event") return "itinerary_event_id";
+    return "accommodation_id";
 }
 
 function getDefaultCategory(sourceType: AutoBudgetSourceType) {
-    return sourceType === "transportation" ? "transportation" : "accommodations";
+    if (sourceType === "transportation") return "transportation";
+    if (sourceType === "itinerary_event") return "entertainment";
+    return "accommodations";
 }
 
 function parseParticipantValue(value?: FormDataEntryValue | string | null) {
-    const [kind, id] = String(value || "").split(":");
+    const participantValue = String(value || "");
+    const separatorIndex = participantValue.indexOf(":");
+    const kind = participantValue.slice(0, separatorIndex);
+    const id = participantValue.slice(separatorIndex + 1);
 
     if (
         kind !== "member" &&

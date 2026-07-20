@@ -20,6 +20,8 @@ import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type { TransportationTravelerOptions } from "@/lib/travelers";
 import type { OnboardingProgress } from "@/lib/onboarding";
+import { buildItineraryTimezoneHints } from "@/lib/itineraryTimezoneHints";
+import { buildAccommodationItineraryHolds } from "@/lib/accommodationItineraryHolds";
 
 type ItineraryTabsProps = {
     tripId: string;
@@ -30,6 +32,7 @@ type ItineraryTabsProps = {
     tripLegMemberOptions?: TripLegMemberOption[];
     ideas: TripIdea[];
     tripStartDate?: string | null;
+    tripEndDate?: string | null;
     tripDestination?: string | null;
     deleteItineraryAction: (formData: FormData) => Promise<void>;
     upsertTripLegAction?: (formData: FormData) => Promise<void>;
@@ -42,6 +45,7 @@ type ItineraryTabsProps = {
     undoJourneyTransportationAction?: (formData: FormData) => Promise<void>;
     createIdeaAction: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
+    deleteIdeaAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
     moveTargetTrips: MoveTargetTrip[];
     toggleIdeaReactionAction: (formData: FormData) => Promise<void>;
@@ -61,7 +65,7 @@ type ItineraryTabsProps = {
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
 type CalendarView = "list" | "day" | "week";
-type QuickAddInitialAction = "transportation" | "scheduled" | "idea";
+type QuickAddInitialAction = "transportation" | "scheduled" | "idea" | "expense";
 
 function getLocalDateKey(date: Date) {
     const year = date.getFullYear();
@@ -114,6 +118,7 @@ export default function ItineraryTabs({
     tripLegMemberOptions = [],
     ideas,
     tripStartDate,
+    tripEndDate,
     tripDestination,
     deleteItineraryAction,
     upsertTripLegAction,
@@ -126,6 +131,7 @@ export default function ItineraryTabs({
     undoJourneyTransportationAction,
     createIdeaAction,
     updateIdeaAction,
+    deleteIdeaAction,
     moveItemAction,
     moveTargetTrips,
     toggleIdeaReactionAction,
@@ -150,6 +156,10 @@ export default function ItineraryTabs({
         string | null
     >(null);
     const [showAllJourneyItems, setShowAllJourneyItems] = useState(false);
+    const itineraryTimezoneHints = useMemo(
+        () => buildItineraryTimezoneHints(items, tripEndDate),
+        [items, tripEndDate]
+    );
     const currentUserTraveler = useMemo(
         () =>
             currentUserTripMemberId
@@ -168,6 +178,13 @@ export default function ItineraryTabs({
                     Boolean(item.transportation_mode)
             ),
         [items]
+    );
+    const itineraryItems = useMemo(
+        () => [
+            ...items,
+            ...buildAccommodationItineraryHolds({ accommodations, items }),
+        ],
+        [accommodations, items]
     );
     const currentTravelerTransportationItems = useMemo(
         () =>
@@ -193,7 +210,7 @@ export default function ItineraryTabs({
             {activeTab === "itinerary" ? (
                 <ItineraryCalendar
                     tripId={tripId}
-                    items={items}
+                    items={itineraryItems}
                     accommodations={accommodations}
                     memberLocations={memberLocations}
                     tripStartDate={tripStartDate}
@@ -331,6 +348,7 @@ export default function ItineraryTabs({
                     tripId={tripId}
                     ideas={ideas}
                     updateIdeaAction={updateIdeaAction}
+                    deleteIdeaAction={deleteIdeaAction}
                     moveItemAction={moveItemAction}
                     moveTargetTrips={moveTargetTrips}
                     toggleReactionAction={toggleIdeaReactionAction}
@@ -362,6 +380,7 @@ export default function ItineraryTabs({
                 travelerOptions={travelerOptions}
                 audienceOptions={audienceOptions}
                 currentUserTripMemberId={currentUserTripMemberId}
+                itineraryTimezoneHints={itineraryTimezoneHints}
                 initialAction={initialQuickAddAction}
                 onboardingProgress={onboardingProgress}
             />

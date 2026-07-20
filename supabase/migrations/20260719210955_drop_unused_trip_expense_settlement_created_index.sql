@@ -1,0 +1,1 @@
+drop index if exists public.trip_expense_settlements_trip_created_idx;

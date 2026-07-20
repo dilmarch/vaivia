@@ -5,7 +5,9 @@ import {
   FinishReason,
   GoogleGenAI,
   ThinkingLevel,
+  type Content,
   type ContentListUnion,
+  type FunctionCall,
   type GenerateContentConfig,
   type GenerateContentResponse,
 } from "@google/genai";
@@ -62,6 +64,18 @@ export type GeminiAssistantGenerationResult =
       message: string;
       diagnostics: GeminiAssistantDiagnostics;
     };
+
+export type GeminiAssistantTurnResult =
+  | {
+      status: "success";
+      message: string | null;
+      responseContent: Content;
+      functionCalls: FunctionCall[];
+      model: string;
+      tokenUsage: GeminiAssistantTokenUsage;
+      diagnostics: GeminiAssistantDiagnostics;
+    }
+  | Exclude<GeminiAssistantGenerationResult, { status: "success" }>;
 
 function getAssistantApiKey() {
   return process.env.GEMINI_ASSISTANT_API_KEY?.trim() || null;
@@ -203,7 +217,7 @@ function isBlockedFinishReason(finishReason: string | null) {
  * non-streaming choice keeps persistence atomic at the application boundary:
  * only complete model output is ever saved as an assistant message.
  */
-export async function generateGeminiAssistantResponse({
+export async function generateGeminiAssistantTurn({
   contents,
   config,
   signal,
@@ -211,7 +225,7 @@ export async function generateGeminiAssistantResponse({
   contents: ContentListUnion;
   config?: GenerateContentConfig;
   signal?: AbortSignal;
-}): Promise<GeminiAssistantGenerationResult> {
+}): Promise<GeminiAssistantTurnResult> {
   const model = getGeminiAssistantModel();
   const startedAt = Date.now();
   const client = getGeminiAssistantClient();
@@ -259,7 +273,8 @@ export async function generateGeminiAssistantResponse({
         },
       },
     });
-    const message = response.text?.trim();
+    const message = response.text?.trim() || null;
+    const functionCalls = response.functionCalls || [];
     const diagnostics = getResponseDiagnostics({
       response,
       model,
@@ -285,7 +300,7 @@ export async function generateGeminiAssistantResponse({
       };
     }
 
-    if (!message) {
+    if (!message && functionCalls.length === 0) {
       return {
         status: "empty_output",
         message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
@@ -296,6 +311,11 @@ export async function generateGeminiAssistantResponse({
     return {
       status: "success",
       message,
+      responseContent: response.candidates?.[0]?.content || {
+        role: "model",
+        parts: message ? [{ text: message }] : [],
+      },
+      functionCalls,
       model: response.modelVersion?.trim() || model,
       tokenUsage: diagnostics.tokenUsage,
       diagnostics,
@@ -341,4 +361,26 @@ export async function generateGeminiAssistantResponse({
     clearTimeout(timeout);
     signal?.removeEventListener("abort", abortFromCaller);
   }
+}
+
+/** One-shot compatibility wrapper used by non-tool assistant requests/tests. */
+export async function generateGeminiAssistantResponse(
+  options: Parameters<typeof generateGeminiAssistantTurn>[0]
+): Promise<GeminiAssistantGenerationResult> {
+  const result = await generateGeminiAssistantTurn(options);
+  if (result.status !== "success") return result;
+  if (!result.message) {
+    return {
+      status: "empty_output",
+      message: VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE,
+      diagnostics: result.diagnostics,
+    };
+  }
+  return {
+    status: "success",
+    message: result.message,
+    model: result.model,
+    tokenUsage: result.tokenUsage,
+    diagnostics: result.diagnostics,
+  };
 }

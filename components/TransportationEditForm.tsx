@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import TripAudienceSelector from "@/components/TripAudienceSelector";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 import { COMMON_CURRENCIES } from "@/lib/budget";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
@@ -239,9 +241,8 @@ export default function TransportationEditForm({
             <div className="grid gap-4 md:grid-cols-4">
                 <label className="space-y-1 text-sm font-medium text-slate-700">
                     Depart date
-                    <input
+                    <DateInput
                         name="item_date"
-                        type="date"
                         value={departureDate}
                         onChange={(event) => setDepartureDate(event.target.value)}
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
@@ -249,9 +250,8 @@ export default function TransportationEditForm({
                 </label>
                 <label className="space-y-1 text-sm font-medium text-slate-700">
                     Depart time
-                    <input
+                    <TimeInput
                         name="start_time"
-                        type="time"
                         value={departureTime}
                         onChange={(event) => setDepartureTime(event.target.value)}
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
@@ -259,9 +259,8 @@ export default function TransportationEditForm({
                 </label>
                 <label className="space-y-1 text-sm font-medium text-slate-700">
                     Arrive date
-                    <input
+                    <DateInput
                         name="end_date"
-                        type="date"
                         value={arrivalDate}
                         onChange={(event) => setArrivalDate(event.target.value)}
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
@@ -269,9 +268,8 @@ export default function TransportationEditForm({
                 </label>
                 <label className="space-y-1 text-sm font-medium text-slate-700">
                     Arrive time
-                    <input
+                    <TimeInput
                         name="end_time"
-                        type="time"
                         value={arrivalTime}
                         onChange={(event) => setArrivalTime(event.target.value)}
                         className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"

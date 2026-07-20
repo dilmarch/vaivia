@@ -1,16 +1,24 @@
 "use client";
 
-import { Check, Lock, Pencil, Search, SlidersHorizontal } from "lucide-react";
+import {
+    Check,
+    Lock,
+    Pencil,
+    Search,
+    SlidersHorizontal,
+    Trash2,
+} from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
+import { TimeInput } from "@/components/ui/time-input";
 import {
     IDEA_CATEGORIES,
     IDEA_AGE_POLICIES,
     IDEA_DAYS,
-    IDEA_TIME_EXACT_WINDOWS,
     IDEA_TICKET_POLICIES,
     IDEA_TIME_OF_DAY_OPTIONS,
     IDEA_TIME_WINDOWS,
@@ -30,6 +38,7 @@ type IdeasTabProps = {
     tripId: string;
     ideas: TripIdea[];
     updateIdeaAction: (formData: FormData) => Promise<void>;
+    deleteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction: (formData: FormData) => Promise<void>;
     toggleAttendedAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
@@ -118,10 +127,8 @@ function getLocationPartsFromPlace(place: google.maps.places.PlaceResult) {
 
 function IdeaAvailabilityControls({
     idea,
-    onTimeSelected,
 }: {
     idea?: TripIdea | null;
-    onTimeSelected?: (time: IdeaTimeOfDay) => void;
 }) {
     const [selectedDays, setSelectedDays] = useState<string[]>(
         idea?.days_available || []
@@ -239,7 +246,6 @@ function IdeaAvailabilityControls({
                                         selectedTimes,
                                         setSelectedTimes
                                     );
-                                    if (!isSelected) onTimeSelected?.(time);
                                 }}
                                 aria-pressed={isSelected}
                                 className={`rounded-md border px-3 py-2 text-left transition ${
@@ -280,6 +286,7 @@ export function IdeaForm({
     action,
     idea,
     onCancel,
+    deleteAction,
     moveItemAction,
     moveTargetTrips = [],
 }: {
@@ -287,6 +294,7 @@ export function IdeaForm({
     action: (formData: FormData) => Promise<void>;
     idea?: TripIdea | null;
     onCancel?: () => void;
+    deleteAction?: (formData: FormData) => Promise<void>;
     moveItemAction?: (formData: FormData) => Promise<void>;
     moveTargetTrips?: MoveTargetTrip[];
 }) {
@@ -328,6 +336,7 @@ export function IdeaForm({
     const [closesAt, setClosesAt] = useState(idea?.closes_at?.slice(0, 5) || "");
     const [ticketPolicy, setTicketPolicy] = useState(idea?.ticket_policy || "any");
     const [agePolicy, setAgePolicy] = useState(idea?.age_policy || "all_ages");
+    const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const returnTo = useMemo(() => {
         const query = searchParams.toString();
         return `${pathname || ""}${query ? `?${query}` : ""}`;
@@ -374,7 +383,6 @@ export function IdeaForm({
             setLocationWebsite(website);
             setLocationLat(typeof lat === "number" ? lat.toString() : "");
             setLocationLng(typeof lng === "number" ? lng.toString() : "");
-            setTitle((currentTitle) => (currentTitle.trim() ? currentTitle : name));
         });
 
         return () => listener.remove();
@@ -384,13 +392,6 @@ export function IdeaForm({
         setIs24Hours(true);
         setOpensAt("00:00");
         setClosesAt("23:59");
-    }
-
-    function applyTimeWindow(time: IdeaTimeOfDay) {
-        const window = IDEA_TIME_EXACT_WINDOWS[time];
-        setIs24Hours(false);
-        setOpensAt(window.opensAt);
-        setClosesAt(window.closesAt);
     }
 
     return (
@@ -428,24 +429,69 @@ export function IdeaForm({
             />
             <input type="hidden" name="is_24_hours" value={is24Hours ? "true" : "false"} />
 
+            <div>
+                <label
+                    htmlFor={idea ? `idea-address-${idea.id}` : "idea-address"}
+                    className="block text-sm font-medium text-slate-700"
+                >
+                    Location
+                </label>
+                <input
+                    id={idea ? `idea-address-${idea.id}` : "idea-address"}
+                    ref={addressInputRef}
+                    name="location"
+                    type="text"
+                    required
+                    autoFocus={!idea}
+                    value={location}
+                    onChange={(event) => {
+                        setLocation(event.target.value);
+                        setFormattedAddress("");
+                        setGooglePlaceId("");
+                        setLocationCity("");
+                        setLocationRegion("");
+                        setLocationCountry("");
+                        setLocationCountryCode("");
+                        setLocationPostalCode("");
+                        setLocationWebsite("");
+                        setLocationLat("");
+                        setLocationLng("");
+                    }}
+                    placeholder="Search for a place or address"
+                    {...travelInputProps()}
+                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                    Start with where the activity is. Select a Google Places result when available.
+                </p>
+                {locationCity && (
+                    <p className="mt-1 text-xs font-medium text-emerald-700">
+                        Validated for {locationCity}
+                    </p>
+                )}
+            </div>
+
             <div className="grid gap-4 md:grid-cols-[1fr_220px]">
                 <div>
                     <label
                         htmlFor={idea ? `idea-title-${idea.id}` : "idea-title"}
                         className="block text-sm font-medium text-slate-700"
                     >
-                        Title
+                        Name <span className="font-normal text-slate-500">(optional)</span>
                     </label>
                     <input
                         id={idea ? `idea-title-${idea.id}` : "idea-title"}
                         name="title"
                         type="text"
-                        required
                         value={title}
                         onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Add a custom activity name"
                         {...travelInputProps()}
                         className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                     />
+                    <p className="mt-1 text-xs text-slate-500">
+                        Leave this blank to use the selected place name.
+                    </p>
                 </div>
                 <div>
                     <label
@@ -489,43 +535,6 @@ export function IdeaForm({
 
             <div>
                 <label
-                    htmlFor={idea ? `idea-address-${idea.id}` : "idea-address"}
-                    className="block text-sm font-medium text-slate-700"
-                >
-                    Address / place
-                </label>
-                <input
-                    id={idea ? `idea-address-${idea.id}` : "idea-address"}
-                    ref={addressInputRef}
-                    name="location"
-                    type="text"
-                    value={location}
-                    onChange={(event) => {
-                        setLocation(event.target.value);
-                        setFormattedAddress("");
-                        setGooglePlaceId("");
-                        setLocationCity("");
-                        setLocationRegion("");
-                        setLocationCountry("");
-                        setLocationCountryCode("");
-                        setLocationPostalCode("");
-                        setLocationWebsite("");
-                        setLocationLat("");
-                        setLocationLng("");
-                    }}
-                    placeholder="Search Google Places"
-                    {...travelInputProps()}
-                    className="mt-2 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                />
-                {locationCity && (
-                    <p className="mt-1 text-xs font-medium text-emerald-700">
-                        Validated for {locationCity}
-                    </p>
-                )}
-            </div>
-
-            <div>
-                <label
                     htmlFor={idea ? `idea-description-${idea.id}` : "idea-description"}
                     className="block text-sm font-medium text-slate-700"
                 >
@@ -559,10 +568,7 @@ export function IdeaForm({
                 />
             </div>
 
-            <IdeaAvailabilityControls
-                idea={idea}
-                onTimeSelected={applyTimeWindow}
-            />
+            <IdeaAvailabilityControls idea={idea} />
 
             <div className="grid gap-4 sm:grid-cols-2">
                 <div>
@@ -627,10 +633,9 @@ export function IdeaForm({
                     >
                         Optional opening time
                     </label>
-                    <input
+                    <TimeInput
                         id={idea ? `idea-opens-${idea.id}` : "idea-opens"}
                         name="opens_at"
-                        type="time"
                         value={opensAt}
                         onChange={(event) => {
                             setOpensAt(event.target.value);
@@ -647,10 +652,9 @@ export function IdeaForm({
                     >
                         Optional closing time
                     </label>
-                    <input
+                    <TimeInput
                         id={idea ? `idea-closes-${idea.id}` : "idea-closes"}
                         name="closes_at"
-                        type="time"
                         value={closesAt}
                         onChange={(event) => {
                             setClosesAt(event.target.value);
@@ -750,33 +754,80 @@ export function IdeaForm({
                 />
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2">
-                {idea && moveItemAction ? (
-                    <MoveTripItemButton
-                        itemType="idea"
-                        itemId={idea.id}
-                        currentTripId={tripId}
-                        targetTrips={moveTargetTrips}
-                        moveAction={moveItemAction}
-                        itemLabel={idea.title}
-                        className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                    />
-                ) : null}
-                {onCancel && (
-                    <button
-                        type="button"
-                        onClick={onCancel}
-                        className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                    >
-                        Cancel
-                    </button>
-                )}
-                <button
-                    type="submit"
-                    className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+            {idea && deleteAction && isConfirmingDelete ? (
+                <div
+                    className="rounded-xl border border-red-200 bg-red-50 p-4"
+                    role="alert"
+                    aria-live="polite"
                 >
-                    {idea ? "Save idea" : "Add idea"}
-                </button>
+                    <p className="text-sm font-bold text-red-950">
+                        Delete “{idea.title}” permanently?
+                    </p>
+                    <p className="mt-1 text-xs font-medium leading-5 text-red-800">
+                        This removes the idea and its votes. This action cannot be undone.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                            type="submit"
+                            formAction={deleteAction}
+                            formNoValidate
+                            className="inline-flex items-center gap-2 rounded-md bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-500"
+                        >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            Yes, delete idea
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsConfirmingDelete(false)}
+                            className="rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-900 transition hover:bg-red-100"
+                        >
+                            Keep idea
+                        </button>
+                    </div>
+                </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    {idea && deleteAction && !isConfirmingDelete ? (
+                        <button
+                            type="button"
+                            onClick={() => setIsConfirmingDelete(true)}
+                            className="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100"
+                        >
+                            <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            Delete idea
+                        </button>
+                    ) : null}
+                </div>
+                <div className="flex flex-wrap justify-end gap-2">
+                    {idea && moveItemAction ? (
+                        <MoveTripItemButton
+                            itemType="idea"
+                            itemId={idea.id}
+                            currentTripId={tripId}
+                            targetTrips={moveTargetTrips}
+                            moveAction={moveItemAction}
+                            itemLabel={idea.title}
+                            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                        />
+                    ) : null}
+                    {onCancel && (
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+                        >
+                            Cancel
+                        </button>
+                    )}
+                    <button
+                        type="submit"
+                        className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                    >
+                        {idea ? "Save idea" : "Add idea"}
+                    </button>
+                </div>
             </div>
         </form>
     );
@@ -786,6 +837,7 @@ function IdeaCard({
     idea,
     tripId,
     updateIdeaAction,
+    deleteIdeaAction,
     toggleReactionAction,
     toggleAttendedAction,
     moveItemAction,
@@ -794,6 +846,7 @@ function IdeaCard({
     idea: TripIdea;
     tripId: string;
     updateIdeaAction: (formData: FormData) => Promise<void>;
+    deleteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction: (formData: FormData) => Promise<void>;
     toggleAttendedAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
@@ -808,6 +861,7 @@ function IdeaCard({
                 idea={idea}
                 action={updateIdeaAction}
                 onCancel={() => setIsEditing(false)}
+                deleteAction={deleteIdeaAction}
                 moveItemAction={moveItemAction}
                 moveTargetTrips={moveTargetTrips}
             />
@@ -816,7 +870,7 @@ function IdeaCard({
 
     return (
         <article
-            className={`relative rounded-[1.75rem] border p-5 pr-16 shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
+            className={`relative overflow-hidden rounded-[1.75rem] border shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
                 idea.is_archived
                     ? "border-white/10 bg-white/[0.035] opacity-70"
                     : idea.attended
@@ -824,6 +878,13 @@ function IdeaCard({
                       : "border-white/10 bg-[#03030a]/90"
             }`}
         >
+            {idea.google_place_id ? (
+                <GooglePlaceCoverPhoto
+                    placeId={idea.google_place_id}
+                    alt={`${idea.title} from Google Maps`}
+                />
+            ) : null}
+            <div className="relative p-5 pr-16">
             <button
                 type="button"
                 onClick={() => setIsEditing(true)}
@@ -879,7 +940,7 @@ function IdeaCard({
                             </span>
                         )}
                         {idea.is_private && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
+                            <span className="vaivia-private-tag inline-flex items-center gap-1 rounded-full border border-white/10 bg-slate-950/80 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-white">
                                 <Lock className="h-3 w-3" aria-hidden="true" />
                                 Private
                             </span>
@@ -1007,6 +1068,7 @@ function IdeaCard({
                 currentUserReaction={idea.current_user_reaction}
                 toggleReactionAction={toggleReactionAction}
             />
+            </div>
         </article>
     );
 }
@@ -1015,6 +1077,7 @@ export default function IdeasTab({
     tripId,
     ideas,
     updateIdeaAction,
+    deleteIdeaAction,
     toggleReactionAction,
     toggleAttendedAction,
     moveItemAction,
@@ -1285,6 +1348,7 @@ export default function IdeasTab({
                             idea={idea}
                             tripId={tripId}
                             updateIdeaAction={updateIdeaAction}
+                            deleteIdeaAction={deleteIdeaAction}
                             toggleReactionAction={toggleReactionAction}
                             toggleAttendedAction={toggleAttendedAction}
                             moveItemAction={moveItemAction}

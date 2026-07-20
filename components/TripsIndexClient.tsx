@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
+import { DateInput } from "@/components/ui/date-input";
 import {
     DashboardTripCard,
     TripQuickInfoPanel,
@@ -410,10 +411,9 @@ export default function TripsIndexClient({
                                     >
                                         Start date
                                     </label>
-                                    <input
+                                    <DateInput
                                         id="tripsIndexEditStartDate"
                                         name="start_date"
-                                        type="date"
                                         defaultValue={selectedTrip.start_date || ""}
                                         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                         {...travelInputProps()}
@@ -427,10 +427,9 @@ export default function TripsIndexClient({
                                     >
                                         End date
                                     </label>
-                                    <input
+                                    <DateInput
                                         id="tripsIndexEditEndDate"
                                         name="end_date"
-                                        type="date"
                                         defaultValue={selectedTrip.end_date || ""}
                                         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                         {...travelInputProps()}

@@ -46,6 +46,12 @@ export const NOTIFICATION_TYPE_OPTIONS = [
         description: "When a shared trip item is removed.",
     },
     {
+        type: "accommodation_cancellation_reminder",
+        label: "Free cancellation reminders",
+        description:
+            "48 hours before free cancellation ends for an accommodation booking.",
+    },
+    {
         type: "trip_slug_changed",
         label: "Trip URL changes",
         description: "When VAIVIA changes a trip URL slug.",
@@ -122,9 +128,34 @@ export const NOTIFICATION_TYPE_OPTIONS = [
     },
 ] as const;
 
+const REQUIRED_NOTIFICATION_TYPE_VALUES = ["terms_updated"] as const;
+const DEFAULT_EMAIL_NOTIFICATION_TYPE_VALUES = [
+    "trip_invite_received",
+    "friend_request_received",
+    "trip_slug_changed",
+    "passport_stamp_share_received",
+    "travel_email_failed",
+] as const;
+
+const REQUIRED_NOTIFICATION_TYPE_SET = new Set<string>(
+    REQUIRED_NOTIFICATION_TYPE_VALUES
+);
+const DEFAULT_EMAIL_NOTIFICATION_TYPE_SET = new Set<string>(
+    DEFAULT_EMAIL_NOTIFICATION_TYPE_VALUES
+);
+
+export const CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS =
+    NOTIFICATION_TYPE_OPTIONS.filter(
+        (option) => !REQUIRED_NOTIFICATION_TYPE_SET.has(option.type)
+    );
+
 export const NOTIFICATION_TYPES = NOTIFICATION_TYPE_OPTIONS.map(
     (option) => option.type
 );
+
+export function isRequiredNotificationType(notificationType: string) {
+    return REQUIRED_NOTIFICATION_TYPE_SET.has(notificationType);
+}
 
 export function isKnownNotificationType(value: unknown): value is string {
     return (
@@ -138,16 +169,12 @@ export function isKnownNotificationType(value: unknown): value is string {
 export function getDefaultNotificationPreference(
     notificationType: string
 ): NotificationPreference {
-    const notificationCentreOnlyTypes = new Set([
-        "profile_onboarding_prompt",
-        "theme_exploration_prompt",
-    ]);
-
     return {
         notificationType,
         inAppEnabled: true,
-        pushEnabled: false,
-        emailEnabled: !notificationCentreOnlyTypes.has(notificationType),
+        pushEnabled: true,
+        emailEnabled:
+            DEFAULT_EMAIL_NOTIFICATION_TYPE_SET.has(notificationType),
     };
 }
 

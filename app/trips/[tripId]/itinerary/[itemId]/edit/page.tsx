@@ -12,6 +12,17 @@ import {
     type UserCategory,
 } from "@/lib/itineraryCategories";
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
+import {
+    loadBudgetParticipants,
+    loadTripExpenseData,
+} from "@/lib/budgetServer";
+import type { BudgetParticipant, TripExpense, TripExpenseSplit } from "@/lib/budget";
+import type { TripAudienceOption } from "@/lib/tripAudience";
+import {
+    buildItineraryCoverPayloadFromForm,
+    cleanupReplacedItineraryCover,
+    deleteItineraryCoverObject,
+} from "@/lib/itineraryCovers";
 
 type PageProps = {
     params: Promise<{
@@ -41,6 +52,8 @@ type ItineraryItemUpdatePayload = {
     ticket_website?: string | null;
     location_website?: string | null;
     cover_image_url?: string | null;
+    cover_image_source?: string | null;
+    cover_image_storage_path?: string | null;
     is_private?: boolean;
 };
 
@@ -50,7 +63,49 @@ const REMOVABLE_LEGACY_ITINERARY_COLUMNS = new Set([
     "ticket_website",
     "location_website",
     "cover_image_url",
+    "cover_image_source",
+    "cover_image_storage_path",
 ]);
+
+function getBudgetParticipantValue(participant: BudgetParticipant) {
+    if (participant.tripMemberId) return `member:${participant.tripMemberId}`;
+    if (participant.userId) return `member:user:${participant.userId}`;
+    if (participant.invitationId) return `invitation:${participant.invitationId}`;
+    if (participant.familyMemberId) {
+        return `family_member:${participant.familyMemberId}`;
+    }
+    return `guest:${participant.guestName || participant.label}`;
+}
+
+function getExpensePayerValue(
+    row: TripExpense,
+    userValueById: Map<string, string>
+) {
+    if (row.paid_by_trip_member_id) return `member:${row.paid_by_trip_member_id}`;
+    if (row.paid_by_user_id) {
+        return userValueById.get(row.paid_by_user_id) || "";
+    }
+    if (row.paid_by_invitation_id) {
+        return `invitation:${row.paid_by_invitation_id}`;
+    }
+    if (row.paid_by_family_member_id) {
+        return `family_member:${row.paid_by_family_member_id}`;
+    }
+    if (row.paid_by_guest_name) return `guest:${row.paid_by_guest_name}`;
+    return "";
+}
+
+function getExpenseSplitValue(
+    row: TripExpenseSplit,
+    userValueById: Map<string, string>
+) {
+    if (row.trip_member_id) return `member:${row.trip_member_id}`;
+    if (row.user_id) return userValueById.get(row.user_id) || "";
+    if (row.invitation_id) return `invitation:${row.invitation_id}`;
+    if (row.family_member_id) return `family_member:${row.family_member_id}`;
+    if (row.guest_name) return `guest:${row.guest_name}`;
+    return "";
+}
 
 function getMissingColumnName(error: { message?: string; details?: string }) {
     const text = `${error.message || ""} ${error.details || ""}`;
@@ -86,12 +141,16 @@ function removeOptionalLinkColumns(payload: ItineraryItemUpdatePayload) {
         ticket_website,
         location_website,
         cover_image_url,
+        cover_image_source,
+        cover_image_storage_path,
         ...fallbackPayload
     } = payload;
 
     void ticket_website;
     void location_website;
     void cover_image_url;
+    void cover_image_source;
+    void cover_image_storage_path;
 
     return fallbackPayload;
 }
@@ -175,12 +234,36 @@ async function updateItineraryItem(formData: FormData) {
     const timezoneSource = formData.get("timezone_source") as string;
     const ticketWebsite = formData.get("ticket_website") as string;
     const locationWebsite = formData.get("location_website") as string;
-    const coverImageUrl = formData.get("cover_image_url") as string;
     const url = ticketWebsite || (formData.get("url") as string);
     const notes = formData.get("notes") as string;
+    const eventCost = formData.get("cost");
+    const eventCurrency = formData.get("currency");
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
+    const { data: oldCover, error: oldCoverError } = await supabase
+        .from("itinerary_items")
+        .select("cover_image_source,cover_image_storage_path")
+        .eq("id", itemId)
+        .eq("trip_id", tripId)
+        .maybeSingle();
+
+    if (oldCoverError || !oldCover) {
+        console.error("Could not load itinerary cover before update:", {
+            message: oldCoverError?.message,
+            code: oldCoverError?.code,
+            tripId,
+            itemId,
+        });
+        throw new Error("Could not update itinerary item.");
+    }
+
+    const coverResult = await buildItineraryCoverPayloadFromForm({
+        supabase,
+        userId: user.id,
+        tripId,
+        formData,
+    });
 
     const payload: ItineraryItemUpdatePayload = {
         title,
@@ -201,7 +284,7 @@ async function updateItineraryItem(formData: FormData) {
         url: url || null,
         ticket_website: ticketWebsite || null,
         location_website: locationWebsite || null,
-        cover_image_url: coverImageUrl || null,
+        ...coverResult.payload,
         is_private: isPrivate,
         notes,
     };
@@ -225,9 +308,34 @@ async function updateItineraryItem(formData: FormData) {
     }
 
     if (error) {
+        if (coverResult.uploadedStoragePath) {
+            await deleteItineraryCoverObject({
+                supabase,
+                storagePath: coverResult.uploadedStoragePath,
+            });
+        }
         console.error("Error updating itinerary item:", error);
         throw new Error("Could not update itinerary item");
     }
+
+    await cleanupReplacedItineraryCover({
+        supabase,
+        oldCover,
+        nextPayload: coverResult.payload,
+    });
+
+    await syncAutoBudgetExpense({
+        supabase,
+        userId: user.id,
+        tripId,
+        sourceType: "itinerary_event",
+        sourceId: itemId,
+        amount: eventCost,
+        currency: eventCurrency,
+        expenseDate: itemDate,
+        description: title,
+        formData,
+    });
 
     redirect(`/trips/${tripId}/itinerary`);
 }
@@ -397,6 +505,46 @@ async function EditItineraryItemContent({
     }
 
     const categories = sortCategoriesByName((categoryRows || []) as UserCategory[]);
+    const [budgetParticipants, expenseData] = await Promise.all([
+        loadBudgetParticipants(tripId, user.id),
+        loadTripExpenseData(tripId),
+    ]);
+    const audienceOptions: TripAudienceOption[] = budgetParticipants.map(
+        (participant) => ({
+            kind: participant.kind,
+            id:
+                participant.kind === "member"
+                    ? participant.tripMemberId || `user:${participant.userId}`
+                    : participant.kind === "invitation"
+                      ? participant.invitationId || participant.id
+                      : participant.kind === "family_member"
+                        ? participant.familyMemberId || participant.id
+                        : participant.guestName || participant.label,
+            displayName: participant.label,
+            avatarUrl: participant.avatarUrl,
+            secondaryLabel: participant.secondaryLabel,
+            status:
+                participant.kind === "invitation"
+                    ? "invited"
+                    : participant.kind === "family_member"
+                      ? "family_member"
+                      : participant.kind === "guest"
+                        ? "guest"
+                        : "accepted",
+            isCurrentUser: participant.isCurrentUser,
+        })
+    );
+    const currentUserTripMemberId = audienceOptions.find(
+        (participant) => participant.kind === "member" && participant.isCurrentUser
+    )?.id;
+    const userValueById = new Map(
+        budgetParticipants
+            .filter((participant) => participant.kind === "member" && participant.userId)
+            .map((participant) => [
+                participant.userId as string,
+                getBudgetParticipantValue(participant),
+            ])
+    );
     let decoratedItem = item;
 
     if (!isTransportationItem && (item as { category_id?: string | null }).category_id) {
@@ -413,6 +561,35 @@ async function EditItineraryItemContent({
                 category_owner_id: (currentCategory as { user_id?: string | null }).user_id,
             };
         }
+    }
+
+    if (!isTransportationItem) {
+        const linkedExpense = expenseData.expenses.find(
+            (expense) =>
+                expense.source_type === "itinerary_event" &&
+                expense.itinerary_event_id === itemId
+        );
+
+        decoratedItem = {
+            ...(decoratedItem as Record<string, unknown>),
+            linked_expense: linkedExpense
+                ? {
+                      amount: linkedExpense.amount,
+                      currency: linkedExpense.currency,
+                      splitMethod: linkedExpense.split_method,
+                      payerValue: getExpensePayerValue(
+                          linkedExpense,
+                          userValueById
+                      ),
+                      participantValues: expenseData.splits
+                          .filter((split) => split.expense_id === linkedExpense.id)
+                          .map((split) =>
+                              getExpenseSplitValue(split, userValueById)
+                          )
+                          .filter(Boolean),
+                  }
+                : null,
+        };
     }
 
     async function updateWithItemId(formData: FormData) {
@@ -457,10 +634,13 @@ async function EditItineraryItemContent({
                 ) : (
                     <ItineraryItemForm
                         tripId={trip.id}
+                        itemId={itemId}
                         submitAction={updateWithItemId}
                         initialItem={decoratedItem}
                         submitLabel="Save changes"
                         categories={categories}
+                        audienceOptions={audienceOptions}
+                        currentUserTripMemberId={currentUserTripMemberId}
                     />
                 )}
             </div>

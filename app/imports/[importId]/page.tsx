@@ -6,6 +6,8 @@ import type { Json } from "@/src/types/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { processTravelEmailImport } from "@/lib/travelEmailImportProcessor";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 import { getTripRouteSegment } from "@/lib/tripRoutes";
 import {
     getEditableImportedFlight,
@@ -315,6 +317,9 @@ function FlightLegTextInput({
     required?: boolean;
     type?: string;
 }) {
+    const fieldClassName =
+        "mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50";
+
     return (
         <label className="block rounded-2xl border border-white/10 bg-black/20 p-3">
             <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
@@ -323,12 +328,29 @@ function FlightLegTextInput({
                     <span className="ml-1 text-lime-200">Required before adding</span>
                 ) : null}
             </span>
-            <input
-                name={getLegFieldName(itemId, legField)}
-                type={type}
-                defaultValue={defaultValue}
-                className="mt-2 w-full rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
-            />
+            {type === "date" ? (
+                <DateInput
+                    name={getLegFieldName(itemId, legField)}
+                    defaultValue={defaultValue}
+                    required={required}
+                    className={fieldClassName}
+                />
+            ) : type === "time" ? (
+                <TimeInput
+                    name={getLegFieldName(itemId, legField)}
+                    defaultValue={defaultValue}
+                    required={required}
+                    className={fieldClassName}
+                />
+            ) : (
+                <input
+                    name={getLegFieldName(itemId, legField)}
+                    type={type}
+                    defaultValue={defaultValue}
+                    required={required}
+                    className={fieldClassName}
+                />
+            )}
         </label>
     );
 }

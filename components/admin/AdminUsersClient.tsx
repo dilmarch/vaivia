@@ -4,15 +4,19 @@ import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
     ArrowUpDown,
+    CircleCheck,
     KeyRound,
+    LockOpen,
     Pencil,
     Search,
     ShieldAlert,
+    Snowflake,
     X,
 } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
 import {
     type AdminUserActionState,
+    setAdminUserFrozen,
     updateAdminUser,
 } from "@/app/admin/users/actions";
 
@@ -26,9 +30,19 @@ export type AdminUserRow = {
     join_date: string | null;
     created_at: string | null;
     auth_method: string | null;
+    is_frozen: boolean;
+    banned_until: string | null;
 };
 
-type SortKey = "first_name" | "last_name" | "email" | "auth_method" | "role";
+type SortKey =
+    | "id"
+    | "username"
+    | "first_name"
+    | "last_name"
+    | "email"
+    | "auth_method"
+    | "role"
+    | "is_frozen";
 type SortDirection = "asc" | "desc";
 
 const initialActionState: AdminUserActionState = {
@@ -37,11 +51,14 @@ const initialActionState: AdminUserActionState = {
 };
 
 const sortLabels: Record<SortKey, string> = {
+    id: "User ID",
+    username: "Username",
     first_name: "First name",
     last_name: "Last name",
     email: "Email",
     auth_method: "Authentication",
     role: "Role",
+    is_frozen: "Status",
 };
 
 function displayName(user: AdminUserRow) {
@@ -59,19 +76,26 @@ function authMethodLabel(method: string | null) {
 }
 
 function sortValue(user: AdminUserRow, key: SortKey) {
+    if (key === "is_frozen") return user.is_frozen ? "frozen" : "active";
     return String(user[key] || "").toLocaleLowerCase();
 }
 
 function EditUserModal({
     user,
+    isCurrentAdmin,
     onClose,
 }: {
     user: AdminUserRow;
+    isCurrentAdmin: boolean;
     onClose: () => void;
 }) {
     const router = useRouter();
     const [state, formAction, pending] = useActionState(
         updateAdminUser,
+        initialActionState
+    );
+    const [freezeState, freezeAction, freezePending] = useActionState(
+        setAdminUserFrozen,
         initialActionState
     );
     const [selectedRole, setSelectedRole] = useState(user.role || "basic_user");
@@ -84,6 +108,13 @@ function EditUserModal({
         router.refresh();
         onClose();
     }, [onClose, router, state.ok]);
+
+    useEffect(() => {
+        if (!freezeState.ok) return;
+
+        router.refresh();
+        onClose();
+    }, [freezeState.ok, onClose, router]);
 
     return (
         <AnimatedModal onClose={onClose} panelClassName="max-w-2xl">
@@ -98,8 +129,11 @@ function EditUserModal({
                                 Edit user
                             </h2>
                             <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">
-                                Update profile fields or change this user&apos;s role.
+                                Update profile fields, role, and account access.
                                 Authentication method is shown for context only.
+                            </p>
+                            <p className="mt-3 break-all font-mono text-xs font-semibold text-slate-500">
+                                User ID: {user.id}
                             </p>
                         </div>
                         <button
@@ -248,13 +282,94 @@ function EditUserModal({
                             </button>
                         </div>
                     </form>
+
+                    <form
+                        action={freezeAction}
+                        className={`rounded-[1.4rem] border p-4 ${
+                            user.is_frozen
+                                ? "border-red-300/30 bg-red-500/10"
+                                : "border-white/10 bg-slate-950/55"
+                        }`}
+                    >
+                        <input type="hidden" name="user_id" value={user.id} />
+                        <input
+                            type="hidden"
+                            name="freeze"
+                            value={user.is_frozen ? "false" : "true"}
+                        />
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                                <p className="flex items-center gap-2 text-sm font-black text-white">
+                                    {user.is_frozen ? (
+                                        <Snowflake
+                                            className="h-4 w-4 text-red-200"
+                                            aria-hidden="true"
+                                        />
+                                    ) : (
+                                        <CircleCheck
+                                            className="h-4 w-4 text-lime-200"
+                                            aria-hidden="true"
+                                        />
+                                    )}
+                                    Account is {user.is_frozen ? "frozen" : "active"}
+                                </p>
+                                <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                                    {user.is_frozen
+                                        ? "Unfreezing restores login access."
+                                        : "Freezing blocks new sign-ins and Supabase session refreshes."}
+                                </p>
+                                {isCurrentAdmin ? (
+                                    <p className="mt-2 text-xs font-bold text-amber-200">
+                                        You cannot freeze your own administrator account.
+                                    </p>
+                                ) : null}
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={freezePending || isCurrentAdmin}
+                                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                                    user.is_frozen
+                                        ? "border-lime-300/40 bg-lime-300 text-slate-950 hover:bg-lime-200"
+                                        : "border-red-300/35 bg-red-500/15 text-red-100 hover:bg-red-500/25"
+                                }`}
+                            >
+                                {user.is_frozen ? (
+                                    <LockOpen className="h-4 w-4" aria-hidden="true" />
+                                ) : (
+                                    <Snowflake className="h-4 w-4" aria-hidden="true" />
+                                )}
+                                {freezePending
+                                    ? "Updating..."
+                                    : user.is_frozen
+                                      ? "Unfreeze user"
+                                      : "Freeze user"}
+                            </button>
+                        </div>
+                        {freezeState.message ? (
+                            <p
+                                className={`mt-3 rounded-2xl border p-3 text-sm font-bold ${
+                                    freezeState.ok
+                                        ? "border-emerald-300/30 bg-emerald-300/10 text-emerald-100"
+                                        : "border-red-300/30 bg-red-300/10 text-red-100"
+                                }`}
+                            >
+                                {freezeState.message}
+                            </p>
+                        ) : null}
+                    </form>
                 </div>
             )}
         </AnimatedModal>
     );
 }
 
-export default function AdminUsersClient({ users }: { users: AdminUserRow[] }) {
+export default function AdminUsersClient({
+    users,
+    currentUserId,
+}: {
+    users: AdminUserRow[];
+    currentUserId: string;
+}) {
     const [query, setQuery] = useState("");
     const [sortKey, setSortKey] = useState<SortKey>("last_name");
     const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -269,8 +384,10 @@ export default function AdminUsersClient({ users }: { users: AdminUserRow[] }) {
                 user.last_name,
                 user.email,
                 user.username,
+                user.id,
                 authMethodLabel(user.auth_method),
                 roleLabel(user.role),
+                user.is_frozen ? "frozen" : "active",
             ]
                 .filter(Boolean)
                 .join(" ")
@@ -324,7 +441,7 @@ export default function AdminUsersClient({ users }: { users: AdminUserRow[] }) {
                 </div>
 
                 <div className="mt-5 overflow-x-auto rounded-[1.25rem] border border-white/10 bg-slate-950/45">
-                    <table className="min-w-[920px] w-full text-left text-sm">
+                    <table className="min-w-[1480px] w-full text-left text-sm">
                         <thead className="border-b border-white/10 text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                             <tr>
                                 {(Object.keys(sortLabels) as SortKey[]).map((key) => (
@@ -350,6 +467,12 @@ export default function AdminUsersClient({ users }: { users: AdminUserRow[] }) {
                         <tbody className="divide-y divide-white/10">
                             {sortedUsers.map((user) => (
                                 <tr key={user.id} className="text-slate-200">
+                                    <td className="max-w-56 px-4 py-4 font-mono text-xs font-semibold text-slate-400">
+                                        <span className="block break-all">{user.id}</span>
+                                    </td>
+                                    <td className="px-4 py-4 font-black text-lime-100">
+                                        {user.username ? `@${user.username}` : "-"}
+                                    </td>
                                     <td className="px-4 py-4 font-black text-white">
                                         {user.first_name || "-"}
                                     </td>
@@ -371,6 +494,28 @@ export default function AdminUsersClient({ users }: { users: AdminUserRow[] }) {
                                             }`}
                                         >
                                             {roleLabel(user.role)}
+                                        </span>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <span
+                                            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${
+                                                user.is_frozen
+                                                    ? "border-red-300/35 bg-red-500/10 text-red-100"
+                                                    : "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+                                            }`}
+                                        >
+                                            {user.is_frozen ? (
+                                                <Snowflake
+                                                    className="h-3.5 w-3.5"
+                                                    aria-hidden="true"
+                                                />
+                                            ) : (
+                                                <CircleCheck
+                                                    className="h-3.5 w-3.5"
+                                                    aria-hidden="true"
+                                                />
+                                            )}
+                                            {user.is_frozen ? "Frozen" : "Active"}
                                         </span>
                                     </td>
                                     <td className="px-4 py-4 text-right">
@@ -403,6 +548,7 @@ export default function AdminUsersClient({ users }: { users: AdminUserRow[] }) {
             {editingUser ? (
                 <EditUserModal
                     user={editingUser}
+                    isCurrentAdmin={editingUser.id === currentUserId}
                     onClose={() => setEditingUser(null)}
                 />
             ) : null}

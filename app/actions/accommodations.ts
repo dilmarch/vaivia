@@ -6,13 +6,16 @@ import {
     buildAccommodationPayload,
     getAccommodationErrorMessage,
     validateAccommodationPayload,
+    type AccommodationActionResult,
 } from "@/lib/accommodations";
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { createClient } from "@/lib/supabase/server";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
 import { resolveTripLegIdForLocation } from "@/lib/tripLegs";
 
-export async function createAccommodation(formData: FormData) {
+export async function createAccommodation(
+    formData: FormData
+): Promise<AccommodationActionResult> {
     const supabase = await createClient();
     const {
         data: { user },
@@ -34,7 +37,7 @@ export async function createAccommodation(formData: FormData) {
     const validationErrors = validateAccommodationPayload(payload);
 
     if (validationErrors.length > 0) {
-        throw new Error(validationErrors.join(" "));
+        return { ok: false, error: validationErrors.join(" ") };
     }
 
     const { data, error } = await supabase
@@ -52,11 +55,12 @@ export async function createAccommodation(formData: FormData) {
             payload,
             userId: user.id,
         });
-        throw new Error(
-            `Could not create accommodation: ${getAccommodationErrorMessage(
+        return {
+            ok: false,
+            error: `Could not create accommodation: ${getAccommodationErrorMessage(
                 error.message
-            )}`
-        );
+            )}`,
+        };
     }
 
     const accommodationId =
@@ -65,25 +69,15 @@ export async function createAccommodation(formData: FormData) {
             : "";
 
     if (accommodationId) {
-        await syncAutoBudgetExpense({
-            supabase,
-            userId: user.id,
-            tripId,
-            sourceType: "accommodation",
-            sourceId: accommodationId,
-            amount: payload.cost,
-            currency: payload.currency,
-            expenseDate: payload.check_in_date,
-            description: payload.hotel_name,
-            formData,
-        });
-
-        const participantsError = await replaceTripItemParticipantsFromForm({
-            tripId,
-            itemType: "accommodation",
-            itemId: accommodationId,
-            formData,
-        });
+        const participantsError =
+            payload.audience_mode === "everyone"
+                ? null
+                : await replaceTripItemParticipantsFromForm({
+                      tripId,
+                      itemType: "accommodation",
+                      itemId: accommodationId,
+                      formData,
+                  });
 
         if (participantsError) {
             console.error("Error creating accommodation participants:", {
@@ -94,14 +88,59 @@ export async function createAccommodation(formData: FormData) {
                 tripId,
                 accommodationId,
             });
-            throw new Error(
-                `Could not create accommodation participants: ${
-                    participantsError.message ?? "Unknown Supabase error"
-                }`
-            );
+
+            const { error: rollbackError } = await supabase
+                .from("trip_accommodations")
+                .delete()
+                .eq("id", accommodationId)
+                .eq("trip_id", tripId);
+
+            if (rollbackError) {
+                console.error("Error rolling back incomplete accommodation:", {
+                    message: rollbackError.message,
+                    code: rollbackError.code,
+                    details: rollbackError.details,
+                    hint: rollbackError.hint,
+                    tripId,
+                    accommodationId,
+                });
+            }
+
+            return {
+                ok: false,
+                error: "Could not save who this accommodation is for. The accommodation was not created.",
+            };
+        }
+
+        if (payload.cost !== null && payload.cost !== undefined) {
+            try {
+                await syncAutoBudgetExpense({
+                    supabase,
+                    userId: user.id,
+                    tripId,
+                    sourceType: "accommodation",
+                    sourceId: accommodationId,
+                    amount: payload.cost,
+                    currency: payload.currency,
+                    expenseDate: payload.check_in_date,
+                    description: payload.hotel_name,
+                    formData,
+                });
+            } catch (budgetError) {
+                console.error("Accommodation created without budget sync:", {
+                    message:
+                        budgetError instanceof Error
+                            ? budgetError.message
+                            : String(budgetError),
+                    tripId,
+                    accommodationId,
+                    userId: user.id,
+                });
+            }
         }
     }
 
     revalidatePath(`/trips/${tripId}`);
     revalidatePath(`/trips/${tripId}/accommodations`);
+    return { ok: true };
 }

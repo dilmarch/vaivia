@@ -29,6 +29,8 @@ import AnimatedModal from "@/components/AnimatedModal";
 import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
+import { DateInput } from "@/components/ui/date-input";
+import { TimeInput } from "@/components/ui/time-input";
 import {
     getAirlineNameFromCode,
     inferAirlineCodeFromFlightNumber,
@@ -577,9 +579,8 @@ function SetupFlightFields({
                                     <span className={labelClass}>
                                         Departure date
                                     </span>
-                                    <input
+                                    <DateInput
                                         name={`leg_${index}_departure_date`}
-                                        type="date"
                                         required
                                         value={leg.departureDate}
                                         onChange={(event) =>
@@ -596,9 +597,8 @@ function SetupFlightFields({
                                     <span className={labelClass}>
                                         Departure time
                                     </span>
-                                    <input
+                                    <TimeInput
                                         name={`leg_${index}_departure_time`}
-                                        type="time"
                                         required
                                         value={leg.departureTime}
                                         onChange={(event) =>
@@ -613,9 +613,8 @@ function SetupFlightFields({
                                 </label>
                                 <label className="block">
                                     <span className={labelClass}>Arrival date</span>
-                                    <input
+                                    <DateInput
                                         name={`leg_${index}_arrival_date`}
-                                        type="date"
                                         required
                                         value={leg.arrivalDate}
                                         onChange={(event) =>
@@ -630,9 +629,8 @@ function SetupFlightFields({
                                 </label>
                                 <label className="block">
                                     <span className={labelClass}>Arrival time</span>
-                                    <input
+                                    <TimeInput
                                         name={`leg_${index}_arrival_time`}
-                                        type="time"
                                         required
                                         value={leg.arrivalTime}
                                         onChange={(event) =>
@@ -908,17 +906,34 @@ function SimpleField({
     placeholder?: string;
     type?: string;
 }) {
+    const fieldClassName =
+        "mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50";
+
     return (
         <label className="block">
             <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                 {label}
             </span>
-            <input
-                name={name}
-                type={type}
-                placeholder={placeholder}
-                className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm font-bold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50"
-            />
+            {type === "date" ? (
+                <DateInput
+                    name={name}
+                    placeholder={placeholder}
+                    className={fieldClassName}
+                />
+            ) : type === "time" ? (
+                <TimeInput
+                    name={name}
+                    placeholder={placeholder}
+                    className={fieldClassName}
+                />
+            ) : (
+                <input
+                    name={name}
+                    type={type}
+                    placeholder={placeholder}
+                    className={fieldClassName}
+                />
+            )}
         </label>
     );
 }
@@ -1780,9 +1795,8 @@ export default function NewTripForm({
                                                     <span className={labelClass}>
                                                         Start date
                                                     </span>
-                                                    <input
+                                                    <DateInput
                                                         name="matrix_start_date"
-                                                        type="date"
                                                         value={startDate}
                                                         onChange={(event) =>
                                                             setStartDate(
@@ -1911,9 +1925,8 @@ export default function NewTripForm({
                                                         <span className={labelClass}>
                                                             Date of arrival
                                                         </span>
-                                                        <input
+                                                        <DateInput
                                                             name={`matrix_next_arrival_date_${index}`}
-                                                            type="date"
                                                             value={row.arrivalDate}
                                                             onChange={(event) =>
                                                                 updateNextDestination(
@@ -2015,9 +2028,8 @@ export default function NewTripForm({
                                                     <span className={labelClass}>
                                                         Date of arrival
                                                     </span>
-                                                    <input
+                                                    <DateInput
                                                         name="matrix_return_date"
-                                                        type="date"
                                                         value={returnDate}
                                                         onChange={(event) =>
                                                             setReturnDate(

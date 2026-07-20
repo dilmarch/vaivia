@@ -1,13 +1,21 @@
 "use client";
 
 import Script from "next/script";
-import { ExternalLink, Hotel, Lightbulb, MapPin, Route } from "lucide-react";
+import Link from "next/link";
+import {
+    ExternalLink,
+    Hotel,
+    Lightbulb,
+    MapPin,
+    Plus,
+    Route,
+    TrainFront,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { hasMappableCoordinatePair } from "@/lib/mapCoordinates";
 
 export type AccommodationAreaMapPlaceType =
-    | "accommodation"
-    | "scheduled"
-    | "idea";
+    "accommodation" | "scheduled" | "idea";
 
 export type AccommodationAreaMapPlace = {
     id: string;
@@ -94,6 +102,11 @@ const mapStyles: google.maps.MapTypeStyle[] = [
         stylers: [{ color: "#1f2937" }],
     },
     {
+        featureType: "transit.station",
+        elementType: "labels",
+        stylers: [{ visibility: "on" }],
+    },
+    {
         featureType: "water",
         elementType: "geometry",
         stylers: [{ color: "#07111f" }],
@@ -150,6 +163,35 @@ function getNearestStay(
         .sort((a, b) => a.distanceKm - b.distanceKm)[0];
 }
 
+function getStayComparisons(city: AccommodationAreaMapCity) {
+    const stays = city.places.filter((place) => place.type === "accommodation");
+    const plans = city.places.filter((place) => place.type !== "accommodation");
+
+    return stays
+        .map((stay) => {
+            const distances = plans.map((place) =>
+                getDistanceInKilometers(stay, place)
+            );
+
+            return {
+                stay,
+                planCount: distances.length,
+                averageDistanceKm:
+                    distances.length > 0
+                        ? distances.reduce(
+                              (total, distance) => total + distance,
+                              0
+                          ) / distances.length
+                        : null,
+            };
+        })
+        .sort((a, b) => {
+            if (a.averageDistanceKm === null) return 1;
+            if (b.averageDistanceKm === null) return -1;
+            return a.averageDistanceKm - b.averageDistanceKm;
+        });
+}
+
 function getTypeLabel(type: AccommodationAreaMapPlaceType) {
     if (type === "accommodation") return "Stay";
     if (type === "scheduled") return "Scheduled";
@@ -175,19 +217,22 @@ function escapeHtml(value: string) {
 function CityMap({
     city,
     isGoogleReady,
+    showTransit,
 }: {
     city: AccommodationAreaMapCity;
     isGoogleReady: boolean;
+    showTransit: boolean;
 }) {
     const mapRef = useRef<HTMLDivElement | null>(null);
+    const mapInstanceRef = useRef<google.maps.Map | null>(null);
     const markersRef = useRef<google.maps.Marker[]>([]);
     const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+    const transitLayerRef = useRef<google.maps.TransitLayer | null>(null);
     const markerPlaces = useMemo(
         () =>
             city.places.filter(
                 (place) =>
-                    Number.isFinite(place.latitude) &&
-                    Number.isFinite(place.longitude)
+                    hasMappableCoordinatePair(place.latitude, place.longitude)
             ),
         [city.places]
     );
@@ -208,6 +253,7 @@ function CityMap({
             fullscreenControl: true,
             styles: mapStyles,
         });
+        mapInstanceRef.current = map;
         const bounds = new window.google.maps.LatLngBounds();
         const infoWindow = new window.google.maps.InfoWindow();
         infoWindowRef.current = infoWindow;
@@ -252,16 +298,30 @@ function CityMap({
         }
 
         return () => {
+            transitLayerRef.current?.setMap(null);
+            transitLayerRef.current = null;
+            mapInstanceRef.current = null;
             markersRef.current.forEach((marker) => marker.setMap(null));
             markersRef.current = [];
             infoWindowRef.current?.close();
         };
     }, [isGoogleReady, markerPlaces]);
 
+    useEffect(() => {
+        const map = mapInstanceRef.current;
+        if (!isGoogleReady || !map || !window.google?.maps) return;
+
+        const transitLayer =
+            transitLayerRef.current || new window.google.maps.TransitLayer();
+        transitLayerRef.current = transitLayer;
+        transitLayer.setMap(showTransit ? map : null);
+    }, [isGoogleReady, markerPlaces, showTransit]);
+
     if (markerPlaces.length === 0) {
         return (
             <div className="flex min-h-72 items-center justify-center rounded-[1.35rem] border border-white/10 bg-slate-950/70 p-6 text-center text-sm font-semibold leading-6 text-slate-400">
-                Add a validated stay, scheduled activity, or idea in this city to see it on the map.
+                Add a validated stay, scheduled activity, or idea in this city
+                to see it on the map.
             </div>
         );
     }
@@ -269,6 +329,7 @@ function CityMap({
     return (
         <div
             ref={mapRef}
+            role="region"
             className="min-h-72 overflow-hidden rounded-[1.35rem] border border-white/10 bg-slate-950/70 shadow-2xl shadow-black/25"
             aria-label={`${city.name} accommodations and activities map`}
         />
@@ -277,6 +338,7 @@ function CityMap({
 
 function CityDistanceList({ city }: { city: AccommodationAreaMapCity }) {
     const stays = city.places.filter((place) => place.type === "accommodation");
+    const stayComparisons = getStayComparisons(city);
     const activities = city.places
         .filter((place) => place.type !== "accommodation")
         .map((place) => ({
@@ -284,8 +346,10 @@ function CityDistanceList({ city }: { city: AccommodationAreaMapCity }) {
             nearestStay: getNearestStay(place, stays),
         }))
         .sort((a, b) => {
-            const aDistance = a.nearestStay?.distanceKm ?? Number.POSITIVE_INFINITY;
-            const bDistance = b.nearestStay?.distanceKm ?? Number.POSITIVE_INFINITY;
+            const aDistance =
+                a.nearestStay?.distanceKm ?? Number.POSITIVE_INFINITY;
+            const bDistance =
+                b.nearestStay?.distanceKm ?? Number.POSITIVE_INFINITY;
             return aDistance - bDistance;
         });
 
@@ -294,86 +358,124 @@ function CityDistanceList({ city }: { city: AccommodationAreaMapCity }) {
             {stays.length > 0 ? (
                 <div className="rounded-[1.15rem] border border-lime-300/20 bg-lime-300/10 p-3">
                     <p className="text-xs font-black uppercase tracking-[0.2em] text-lime-200">
-                        Staying at
+                        Stay comparison
+                    </p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                        Ranked by average straight-line distance to mapped
+                        plans.
                     </p>
                     <div className="mt-2 space-y-2">
-                        {stays.map((stay) => (
-                            <a
-                                key={stay.id}
-                                href={getMapFallbackUrl(stay)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/60 p-3 text-sm font-semibold text-slate-200 transition hover:border-lime-300/35 hover:text-white"
-                            >
-                                <span>
-                                    <span className="block font-black text-white">
-                                        {stay.title}
-                                    </span>
-                                    {stay.address ? (
-                                        <span className="mt-1 block text-xs leading-5 text-slate-400">
-                                            {stay.address}
+                        {stayComparisons.map(
+                            ({ stay, averageDistanceKm, planCount }, index) => (
+                                <a
+                                    key={stay.id}
+                                    href={getMapFallbackUrl(stay)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/60 p-3 text-sm font-semibold text-slate-200 transition hover:border-lime-300/35 hover:text-white"
+                                >
+                                    <span className="flex min-w-0 gap-3">
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-lime-300 text-xs font-black text-slate-950">
+                                            {index + 1}
                                         </span>
-                                    ) : null}
-                                </span>
-                                <ExternalLink
-                                    className="mt-0.5 h-4 w-4 shrink-0 text-lime-200"
-                                    aria-hidden="true"
-                                />
-                            </a>
-                        ))}
+                                        <span className="min-w-0">
+                                            <span className="flex flex-wrap items-center gap-2 font-black text-white">
+                                                <span className="truncate">
+                                                    {stay.title}
+                                                </span>
+                                                {index === 0 &&
+                                                averageDistanceKm !== null ? (
+                                                    <span className="rounded-full bg-lime-300 px-2 py-0.5 text-[9px] uppercase tracking-[0.12em] text-slate-950">
+                                                        Closest overall
+                                                    </span>
+                                                ) : null}
+                                            </span>
+                                            <span className="mt-1 block text-xs font-black text-lime-200">
+                                                {averageDistanceKm !== null
+                                                    ? `${formatDistance(averageDistanceKm)} average from ${planCount} ${planCount === 1 ? "plan" : "plans"}`
+                                                    : "Add mapped plans to compare"}
+                                            </span>
+                                            {stay.statusLabel ? (
+                                                <span className="mt-1 block text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">
+                                                    {stay.statusLabel}
+                                                </span>
+                                            ) : null}
+                                        </span>
+                                    </span>
+                                    <ExternalLink
+                                        className="mt-0.5 h-4 w-4 shrink-0 text-lime-200"
+                                        aria-hidden="true"
+                                    />
+                                </a>
+                            )
+                        )}
                     </div>
                 </div>
             ) : (
                 <div className="rounded-[1.15rem] border border-amber-300/25 bg-amber-300/10 p-3 text-sm font-semibold leading-6 text-amber-50">
-                    No stay with a validated map location yet, so distances are not available for this city.
+                    No stay with a validated map location yet, so distances are
+                    not available for this city.
                 </div>
             )}
 
             <div className="space-y-2">
                 {activities.length > 0 ? (
-                    activities.map(({ place, nearestStay }) => {
-                        const config = markerConfig[place.type];
-                        const Icon = config.icon;
+                    <>
+                        <p className="px-1 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                            Nearest stay for each plan
+                        </p>
+                        {activities.map(({ place, nearestStay }) => {
+                            const config = markerConfig[place.type];
+                            const Icon = config.icon;
 
-                        return (
-                            <a
-                                key={place.id}
-                                href={getMapFallbackUrl(place)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-start gap-3 rounded-[1.15rem] border border-white/10 bg-white/[0.05] p-3 text-left transition hover:border-lime-300/30 hover:bg-white/[0.08]"
-                            >
-                                <span
-                                    className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/15 text-slate-950"
-                                    style={{ backgroundColor: config.color }}
+                            return (
+                                <a
+                                    key={place.id}
+                                    href={getMapFallbackUrl(place)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-start gap-3 rounded-[1.15rem] border border-white/10 bg-white/[0.05] p-3 text-left transition hover:border-lime-300/30 hover:bg-white/[0.08]"
                                 >
-                                    <Icon className="h-4 w-4" aria-hidden="true" />
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                    <span className="flex flex-wrap items-center gap-2">
-                                        <span className="truncate text-sm font-black text-white">
-                                            {place.title}
+                                    <span
+                                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/15 text-slate-950"
+                                        style={{
+                                            backgroundColor: config.color,
+                                        }}
+                                    >
+                                        <Icon
+                                            className="h-4 w-4"
+                                            aria-hidden="true"
+                                        />
+                                    </span>
+                                    <span className="min-w-0 flex-1">
+                                        <span className="flex flex-wrap items-center gap-2">
+                                            <span className="truncate text-sm font-black text-white">
+                                                {place.title}
+                                            </span>
+                                            <span className="rounded-full border border-white/10 bg-slate-950/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
+                                                {getTypeLabel(place.type)}
+                                            </span>
                                         </span>
-                                        <span className="rounded-full border border-white/10 bg-slate-950/60 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300">
-                                            {getTypeLabel(place.type)}
+                                        {place.subtitle || place.dateLabel ? (
+                                            <span className="mt-1 block text-xs font-semibold leading-5 text-slate-400">
+                                                {[
+                                                    place.subtitle,
+                                                    place.dateLabel,
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(" · ")}
+                                            </span>
+                                        ) : null}
+                                        <span className="mt-1 block text-xs font-black text-lime-200">
+                                            {nearestStay
+                                                ? `${formatDistance(nearestStay.distanceKm)} from ${nearestStay.stay.title}`
+                                                : "Add a stay to compare distance"}
                                         </span>
                                     </span>
-                                    {place.subtitle || place.dateLabel ? (
-                                        <span className="mt-1 block text-xs font-semibold leading-5 text-slate-400">
-                                            {[place.subtitle, place.dateLabel]
-                                                .filter(Boolean)
-                                                .join(" · ")}
-                                        </span>
-                                    ) : null}
-                                    <span className="mt-1 block text-xs font-black text-lime-200">
-                                        {nearestStay
-                                            ? `${formatDistance(nearestStay.distanceKm)} from ${nearestStay.stay.title}`
-                                            : "Add a stay to compare distance"}
-                                    </span>
-                                </span>
-                            </a>
-                        );
-                    })
+                                </a>
+                            );
+                        })}
+                    </>
                 ) : (
                     <div className="rounded-[1.15rem] border border-white/10 bg-white/[0.04] p-4 text-sm font-semibold leading-6 text-slate-400">
                         No mapped activities or ideas in this city yet.
@@ -386,15 +488,31 @@ function CityDistanceList({ city }: { city: AccommodationAreaMapCity }) {
 
 export default function AccommodationAreaMaps({
     cities,
+    addAccommodationHref,
 }: {
     cities: AccommodationAreaMapCity[];
+    addAccommodationHref?: string;
 }) {
     const [isGoogleReady, setIsGoogleReady] = useState(
         typeof window !== "undefined" && Boolean(window.google?.maps)
     );
+    const [showTransit, setShowTransit] = useState(true);
     const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-    if (cities.length === 0) return null;
+    const mappableCities = useMemo(
+        () =>
+            cities
+                .map((city) => ({
+                    ...city,
+                    places: city.places.filter((place) =>
+                        hasMappableCoordinatePair(
+                            place.latitude,
+                            place.longitude
+                        )
+                    ),
+                }))
+                .filter((city) => city.places.length > 0),
+        [cities]
+    );
 
     return (
         <section className="overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/30">
@@ -408,17 +526,45 @@ export default function AccommodationAreaMaps({
                 />
             ) : null}
 
-            <div className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(255,54,190,0.18),transparent_26%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)] p-5 sm:p-6">
-                <p className="text-xs font-black uppercase tracking-[0.35em] text-lime-200/80">
-                    Stay area maps
-                </p>
-                <h2 className="mt-2 text-3xl font-black text-white">
-                    See what is near each stay
-                </h2>
-                <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
-                    Compare where you are staying with scheduled activities and saved
-                    ideas, grouped by city.
-                </p>
+            <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(255,54,190,0.18),transparent_26%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)] p-5 sm:p-6">
+                <div>
+                    <p className="text-xs font-black uppercase tracking-[0.35em] text-lime-200/80">
+                        Accommodation planning
+                    </p>
+                    <h2 className="mt-2 text-3xl font-black text-white">
+                        Find the best base for your plans
+                    </h2>
+                    <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-300">
+                        Compare tentative and booked stays with scheduled
+                        activities and saved ideas, grouped by city. Distances
+                        are straight-line planning estimates, not travel times.
+                        Transit detail appears where Google has coverage.
+                    </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setShowTransit((current) => !current)}
+                        aria-pressed={showTransit}
+                        className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-xs font-black uppercase tracking-[0.13em] transition ${
+                            showTransit
+                                ? "border-lime-300/40 bg-lime-300 text-slate-950"
+                                : "border-white/10 bg-slate-950/70 text-slate-300 hover:border-lime-300/30 hover:text-white"
+                        }`}
+                    >
+                        <TrainFront className="h-4 w-4" aria-hidden="true" />
+                        Metro &amp; transit
+                    </button>
+                    {addAccommodationHref ? (
+                        <Link
+                            href={addAccommodationHref}
+                            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2.5 text-xs font-black uppercase tracking-[0.13em] text-white transition hover:border-lime-300/35 hover:bg-white/[0.12]"
+                        >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                            Add stay option
+                        </Link>
+                    ) : null}
+                </div>
             </div>
 
             {!googleMapsApiKey ? (
@@ -430,32 +576,55 @@ export default function AccommodationAreaMaps({
             ) : null}
 
             <div className="space-y-6 p-5 sm:p-6">
-                {cities.map((city) => (
-                    <article
-                        key={city.id}
-                        className="rounded-[1.65rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl shadow-black/20"
-                    >
-                        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/75 text-xl text-lime-200 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)]">
-                                    {city.iconEmoji || (
-                                        <MapPin className="h-5 w-5" aria-hidden="true" />
-                                    )}
-                                </span>
-                                <div>
-                                    <h3 className="text-2xl font-black text-white">
-                                        {city.name}
-                                    </h3>
-                                    {city.countryName ? (
-                                        <p className="text-sm font-semibold text-slate-400">
-                                            {city.countryName}
-                                        </p>
-                                    ) : null}
+                {mappableCities.length === 0 ? (
+                    <div className="rounded-[1.35rem] border border-dashed border-white/15 bg-white/[0.04] p-8 text-center">
+                        <MapPin
+                            className="mx-auto h-8 w-8 text-lime-200"
+                            aria-hidden="true"
+                        />
+                        <h3 className="mt-3 text-lg font-black text-white">
+                            No mapped places yet
+                        </h3>
+                        <p className="mx-auto mt-2 max-w-xl text-sm font-semibold leading-6 text-slate-400">
+                            Add a stay, scheduled activity, or idea with a
+                            Google Maps location to start comparing areas.
+                        </p>
+                    </div>
+                ) : (
+                    mappableCities.map((city) => (
+                        <article
+                            key={city.id}
+                            className="rounded-[1.65rem] border border-white/10 bg-white/[0.04] p-4 shadow-xl shadow-black/20"
+                        >
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/75 text-xl text-lime-200 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)]">
+                                        {city.iconEmoji || (
+                                            <MapPin
+                                                className="h-5 w-5"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                    </span>
+                                    <div>
+                                        <h3 className="text-2xl font-black text-white">
+                                            {city.name}
+                                        </h3>
+                                        {city.countryName ? (
+                                            <p className="text-sm font-semibold text-slate-400">
+                                                {city.countryName}
+                                            </p>
+                                        ) : null}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.14em]">
-                                {(["accommodation", "scheduled", "idea"] as const).map(
-                                    (type) => {
+                                <div className="flex flex-wrap gap-2 text-xs font-black uppercase tracking-[0.14em]">
+                                    {(
+                                        [
+                                            "accommodation",
+                                            "scheduled",
+                                            "idea",
+                                        ] as const
+                                    ).map((type) => {
                                         const count = city.places.filter(
                                             (place) => place.type === type
                                         ).length;
@@ -468,22 +637,29 @@ export default function AccommodationAreaMaps({
                                             >
                                                 <span
                                                     className="mr-1 inline-block h-2.5 w-2.5 rounded-full"
-                                                    style={{ backgroundColor: config.color }}
+                                                    style={{
+                                                        backgroundColor:
+                                                            config.color,
+                                                    }}
                                                 />
                                                 {count} {getTypeLabel(type)}
                                             </span>
                                         );
-                                    }
-                                )}
+                                    })}
+                                </div>
                             </div>
-                        </div>
 
-                        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
-                            <CityMap city={city} isGoogleReady={isGoogleReady} />
-                            <CityDistanceList city={city} />
-                        </div>
-                    </article>
-                ))}
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
+                                <CityMap
+                                    city={city}
+                                    isGoogleReady={isGoogleReady}
+                                    showTransit={showTransit}
+                                />
+                                <CityDistanceList city={city} />
+                            </div>
+                        </article>
+                    ))
+                )}
             </div>
         </section>
     );

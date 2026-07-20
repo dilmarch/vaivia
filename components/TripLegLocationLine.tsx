@@ -6,6 +6,7 @@ import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
+import { DateInput } from "@/components/ui/date-input";
 import { getInitials } from "@/lib/travelers";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 
@@ -543,9 +544,8 @@ export default function TripLegLocationLine({
                                         <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                             Start date
                                         </span>
-                                        <input
+                                        <DateInput
                                             name="start_date"
-                                            type="date"
                                             className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
                                         />
                                     </label>
@@ -553,9 +553,8 @@ export default function TripLegLocationLine({
                                         <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                             End date
                                         </span>
-                                        <input
+                                        <DateInput
                                             name="end_date"
-                                            type="date"
                                             className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
                                         />
                                     </label>
@@ -681,9 +680,8 @@ export default function TripLegLocationLine({
                                         <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                             Start date
                                         </span>
-                                        <input
+                                        <DateInput
                                             name="start_date"
-                                            type="date"
                                             defaultValue={selectedLocation?.startDate || ""}
                                             className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
                                         />
@@ -692,9 +690,8 @@ export default function TripLegLocationLine({
                                         <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                             End date
                                         </span>
-                                        <input
+                                        <DateInput
                                             name="end_date"
-                                            type="date"
                                             defaultValue={selectedLocation?.endDate || ""}
                                             className="mt-2 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm font-bold text-white outline-none transition focus:border-lime-300/50"
                                         />

@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     configured: vi.fn(() => true),
     generate: vi.fn(),
     loadContext: vi.fn(),
+    hydrate: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
@@ -16,14 +17,16 @@ vi.mock("@/lib/supabase/service", () => ({
 vi.mock("@/lib/ai/gemini-assistant", () => ({
     isGeminiAssistantConfigured: mocks.configured,
     getGeminiAssistantModel: () => "gemini-3.5-flash",
-    getGeminiAssistantGenerationConfig: () => ({
-        maxOutputTokens: 4_096,
-        thinkingConfig: { thinkingLevel: "LOW" },
-    }),
     getAiDailyMessageLimit: () => 50,
-    generateGeminiAssistantResponse: mocks.generate,
     VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE:
         "The VAIVIA assistant is temporarily unavailable",
+}));
+vi.mock("@/lib/ai/google-places", () => ({
+    isGooglePlacesConfigured: () => true,
+}));
+vi.mock("@/lib/ai/places-orchestrator", () => ({
+    generateTripAssistantResponse: mocks.generate,
+    hydratePersistedPlaceRecommendations: mocks.hydrate,
 }));
 vi.mock("@/lib/ai/trip-context", () => ({
     loadTripAssistantContext: mocks.loadContext,
@@ -47,6 +50,7 @@ type FakeOptions = {
     trip?: { id: string; slug: string; title: string } | null;
     conversation?: Record<string, unknown> | null;
     usage?: { allowed: boolean; used: number; remaining: number };
+    messages?: Record<string, unknown>[];
 };
 
 function fakeSupabase(options: FakeOptions = {}) {
@@ -151,11 +155,16 @@ function fakeSupabase(options: FakeOptions = {}) {
             then(resolve: (value: unknown) => void) {
                 const value =
                     table === "ai_conversations" && state.operation === "select"
-                        ? { data: [], error: null }
+                        ? {
+                              data: options.conversation
+                                  ? [options.conversation]
+                                  : [],
+                              error: null,
+                          }
                         : table === "ai_usage_events" && state.operation === "select"
                           ? { count: 0, error: null }
                           : table === "ai_messages" && state.operation === "select"
-                            ? { data: [], error: null }
+                            ? { data: options.messages || [], error: null }
                             : { data: null, error: null };
                 return Promise.resolve(value).then(resolve);
             },
@@ -235,6 +244,7 @@ beforeEach(() => {
         trip: { title: "Trip A" },
         context_notice: "allowlisted",
     });
+    mocks.hydrate.mockResolvedValue([]);
     mocks.generate.mockResolvedValue({
         status: "success",
         message: "Your trip starts on Monday.",
@@ -246,6 +256,9 @@ beforeEach(() => {
             totalTokenCount: 32,
         },
         diagnostics: generationDiagnostics(),
+        metadata: {},
+        recommendations: [],
+        toolUsage: { functionCalls: 0, externalToolCalls: 0, placeResults: 0 },
     });
 });
 
@@ -322,6 +335,59 @@ describe("trip assistant API authorization and validation", () => {
 });
 
 describe("trip assistant persistence and quota", () => {
+    it("refreshes persisted Place-ID metadata server-side and never returns raw metadata", async () => {
+        const database = fakeSupabase({
+            conversation: conversation(),
+            messages: [
+                {
+                    id: "50000000-0000-4000-8000-000000000003",
+                    role: "assistant",
+                    status: "complete",
+                    content: "Nearby options",
+                    created_at: "2026-07-18T00:01:00Z",
+                    metadata: {
+                        version: 1,
+                        type: "google_places_recommendations",
+                        recommendations: [
+                            {
+                                placeId: "ChIJPersistedPlace123",
+                                matchReason: "Near your hotel.",
+                                alreadySaved: false,
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+        mocks.createClient.mockResolvedValue(database);
+        mocks.hydrate.mockResolvedValue([
+            {
+                recommendationId: "safe-card-1",
+                name: "Refreshed Café",
+                category: "Cafe",
+                address: null,
+                matchReason: "Near your hotel.",
+                distance: "Distance unavailable",
+                rating: 4.5,
+                userRatingCount: 100,
+                priceLevel: null,
+                hoursSummary: null,
+                mapsUrl: "https://maps.google.com/?cid=1",
+                alreadySaved: false,
+            },
+        ]);
+
+        const response = await GET(
+            new NextRequest("http://localhost/api/trips/trip-a/assistant"),
+            routeContext()
+        );
+        const payload = await response.json();
+        expect(response.status).toBe(200);
+        expect(payload.messages[0].recommendations[0].name).toBe("Refreshed Café");
+        expect(payload.messages[0].metadata).toBeUndefined();
+        expect(JSON.stringify(payload)).not.toContain("ChIJPersistedPlace123");
+    });
+
     it("enforces the daily quota before persisting a message or calling Gemini", async () => {
         const userDatabase = fakeSupabase({ conversation: conversation() });
         mocks.createClient.mockResolvedValue(userDatabase);
@@ -359,26 +425,28 @@ describe("trip assistant persistence and quota", () => {
         expect(mocks.loadContext).toHaveBeenCalledWith(expect.anything(), TRIP_A);
         expect(mocks.generate).toHaveBeenCalledWith(
             expect.objectContaining({
+                tripId: TRIP_A,
                 contents: [
                     {
                         role: "user",
                         parts: [{ text: "When does my trip start?" }],
                     },
                 ],
-                config: {
-                    maxOutputTokens: 4_096,
-                    thinkingConfig: { thinkingLevel: "LOW" },
-                    systemInstruction: "system",
-                },
+                systemInstruction: "system",
             })
         );
         const messageWrites = userDatabase.writes.filter(
             (write) => write.table === "ai_messages" && write.operation === "insert"
         );
-        expect(messageWrites).toHaveLength(2);
-        expect(messageWrites[1]?.payload).toMatchObject({
+        expect(messageWrites).toHaveLength(1);
+        const assistantMessageWrite = serviceDatabase.writes.find(
+            (write) =>
+                write.table === "ai_messages" && write.operation === "insert"
+        );
+        expect(assistantMessageWrite?.payload).toMatchObject({
             role: "assistant",
             model: "gemini-3.5-flash-001",
+            metadata: {},
         });
         expect(serviceDatabase.writes).toContainEqual(
             expect.objectContaining({
@@ -396,6 +464,75 @@ describe("trip assistant persistence and quota", () => {
         expect(
             userDatabase.writes.every((write) => write.table.startsWith("ai_"))
         ).toBe(true);
+    });
+
+    it("persists only typed place references while returning hydrated cards and usage counts", async () => {
+        const userDatabase = fakeSupabase({ conversation: conversation() });
+        const serviceDatabase = fakeSupabase();
+        mocks.createClient.mockResolvedValue(userDatabase);
+        mocks.createServiceClient.mockReturnValue(serviceDatabase);
+        mocks.generate.mockResolvedValue({
+            status: "success",
+            message: "Here are nearby cafés.",
+            model: "gemini-3.5-flash-001",
+            tokenUsage: generationDiagnostics().tokenUsage,
+            diagnostics: generationDiagnostics(),
+            metadata: {
+                version: 1,
+                type: "google_places_recommendations",
+                recommendations: [
+                    {
+                        placeId: "ChIJCafeCandidate123",
+                        matchReason: "Near the saved hotel.",
+                        alreadySaved: false,
+                    },
+                ],
+            },
+            recommendations: [
+                {
+                    recommendationId: "place_1",
+                    name: "Safe Café",
+                    category: "Cafe",
+                    address: "12 King St",
+                    matchReason: "Near the saved hotel.",
+                    distance: "130 m straight-line",
+                    rating: 4.7,
+                    userRatingCount: 420,
+                    priceLevel: "$$",
+                    hoursSummary: null,
+                    mapsUrl: "https://maps.google.com/?cid=123",
+                    alreadySaved: false,
+                },
+            ],
+            toolUsage: { functionCalls: 1, externalToolCalls: 1, placeResults: 1 },
+        });
+
+        const response = await POST(messageRequest(), routeContext());
+        const payload = await response.json();
+        expect(response.status).toBe(200);
+        expect(payload.assistantMessage.recommendations[0].name).toBe("Safe Café");
+        expect(JSON.stringify(payload)).not.toContain("ChIJCafeCandidate123");
+        const assistantWrite = serviceDatabase.writes.find(
+            (write) =>
+                write.table === "ai_messages" &&
+                (write.payload as { role?: string }).role === "assistant"
+        );
+        expect(assistantWrite?.payload).toMatchObject({
+            metadata: {
+                recommendations: [{ placeId: "ChIJCafeCandidate123" }],
+            },
+        });
+        expect(serviceDatabase.writes).toContainEqual(
+            expect.objectContaining({
+                table: "ai_usage_events",
+                operation: "update",
+                payload: expect.objectContaining({
+                    outcome: "succeeded",
+                    external_tool_calls: 1,
+                    external_place_results: 1,
+                }),
+            })
+        );
     });
 
     it.each([
@@ -424,6 +561,11 @@ describe("trip assistant persistence and quota", () => {
                             : null,
                     finishReason: status === "empty_output" ? "STOP" : null,
                 }),
+                toolUsage: {
+                    functionCalls: 0,
+                    externalToolCalls: 0,
+                    placeResults: 0,
+                },
             });
 
             const response = await POST(messageRequest(), routeContext());

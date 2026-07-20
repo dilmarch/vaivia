@@ -5,6 +5,7 @@ import { Minus, Plus } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import FeatureSuggestionModal from "@/components/FeatureSuggestionModal";
+import QuickAddExpenseModal from "@/components/budget/QuickAddExpenseModal";
 import { getTripRouteSegment } from "@/lib/tripRoutes";
 
 type QuickAddTrip = {
@@ -56,6 +57,7 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
         null
     );
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
+    const [expenseTripId, setExpenseTripId] = useState<string | null>(null);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const currentTrip = useMemo(
         () =>
@@ -95,6 +97,12 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
 
     function openTripAction(action: TripAction) {
         if (currentTripId && currentTrip) {
+            if (action === "expense") {
+                setExpenseTripId(currentTrip.id);
+                setIsOpen(false);
+                setTripPickerAction(null);
+                return;
+            }
             const href = getTripActionHref(currentTrip, action);
             if (href) {
                 router.push(href);
@@ -136,6 +144,12 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
             {isSuggestionOpen ? (
                 <FeatureSuggestionModal onClose={() => setIsSuggestionOpen(false)} />
             ) : null}
+            {expenseTripId ? (
+                <QuickAddExpenseModal
+                    tripId={expenseTripId}
+                    onClose={() => setExpenseTripId(null)}
+                />
+            ) : null}
 
             <div
                 ref={quickAddRef}
@@ -163,6 +177,26 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                                     {trips.length > 0 ? (
                                         trips.map((trip, index) => {
                                             const href = getTripActionHref(trip, tripPickerAction);
+
+                                            if (tripPickerAction === "expense") {
+                                                return (
+                                                    <button
+                                                        key={trip.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setExpenseTripId(trip.id);
+                                                            setTripPickerAction(null);
+                                                            setIsOpen(false);
+                                                        }}
+                                                        className={quickAddBubbleClass}
+                                                        style={{
+                                                            animationDelay: `${index * 34}ms`,
+                                                        }}
+                                                    >
+                                                        {getTripLabel(trip)}
+                                                    </button>
+                                                );
+                                            }
 
                                             return (
                                                 <Link

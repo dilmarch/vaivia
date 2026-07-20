@@ -107,8 +107,10 @@ async function loadBudgetPageData(tripRouteParam: string) {
         participants,
         budget: budgetData.budget,
         lineItems: budgetData.lineItems,
+        expenseCategories: budgetData.categories,
         expenses: expenseData.expenses,
         splits: expenseData.splits,
+        settlementPayments: expenseData.settlements,
     };
 }
 

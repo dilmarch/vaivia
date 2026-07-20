@@ -8,6 +8,7 @@ import { useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
+import { DateInput } from "@/components/ui/date-input";
 import {
     useTripCoverImage,
     type TripCoverTrip,
@@ -302,10 +303,9 @@ export default function TripHeaderCover({
                                     >
                                         Start date
                                     </label>
-                                    <input
+                                    <DateInput
                                         id="tripHeaderEditStartDate"
                                         name="start_date"
-                                        type="date"
                                         defaultValue={trip.start_date || ""}
                                         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                         autoComplete="off"
@@ -322,10 +322,9 @@ export default function TripHeaderCover({
                                     >
                                         End date
                                     </label>
-                                    <input
+                                    <DateInput
                                         id="tripHeaderEditEndDate"
                                         name="end_date"
-                                        type="date"
                                         defaultValue={trip.end_date || ""}
                                         className="mt-2 w-full rounded-xl border border-slate-300 px-4 py-2 text-slate-900"
                                         autoComplete="off"
