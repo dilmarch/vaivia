@@ -19,6 +19,7 @@ const SOCIAL_PROVIDER_LABELS: Record<SocialAuthProvider, string> = {
 type SocialLoginButtonProps = {
   provider: SocialAuthProvider;
   className?: string;
+  redirectTo?: string;
 };
 
 function GoogleLogo() {
@@ -69,6 +70,7 @@ function SocialProviderIcon({ provider }: { provider: SocialAuthProvider }) {
 export function SocialLoginButton({
   provider,
   className,
+  redirectTo = "/",
 }: SocialLoginButtonProps) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
@@ -81,7 +83,9 @@ export function SocialLoginButton({
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+          redirectTo
+        )}`,
       },
     });
 
