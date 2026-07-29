@@ -53,6 +53,7 @@ describe("desktop sidebar secondary navigation", () => {
             ["List view", "/trips/trip-a/itinerary?view=list"],
             ["Day view", "/trips/trip-a/itinerary?view=day"],
             ["Week view", "/trips/trip-a/itinerary?view=week"],
+            ["Month view", "/trips/trip-a/itinerary?view=month"],
         ]);
         expectSubnavLinks("Budget views", [
             ["Budget", "/trips/trip-a/budget"],
@@ -81,8 +82,8 @@ describe("desktop sidebar secondary navigation", () => {
         const flyout = itineraryViews.parentElement;
 
         expect(flyout).toHaveClass(
-            "left-12",
-            "right-0",
+            "left-full",
+            "w-52",
             "group-hover/nav-item:visible",
             "group-focus-within/nav-item:visible"
         );
@@ -107,5 +108,42 @@ describe("desktop sidebar secondary navigation", () => {
         expect(page).toContain("?.itinerary_default_view");
         expect(calendar).toContain("if (!listOnly) setView(defaultView);");
         expect(calendar).toContain("[defaultView, listOnly]");
+        expect(calendar).toContain("buildItineraryViewUrl(");
+        expect(calendar).toContain('name="return_to"');
+        expect(page).toContain("shouldPreserveItineraryView(formData)");
+        expect(page).toContain("revalidateItineraryPaths(tripId)");
+    });
+
+    it("submits itinerary edits in place instead of redirecting the calendar", () => {
+        const itineraryForm = readFileSync(
+            resolve(process.cwd(), "components/ItineraryItemForm.tsx"),
+            "utf8"
+        );
+        const transportationForm = readFileSync(
+            resolve(process.cwd(), "components/TransportationForm.tsx"),
+            "utf8"
+        );
+
+        expect(itineraryForm).toContain(
+            'formData.set("preserve_itinerary_view", "true")'
+        );
+        expect(itineraryForm).toContain("action={handleFormAction}");
+        expect(transportationForm).toContain(
+            'formData.set("preserve_itinerary_view", "true")'
+        );
+        expect(transportationForm).toContain("action={handleFormAction}");
+    });
+
+    it("adds scroll-aware mobile controls for moving between itinerary days", () => {
+        const calendar = readFileSync(
+            resolve(process.cwd(), "components/ItineraryCalendar.tsx"),
+            "utf8"
+        );
+
+        expect(calendar).toContain("data-itinerary-day-view");
+        expect(calendar).toContain('aria-label="Day navigation"');
+        expect(calendar).toContain('aria-label="Previous day"');
+        expect(calendar).toContain('aria-label="Next day"');
+        expect(calendar).toContain('window.addEventListener("scroll"');
     });
 });

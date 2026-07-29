@@ -1521,6 +1521,48 @@ export type Database = {
         }
         Relationships: []
       }
+      flight_check_in_reminder_deliveries: {
+        Row: {
+          created_at: string
+          departure_at: string
+          id: string
+          notification_id: string | null
+          transportation_item_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          departure_at: string
+          id?: string
+          notification_id?: string | null
+          transportation_item_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          departure_at?: string
+          id?: string
+          notification_id?: string | null
+          transportation_item_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "flight_check_in_reminder_deliveries_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: true
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "flight_check_in_reminder_deliveries_transportation_item_id_fkey"
+            columns: ["transportation_item_id"]
+            isOneToOne: false
+            referencedRelation: "transportation_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       itinerary_items: {
         Row: {
           assistant_action_proposal_id: string | null
@@ -5385,6 +5427,7 @@ export type Database = {
         Args: never
         Returns: number
       }
+      queue_due_flight_check_in_reminders: { Args: never; Returns: number }
       queue_external_invite_email: {
         Args: {
           invite_event_key: string

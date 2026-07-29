@@ -200,7 +200,7 @@ export function calculateBudgetTotals({
         budget?.total_budget_amount ??
         lineItems.reduce((sum, item) => sum + Number(item.planned_amount || 0), 0);
     const spent = expenses.reduce(
-        (sum, expense) => sum + Number(expense.amount_in_reporting_currency || 0),
+        (sum, expense) => sum + getExpenseReportingAmount(expense),
         0
     );
     const remaining = budgeted - spent;
@@ -212,10 +212,24 @@ export function calculateBudgetTotals({
 export function calculateCategoryActuals(expenses: TripExpense[]) {
     return expenses.reduce<Record<string, number>>((totals, expense) => {
         const key = expense.budget_category_id || expense.category;
-        totals[key] =
-            (totals[key] || 0) + Number(expense.amount_in_reporting_currency || 0);
+        totals[key] = (totals[key] || 0) + getExpenseReportingAmount(expense);
         return totals;
     }, {} as Record<string, number>);
+}
+
+export function getExpenseReportingAmount(expense: TripExpense) {
+    const reportingAmount = Number(expense.amount_in_reporting_currency);
+    const amount = Number(expense.amount || 0);
+
+    if (
+        Number.isFinite(reportingAmount) &&
+        (reportingAmount !== 0 || amount === 0)
+    ) {
+        return reportingAmount;
+    }
+
+    const rate = Number(expense.exchange_rate_used || 1);
+    return Number.isFinite(amount * rate) ? amount * rate : 0;
 }
 
 export function getLocalDateKey(date = new Date()) {

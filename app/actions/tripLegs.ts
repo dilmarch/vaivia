@@ -269,7 +269,6 @@ export async function deleteTripLeg(formData: FormData) {
         .delete()
         .eq("id", tripLegId)
         .eq("trip_id", tripId)
-        .eq("leg_type", "custom")
         .select("id")
         .maybeSingle();
 
@@ -285,7 +284,7 @@ export async function deleteTripLeg(formData: FormData) {
         throw new Error(
             error
                 ? "Could not delete trip leg"
-                : "Only custom trip legs can be deleted here."
+                : "Could not find that trip leg."
         );
     }
 

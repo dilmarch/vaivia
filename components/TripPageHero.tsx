@@ -721,7 +721,6 @@ async function deleteTripLeg(formData: FormData) {
         .delete()
         .eq("id", tripLegId)
         .eq("trip_id", tripId)
-        .eq("leg_type", "custom")
         .select("id")
         .maybeSingle();
 
@@ -737,7 +736,7 @@ async function deleteTripLeg(formData: FormData) {
         throw new Error(
             error
                 ? "Could not delete trip leg"
-                : "Only custom trip legs can be deleted here."
+                : "Could not find that trip leg."
         );
     }
 
@@ -1014,7 +1013,7 @@ export default async function TripPageHero({
             iconEmoji: leg.icon_emoji || null,
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
-            canDelete: leg.leg_type === "custom",
+            canDelete: true,
             canClearDates: leg.leg_type === "custom",
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
             memberDatesByMemberId: Object.fromEntries(

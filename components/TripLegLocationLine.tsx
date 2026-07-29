@@ -780,8 +780,7 @@ export default function TripLegLocationLine({
                                             >
                                                 Clear dates
                                             </button>
-                                            {selectedLocation.source === "manual" &&
-                                            selectedLocation.canDelete ? (
+                                            {selectedLocation.canDelete ? (
                                                 <button
                                                     type="button"
                                                     onClick={() =>

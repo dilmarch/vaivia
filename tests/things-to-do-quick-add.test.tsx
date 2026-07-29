@@ -24,12 +24,19 @@ vi.mock("@/components/ItineraryItemForm", () => ({
     default: ({
         openSignal,
         submitLabel,
+        defaultDate,
+        defaultStartTime,
+        defaultEndTime,
     }: {
         openSignal: number;
         submitLabel: string;
+        defaultDate?: string;
+        defaultStartTime?: string;
+        defaultEndTime?: string;
     }) => (
         <output data-testid="scheduled-form-state">
-            {openSignal}:{submitLabel}
+            {openSignal}:{submitLabel}:{defaultDate}:{defaultStartTime}:
+            {defaultEndTime}
         </output>
     ),
 }));
@@ -38,7 +45,24 @@ vi.mock("@/components/IdeasTab", () => ({
     IdeaForm: () => <div data-testid="trip-idea-form">Trip idea form</div>,
 }));
 
-vi.mock("@/components/TransportationForm", () => ({ default: () => null }));
+vi.mock("@/components/TransportationForm", () => ({
+    default: ({
+        isOpen,
+        defaultDate,
+        defaultStartTime,
+        defaultEndTime,
+    }: {
+        isOpen: boolean;
+        defaultDate?: string;
+        defaultStartTime?: string;
+        defaultEndTime?: string;
+    }) =>
+        isOpen ? (
+            <output data-testid="transportation-form-state">
+                {defaultDate}:{defaultStartTime}:{defaultEndTime}
+            </output>
+        ) : null,
+}));
 vi.mock("@/components/accommodations/AccommodationManager", () => ({
     AccommodationCreateModal: () => null,
 }));
@@ -52,7 +76,15 @@ afterEach(() => {
     vi.clearAllMocks();
 });
 
-function renderQuickAdd(initialAction?: "things") {
+function renderQuickAdd(
+    initialAction?: "things",
+    calendarDraftRange?: {
+        requestId: number;
+        dateKey: string;
+        startTime: string;
+        endTime: string;
+    }
+) {
     return render(
         <ItineraryQuickAdd
             tripId="trip-a"
@@ -60,6 +92,7 @@ function renderQuickAdd(initialAction?: "things") {
             createTransportationAction={vi.fn(async () => undefined)}
             createIdeaAction={vi.fn(async () => undefined)}
             initialAction={initialAction}
+            calendarDraftRange={calendarDraftRange}
         />
     );
 }
@@ -130,4 +163,32 @@ describe("things to do quick add", () => {
         expect(screen.getByText(description)).toBeInTheDocument();
         expect(screen.getByTestId("trip-idea-form")).toBeInTheDocument();
     });
+
+    it.each([
+        ["Things to do", "scheduled-form-state"],
+        ["Transportation item", "transportation-form-state"],
+    ])(
+        "keeps a dragged calendar range when opening %s",
+        (choice, expectedFormTestId) => {
+            renderQuickAdd(undefined, {
+                requestId: 1,
+                dateKey: "2026-09-24",
+                startTime: "10:15",
+                endTime: "11:45",
+            });
+
+            expect(
+                screen.getByRole("heading", {
+                    name: "What do you want to add?",
+                })
+            ).toBeInTheDocument();
+            fireEvent.click(
+                screen.getByRole("button", { name: new RegExp(choice) })
+            );
+
+            expect(screen.getByTestId(expectedFormTestId)).toHaveTextContent(
+                "2026-09-24:10:15:11:45"
+            );
+        }
+    );
 });

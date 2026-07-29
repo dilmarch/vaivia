@@ -1,8 +1,10 @@
 "use client";
 
 import {
+    CalendarPlus,
     Check,
     Lock,
+    NotebookPen,
     Pencil,
     Search,
     SlidersHorizontal,
@@ -14,6 +16,7 @@ import Script from "next/script";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
+import IdeaToItineraryForm from "@/components/IdeaToItineraryForm";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import { DateInput } from "@/components/ui/date-input";
@@ -44,12 +47,16 @@ import type { MoveTargetTrip } from "@/lib/tripMove";
 type IdeasTabProps = {
     tripId: string;
     ideas: TripIdea[];
+    tripNotes?: string | null;
+    saveTripNotesAction?: (formData: FormData) => Promise<void>;
+    createItineraryAction?: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction: (formData: FormData) => Promise<void>;
     toggleAttendedAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
     moveTargetTrips: MoveTargetTrip[];
+    defaultItineraryDate?: string;
 };
 
 type DayFilter =
@@ -971,23 +978,28 @@ export function IdeaForm({
 function IdeaCard({
     idea,
     tripId,
+    createItineraryAction,
     updateIdeaAction,
     deleteIdeaAction,
     toggleReactionAction,
     toggleAttendedAction,
     moveItemAction,
     moveTargetTrips,
+    defaultItineraryDate,
 }: {
     idea: TripIdea;
     tripId: string;
+    createItineraryAction?: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
     toggleReactionAction: (formData: FormData) => Promise<void>;
     toggleAttendedAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
     moveTargetTrips: MoveTargetTrip[];
+    defaultItineraryDate?: string;
 }) {
     const [isEditing, setIsEditing] = useState(false);
+    const [isAddingToItinerary, setIsAddingToItinerary] = useState(false);
 
     return (
         <>
@@ -1169,8 +1181,19 @@ function IdeaCard({
                     )}
                 </div>
             )}
-            {(idea.location_website || idea.ticket_website) && (
-                <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
+                {createItineraryAction ? (
+                    <button
+                        type="button"
+                        onClick={() => setIsAddingToItinerary(true)}
+                        className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-3 py-1.5 text-xs font-black uppercase tracking-[0.14em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
+                    >
+                        <CalendarPlus className="h-4 w-4" aria-hidden="true" />
+                        Add to itinerary
+                    </button>
+                ) : null}
+                {(idea.location_website || idea.ticket_website) ? (
+                    <>
                     {idea.location_website && (
                         <a
                             href={addVaiviaUtmAttribution(idea.location_website)}
@@ -1191,8 +1214,9 @@ function IdeaCard({
                             Tickets
                         </a>
                     )}
-                </div>
-            )}
+                    </>
+                ) : null}
+            </div>
             <IdeaReactionBar
                 tripId={tripId}
                 ideaId={idea.id}
@@ -1248,6 +1272,53 @@ function IdeaCard({
                 )}
             </AnimatedModal>
         ) : null}
+        {isAddingToItinerary && createItineraryAction ? (
+            <AnimatedModal
+                onClose={() => setIsAddingToItinerary(false)}
+                panelClassName="max-w-lg"
+                labelledBy={`add-idea-to-itinerary-title-${idea.id}`}
+            >
+                {({ requestClose }) => (
+                    <>
+                        <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <p className="vaivia-modal-eyebrow">Trip Ideas</p>
+                                <h2
+                                    id={`add-idea-to-itinerary-title-${idea.id}`}
+                                    className="vaivia-modal-title"
+                                >
+                                    Add to itinerary
+                                </h2>
+                                <p className="mt-2 truncate text-sm font-semibold text-slate-300">
+                                    {idea.title}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                className="vaivia-modal-close"
+                                aria-label={`Close add ${idea.title} to itinerary`}
+                            >
+                                <X className="h-5 w-5" aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="vaivia-modal-body">
+                            <IdeaToItineraryForm
+                                idea={idea}
+                                tripId={tripId}
+                                defaultDate={
+                                    idea.availability_start_date ||
+                                    defaultItineraryDate ||
+                                    getLocalDateKey(new Date())
+                                }
+                                action={createItineraryAction}
+                                onSaved={requestClose}
+                            />
+                        </div>
+                    </>
+                )}
+            </AnimatedModal>
+        ) : null}
         </>
     );
 }
@@ -1255,12 +1326,16 @@ function IdeaCard({
 export default function IdeasTab({
     tripId,
     ideas,
+    tripNotes = "",
+    saveTripNotesAction,
+    createItineraryAction,
     updateIdeaAction,
     deleteIdeaAction,
     toggleReactionAction,
     toggleAttendedAction,
     moveItemAction,
     moveTargetTrips,
+    defaultItineraryDate,
 }: IdeasTabProps) {
     const [categoryFilter, setCategoryFilter] = useState("");
     const [timeFilter, setTimeFilter] = useState("");
@@ -1382,6 +1457,47 @@ export default function IdeasTab({
 
     return (
         <section className="space-y-6">
+            <form
+                action={saveTripNotesAction}
+                className="rounded-[1.5rem] border border-lime-300/20 bg-[radial-gradient(circle_at_top_right,rgba(var(--vaivia-neon-rgb),0.12),transparent_38%),rgba(255,255,255,0.045)] p-4 shadow-2xl shadow-black/20 sm:p-5"
+            >
+                <input type="hidden" name="trip_id" value={tripId} />
+                <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-lime-300/25 bg-lime-300/10 text-lime-200">
+                        <NotebookPen className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <div>
+                        <h2 className="text-lg font-black text-white">
+                            Trip notepad
+                        </h2>
+                        <p className="mt-1 text-sm font-semibold text-slate-400">
+                            Keep general thoughts, reminders, and planning notes
+                            together for everyone on this trip.
+                        </p>
+                    </div>
+                </div>
+                <label className="mt-4 block">
+                    <span className="sr-only">General trip notes</span>
+                    <textarea
+                        name="notes"
+                        rows={5}
+                        defaultValue={tripNotes || ""}
+                        placeholder="Start typing trip notes..."
+                        {...travelInputProps()}
+                        className="w-full resize-y rounded-2xl border border-white/10 bg-slate-950/75 px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/45 focus:ring-2 focus:ring-lime-300/15"
+                    />
+                </label>
+                <div className="mt-3 flex justify-end">
+                    <button
+                        type="submit"
+                        className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
+                    >
+                        <Check className="h-4 w-4" aria-hidden="true" />
+                        Save to trip notes
+                    </button>
+                </div>
+            </form>
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                     <h2 className="text-2xl font-black tracking-tight text-white">
@@ -1586,12 +1702,14 @@ export default function IdeasTab({
                             key={idea.id}
                             idea={idea}
                             tripId={tripId}
+                            createItineraryAction={createItineraryAction}
                             updateIdeaAction={updateIdeaAction}
                             deleteIdeaAction={deleteIdeaAction}
                             toggleReactionAction={toggleReactionAction}
                             toggleAttendedAction={toggleAttendedAction}
                             moveItemAction={moveItemAction}
                             moveTargetTrips={moveTargetTrips}
+                            defaultItineraryDate={defaultItineraryDate}
                         />
                     ))}
                 </div>

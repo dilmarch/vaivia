@@ -525,7 +525,8 @@ async function updateCountdownDisplayMode(formData: FormData) {
         default_time_zone: existingPreferences?.default_time_zone || null,
         itinerary_default_view:
             existingPreferences?.itinerary_default_view === "day" ||
-            existingPreferences?.itinerary_default_view === "week"
+            existingPreferences?.itinerary_default_view === "week" ||
+            existingPreferences?.itinerary_default_view === "month"
                 ? existingPreferences.itinerary_default_view
                 : "list",
         countdown_display_mode: countdownDisplayMode,
@@ -580,7 +581,8 @@ async function updateNewsFeedMode(formData: FormData) {
         default_time_zone: existingPreferences?.default_time_zone || null,
         itinerary_default_view:
             existingPreferences?.itinerary_default_view === "day" ||
-            existingPreferences?.itinerary_default_view === "week"
+            existingPreferences?.itinerary_default_view === "week" ||
+            existingPreferences?.itinerary_default_view === "month"
                 ? existingPreferences.itinerary_default_view
                 : "list",
         countdown_display_mode: isCountdownUnit(rawCountdownDisplayMode)
@@ -629,7 +631,9 @@ async function updateTimeDatePreferences(formData: FormData) {
         formData.get("itinerary_default_view") || ""
     ).trim();
     const itineraryDefaultView =
-        rawDefaultView === "day" || rawDefaultView === "week"
+        rawDefaultView === "day" ||
+        rawDefaultView === "week" ||
+        rawDefaultView === "month"
             ? rawDefaultView
             : "list";
     const { data: existingPreferences } = await supabase
@@ -1118,7 +1122,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                             userPreferences?.itinerary_default_view ===
                                                 "day" ||
                                             userPreferences?.itinerary_default_view ===
-                                                "week"
+                                                "week" ||
+                                            userPreferences?.itinerary_default_view ===
+                                                "month"
                                                 ? userPreferences.itinerary_default_view
                                                 : "list"
                                         }
@@ -1127,6 +1133,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                                         <option value="list">List</option>
                                         <option value="day">Day</option>
                                         <option value="week">Week</option>
+                                        <option value="month">Month</option>
                                     </select>
                                 </label>
                                 <label className="block sm:col-span-2">

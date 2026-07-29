@@ -18,6 +18,35 @@ afterEach(() => {
 });
 
 describe("transportation form fields", () => {
+  it("prefills a dragged calendar date and time range", async () => {
+    render(
+      <TransportationForm
+        tripId="trip-1"
+        submitAction={vi.fn()}
+        isOpen
+        onClose={vi.fn()}
+        defaultDate="2026-09-24"
+        defaultStartTime="10:15"
+        defaultEndTime="11:45"
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: /Train/ }));
+
+    expect(
+      document.querySelector('input[name="leg_0_departure_date"]'),
+    ).toHaveValue("2026-09-24");
+    expect(
+      document.querySelector('input[name="leg_0_departure_time"]'),
+    ).toHaveValue("10:15");
+    expect(
+      document.querySelector('input[name="leg_0_arrival_date"]'),
+    ).toHaveValue("2026-09-24");
+    expect(
+      document.querySelector('input[name="leg_0_arrival_time"]'),
+    ).toHaveValue("11:45");
+  });
+
   it.each(["Train", "Metro / Subway", "Bus", "Tram", "Ferry"])(
     "shows Google locations and schedule fields for %s",
     async (mode) => {

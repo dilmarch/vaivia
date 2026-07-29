@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import IdeasTab from "@/components/IdeasTab";
 import ItineraryCalendar, {
     type CalendarAccommodation,
+    type CalendarDraftTimeRange,
     type CalendarMemberLocation,
     type ItineraryCalendarItem,
 } from "@/components/ItineraryCalendar";
@@ -32,6 +33,7 @@ type ItineraryTabsProps = {
     tripLegLocations?: TripLegLocation[];
     tripLegMemberOptions?: TripLegMemberOption[];
     ideas: TripIdea[];
+    tripNotes?: string | null;
     tripStartDate?: string | null;
     tripEndDate?: string | null;
     tripDestination?: string | null;
@@ -47,6 +49,7 @@ type ItineraryTabsProps = {
     createIdeaAction: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
+    saveTripNotesAction: (formData: FormData) => Promise<void>;
     moveItemAction: (formData: FormData) => Promise<void>;
     moveTargetTrips: MoveTargetTrip[];
     toggleIdeaReactionAction: (formData: FormData) => Promise<void>;
@@ -65,7 +68,7 @@ type ItineraryTabsProps = {
 };
 
 type ActiveTab = "itinerary" | "journey" | "journey-planning" | "ideas";
-type CalendarView = "list" | "day" | "week";
+type CalendarView = "list" | "day" | "week" | "month";
 type QuickAddInitialAction =
     | "transportation"
     | "scheduled"
@@ -123,6 +126,7 @@ export default function ItineraryTabs({
     tripLegLocations = [],
     tripLegMemberOptions = [],
     ideas,
+    tripNotes = "",
     tripStartDate,
     tripEndDate,
     tripDestination,
@@ -138,6 +142,7 @@ export default function ItineraryTabs({
     createIdeaAction,
     updateIdeaAction,
     deleteIdeaAction,
+    saveTripNotesAction,
     moveItemAction,
     moveTargetTrips,
     toggleIdeaReactionAction,
@@ -158,10 +163,21 @@ export default function ItineraryTabs({
     const [quickAddDate, setQuickAddDate] = useState(() =>
         getInitialQuickAddDate(tripStartDate)
     );
+    const [calendarDraftRange, setCalendarDraftRange] = useState<
+        (CalendarDraftTimeRange & { requestId: number }) | null
+    >(null);
     const [requestedLegLocationKey, setRequestedLegLocationKey] = useState<
         string | null
     >(null);
     const [showAllJourneyItems, setShowAllJourneyItems] = useState(false);
+
+    function handleCreateTimeRange(range: CalendarDraftTimeRange) {
+        setQuickAddDate(range.dateKey);
+        setCalendarDraftRange((current) => ({
+            ...range,
+            requestId: (current?.requestId || 0) + 1,
+        }));
+    }
     const itineraryTimezoneHints = useMemo(
         () => buildItineraryTimezoneHints(items, tripEndDate),
         [items, tripEndDate]
@@ -268,6 +284,7 @@ export default function ItineraryTabs({
                     currentUserTripMemberId={currentUserTripMemberId}
                     categories={categories}
                     onQuickAddDateChange={setQuickAddDate}
+                    onCreateTimeRange={handleCreateTimeRange}
                     ideas={ideas}
                     promoteIdeaAction={createItineraryAction}
                     toggleIdeaReactionAction={toggleIdeaReactionAction}
@@ -387,12 +404,16 @@ export default function ItineraryTabs({
                 <IdeasTab
                     tripId={tripId}
                     ideas={ideas}
+                    tripNotes={tripNotes}
+                    saveTripNotesAction={saveTripNotesAction}
+                    createItineraryAction={createItineraryAction}
                     updateIdeaAction={updateIdeaAction}
                     deleteIdeaAction={deleteIdeaAction}
                     moveItemAction={moveItemAction}
                     moveTargetTrips={moveTargetTrips}
                     toggleReactionAction={toggleIdeaReactionAction}
                     toggleAttendedAction={toggleIdeaAttendedAction}
+                    defaultItineraryDate={getInitialQuickAddDate(tripStartDate)}
                 />
             )}
 
@@ -416,6 +437,7 @@ export default function ItineraryTabs({
                 createTransportationAction={createTransportationAction}
                 createIdeaAction={createIdeaAction}
                 defaultDate={quickAddDate}
+                calendarDraftRange={calendarDraftRange}
                 categories={categories}
                 travelerOptions={travelerOptions}
                 audienceOptions={audienceOptions}

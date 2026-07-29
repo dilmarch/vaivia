@@ -797,7 +797,9 @@ export async function createExpense(formData: FormData) {
 
     if (!tripId) throw new Error("Trip is required.");
     if (!description) throw new Error("Description is required.");
-    if (amount <= 0) throw new Error("Amount must be greater than 0.");
+    if (amount === 0) {
+        throw new Error("Amount cannot be zero. Use a negative amount for a refund.");
+    }
     if (!EXPENSE_CATEGORIES.includes(category)) {
         throw new Error("Choose a valid expense category.");
     }
@@ -1138,7 +1140,9 @@ export async function updateExpense(formData: FormData) {
     if (!tripId) throw new Error("Trip is required.");
     if (!expenseId) throw new Error("Expense is required.");
     if (!description) throw new Error("Description is required.");
-    if (amount <= 0) throw new Error("Amount must be greater than 0.");
+    if (amount === 0) {
+        throw new Error("Amount cannot be zero. Use a negative amount for a refund.");
+    }
     if (!EXPENSE_CATEGORIES.includes(category)) {
         throw new Error("Choose a valid expense category.");
     }

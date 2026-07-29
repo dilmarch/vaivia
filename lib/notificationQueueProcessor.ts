@@ -101,19 +101,28 @@ function getQueueError(channel: QueueChannel, reason: unknown): QueueError {
 
 export async function processNotificationQueues(limit = 25) {
     let remindersQueued = 0;
-    let reminderError: QueueError | null = null;
+    const reminderErrors: QueueError[] = [];
+    const reminderProcedures = [
+        "queue_due_accommodation_cancellation_reminders",
+        "queue_due_flight_check_in_reminders",
+    ] as const;
+    const reminderResults = await Promise.allSettled(
+        reminderProcedures.map(async (procedure) => {
+            const supabase = createServiceRoleClient();
+            const { data, error } = await supabase.rpc(procedure);
 
-    try {
-        const supabase = createServiceRoleClient();
-        const { data, error } = await supabase.rpc(
-            "queue_due_accommodation_cancellation_reminders"
-        );
+            if (error) throw new Error(error.message);
+            return typeof data === "number" ? data : Number(data || 0);
+        })
+    );
 
-        if (error) throw new Error(error.message);
-        remindersQueued = typeof data === "number" ? data : Number(data || 0);
-    } catch (error) {
-        reminderError = getQueueError("reminder", error);
-    }
+    reminderResults.forEach((result) => {
+        if (result.status === "fulfilled") {
+            remindersQueued += result.value;
+        } else {
+            reminderErrors.push(getQueueError("reminder", result.reason));
+        }
+    });
 
     const [pushResult, emailResult, externalEmailResult] = await Promise.allSettled([
         processNotificationPushOutbox(limit),
@@ -135,7 +144,7 @@ export async function processNotificationQueues(limit = 25) {
     const externalEmailCounts = summarizeQueueResults(externalEmailResults);
     const combinedEmailCounts = combineCounts(emailCounts, externalEmailCounts);
     const errors = [
-        reminderError,
+        ...reminderErrors,
         pushResult.status === "rejected"
             ? getQueueError("push", pushResult.reason)
             : null,

@@ -52,6 +52,11 @@ export const NOTIFICATION_TYPE_OPTIONS = [
             "48 hours before free cancellation ends for a stay booking.",
     },
     {
+        type: "flight_check_in_reminder",
+        label: "Flight check-in reminders",
+        description: "24 hours before a flight in your itinerary departs.",
+    },
+    {
         type: "trip_slug_changed",
         label: "Trip URL changes",
         description: "When VAIVIA changes a trip URL slug.",
@@ -135,6 +140,7 @@ const DEFAULT_EMAIL_NOTIFICATION_TYPE_VALUES = [
     "trip_slug_changed",
     "passport_stamp_share_received",
     "travel_email_failed",
+    "flight_check_in_reminder",
 ] as const;
 
 const REQUIRED_NOTIFICATION_TYPE_SET = new Set<string>(

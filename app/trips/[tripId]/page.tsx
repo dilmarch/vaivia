@@ -139,6 +139,7 @@ type PageProps = {
         addedScenario?: string;
         addedTransportation?: string;
         view?: string;
+        date?: string;
         _route?: string;
     }>;
 };
@@ -638,6 +639,15 @@ function getTransportationReturnPath(
     }
 
     return fallbackPath;
+}
+
+function shouldPreserveItineraryView(formData: FormData) {
+    return formData.get("preserve_itinerary_view") === "true";
+}
+
+function revalidateItineraryPaths(tripId: string) {
+    revalidatePath(`/trips/${tripId}`);
+    revalidatePath(`/trips/${tripId}/itinerary`);
 }
 
 function appendTripReturnParam(path: string, key: string, value: string) {
@@ -2237,6 +2247,11 @@ async function createItineraryItem(formData: FormData) {
         nextStep: "complete",
     });
 
+    if (shouldPreserveItineraryView(formData)) {
+        revalidateItineraryPaths(tripId);
+        return;
+    }
+
     redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}/itinerary`));
 }
 
@@ -2404,6 +2419,11 @@ async function updateItineraryItem(formData: FormData) {
                 participantsError.message ?? "Unknown Supabase error"
             }`
         );
+    }
+
+    if (shouldPreserveItineraryView(formData)) {
+        revalidateItineraryPaths(tripId);
+        return;
     }
 
     redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}/itinerary`));
@@ -2604,33 +2624,43 @@ async function createTransportationItem(formData: FormData) {
             : `${modeLabel}: ${departureLocation || "Departure"} to ${
                   arrivalLocation || "Arrival"
               }`;
-    const notes = [
-        routeStops.length > 2 ? `Stops:\n${routeSummary}` : "",
-        preferredRideProvider
-            ? `Preferred taxi company / ride sharing app: ${preferredRideProvider}`
-            : "",
-        duration ? `Duration: ${duration}` : "",
-        departureTerminal ? `Departure terminal/platform: ${departureTerminal}` : "",
-        arrivalTerminal ? `Arrival terminal/platform: ${arrivalTerminal}` : "",
-        departureTimezone ? `Departure time zone: ${departureTimezone}` : "",
-        arrivalTimezone ? `Arrival time zone: ${arrivalTimezone}` : "",
-        isRoundTrip
-            ? `Roundtrip: Yes${
-                  returnFlightLegCount > 0
-                      ? ` (${returnFlightLegCount} return ${
-                            returnFlightLegCount === 1 ? "leg" : "legs"
-                        })`
-                      : ""
-              }`
-            : "",
-        scenarioPros ? `Pros:\n${scenarioPros}` : "",
-        scenarioCons ? `Cons:\n${scenarioCons}` : "",
-        flightLegNotes.length ? `Flight legs:\n\n${flightLegNotes.join("\n\n")}` : "",
-        visaRequirements ? `VISA requirements:\n${visaRequirements}` : "",
-        luggageRequirements ? `Luggage requirements:\n${luggageRequirements}` : "",
-    ]
-        .filter(Boolean)
-        .join("\n\n");
+    const notes =
+        mode === "airplane"
+            ? [
+                  routeStops.length > 2 ? `Stops:\n${routeSummary}` : "",
+                  duration ? `Duration: ${duration}` : "",
+                  departureTerminal
+                      ? `Departure terminal: ${departureTerminal}`
+                      : "",
+                  arrivalTerminal ? `Arrival terminal: ${arrivalTerminal}` : "",
+                  departureTimezone
+                      ? `Departure time zone: ${departureTimezone}`
+                      : "",
+                  arrivalTimezone ? `Arrival time zone: ${arrivalTimezone}` : "",
+                  isRoundTrip
+                      ? `Roundtrip: Yes${
+                            returnFlightLegCount > 0
+                                ? ` (${returnFlightLegCount} return ${
+                                      returnFlightLegCount === 1 ? "leg" : "legs"
+                                  })`
+                                : ""
+                        }`
+                      : "",
+                  scenarioPros ? `Pros:\n${scenarioPros}` : "",
+                  scenarioCons ? `Cons:\n${scenarioCons}` : "",
+                  flightLegNotes.length
+                      ? `Flight legs:\n\n${flightLegNotes.join("\n\n")}`
+                      : "",
+                  visaRequirements
+                      ? `VISA requirements:\n${visaRequirements}`
+                      : "",
+                  luggageRequirements
+                      ? `Luggage requirements:\n${luggageRequirements}`
+                      : "",
+              ]
+                  .filter(Boolean)
+                  .join("\n\n")
+            : "";
 
     const shouldCreateSeparateFlightLegs = flightLegDetails.length > 1;
     const transportationPayloads = shouldCreateSeparateFlightLegs
@@ -2950,6 +2980,11 @@ async function createTransportationItem(formData: FormData) {
         nextStep: "complete",
     });
 
+    if (shouldPreserveItineraryView(formData)) {
+        revalidateItineraryPaths(tripId);
+        return;
+    }
+
     let returnPath = getTransportationReturnPath(formData, tripId);
     if (transportationItemId && returnPath.includes("tab=journey-planning")) {
         returnPath = appendTripReturnParam(
@@ -3078,15 +3113,15 @@ async function updateTransportationItem(formData: FormData) {
         : `${modeLabel}: ${departureLocation || "Departure"} to ${
               arrivalLocation || "Arrival"
           }`;
-    const mergedNotes = [
-        routeStops.length > 2 ? `Stops:\n${routeSummary}` : "",
-        preferredRideProvider
-            ? `Preferred taxi company / ride sharing app: ${preferredRideProvider}`
-            : "",
-        notes,
-    ]
-        .filter(Boolean)
-        .join("\n\n");
+    const mergedNotes =
+        mode === "airplane"
+            ? [
+                  routeStops.length > 2 ? `Stops:\n${routeSummary}` : "",
+                  notes,
+              ]
+                  .filter(Boolean)
+                  .join("\n\n")
+            : notes;
     const payload: TransportationItemPayload = {
         title,
         transportation_mode: mode || null,
@@ -3188,6 +3223,11 @@ async function updateTransportationItem(formData: FormData) {
         arrivalTimezone,
     });
 
+    if (shouldPreserveItineraryView(formData)) {
+        revalidateItineraryPaths(tripId);
+        return;
+    }
+
     redirect(
         getTransportationReturnPath(formData, tripId, `/trips/${tripId}?tab=journey`)
     );
@@ -3225,6 +3265,11 @@ async function deleteItineraryItem(formData: FormData) {
     if (error) {
         console.error("Error deleting itinerary item:", error);
         throw new Error("Could not delete itinerary item");
+    }
+
+    if (shouldPreserveItineraryView(formData)) {
+        revalidateItineraryPaths(tripId);
+        return;
     }
 
     redirect(
@@ -3815,6 +3860,46 @@ async function deleteTripIdea(formData: FormData) {
     );
 }
 
+async function saveTripNotes(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "");
+    const notes = String(formData.get("notes") || "").trim();
+
+    if (!tripId) {
+        throw new Error("Could not save trip notes");
+    }
+
+    const { data: updatedTrip, error } = await supabase
+        .from("trips")
+        .update({ notes })
+        .eq("id", tripId)
+        .select("id")
+        .maybeSingle();
+
+    if (error || !updatedTrip) {
+        console.error("Error saving trip notes:", {
+            message: error?.message || "No matching trip was updated",
+            code: error?.code,
+            details: error?.details,
+            hint: error?.hint,
+            tripId,
+            userId: user.id,
+        });
+        throw new Error("Could not save trip notes");
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+    revalidatePath(`/trips/${tripId}/itinerary`);
+}
+
 async function toggleTripIdeaAttended(formData: FormData) {
     "use server";
 
@@ -3864,8 +3949,12 @@ async function toggleTripIdeaAttended(formData: FormData) {
     revalidatePath(`/trips/${tripId}`);
 }
 
-function getDefaultItineraryView(value: unknown): "list" | "day" | "week" {
-    return value === "day" || value === "week" ? value : "list";
+function getDefaultItineraryView(
+    value: unknown
+): "list" | "day" | "week" | "month" {
+    return value === "day" || value === "week" || value === "month"
+        ? value
+        : "list";
 }
 
 type TripIdeaReactionRecord = {
@@ -4866,7 +4955,7 @@ async function TripDetailContent({
             iconEmoji: leg.icon_emoji || null,
             startDate: leg.start_date || null,
             endDate: leg.end_date || null,
-            canDelete: leg.leg_type === "custom",
+            canDelete: true,
             canClearDates: leg.leg_type === "custom",
             memberIds: tripMemberIdsByLegId.get(leg.id) || [],
             memberDatesByMemberId: Object.fromEntries(
@@ -6046,6 +6135,7 @@ async function TripDetailContent({
                         tripLegLocations={heroLocations}
                         tripLegMemberOptions={tripLegMemberOptions}
                         ideas={ideas}
+                        tripNotes={trip.notes}
                         tripStartDate={displayTripStartDate}
                         tripEndDate={displayTripEndDate}
                         tripDestination={trip.destination}
@@ -6061,6 +6151,7 @@ async function TripDetailContent({
                         createIdeaAction={createTripIdea}
                         updateIdeaAction={updateTripIdea}
                         deleteIdeaAction={deleteTripIdea}
+                        saveTripNotesAction={saveTripNotes}
                         moveItemAction={moveTripItem}
                         moveTargetTrips={moveTargetTrips}
                         toggleIdeaReactionAction={toggleTripIdeaReaction}

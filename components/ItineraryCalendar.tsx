@@ -1,9 +1,11 @@
 "use client";
 
+import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import type { CSSProperties } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
     AlertTriangle,
+    CalendarRange,
     CalendarDays,
     ChevronLeft,
     ChevronRight,
@@ -66,6 +68,11 @@ import {
     FALLBACK_CATEGORY_LABEL,
     type UserCategory,
 } from "@/lib/itineraryCategories";
+import {
+    buildItineraryViewUrl,
+    isItineraryDateKey,
+    type ItineraryView,
+} from "@/lib/itineraryViewState";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 
@@ -191,6 +198,7 @@ type ItineraryCalendarProps = {
     categories?: UserCategory[];
     currentUserTripMemberId?: string | null;
     onQuickAddDateChange?: (dateKey: string) => void;
+    onCreateTimeRange?: (range: CalendarDraftTimeRange) => void;
     ideas?: TripIdea[];
     promoteIdeaAction?: (formData: FormData) => Promise<void>;
     toggleIdeaReactionAction?: (formData: FormData) => Promise<void>;
@@ -198,7 +206,12 @@ type ItineraryCalendarProps = {
     onEditMemberLocationLeg?: (locationKey: string) => void;
 };
 
-type CalendarView = "list" | "day" | "week";
+type CalendarView = ItineraryView;
+export type CalendarDraftTimeRange = {
+    dateKey: string;
+    startTime: string;
+    endTime: string;
+};
 type ItineraryCalendarSegment = {
     item: ItineraryCalendarItem;
     dateKey: string;
@@ -249,6 +262,14 @@ function addDays(date: Date, days: number) {
     const nextDate = new Date(date);
     nextDate.setDate(nextDate.getDate() + days);
     return nextDate;
+}
+
+function addMonths(date: Date, months: number) {
+    return new Date(date.getFullYear(), date.getMonth() + months, 1);
+}
+
+function startOfMonth(date: Date) {
+    return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
 function startOfWeek(date: Date) {
@@ -374,6 +395,13 @@ function formatShortDate(date: Date) {
 }
 
 function formatViewTitle(view: CalendarView, anchorDate: Date) {
+    if (view === "month") {
+        return anchorDate.toLocaleDateString("en-CA", {
+            month: "long",
+            year: "numeric",
+        });
+    }
+
     if (view === "week") {
         const weekStart = startOfWeek(anchorDate);
         const weekEnd = addDays(weekStart, 6);
@@ -583,6 +611,16 @@ function formatMinutesAsTime(minutes: number) {
         hour: "numeric",
         minute: "2-digit",
     });
+}
+
+function formatMinutesAsInputTime(minutes: number) {
+    const boundedMinutes = Math.max(
+        0,
+        Math.min(minutes, MINUTES_IN_DAY - 1)
+    );
+    const hours = String(Math.floor(boundedMinutes / 60)).padStart(2, "0");
+    const minuteValue = String(boundedMinutes % 60).padStart(2, "0");
+    return `${hours}:${minuteValue}`;
 }
 
 function itemTouchesDate(item: ItineraryCalendarItem, dateKey: string) {
@@ -915,8 +953,13 @@ function parseGeneratedFlightLegs(notes?: string | null): FlightLegDisplay[] {
 
 function getDisplayNotes(item: ItineraryCalendarItem) {
     if (!item.notes) return "";
-    if (!isFlightTransportationItem(item)) return item.notes;
-    return stripStructuredFlightNotes(item.notes);
+    if (
+        item.category === "transportation" ||
+        isFlightTransportationItem(item)
+    ) {
+        return stripStructuredFlightNotes(item.notes);
+    }
+    return item.notes;
 }
 
 function formatOptionalDate(date?: string | null) {
@@ -1127,6 +1170,14 @@ function getVisibleDateRange(
         return {
             startKey: getLocalDateKey(weekStart),
             endKey: getLocalDateKey(addDays(weekStart, 6)),
+        };
+    }
+
+    if (view === "month") {
+        const gridStart = startOfWeek(startOfMonth(anchorDate));
+        return {
+            startKey: getLocalDateKey(gridStart),
+            endKey: getLocalDateKey(addDays(gridStart, 41)),
         };
     }
 
@@ -1487,12 +1538,25 @@ function getListEntriesForAllItems(
         .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 }
 
-function getInitialAnchorDate(tripStartDate?: string | null) {
+function getInitialAnchorDate(
+    tripStartDate?: string | null,
+    itineraryViewDate?: string | null
+) {
+    if (isItineraryDateKey(itineraryViewDate)) {
+        return parseDateKey(itineraryViewDate);
+    }
     if (!tripStartDate) return new Date();
     return parseDateKey(tripStartDate);
 }
 
-function getInitialListDate(tripStartDate?: string | null) {
+function getInitialListDate(
+    tripStartDate?: string | null,
+    itineraryViewDate?: string | null
+) {
+    if (isItineraryDateKey(itineraryViewDate)) {
+        return parseDateKey(itineraryViewDate);
+    }
+
     const today = new Date();
     const todayKey = getLocalDateKey(today);
 
@@ -1996,7 +2060,30 @@ function EventCard({
                       flightDisplay.departureTimeZone,
                       flightDisplay.departureDate
                   )
-                : formatTimeWithZone(item.start_time, item.timezone, item.item_date)
+                : ""
+            : "";
+    const actualTransportationTimeLabel =
+        item.category === "transportation"
+            ? [
+                  item.start_time
+                      ? formatTimeWithZone(
+                            item.start_time,
+                            item.departure_timezone || item.timezone,
+                            item.item_date
+                        )
+                      : "",
+                  item.end_time
+                      ? formatTimeWithZone(
+                            item.end_time,
+                            item.arrival_timezone ||
+                                item.departure_timezone ||
+                                item.timezone,
+                            item.end_date || item.item_date
+                        )
+                      : "",
+              ]
+                  .filter(Boolean)
+                  .join(" - ")
             : "";
 
     if (flightDisplay && !compact) {
@@ -2175,7 +2262,8 @@ function EventCard({
                                 : "text-lime-200/80"
                         }`}
                     >
-                        {timeLabel ||
+                        {actualTransportationTimeLabel ||
+                            timeLabel ||
                             `${formatTime(item.start_time)}${
                                 item.end_time ? ` - ${formatTime(item.end_time)}` : ""
                             }`}
@@ -2689,6 +2777,8 @@ function ItineraryItemModal({
     onDuplicateTransportationItem: (item: ItineraryCalendarItem) => void;
     onClose: () => void;
 }) {
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
     const [isEditingTransportation, setIsEditingTransportation] = useState(false);
     const savedCoverImage = getUsableSavedCoverImage(item);
@@ -2697,6 +2787,15 @@ function ItineraryItemModal({
     const locationWebsite = addVaiviaUtmAttribution(item.location_website);
     const flightDisplay = getFlightDisplayData(item);
     const displayNotes = getDisplayNotes(item);
+    async function handleDeleteAction(formData: FormData) {
+        formData.set("preserve_itinerary_view", "true");
+        await deleteAction(formData);
+        onClose();
+    }
+    const returnTo = useMemo(() => {
+        const query = searchParams?.toString() || "";
+        return `${pathname || ""}${query ? `?${query}` : ""}`;
+    }, [pathname, searchParams]);
     const airlineTheme = flightDisplay
         ? getAirlineBrandTheme(flightDisplay.airlineCode)
         : null;
@@ -2980,9 +3079,14 @@ function ItineraryItemModal({
                         <p className="font-medium">Delete this itinerary item?</p>
                         <p className="mt-1 text-red-800">This cannot be undone.</p>
                         <div className="mt-3 flex flex-wrap gap-2">
-                            <form action={deleteAction}>
+                            <form action={handleDeleteAction}>
                                 <input type="hidden" name="trip_id" value={tripId} />
                                 <input type="hidden" name="item_id" value={item.id} />
+                                <input
+                                    type="hidden"
+                                    name="return_to"
+                                    value={returnTo}
+                                />
                                 <button
                                     type="submit"
                                     className="rounded-md bg-red-700 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-800"
@@ -3263,6 +3367,335 @@ function ListView({
     );
 }
 
+const MONTH_WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function MonthView({
+    anchorDate,
+    items,
+    displayTimezone,
+    onOpenItem,
+    onSelectDay,
+}: {
+    anchorDate: Date;
+    items: ItineraryCalendarItem[];
+    displayTimezone: string;
+    onOpenItem: (item: ItineraryCalendarItem) => void;
+    onSelectDay: (date: Date) => void;
+}) {
+    const monthStart = startOfMonth(anchorDate);
+    const gridStart = startOfWeek(monthStart);
+    const dates = Array.from({ length: 42 }, (_, index) =>
+        addDays(gridStart, index)
+    );
+    const todayKey = getLocalDateKey(new Date());
+
+    return (
+        <div
+            className="overflow-x-auto rounded-[1.35rem] border border-white/10 bg-slate-950/70"
+            aria-label={anchorDate.toLocaleDateString("en-CA", {
+                month: "long",
+                year: "numeric",
+            })}
+        >
+            <div className="min-w-[840px]">
+                <div className="grid grid-cols-7 border-b border-white/10 bg-slate-950/95">
+                    {MONTH_WEEKDAY_LABELS.map((label) => (
+                        <div
+                            key={label}
+                            className="border-r border-white/10 px-3 py-2 text-center text-xs font-black uppercase tracking-[0.16em] text-slate-400 last:border-r-0"
+                        >
+                            {label}
+                        </div>
+                    ))}
+                </div>
+                <div className="grid grid-cols-7">
+                    {dates.map((date) => {
+                        const dateKey = getLocalDateKey(date);
+                        const isCurrentMonth =
+                            date.getMonth() === anchorDate.getMonth();
+                        const isToday = dateKey === todayKey;
+                        const dateItems = items
+                            .filter((item) => {
+                                const range = getDisplayEventRange(
+                                    item,
+                                    displayTimezone
+                                );
+                                return (
+                                    range.startDateKey <= dateKey &&
+                                    range.endDateKey >= dateKey
+                                );
+                            })
+                            .sort((left, right) =>
+                                getDisplayEventRange(left, displayTimezone)
+                                    .sortKey.localeCompare(
+                                        getDisplayEventRange(
+                                            right,
+                                            displayTimezone
+                                        ).sortKey
+                                    )
+                            );
+                        const visibleItems = dateItems.slice(0, 4);
+
+                        return (
+                            <div
+                                key={dateKey}
+                                className={`min-h-36 border-b border-r border-white/10 p-2 ${
+                                    isCurrentMonth
+                                        ? "bg-slate-900/70"
+                                        : "bg-slate-950/45"
+                                }`}
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() => onSelectDay(date)}
+                                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black transition hover:bg-lime-300 hover:text-slate-950 ${
+                                        isToday
+                                            ? "bg-lime-300 text-slate-950"
+                                            : isCurrentMonth
+                                              ? "text-white"
+                                              : "text-slate-600"
+                                    }`}
+                                    aria-label={`Open day view for ${formatDateHeader(
+                                        dateKey
+                                    )}`}
+                                >
+                                    {date.getDate()}
+                                </button>
+                                <div className="mt-2 space-y-1">
+                                    {visibleItems.map((item) => {
+                                        const range = getDisplayEventRange(
+                                            item,
+                                            displayTimezone
+                                        );
+                                        const isTransportation =
+                                            item.category === "transportation";
+                                        const timeLabel = item.start_time
+                                            ? isTransportation
+                                                ? formatTimeWithZone(
+                                                      item.start_time,
+                                                      item.departure_timezone ||
+                                                          item.timezone,
+                                                      item.item_date
+                                                  )
+                                                : range.startDateKey === dateKey
+                                                  ? formatMinutesAsTime(
+                                                        range.startMinutes || 0
+                                                    )
+                                                  : "Continues"
+                                            : "";
+
+                                        return (
+                                            <button
+                                                key={`${dateKey}-${item.id}`}
+                                                type="button"
+                                                onClick={() => onOpenItem(item)}
+                                                title={item.title}
+                                                className="block w-full truncate rounded-md border border-white/10 border-l-4 bg-white/[0.07] px-2 py-1.5 text-left text-[11px] font-bold text-slate-100 transition hover:border-lime-300/40 hover:bg-white/[0.12]"
+                                                style={{
+                                                    borderLeftColor:
+                                                        getItemCategoryColor(item),
+                                                }}
+                                            >
+                                                {timeLabel ? (
+                                                    <span className="mr-1 text-[10px] font-black text-lime-200">
+                                                        {timeLabel}
+                                                    </span>
+                                                ) : null}
+                                                {item.title}
+                                            </button>
+                                        );
+                                    })}
+                                    {dateItems.length > visibleItems.length ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => onSelectDay(date)}
+                                            className="w-full px-1 py-1 text-left text-[10px] font-black text-lime-300 hover:text-lime-200"
+                                        >
+                                            +{dateItems.length - visibleItems.length} more
+                                        </button>
+                                    ) : null}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+const CALENDAR_HOUR_HEIGHT = 80;
+const CALENDAR_DAY_HEIGHT = CALENDAR_HOUR_HEIGHT * 24;
+const CALENDAR_SELECTION_STEP = 15;
+const CALENDAR_MIN_SELECTION = 30;
+
+function snapCalendarMinute(minutes: number) {
+    return Math.max(
+        0,
+        Math.min(
+            MINUTES_IN_DAY,
+            Math.round(minutes / CALENDAR_SELECTION_STEP) *
+                CALENDAR_SELECTION_STEP
+        )
+    );
+}
+
+function normalizeCalendarSelection(startMinute: number, currentMinute: number) {
+    let start = Math.min(startMinute, currentMinute);
+    let end = Math.max(startMinute, currentMinute);
+
+    if (end - start < CALENDAR_MIN_SELECTION) {
+        if (currentMinute < startMinute) {
+            start = Math.max(0, startMinute - CALENDAR_MIN_SELECTION);
+            end = startMinute;
+        } else {
+            start = Math.min(
+                startMinute,
+                MINUTES_IN_DAY - CALENDAR_MIN_SELECTION
+            );
+            end = start + CALENDAR_MIN_SELECTION;
+        }
+    }
+
+    return { start, end };
+}
+
+function CalendarTimeRangeSelector({
+    dateKey,
+    insetLeft = false,
+    onSelect,
+}: {
+    dateKey: string;
+    insetLeft?: boolean;
+    onSelect: (range: CalendarDraftTimeRange) => void;
+}) {
+    const surfaceRef = useRef<HTMLButtonElement | null>(null);
+    const activePointerRef = useRef<{
+        pointerId: number;
+        startMinute: number;
+    } | null>(null);
+    const [draftSelection, setDraftSelection] = useState<{
+        startMinute: number;
+        currentMinute: number;
+    } | null>(null);
+
+    function getPointerMinute(clientY: number) {
+        const bounds = surfaceRef.current?.getBoundingClientRect();
+        if (!bounds || bounds.height <= 0) return 0;
+        return snapCalendarMinute(
+            ((clientY - bounds.top) / bounds.height) * MINUTES_IN_DAY
+        );
+    }
+
+    function handlePointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+        if (event.button !== 0) return;
+
+        const startMinute = getPointerMinute(event.clientY);
+        activePointerRef.current = {
+            pointerId: event.pointerId,
+            startMinute,
+        };
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setDraftSelection({
+            startMinute,
+            currentMinute: startMinute,
+        });
+    }
+
+    function handlePointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+        const activePointer = activePointerRef.current;
+        if (!activePointer || activePointer.pointerId !== event.pointerId) return;
+
+        setDraftSelection({
+            startMinute: activePointer.startMinute,
+            currentMinute: getPointerMinute(event.clientY),
+        });
+    }
+
+    function finishSelection(event: ReactPointerEvent<HTMLButtonElement>) {
+        const activePointer = activePointerRef.current;
+        if (!activePointer || activePointer.pointerId !== event.pointerId) return;
+
+        const selection = normalizeCalendarSelection(
+            activePointer.startMinute,
+            getPointerMinute(event.clientY)
+        );
+        activePointerRef.current = null;
+        setDraftSelection(null);
+
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+
+        onSelect({
+            dateKey,
+            startTime: formatMinutesAsInputTime(selection.start),
+            endTime: formatMinutesAsInputTime(selection.end),
+        });
+    }
+
+    function cancelSelection(event: ReactPointerEvent<HTMLButtonElement>) {
+        if (activePointerRef.current?.pointerId !== event.pointerId) return;
+        activePointerRef.current = null;
+        setDraftSelection(null);
+    }
+
+    const normalizedDraft = draftSelection
+        ? normalizeCalendarSelection(
+              draftSelection.startMinute,
+              draftSelection.currentMinute
+          )
+        : null;
+
+    return (
+        <button
+            ref={surfaceRef}
+            type="button"
+            aria-label={`Create an itinerary item on ${formatDateHeader(dateKey)}. Click and drag to select a time.`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={finishSelection}
+            onPointerCancel={cancelSelection}
+            onClick={(event) => {
+                if (event.detail !== 0) return;
+                onSelect({
+                    dateKey,
+                    startTime: "12:00",
+                    endTime: "12:30",
+                });
+            }}
+            className={`absolute bottom-0 top-0 z-[1] cursor-crosshair overflow-hidden text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime-300 ${
+                insetLeft ? "left-[52px]" : "left-0"
+            } right-0`}
+            style={{ touchAction: "pan-x pan-y" }}
+        >
+            {normalizedDraft ? (
+                <span
+                    className="pointer-events-none absolute inset-x-1 rounded-xl border-2 border-lime-200 bg-lime-300/25 px-2 py-1 text-xs font-black text-lime-50 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.28)] backdrop-blur-sm"
+                    style={{
+                        top:
+                            (normalizedDraft.start / MINUTES_IN_DAY) *
+                            CALENDAR_DAY_HEIGHT,
+                        height: Math.max(
+                            ((normalizedDraft.end - normalizedDraft.start) /
+                                MINUTES_IN_DAY) *
+                                CALENDAR_DAY_HEIGHT,
+                            32
+                        ),
+                    }}
+                >
+                    {formatMinutesAsTime(normalizedDraft.start)} –{" "}
+                    {formatMinutesAsTime(
+                        normalizedDraft.end === MINUTES_IN_DAY
+                            ? MINUTES_IN_DAY - 1
+                            : normalizedDraft.end
+                    )}
+                </span>
+            ) : null}
+        </button>
+    );
+}
+
 function DayColumn({
     date,
     items,
@@ -3271,6 +3704,7 @@ function DayColumn({
     showTimeRail = true,
     showWarnings = true,
     onOpenItem,
+    onCreateTimeRange,
 }: {
     date: Date;
     items: ItineraryCalendarItem[];
@@ -3279,6 +3713,7 @@ function DayColumn({
     showTimeRail?: boolean;
     showWarnings?: boolean;
     onOpenItem: (item: ItineraryCalendarItem) => void;
+    onCreateTimeRange?: (range: CalendarDraftTimeRange) => void;
 }) {
     const dateKey = getLocalDateKey(date);
     const untimedItems = sortItems(
@@ -3368,6 +3803,14 @@ function DayColumn({
                     </div>
                 ))}
 
+                {onCreateTimeRange ? (
+                    <CalendarTimeRangeSelector
+                        dateKey={dateKey}
+                        insetLeft={showTimeRail}
+                        onSelect={onCreateTimeRange}
+                    />
+                ) : null}
+
                 {positionedTimedSegments.map((segment) => {
                     const top = (segment.startMinutes / 60) * 80;
                     const duration = Math.max(
@@ -3382,7 +3825,7 @@ function DayColumn({
                     return (
                         <div
                             key={`${segment.item.id}-${segment.dateKey}-${segment.startMinutes}`}
-                            className={`pointer-events-none absolute ${
+                            className={`pointer-events-none absolute z-10 ${
                                 showTimeRail ? "left-[60px]" : "left-2"
                             } right-2`}
                             style={{ top, height }}
@@ -3419,6 +3862,7 @@ function WeekViewGrid({
     onEditMemberLocationLeg,
     showFixedColumn = true,
     currentWeekStartKey,
+    onCreateTimeRange,
 }: {
     weekDates: Date[];
     items: ItineraryCalendarItem[];
@@ -3428,6 +3872,7 @@ function WeekViewGrid({
     onEditMemberLocationLeg?: (locationKey: string) => void;
     showFixedColumn?: boolean;
     currentWeekStartKey?: string;
+    onCreateTimeRange?: (range: CalendarDraftTimeRange) => void;
 }) {
     const timeRailWidth = 64;
     const dayColumnWidth = 176;
@@ -3649,6 +4094,7 @@ function WeekViewGrid({
                             showTimeRail={false}
                             showWarnings={false}
                             onOpenItem={onOpenItem}
+                            onCreateTimeRange={onCreateTimeRange}
                         />
                     </div>
                 ))}
@@ -3720,12 +4166,15 @@ export default function ItineraryCalendar({
     categories = [],
     currentUserTripMemberId = null,
     onQuickAddDateChange,
+    onCreateTimeRange,
     ideas = [],
     promoteIdeaAction,
     toggleIdeaReactionAction,
     toggleIdeaAttendedAction,
     onEditMemberLocationLeg,
 }: ItineraryCalendarProps) {
+    const searchParams = useSearchParams();
+    const initialViewDate = searchParams?.get("date") || null;
     const [view, setView] = useState<CalendarView>(defaultView);
 
     useEffect(() => {
@@ -3743,10 +4192,10 @@ export default function ItineraryCalendar({
         null
     );
     const [anchorDate, setAnchorDate] = useState(() =>
-        getInitialAnchorDate(tripStartDate)
+        getInitialAnchorDate(tripStartDate, initialViewDate)
     );
     const [listStartDate, setListStartDate] = useState(() =>
-        getInitialListDate(tripStartDate)
+        getInitialListDate(tripStartDate, initialViewDate)
     );
     const [listDayCount, setListDayCount] = useState(INITIAL_LIST_DAYS);
     const [motionKey, setMotionKey] = useState(0);
@@ -3765,6 +4214,8 @@ export default function ItineraryCalendar({
         useState<ItineraryCalendarItem | null>(null);
     const loadMoreRef = useRef<HTMLDivElement | null>(null);
     const weekScrollRef = useRef<HTMLDivElement | null>(null);
+    const dayViewRef = useRef<HTMLDivElement | null>(null);
+    const [showMobileDayNavigation, setShowMobileDayNavigation] = useState(false);
     const itemsById = useMemo(
         () => new Map(items.map((item) => [item.id, item])),
         [items]
@@ -3875,6 +4326,8 @@ export default function ItineraryCalendar({
             ? getLocalDateKey(anchorDate)
             : effectiveView === "week"
               ? getLocalDateKey(weekStart)
+              : effectiveView === "month"
+                ? getLocalDateKey(anchorDate)
               : getLocalDateKey(listStartDate);
     const currentTimezoneOption = useMemo(
         () => ({
@@ -3988,6 +4441,23 @@ export default function ItineraryCalendar({
     }, [onQuickAddDateChange, quickAddDateKey]);
 
     useEffect(() => {
+        if (listOnly || typeof window === "undefined") return;
+
+        const currentDate =
+            effectiveView === "list" ? listStartDate : anchorDate;
+        const nextUrl = buildItineraryViewUrl(
+            window.location.href,
+            effectiveView,
+            getLocalDateKey(currentDate)
+        );
+        const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+        if (nextUrl !== currentUrl) {
+            window.history.replaceState(window.history.state, "", nextUrl);
+        }
+    }, [anchorDate, effectiveView, listOnly, listStartDate]);
+
+    useEffect(() => {
         const hasActiveTimezone = timezoneOptions.some(
             (option) => option.timezone === activeTimezone
         );
@@ -4092,6 +4562,41 @@ export default function ItineraryCalendar({
         });
     }, [effectiveView, motionKey, weekStartKey]);
 
+    useEffect(() => {
+        if (effectiveView !== "day") {
+            setShowMobileDayNavigation(false);
+            return;
+        }
+
+        const mediaQuery = window.matchMedia("(max-width: 767px)");
+
+        function updateMobileDayNavigation() {
+            const dayView = dayViewRef.current;
+            if (!mediaQuery.matches || !dayView) {
+                setShowMobileDayNavigation(false);
+                return;
+            }
+
+            const bounds = dayView.getBoundingClientRect();
+            setShowMobileDayNavigation(
+                bounds.top <= 112 && bounds.bottom > 112
+            );
+        }
+
+        updateMobileDayNavigation();
+        window.addEventListener("scroll", updateMobileDayNavigation, {
+            passive: true,
+        });
+        window.addEventListener("resize", updateMobileDayNavigation);
+        mediaQuery.addEventListener("change", updateMobileDayNavigation);
+
+        return () => {
+            window.removeEventListener("scroll", updateMobileDayNavigation);
+            window.removeEventListener("resize", updateMobileDayNavigation);
+            mediaQuery.removeEventListener("change", updateMobileDayNavigation);
+        };
+    }, [effectiveView, motionKey]);
+
     function updateAnchorDate(nextDate: Date) {
         setAnchorDate(nextDate);
         setMotionKey((key) => key + 1);
@@ -4109,7 +4614,11 @@ export default function ItineraryCalendar({
             return;
         }
 
-        updateAnchorDate(addDays(anchorDate, effectiveView === "day" ? -1 : -7));
+        updateAnchorDate(
+            effectiveView === "month"
+                ? addMonths(anchorDate, -1)
+                : addDays(anchorDate, effectiveView === "day" ? -1 : -7)
+        );
     }
 
     function shiftForward() {
@@ -4118,7 +4627,11 @@ export default function ItineraryCalendar({
             return;
         }
 
-        updateAnchorDate(addDays(anchorDate, effectiveView === "day" ? 1 : 7));
+        updateAnchorDate(
+            effectiveView === "month"
+                ? addMonths(anchorDate, 1)
+                : addDays(anchorDate, effectiveView === "day" ? 1 : 7)
+        );
     }
 
     function goToToday() {
@@ -4142,6 +4655,12 @@ export default function ItineraryCalendar({
 
     function changeView(nextView: CalendarView) {
         setView(nextView);
+        setMotionKey((key) => key + 1);
+    }
+
+    function openMonthDay(date: Date) {
+        setAnchorDate(date);
+        setView("day");
         setMotionKey((key) => key + 1);
     }
 
@@ -4225,11 +4744,16 @@ export default function ItineraryCalendar({
                     {!listOnly && (
                         <div className="flex flex-col gap-3">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="grid grid-cols-3 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
+                                <div className="grid grid-cols-4 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
                                     {[
                                         { key: "list", label: "List", icon: List },
                                         { key: "day", label: "Day", icon: CalendarDays },
                                         { key: "week", label: "Week", icon: Columns3 },
+                                        {
+                                            key: "month",
+                                            label: "Month",
+                                            icon: CalendarRange,
+                                        },
                                     ].map(({ key, label, icon: Icon }) => (
                                         <button
                                             key={key}
@@ -4354,7 +4878,11 @@ export default function ItineraryCalendar({
                 )}
 
                 {!listOnly && effectiveView === "day" && (
-                    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+                    <div
+                        ref={dayViewRef}
+                        data-itinerary-day-view
+                        className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]"
+                    >
                         <div className="overflow-x-auto">
                             <div className="min-w-[680px]">
                                 <DayColumn
@@ -4363,6 +4891,7 @@ export default function ItineraryCalendar({
                                     displayTimezone={displayTimezone}
                                     showDateHeader
                                     onOpenItem={openCalendarItem}
+                                    onCreateTimeRange={onCreateTimeRange}
                                 />
                             </div>
                         </div>
@@ -4401,13 +4930,52 @@ export default function ItineraryCalendar({
                                         }
                                         showFixedColumn={false}
                                         currentWeekStartKey={weekStartKey}
+                                        onCreateTimeRange={onCreateTimeRange}
                                     />
                                 </div>
                             </div>
                         </div>
                     </div>
                 )}
+
+                {!listOnly && effectiveView === "month" && (
+                    <div className="p-3 sm:p-5">
+                        <MonthView
+                            anchorDate={anchorDate}
+                            items={items}
+                            displayTimezone={displayTimezone}
+                            onOpenItem={openCalendarItem}
+                            onSelectDay={openMonthDay}
+                        />
+                    </div>
+                )}
             </div>
+
+            {!listOnly &&
+                effectiveView === "day" &&
+                showMobileDayNavigation && (
+                    <div
+                        className="pointer-events-none fixed inset-x-0 bottom-[calc(0.9rem+var(--safe-area-bottom))] z-[52] flex items-center justify-between px-[calc(1rem+var(--safe-area-left))] md:hidden"
+                        aria-label="Day navigation"
+                    >
+                        <button
+                            type="button"
+                            onClick={shiftBackward}
+                            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-lime-300/35 bg-[#0c0115]/95 text-lime-200 shadow-2xl shadow-black/45 backdrop-blur-xl transition active:scale-95"
+                            aria-label="Previous day"
+                        >
+                            <ChevronLeft className="h-6 w-6" aria-hidden="true" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={shiftForward}
+                            className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full border border-lime-300/35 bg-[#0c0115]/95 text-lime-200 shadow-2xl shadow-black/45 backdrop-blur-xl transition active:scale-95"
+                            aria-label="Next day"
+                        >
+                            <ChevronRight className="h-6 w-6" aria-hidden="true" />
+                        </button>
+                    </div>
+                )}
 
             {selectedAccommodation ? (
                 <AccommodationDetailsModal

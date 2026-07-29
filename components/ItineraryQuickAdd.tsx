@@ -39,6 +39,12 @@ type ItineraryQuickAddProps = {
     createTransportationAction: (formData: FormData) => Promise<void>;
     createIdeaAction?: (formData: FormData) => Promise<void>;
     defaultDate?: string;
+    calendarDraftRange?: {
+        requestId: number;
+        dateKey: string;
+        startTime: string;
+        endTime: string;
+    } | null;
     categories?: UserCategory[];
     travelerOptions?: TransportationTravelerOptions;
     audienceOptions?: TripAudienceOption[];
@@ -71,6 +77,7 @@ export default function ItineraryQuickAdd({
     createTransportationAction,
     createIdeaAction,
     defaultDate = "",
+    calendarDraftRange = null,
     categories = [],
     travelerOptions = { users: [], familyMembers: [] },
     audienceOptions = [],
@@ -92,6 +99,13 @@ export default function ItineraryQuickAdd({
     const [isExpenseOpen, setIsExpenseOpen] = useState(false);
     const [isIdeaOpen, setIsIdeaOpen] = useState(false);
     const [isThingsToDoOpen, setIsThingsToDoOpen] = useState(false);
+    const [isCalendarRangeChooserOpen, setIsCalendarRangeChooserOpen] =
+        useState(false);
+    const [activeCalendarDraftRange, setActiveCalendarDraftRange] = useState<{
+        dateKey: string;
+        startTime: string;
+        endTime: string;
+    } | null>(null);
     const [thingsToDoTiming, setThingsToDoTiming] =
         useState<ThingsToDoTiming>("flexible");
     const [isSuggestionOpen, setIsSuggestionOpen] = useState(false);
@@ -105,6 +119,7 @@ export default function ItineraryQuickAdd({
     const [activeTourIndex, setActiveTourIndex] = useState<number | null>(null);
     const quickAddRef = useRef<HTMLDivElement | null>(null);
     const handledInitialActionRef = useRef<string | null>(null);
+    const handledCalendarDraftRequestRef = useRef<number | null>(null);
     const tourSections: TourSection[] = [
         {
             label: "Overview",
@@ -195,11 +210,32 @@ export default function ItineraryQuickAdd({
         };
     }, [isOpen]);
 
-    function openItineraryForm(label: string) {
+    function openItineraryForm(label: string, keepCalendarDraft = false) {
+        if (!keepCalendarDraft) setActiveCalendarDraftRange(null);
         setItemSubmitLabel(label);
         setItemOpenSignal((signal) => signal + 1);
         setIsOpen(false);
     }
+
+    useEffect(() => {
+        if (!calendarDraftRange) return;
+        if (
+            handledCalendarDraftRequestRef.current ===
+            calendarDraftRange.requestId
+        ) {
+            return;
+        }
+
+        handledCalendarDraftRequestRef.current = calendarDraftRange.requestId;
+        setActiveCalendarDraftRange({
+            dateKey: calendarDraftRange.dateKey,
+            startTime: calendarDraftRange.startTime,
+            endTime: calendarDraftRange.endTime,
+        });
+        setIsOpen(false);
+        setIsThingsToDoOpen(false);
+        setIsCalendarRangeChooserOpen(true);
+    }, [calendarDraftRange]);
 
     function openThingsToDoChooser() {
         setIsThingsToDoOpen(true);
@@ -279,7 +315,10 @@ export default function ItineraryQuickAdd({
                 submitLabel={itemSubmitLabel}
                 showLauncher={false}
                 openSignal={itemOpenSignal}
-                defaultDate={defaultDate}
+                defaultDate={activeCalendarDraftRange?.dateKey || defaultDate}
+                defaultStartTime={activeCalendarDraftRange?.startTime || ""}
+                defaultEndTime={activeCalendarDraftRange?.endTime || ""}
+                onClose={() => setActiveCalendarDraftRange(null)}
                 categories={categories}
                 audienceOptions={audienceOptions}
                 currentUserTripMemberId={currentUserTripMemberId}
@@ -289,12 +328,104 @@ export default function ItineraryQuickAdd({
                 tripId={tripId}
                 submitAction={createTransportationAction}
                 isOpen={isTransportationOpen}
-                onClose={() => setIsTransportationOpen(false)}
-                defaultDate={defaultDate}
+                onClose={() => {
+                    setIsTransportationOpen(false);
+                    setActiveCalendarDraftRange(null);
+                }}
+                defaultDate={activeCalendarDraftRange?.dateKey || defaultDate}
+                defaultStartTime={activeCalendarDraftRange?.startTime || ""}
+                defaultEndTime={activeCalendarDraftRange?.endTime || ""}
                 travelerOptions={travelerOptions}
                 audienceOptions={audienceOptions}
                 currentUserTripMemberId={currentUserTripMemberId}
             />
+            {isCalendarRangeChooserOpen && activeCalendarDraftRange ? (
+                <AnimatedModal
+                    onClose={() => {
+                        setIsCalendarRangeChooserOpen(false);
+                        setActiveCalendarDraftRange(null);
+                    }}
+                    panelClassName="max-w-xl"
+                    labelledBy="calendar-range-add-title"
+                >
+                    {({ requestClose }) => (
+                        <>
+                            <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="vaivia-modal-eyebrow">
+                                        {activeCalendarDraftRange.dateKey} ·{" "}
+                                        {activeCalendarDraftRange.startTime}–
+                                        {activeCalendarDraftRange.endTime}
+                                    </p>
+                                    <h2
+                                        id="calendar-range-add-title"
+                                        className="vaivia-modal-title"
+                                    >
+                                        What do you want to add?
+                                    </h2>
+                                    <p className="mt-2 text-sm text-slate-300">
+                                        Your selected date and times will be filled in
+                                        automatically.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={requestClose}
+                                    className="vaivia-modal-close"
+                                    aria-label="Close calendar selection"
+                                >
+                                    <X className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <div className="vaivia-modal-body grid gap-3 sm:grid-cols-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsCalendarRangeChooserOpen(false);
+                                        setIsTransportationOpen(true);
+                                    }}
+                                    className="group flex min-h-36 flex-col items-start rounded-[1.25rem] border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-lime-300/45 hover:bg-lime-300/[0.09]"
+                                >
+                                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-200">
+                                        <Route className="h-5 w-5" aria-hidden="true" />
+                                    </span>
+                                    <span className="mt-4 block text-base font-black text-white">
+                                        Transportation item
+                                    </span>
+                                    <span className="mt-1 block text-sm leading-6 text-slate-300">
+                                        Add a flight, train, drive, ferry, or other
+                                        transport.
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsCalendarRangeChooserOpen(false);
+                                        openItineraryForm(
+                                            "Add fixed-time activity",
+                                            true
+                                        );
+                                    }}
+                                    className="group flex min-h-36 flex-col items-start rounded-[1.25rem] border border-white/10 bg-white/[0.055] p-4 text-left transition hover:border-lime-300/45 hover:bg-lime-300/[0.09]"
+                                >
+                                    <span className="flex h-11 w-11 items-center justify-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-200">
+                                        <CalendarCheck
+                                            className="h-5 w-5"
+                                            aria-hidden="true"
+                                        />
+                                    </span>
+                                    <span className="mt-4 block text-base font-black text-white">
+                                        Things to do
+                                    </span>
+                                    <span className="mt-1 block text-sm leading-6 text-slate-300">
+                                        Add an activity or event at this fixed time.
+                                    </span>
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </AnimatedModal>
+            ) : null}
             {isAccommodationOpen && (
                 <AccommodationCreateModal
                     tripId={tripId}

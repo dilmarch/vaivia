@@ -24,6 +24,7 @@ import Portal from "@/components/Portal";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import { COMMON_CURRENCIES } from "@/lib/budget";
+import { isItineraryCalendarPath } from "@/lib/itineraryViewState";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
 
 type TransportationFormProps = {
@@ -32,6 +33,8 @@ type TransportationFormProps = {
     isOpen: boolean;
     onClose: () => void;
     defaultDate?: string;
+    defaultStartTime?: string;
+    defaultEndTime?: string;
     initialItem?: TransportationFormInitialValues | null;
     submitLabel?: string;
     travelerOptions?: TransportationTravelerOptions;
@@ -99,17 +102,21 @@ const PASSWORD_MANAGER_IGNORE_PROPS = {
     "data-1p-ignore": "true",
 };
 
-function createEmptyLeg(defaultDate = ""): FlightLeg {
+function createEmptyLeg(
+    defaultDate = "",
+    defaultStartTime = "",
+    defaultEndTime = ""
+): FlightLeg {
     return {
         departureLocation: "",
         departurePlaceId: "",
         departureDate: defaultDate,
-        departureTime: "",
+        departureTime: defaultStartTime,
         departureTimezone: "",
         arrivalLocation: "",
         arrivalPlaceId: "",
         arrivalDate: defaultDate,
-        arrivalTime: "",
+        arrivalTime: defaultEndTime,
         arrivalTimezone: "",
         departureTerminal: "",
         arrivalTerminal: "",
@@ -120,17 +127,21 @@ function createEmptyLeg(defaultDate = ""): FlightLeg {
 
 function normalizeInitialLegs(
     initialItem: TransportationFormInitialValues | null | undefined,
-    defaultDate: string
+    defaultDate: string,
+    defaultStartTime = "",
+    defaultEndTime = ""
 ) {
     const legs = initialItem?.flightLegs?.length
         ? initialItem.flightLegs
-        : [createEmptyLeg(defaultDate)];
+        : [createEmptyLeg(defaultDate, defaultStartTime, defaultEndTime)];
 
     return legs.map((leg) => ({
-        ...createEmptyLeg(defaultDate),
+        ...createEmptyLeg(defaultDate, defaultStartTime, defaultEndTime),
         ...leg,
         departureDate: leg.departureDate || defaultDate,
+        departureTime: leg.departureTime || defaultStartTime,
         arrivalDate: leg.arrivalDate || leg.departureDate || defaultDate,
+        arrivalTime: leg.arrivalTime || defaultEndTime,
     }));
 }
 
@@ -275,6 +286,8 @@ export default function TransportationForm({
     isOpen,
     onClose,
     defaultDate = "",
+    defaultStartTime = "",
+    defaultEndTime = "",
     initialItem = null,
     submitLabel = "Save",
     audienceOptions = [],
@@ -282,6 +295,7 @@ export default function TransportationForm({
 }: TransportationFormProps) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const preserveItineraryView = isItineraryCalendarPath(pathname);
     const initialMode = getInitialMode(initialItem);
     const [mode, setMode] = useState(initialMode);
     const [audienceMode, setAudienceMode] = useState(
@@ -298,7 +312,12 @@ export default function TransportationForm({
         getInitialConnectionCount(initialItem, initialMode)
     );
     const [flightLegs, setFlightLegs] = useState<FlightLeg[]>(() =>
-        normalizeInitialLegs(initialItem, defaultDate)
+        normalizeInitialLegs(
+            initialItem,
+            defaultDate,
+            defaultStartTime,
+            defaultEndTime
+        )
     );
     const [routeStops, setRouteStops] = useState(() =>
         normalizeInitialRouteStops(initialItem)
@@ -314,7 +333,9 @@ export default function TransportationForm({
         }>
     >([]);
 
-    const firstLeg = flightLegs[0] || createEmptyLeg(defaultDate);
+    const firstLeg =
+        flightLegs[0] ||
+        createEmptyLeg(defaultDate, defaultStartTime, defaultEndTime);
     const lastLeg = flightLegs.at(-1) || firstLeg;
     const firstFlightNumber = normalizeFlightNumberInput(firstLeg.flightNumber);
     const firstAirlineCode = inferAirlineCodeFromFlightNumber(firstFlightNumber);
@@ -372,7 +393,14 @@ export default function TransportationForm({
         setMode(nextMode);
         setAudienceMode(initialItem?.audienceMode || "everyone");
         setConnectionCount(getInitialConnectionCount(initialItem, nextMode));
-        setFlightLegs(normalizeInitialLegs(initialItem, defaultDate));
+        setFlightLegs(
+            normalizeInitialLegs(
+                initialItem,
+                defaultDate,
+                defaultStartTime,
+                defaultEndTime
+            )
+        );
         setRouteStops(normalizeInitialRouteStops(initialItem));
         airportCoordinateRefs.current = [];
         setHasUnsavedChanges(false);
@@ -380,7 +408,13 @@ export default function TransportationForm({
         setShowCloseWarning(false);
         setLocationValidationError("");
         previousIsOpenRef.current = isOpen;
-    }, [defaultDate, initialItem, isOpen]);
+    }, [
+        defaultDate,
+        defaultEndTime,
+        defaultStartTime,
+        initialItem,
+        isOpen,
+    ]);
 
     useEffect(() => {
         if (connectionCount === null) return;
@@ -492,6 +526,19 @@ export default function TransportationForm({
         closeWithAnimation();
     }, [closeWithAnimation, hasUnsavedChanges]);
 
+    async function handleFormAction(formData: FormData) {
+        if (preserveItineraryView) {
+            formData.set("preserve_itinerary_view", "true");
+        }
+
+        await submitAction(formData);
+
+        if (preserveItineraryView) {
+            setHasUnsavedChanges(false);
+            closeWithAnimation();
+        }
+    }
+
     useEffect(() => {
         return () => {
             if (closeTimerRef.current) {
@@ -522,7 +569,9 @@ export default function TransportationForm({
     function selectMode(nextMode: string) {
         setMode(nextMode);
         setConnectionCount(null);
-        setFlightLegs([createEmptyLeg(defaultDate)]);
+        setFlightLegs([
+            createEmptyLeg(defaultDate, defaultStartTime, defaultEndTime),
+        ]);
         setRouteStops((currentStops) =>
             currentStops.length >= 2
                 ? currentStops
@@ -647,7 +696,7 @@ export default function TransportationForm({
                     </div>
 
                     <form
-                        action={submitAction}
+                        action={handleFormAction}
                         className="vaivia-modal-body space-y-5"
                         onChange={() => setHasUnsavedChanges(true)}
                         onSubmit={validateGoogleLocations}

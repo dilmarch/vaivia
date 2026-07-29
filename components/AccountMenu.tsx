@@ -56,7 +56,7 @@ export type UserPreferences = {
     user_id: string;
     clock_format: "12h" | "24h";
     default_time_zone: string | null;
-    itinerary_default_view: "list" | "day" | "week";
+    itinerary_default_view: "list" | "day" | "week" | "month";
     theme_mode?: VaiviaThemeMode | null;
     news_feed_mode?: "integrated" | "widget" | null;
     created_at: string | null;

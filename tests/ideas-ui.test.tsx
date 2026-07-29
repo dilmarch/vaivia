@@ -4,6 +4,7 @@ import {
     render,
     screen,
     waitFor,
+    within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import IdeasTab, { IdeaForm } from "@/components/IdeasTab";
@@ -81,6 +82,29 @@ const baseIdea: TripIdea = {
 };
 
 describe("trip idea editing", () => {
+    it("shows existing general trip notes in the shared notepad", () => {
+        render(
+            <IdeasTab
+                tripId="trip-a"
+                ideas={[]}
+                tripNotes="Book the museum on Friday"
+                saveTripNotesAction={vi.fn(async () => undefined)}
+                updateIdeaAction={vi.fn(async () => undefined)}
+                deleteIdeaAction={vi.fn(async () => undefined)}
+                toggleReactionAction={vi.fn(async () => undefined)}
+                toggleAttendedAction={vi.fn(async () => undefined)}
+                moveItemAction={vi.fn(async () => undefined)}
+                moveTargetTrips={[]}
+            />
+        );
+
+        expect(screen.getByRole("textbox", { name: "General trip notes" }))
+            .toHaveValue("Book the museum on Friday");
+        expect(
+            screen.getByRole("button", { name: "Save to trip notes" })
+        ).toBeInTheDocument();
+    });
+
     it("opens the edit form in the standard VAIVIA modal", async () => {
         render(
             <IdeasTab
@@ -115,6 +139,51 @@ describe("trip idea editing", () => {
         await waitFor(() => {
             expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
         });
+    });
+
+    it("adds an idea to the itinerary on the selected date", async () => {
+        const createItineraryAction = vi.fn(
+            async (formData: FormData) => {
+                void formData;
+            }
+        );
+
+        render(
+            <IdeasTab
+                tripId="trip-a"
+                ideas={[baseIdea]}
+                createItineraryAction={createItineraryAction}
+                defaultItineraryDate="2026-09-18"
+                updateIdeaAction={vi.fn(async () => undefined)}
+                deleteIdeaAction={vi.fn(async () => undefined)}
+                toggleReactionAction={vi.fn(async () => undefined)}
+                toggleAttendedAction={vi.fn(async () => undefined)}
+                moveItemAction={vi.fn(async () => undefined)}
+                moveTargetTrips={[]}
+            />
+        );
+
+        fireEvent.click(
+            screen.getByRole("button", { name: "Add to itinerary" })
+        );
+
+        const dialog = screen.getByRole("dialog", { name: "Add to itinerary" });
+        expect(dialog).toBeInTheDocument();
+        expect(within(dialog).getByLabelText("Date")).toHaveValue("2026-09-20");
+
+        fireEvent.change(within(dialog).getByLabelText("Date"), {
+            target: { value: "2026-09-24" },
+        });
+        fireEvent.click(
+            within(dialog).getByRole("button", { name: "Add to itinerary" })
+        );
+
+        await waitFor(() => {
+            expect(createItineraryAction).toHaveBeenCalledTimes(1);
+        });
+        const submitted = createItineraryAction.mock.calls[0]?.[0] as FormData;
+        expect(submitted.get("idea_id")).toBe("idea-a");
+        expect(submitted.get("item_date")).toBe("2026-09-24");
     });
 });
 

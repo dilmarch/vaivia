@@ -97,20 +97,21 @@ describe("trip leg editor actions", () => {
     expect(deleteLegAction.mock.calls[0][0].get("trip_leg_id")).toBe("leg-1");
   });
 
-  it("does not offer deletion for a destination-derived row", () => {
+  it("offers confirmed deletion for a saved destination location", () => {
     renderLegEditor({
       location: {
         ...manualLeg,
         id: "destination-1",
         source: "destination",
         persistedLegId: "leg-1",
+        canDelete: true,
         canClearDates: true,
       },
     });
 
     expect(
-      screen.queryByRole("button", { name: "Delete leg" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Delete leg" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Clear dates" }),
     ).toBeInTheDocument();

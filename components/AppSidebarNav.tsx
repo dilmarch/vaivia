@@ -186,6 +186,12 @@ function getNavItems(pathname: string, isSuperAdmin: boolean, isEventOrganizer: 
                     match: (pathname, _tab, view) =>
                         pathname.includes("/itinerary") && view === "week",
                 },
+                {
+                    label: "Month view",
+                    href: `${tripHref}/itinerary?view=month`,
+                    match: (pathname, _tab, view) =>
+                        pathname.includes("/itinerary") && view === "month",
+                },
             ],
         },
         {
@@ -394,7 +400,7 @@ function NavItemButton({
     return (
         <div className="group/nav-item relative h-12 w-12 max-w-full shrink-0 transition-all duration-300 group-hover/sidebar:w-full group-focus-within/sidebar:w-full">
             {primaryLink}
-            <div className="invisible absolute bottom-auto left-12 right-0 top-0 z-[70] w-auto pl-3 opacity-0 transition duration-150 group-hover/nav-item:visible group-hover/nav-item:opacity-100 group-focus-within/nav-item:visible group-focus-within/nav-item:opacity-100">
+            <div className="invisible absolute left-full top-0 z-[70] w-52 pl-3 opacity-0 transition duration-150 group-hover/nav-item:visible group-hover/nav-item:opacity-100 group-focus-within/nav-item:visible group-focus-within/nav-item:opacity-100">
                 <nav
                     aria-label={`${item.label} views`}
                     className="rounded-[1.25rem] border border-white/10 bg-[#050712] p-2 text-white shadow-2xl shadow-black/40 backdrop-blur-xl"

@@ -9,7 +9,9 @@ import TripAudienceSelector from "@/components/TripAudienceSelector";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import { COMMON_CURRENCIES } from "@/lib/budget";
+import { stripStructuredFlightNotes } from "@/lib/flightNotes";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
+import { isItineraryCalendarPath } from "@/lib/itineraryViewState";
 import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 import type {
@@ -83,6 +85,8 @@ export default function TransportationEditForm({
 }: TransportationEditFormProps) {
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const preserveItineraryView =
+        isItineraryCalendarPath(pathname) && Boolean(onCancel);
     const [departureLocation, setDepartureLocation] = useState(
         initialItem.departure_location || ""
     );
@@ -117,6 +121,7 @@ export default function TransportationEditForm({
             ? "airplane"
             : initialItem.transport_type) ||
         "";
+    const isAirplane = transportationMode === "airplane";
     const duration = getZonedDurationLabel({
         startDate: departureDate,
         startTime: departureTime,
@@ -139,8 +144,20 @@ export default function TransportationEditForm({
         setArrivalTimezone(departureTimezone);
     }
 
+    async function handleFormAction(formData: FormData) {
+        if (preserveItineraryView) {
+            formData.set("preserve_itinerary_view", "true");
+        }
+
+        await submitAction(formData);
+
+        if (preserveItineraryView) {
+            onCancel?.();
+        }
+    }
+
     return (
-        <form action={submitAction} className="space-y-5 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
+        <form action={handleFormAction} className="space-y-5 rounded-md border border-slate-200 bg-white p-5 shadow-sm">
             <input type="hidden" name="trip_id" value={tripId} />
             <input type="hidden" name="item_id" value={itemId} />
             <input type="hidden" name="return_to" value={returnTo} />
@@ -214,7 +231,7 @@ export default function TransportationEditForm({
 
             <div className="grid gap-4 md:grid-cols-2">
                 <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Departure airport
+                    {isAirplane ? "Departure airport" : "Departure location"}
                     <input
                         name="departure_location"
                         value={departureLocation}
@@ -223,7 +240,7 @@ export default function TransportationEditForm({
                     />
                 </label>
                 <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Arrival airport
+                    {isAirplane ? "Arrival airport" : "Arrival location"}
                     <input
                         name="arrival_location"
                         value={arrivalLocation}
@@ -232,7 +249,7 @@ export default function TransportationEditForm({
                     />
                 </label>
                 <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Departure terminal
+                    {isAirplane ? "Departure terminal" : "Departure terminal / platform"}
                     <input
                         name="departure_terminal"
                         value={departureTerminal}
@@ -241,7 +258,7 @@ export default function TransportationEditForm({
                     />
                 </label>
                 <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Arrival terminal
+                    {isAirplane ? "Arrival terminal" : "Arrival terminal / platform"}
                     <input
                         name="arrival_terminal"
                         value={arrivalTerminal}
@@ -311,31 +328,35 @@ export default function TransportationEditForm({
                 </label>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4">
-                <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Flight number
-                    <input
-                        name="flight_number"
-                        defaultValue={initialItem.flight_number || ""}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                    />
-                </label>
-                <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Airline
-                    <input
-                        name="airline_name"
-                        defaultValue={initialItem.airline_name || ""}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                    />
-                </label>
-                <label className="space-y-1 text-sm font-medium text-slate-700">
-                    Airline code
-                    <input
-                        name="airline_code"
-                        defaultValue={initialItem.airline_code || ""}
-                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
-                    />
-                </label>
+            <div className={`grid gap-4 ${isAirplane ? "md:grid-cols-4" : ""}`}>
+                {isAirplane ? (
+                    <>
+                        <label className="space-y-1 text-sm font-medium text-slate-700">
+                            Flight number
+                            <input
+                                name="flight_number"
+                                defaultValue={initialItem.flight_number || ""}
+                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                            />
+                        </label>
+                        <label className="space-y-1 text-sm font-medium text-slate-700">
+                            Airline
+                            <input
+                                name="airline_name"
+                                defaultValue={initialItem.airline_name || ""}
+                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                            />
+                        </label>
+                        <label className="space-y-1 text-sm font-medium text-slate-700">
+                            Airline code
+                            <input
+                                name="airline_code"
+                                defaultValue={initialItem.airline_code || ""}
+                                className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
+                            />
+                        </label>
+                    </>
+                ) : null}
                 <label className="space-y-1 text-sm font-medium text-slate-700">
                     Reservation code
                     <input
@@ -387,7 +408,7 @@ export default function TransportationEditForm({
                 <textarea
                     name="notes"
                     rows={6}
-                    defaultValue={initialItem.notes || ""}
+                    defaultValue={stripStructuredFlightNotes(initialItem.notes)}
                     className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                 />
             </label>

@@ -68,6 +68,7 @@ function getActionLabel(notificationType: string) {
     if (notificationType.includes("passport")) return "View passport";
     if (notificationType.includes("terms")) return "Review terms";
     if (notificationType.includes("accommodation")) return "View booking";
+    if (notificationType === "flight_check_in_reminder") return "Check in";
     if (notificationType.includes("trip")) return "Open trip";
     return "Open VAIVIA";
 }

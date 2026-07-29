@@ -753,21 +753,76 @@ function AccommodationForm({
             ) : null}
 
             <div className="grid gap-4 md:grid-cols-2">
+                <fieldset className="space-y-2 md:col-span-2">
+                    <legend className={labelClass}>Stay type</legend>
+                    <input type="hidden" name="accommodation_type" value={type} />
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {ACCOMMODATION_TYPE_OPTIONS.map((option) => {
+                            const Icon = ACCOMMODATION_TYPE_ICONS[option.value];
+                            const isSelected = type === option.value;
+
+                            return (
+                                <button
+                                    key={option.value}
+                                    type="button"
+                                    aria-pressed={isSelected}
+                                    onClick={() => setType(option.value)}
+                                    className={`group flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center transition ${
+                                        isSelected
+                                            ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
+                                            : "border-white/10 bg-white/[0.08] text-slate-200 hover:border-lime-300/35 hover:bg-white/[0.13] hover:text-white"
+                                    }`}
+                                >
+                                    <span
+                                        className={`flex h-10 w-10 items-center justify-center rounded-2xl border transition ${
+                                            isSelected
+                                                ? "border-slate-950/10 bg-slate-950 text-lime-200"
+                                                : "border-white/10 bg-slate-950/70 text-lime-200 group-hover:border-lime-300/25"
+                                        }`}
+                                    >
+                                        <Icon className="h-5 w-5" aria-hidden="true" />
+                                    </span>
+                                    <span className="text-xs font-black uppercase tracking-[0.14em]">
+                                        {option.label}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </fieldset>
+
                 <label className="space-y-2 md:col-span-2">
-                    <span className={labelClass}>Hotel / stay name</span>
-                    <PlaceAutocompleteInput
-                        id="hotelName"
-                        value={hotelName}
-                        onInputChange={setHotelName}
-                        onPlaceSelect={handlePlaceSelect}
-                        placeholder="Search Google Maps or enter a city/address"
-                        required
-                        className={inputClass}
-                    />
+                    <span className={labelClass}>
+                        {type === "friend_family"
+                            ? "Name this stay"
+                            : "Hotel / stay name"}
+                    </span>
+                    {type === "friend_family" ? (
+                        <input
+                            id="hotelName"
+                            type="text"
+                            value={hotelName}
+                            onChange={(event) => setHotelName(event.target.value)}
+                            placeholder="Maddy's House"
+                            required
+                            className={inputClass}
+                        />
+                    ) : (
+                        <PlaceAutocompleteInput
+                            id="hotelName"
+                            value={hotelName}
+                            onInputChange={setHotelName}
+                            onPlaceSelect={handlePlaceSelect}
+                            placeholder="Search Google Maps or enter a city/address"
+                            required
+                            className={inputClass}
+                        />
+                    )}
                     <input type="hidden" name="hotel_name" value={hotelName} />
                     <span className="block text-xs font-bold text-slate-400">
-                        Google Maps is optional. You can enter a hotel, residence, address, or city
-                        for planning.
+                        {type === "friend_family"
+                            ? "Use a recognizable name; add the address separately below."
+                            : "Google Maps is optional. You can enter a hotel, residence, address, or city for planning."}
                     </span>
                 </label>
 
@@ -851,44 +906,6 @@ function AccommodationForm({
                     </p>
                 </div>
                 ) : null}
-
-                <fieldset className="space-y-2 md:col-span-2">
-                    <legend className={labelClass}>Stay type</legend>
-                    <input type="hidden" name="accommodation_type" value={type} />
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                        {ACCOMMODATION_TYPE_OPTIONS.map((option) => {
-                            const Icon = ACCOMMODATION_TYPE_ICONS[option.value];
-                            const isSelected = type === option.value;
-
-                            return (
-                                <button
-                                    key={option.value}
-                                    type="button"
-                                    aria-pressed={isSelected}
-                                    onClick={() => setType(option.value)}
-                                    className={`group flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-center transition ${
-                                        isSelected
-                                            ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
-                                            : "border-white/10 bg-white/[0.08] text-slate-200 hover:border-lime-300/35 hover:bg-white/[0.13] hover:text-white"
-                                    }`}
-                                >
-                                    <span
-                                        className={`flex h-10 w-10 items-center justify-center rounded-2xl border transition ${
-                                            isSelected
-                                                ? "border-slate-950/10 bg-slate-950 text-lime-200"
-                                                : "border-white/10 bg-slate-950/70 text-lime-200 group-hover:border-lime-300/25"
-                                        }`}
-                                    >
-                                        <Icon className="h-5 w-5" aria-hidden="true" />
-                                    </span>
-                                    <span className="text-xs font-black uppercase tracking-[0.14em]">
-                                        {option.label}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
-                </fieldset>
 
                 {!isPlanningOption ? (
                 <label className="space-y-2">

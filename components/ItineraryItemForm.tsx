@@ -21,6 +21,7 @@ import {
     FALLBACK_CATEGORY_LABEL,
     type UserCategory,
 } from "@/lib/itineraryCategories";
+import { isItineraryCalendarPath } from "@/lib/itineraryViewState";
 import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
 
 type InitialItem = {
@@ -70,6 +71,8 @@ type ItineraryItemFormProps = {
     showLauncher?: boolean;
     openSignal?: number;
     defaultDate?: string;
+    defaultStartTime?: string;
+    defaultEndTime?: string;
     duplicateMode?: boolean;
     onClose?: () => void;
     categories?: UserCategory[];
@@ -251,6 +254,8 @@ export default function ItineraryItemForm({
     showLauncher = true,
     openSignal = 0,
     defaultDate = "",
+    defaultStartTime = "",
+    defaultEndTime = "",
     duplicateMode = false,
     onClose,
     categories = [],
@@ -262,6 +267,7 @@ export default function ItineraryItemForm({
     const searchParams = useSearchParams();
     const isEditMode = Boolean(initialItem) && !duplicateMode;
     const isClosableEditModal = isEditMode && Boolean(onClose);
+    const preserveItineraryView = isItineraryCalendarPath(pathname);
     const formRef = useRef<HTMLFormElement | null>(null);
     const coverFileInputRef = useRef<HTMLInputElement | null>(null);
     const coverObjectUrlRef = useRef<string | null>(null);
@@ -273,8 +279,12 @@ export default function ItineraryItemForm({
     const [startDate, setStartDate] = useState(
         initialItem?.item_date || defaultDate
     );
-    const [startTime, setStartTime] = useState(cleanTime(initialItem?.start_time));
-    const [endTime, setEndTime] = useState(cleanTime(initialItem?.end_time));
+    const [startTime, setStartTime] = useState(
+        cleanTime(initialItem?.start_time || defaultStartTime)
+    );
+    const [endTime, setEndTime] = useState(
+        cleanTime(initialItem?.end_time || defaultEndTime)
+    );
     const [endsNextDay, setEndsNextDay] = useState(Boolean(initialItem?.end_date));
     const [endDate, setEndDate] = useState(initialItem?.end_date || "");
     const [costAmount, setCostAmount] = useState(
@@ -408,8 +418,8 @@ export default function ItineraryItemForm({
     function resetFormState() {
         formRef.current?.reset();
         setStartDate(initialItem?.item_date || defaultDate);
-        setStartTime(cleanTime(initialItem?.start_time));
-        setEndTime(cleanTime(initialItem?.end_time));
+        setStartTime(cleanTime(initialItem?.start_time || defaultStartTime));
+        setEndTime(cleanTime(initialItem?.end_time || defaultEndTime));
         setEndsNextDay(Boolean(initialItem?.end_date));
         setEndDate(initialItem?.end_date || "");
         setCostAmount(
@@ -468,6 +478,19 @@ export default function ItineraryItemForm({
         resetFormState();
         setShowCloseWarning(false);
         closeModalWithAnimation();
+    }
+
+    async function handleFormAction(formData: FormData) {
+        if (preserveItineraryView) {
+            formData.set("preserve_itinerary_view", "true");
+        }
+
+        await submitAction(formData);
+
+        if (preserveItineraryView) {
+            setHasUnsavedChanges(false);
+            closeModalWithAnimation();
+        }
     }
 
     function clearValidatedLocation() {
@@ -702,10 +725,18 @@ export default function ItineraryItemForm({
         previousOpenSignalRef.current = openSignal;
         manualTimezoneDateRef.current = null;
         setStartDate(defaultDate);
+        setStartTime(cleanTime(defaultStartTime));
+        setEndTime(cleanTime(defaultEndTime));
         setEndDate("");
         setIsModalClosing(false);
         setIsModalOpen(true);
-    }, [defaultDate, isEditMode, openSignal]);
+    }, [
+        defaultDate,
+        defaultEndTime,
+        defaultStartTime,
+        isEditMode,
+        openSignal,
+    ]);
 
     useEffect(() => {
         return () => {
@@ -808,7 +839,7 @@ export default function ItineraryItemForm({
 
                         <form
                             ref={formRef}
-                            action={submitAction}
+                            action={handleFormAction}
                             onChange={() => setHasUnsavedChanges(true)}
                             className={FORM_BODY_CLASS}
                         >

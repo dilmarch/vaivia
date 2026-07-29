@@ -34,6 +34,7 @@ import {
     calculateCategoryActuals,
     formatCurrency,
     formatPercent,
+    getExpenseReportingAmount,
     getLocalDateKey,
     type BudgetParticipant,
     type ExpenseCategory,
@@ -212,28 +213,20 @@ function getExpensePayerValue(expense?: TripExpense | null) {
     return "";
 }
 
-function getExpenseReportingAmount(expense: TripExpense) {
-    const reportingAmount = Number(expense.amount_in_reporting_currency);
-    if (Number.isFinite(reportingAmount) && reportingAmount > 0) {
-        return reportingAmount;
-    }
-
-    const amount = Number(expense.amount || 0);
-    const rate = Number(expense.exchange_rate_used || 1);
-    return Number.isFinite(amount * rate) ? amount * rate : 0;
-}
-
 function getSplitReportingAmount(
     split: TripExpenseSplit,
     expenseById: Map<string, TripExpense>
 ) {
     const reportingAmount = Number(split.amount_in_reporting_currency);
-    if (Number.isFinite(reportingAmount) && reportingAmount > 0) {
+    const splitAmount = Number(split.split_amount || 0);
+    if (
+        Number.isFinite(reportingAmount) &&
+        (reportingAmount !== 0 || splitAmount === 0)
+    ) {
         return reportingAmount;
     }
 
     const expense = expenseById.get(split.expense_id);
-    const splitAmount = Number(split.split_amount || 0);
     const rate = Number(expense?.exchange_rate_used || 1);
 
     return Number.isFinite(splitAmount * rate) ? splitAmount * rate : 0;
@@ -1158,6 +1151,7 @@ export function AddExpenseModal({
                                 name="amount"
                                 inputMode="decimal"
                                 defaultValue={resolvedAmount}
+                                placeholder="Use a negative amount for a refund"
                                 className={inputClass}
                                 required
                             />
@@ -2189,7 +2183,7 @@ function ExpensesDashboard({
     const [deletingExpense, setDeletingExpense] = useState<TripExpense | null>(null);
     const reportingCurrency = budget?.reporting_currency || defaultCurrency || "CAD";
     const totalSpent = expenses.reduce(
-        (sum, expense) => sum + Number(expense.amount_in_reporting_currency || 0),
+        (sum, expense) => sum + getExpenseReportingAmount(expense),
         0
     );
     const settlements = calculateExpenseSettlements({
@@ -2448,7 +2442,7 @@ function ExpensesDashboard({
                                             </td>
                                             <td className="px-5 py-4 font-black">
                                                 {formatCurrency(
-                                                    expense.amount_in_reporting_currency,
+                                                    getExpenseReportingAmount(expense),
                                                     expense.reporting_currency
                                                 )}
                                             </td>

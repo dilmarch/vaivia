@@ -1,14 +1,10 @@
 "use client";
 
 import { Check, Lock } from "lucide-react";
-import { usePathname, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
-import { DateInput } from "@/components/ui/date-input";
-import { TimeInput } from "@/components/ui/time-input";
+import IdeaToItineraryForm from "@/components/IdeaToItineraryForm";
 import {
     IDEA_TIME_EXACT_WINDOWS,
-    type IdeaTimeOfDay,
     type TripIdea,
     formatIdeaAgePolicy,
     formatIdeaAvailabilityDateRange,
@@ -49,31 +45,6 @@ function getLocalDateKey(date: Date) {
     const day = String(date.getDate()).padStart(2, "0");
 
     return `${year}-${month}-${day}`;
-}
-
-function travelInputProps() {
-    return {
-        autoComplete: "off",
-        "data-form-type": "other",
-        "data-lpignore": "true",
-        "data-1p-ignore": "true",
-    };
-}
-
-function getDefaultStartTime(time: IdeaTimeOfDay) {
-    if (time === "Early morning") return "07:00";
-    if (time === "Morning") return "09:00";
-    if (time === "Afternoon") return "13:00";
-    if (time === "Evening") return "18:00";
-    return "22:00";
-}
-
-function getDefaultEndTime(time: IdeaTimeOfDay) {
-    if (time === "Early morning") return "08:00";
-    if (time === "Morning") return "10:30";
-    if (time === "Afternoon") return "15:00";
-    if (time === "Evening") return "20:00";
-    return "23:30";
 }
 
 function normalizeText(value?: string | null) {
@@ -301,13 +272,6 @@ function IdeaSuggestionCard({
     toggleReactionAction?: (formData: FormData) => Promise<void>;
     toggleAttendedAction?: (formData: FormData) => Promise<void>;
 }) {
-    const pathname = usePathname();
-    const searchParams = useSearchParams();
-    const firstTime = idea.time_of_day[0] || "Afternoon";
-    const returnTo = useMemo(() => {
-        const query = searchParams.toString();
-        return `${pathname || ""}${query ? `?${query}` : ""}`;
-    }, [pathname, searchParams]);
 
     return (
         <article
@@ -450,100 +414,18 @@ function IdeaSuggestionCard({
 
             <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.055] p-2.5">
                 <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.14em] text-lime-200">
-                    Add to calendar
+                    Add to itinerary
                 </summary>
-                <form action={promoteIdeaAction} className="mt-2 space-y-2">
-                    <input type="hidden" name="trip_id" value={tripId} />
-                    <input type="hidden" name="return_to" value={returnTo} />
-                    <input type="hidden" name="idea_id" value={idea.id} />
-                    <input type="hidden" name="title" value={idea.title} />
-                    <input type="hidden" name="category" value="activity" />
-                    <input type="hidden" name="status" value="tentative" />
-                    <input
-                        type="hidden"
-                        name="location"
-                        value={
-                            idea.location ||
-                            idea.address ||
-                            idea.formatted_address ||
-                            idea.location_city ||
-                            ""
-                        }
+                <div className="mt-2">
+                    <IdeaToItineraryForm
+                        idea={idea}
+                        tripId={tripId}
+                        defaultDate={selectedDateKey}
+                        action={promoteIdeaAction}
+                        preserveItineraryView
+                        compact
                     />
-                    <input
-                        type="hidden"
-                        name="formatted_address"
-                        value={idea.formatted_address || ""}
-                    />
-                    <input
-                        type="hidden"
-                        name="google_place_id"
-                        value={idea.google_place_id || ""}
-                    />
-                    <input
-                        type="hidden"
-                        name="location_lat"
-                        value={idea.location_lat ?? ""}
-                    />
-                    <input
-                        type="hidden"
-                        name="location_lng"
-                        value={idea.location_lng ?? ""}
-                    />
-                    <input
-                        type="hidden"
-                        name="location_website"
-                        value={idea.location_website || ""}
-                    />
-                    <input
-                        type="hidden"
-                        name="ticket_website"
-                        value={idea.ticket_website || ""}
-                    />
-                    <input
-                        type="hidden"
-                        name="notes"
-                        value={idea.description || idea.other_notes || ""}
-                    />
-                    <label className="block text-[11px] font-semibold text-slate-300">
-                        Date
-                        <DateInput
-                            name="item_date"
-                            defaultValue={selectedDateKey}
-                            required
-                            {...travelInputProps()}
-                            className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1 text-xs text-slate-900"
-                        />
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                        <label className="block text-[11px] font-semibold text-slate-300">
-                            Start
-                            <TimeInput
-                                name="start_time"
-                                defaultValue={getDefaultStartTime(firstTime)}
-                                required
-                                {...travelInputProps()}
-                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1 text-xs text-slate-900"
-                            />
-                        </label>
-                        <label className="block text-[11px] font-semibold text-slate-300">
-                            End
-                            <TimeInput
-                                name="end_time"
-                                defaultValue={getDefaultEndTime(firstTime)}
-                                required
-                                {...travelInputProps()}
-                                className="mt-1 w-full rounded-md border border-white/10 bg-white px-2 py-1 text-xs text-slate-900"
-                            />
-                        </label>
-                    </div>
-                    <button
-                        type="submit"
-                        className="w-full rounded-full bg-lime-300 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
-                    >
-                        Add to calendar
-                    </button>
-                </form>
+                </div>
             </details>
         </article>
     );
