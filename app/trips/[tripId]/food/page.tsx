@@ -19,6 +19,11 @@ import {
     type TripFoodTriedRecord,
 } from "@/lib/tripFood";
 import type { IdeaReactionProfile } from "@/lib/tripIdeas";
+import {
+    parseNotepadLocations,
+    splitNotepadLines,
+    type NotepadLocation,
+} from "@/lib/notepadEntries";
 
 type PageProps = {
     params: Promise<{ tripId: string }>;
@@ -501,6 +506,129 @@ async function toggleFoodTried(formData: FormData) {
     revalidatePath(`/trips/${tripId}/food`);
 }
 
+async function saveFoodNotepadNote(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const notes = String(formData.get("notes") || "").trim();
+    const { data, error } = await supabase
+        .from("trips")
+        .update({ notes })
+        .eq("id", tripId)
+        .select("id")
+        .maybeSingle();
+
+    if (error || !data) throw new Error("Could not save the Eat & Drink note.");
+    revalidatePath(`/trips/${tripId}`);
+    revalidatePath(`/trips/${tripId}/food`);
+}
+
+async function createFoodFromNotepad(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const itemType = formData.get("item_type") === "food" ? "food" : "place";
+    const entries = splitNotepadLines(String(formData.get("entries") || "")).slice(
+        0,
+        30
+    );
+    const requestedLocations = parseNotepadLocations(formData.get("locations")).slice(
+        0,
+        10
+    );
+
+    if (!tripId || entries.length === 0 || requestedLocations.length === 0) {
+        throw new Error("Choose at least one trip city and enter at least one item.");
+    }
+
+    const [{ data: trip }, { data: tripLegRows }] = await Promise.all([
+        supabase.from("trips").select("id,destination").eq("id", tripId).maybeSingle(),
+        supabase
+            .from("trip_legs")
+            .select("id,name,city_name,country_code,google_place_id")
+            .eq("trip_id", tripId),
+    ]);
+    if (!trip) throw new Error("Trip not found or you no longer have access.");
+
+    const allowedLocations = new Map<string, NotepadLocation>();
+    (tripLegRows || []).forEach((location) => {
+        allowedLocations.set(`trip-leg:${location.id}`, {
+            key: `trip-leg:${location.id}`,
+            tripLegId: location.id,
+            label: location.city_name || location.name,
+            city: location.city_name || location.name,
+            countryCode: location.country_code || null,
+            googlePlaceId: location.google_place_id || null,
+        });
+    });
+    String(trip.destination || "")
+        .split(",")
+        .map((entry) => entry.replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "").trim())
+        .filter(Boolean)
+        .forEach((label, index) => {
+            const key = `destination:${index}:${label}`;
+            allowedLocations.set(key, { key, label, city: label });
+        });
+
+    const locations = requestedLocations
+        .map((location) => allowedLocations.get(location.key))
+        .filter((location): location is NotepadLocation => Boolean(location));
+    if (locations.length !== requestedLocations.length) {
+        throw new Error("One or more selected trip cities are no longer available.");
+    }
+    if (entries.length * locations.length > 100) {
+        throw new Error("Create no more than 100 Eat & Drink cards at a time.");
+    }
+
+    const payloads = locations.flatMap((location) =>
+        entries.map((name) => ({
+            trip_id: tripId,
+            item_type: itemType,
+            name,
+            description: null,
+            region: location.label,
+            personal_note: null,
+            google_place_id: null,
+            formatted_address: itemType === "place" ? location.label : null,
+            location_lat: null,
+            location_lng: null,
+            primary_place_type: null,
+            place_types: [],
+            business_status: null,
+            regular_opening_hours: null,
+            website_url: null,
+            phone_number: null,
+            google_maps_url: null,
+            facebook_url: null,
+            instagram_url: null,
+            meal_categories: ["any"],
+            created_by: user.id,
+            place_source: itemType === "place" ? "trip_notepad" : null,
+        }))
+    );
+
+    const { error } = await supabase.from("trip_food_items").insert(payloads);
+    if (error) {
+        console.error("Could not create Eat & Drink notepad cards:", error);
+        throw new Error("Could not create all Eat & Drink cards.");
+    }
+
+    revalidatePath(`/trips/${tripId}/food`);
+    redirect(`/trips/${tripId}/food?tab=${itemType === "place" ? "places" : "foods"}`);
+}
+
 export default async function TripFoodPage({ params, searchParams }: PageProps) {
     const { tripId: tripRouteParam } = await params;
     const { tab } = await searchParams;
@@ -515,7 +643,9 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
     const resolvedTrip = await resolveTripRouteParam<{
         id: string;
         slug?: string | null;
-    }>(supabase, tripRouteParam, "id,slug");
+        notes?: string | null;
+        destination?: string | null;
+    }>(supabase, tripRouteParam, "id,slug,notes,destination");
 
     if (!resolvedTrip.trip) notFound();
     if (resolvedTrip.shouldRedirect) {
@@ -523,18 +653,48 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
     }
 
     const tripId = resolvedTrip.tripId;
+    const [
+        { data: tripLegRows },
+        { trips: movableTrips },
+        { data: foodRows, error: foodError },
+    ] = await Promise.all([
+        supabase
+            .from("trip_legs")
+            .select("id,name,city_name,country_code,google_place_id")
+            .eq("trip_id", tripId)
+            .order("sort_order", { ascending: true }),
+        loadActiveMemberTrips(supabase, user.id),
+        supabase
+            .from("trip_food_items")
+            .select("*")
+            .eq("trip_id", tripId)
+            .order("created_at", { ascending: false }),
+    ]);
+    const savedLocations: NotepadLocation[] = (tripLegRows || []).map((location) => ({
+        key: `trip-leg:${location.id}`,
+        tripLegId: location.id,
+        label: location.city_name || location.name,
+        city: location.city_name || location.name,
+        countryCode: location.country_code || null,
+        googlePlaceId: location.google_place_id || null,
+    }));
+    const fallbackLocations: NotepadLocation[] = String(
+        resolvedTrip.trip.destination || ""
+    )
+        .split(",")
+        .map((entry) => entry.replace(/^[\u{1F1E6}-\u{1F1FF}]{2}\s*/u, "").trim())
+        .filter(Boolean)
+        .map((label, index) => ({
+            key: `destination:${index}:${label}`,
+            label,
+            city: label,
+        }));
+    const notepadLocations = savedLocations.length > 0 ? savedLocations : fallbackLocations;
 
-    const { trips: movableTrips } = await loadActiveMemberTrips(supabase, user.id);
     const moveTargetTrips = getMoveTargetTrips({
         trips: movableTrips,
         currentTripId: tripId,
     });
-
-    const { data: foodRows, error: foodError } = await supabase
-        .from("trip_food_items")
-        .select("*")
-        .eq("trip_id", tripId)
-        .order("created_at", { ascending: false });
 
     if (foodError) {
         console.error("Could not load food items:", foodError);
@@ -620,6 +780,10 @@ export default async function TripFoodPage({ params, searchParams }: PageProps) 
                 moveTargetTrips={moveTargetTrips}
                 toggleReactionAction={toggleFoodReaction}
                 toggleTriedAction={toggleFoodTried}
+                tripNotes={resolvedTrip.trip.notes}
+                tripLocations={notepadLocations}
+                saveTripNotesAction={saveFoodNotepadNote}
+                createFoodFromNotepadAction={createFoodFromNotepad}
             />
         </main>
     );

@@ -2343,20 +2343,8 @@
     }
   }
 
-  @keyframes vaivia-loading-bar {
-    0% {
-      width: 18%;
-    }
-    50% {
-      width: 72%;
-    }
-    100% {
-      width: 88%;
-    }
-  }
-
-  .animate-vaivia-loading-bar {
-    animation: vaivia-loading-bar 2.4s ease-in-out infinite alternate;
+  .vaivia-countdown-card:has(.vaivia-countdown-hidden) {
+    display: none;
   }
 
   @keyframes vaivia-map-scratch-cover {

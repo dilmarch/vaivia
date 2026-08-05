@@ -128,6 +128,10 @@ import type {
 } from "@/lib/budget";
 import { calculateBudgetTotals } from "@/lib/budget";
 import { loadMobileTripExchangeRates } from "@/lib/tripExchangeRates";
+import {
+    parseNotepadLocations,
+    splitNotepadLines,
+} from "@/lib/notepadEntries";
 
 type PageProps = {
     params: Promise<{
@@ -945,6 +949,72 @@ async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
         const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
         void _removedColumn;
         attempt = nextAttempt;
+    }
+
+    return lastError;
+}
+
+async function insertTripIdeaPayloadsWithFallback(payloads: TripIdeaPayload[]) {
+    if (payloads.length === 0) return null;
+
+    const supabase = await createClient();
+    const optionalColumns = new Set([
+        "location",
+        "formatted_address",
+        "google_place_id",
+        "location_lat",
+        "location_lng",
+        "location_city",
+        "location_region",
+        "location_country",
+        "location_country_code",
+        "location_postal_code",
+        "location_website",
+        "ticket_website",
+        "is_24_hours",
+        "ticket_policy",
+        "age_policy",
+        "dress_code",
+        "other_notes",
+        "attended",
+        "availability_start_date",
+        "availability_end_date",
+    ]);
+    let attempt = payloads.map((payload) => ({ ...payload })) as Array<
+        Record<string, unknown>
+    >;
+    let lastError: {
+        code?: string;
+        message?: string;
+        details?: string;
+        hint?: string;
+    } | null = null;
+
+    for (let index = 0; index < Object.keys(payloads[0]).length + 8; index += 1) {
+        const { error } = await supabase.from("trip_ideas").insert(attempt);
+        if (!error) return null;
+
+        lastError = error;
+        if (error.code !== "42703" && error.code !== "PGRST204") break;
+
+        const missingColumn = getMissingColumnName(error);
+        if (
+            !missingColumn ||
+            !(missingColumn in attempt[0]) ||
+            isProtectedVisibilityColumn(missingColumn) ||
+            !optionalColumns.has(missingColumn)
+        ) {
+            break;
+        }
+
+        console.warn(
+            `Trip ideas table is missing optional column "${missingColumn}". Retrying batch without it.`,
+            error
+        );
+        attempt = attempt.map(({ [missingColumn]: _removedColumn, ...row }) => {
+            void _removedColumn;
+            return row;
+        });
     }
 
     return lastError;
@@ -3749,6 +3819,113 @@ async function createTripIdea(formData: FormData) {
     );
 }
 
+async function createTripIdeasFromNotepad(formData: FormData) {
+    "use server";
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) redirect("/auth/login");
+
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const titles = splitNotepadLines(String(formData.get("entries") || "")).slice(
+        0,
+        30
+    );
+    const locations = parseNotepadLocations(formData.get("locations")).slice(0, 10);
+
+    if (!tripId || titles.length === 0 || locations.length === 0) {
+        throw new Error("Choose at least one trip city and enter at least one idea.");
+    }
+
+    if (titles.length * locations.length > 100) {
+        throw new Error("Create no more than 100 idea cards at a time.");
+    }
+
+    const { data: trip, error: tripError } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("id", tripId)
+        .single();
+
+    if (tripError || !trip) throw new Error("Could not create trip ideas.");
+
+    const requestedTripLegIds = locations
+        .map((location) => location.tripLegId)
+        .filter(Boolean) as string[];
+    const validTripLegIds = new Set<string>();
+
+    if (requestedTripLegIds.length > 0) {
+        const { data: tripLegRows } = await supabase
+            .from("trip_legs")
+            .select("id")
+            .eq("trip_id", tripId)
+            .in("id", requestedTripLegIds);
+        (tripLegRows || []).forEach((row) => validTripLegIds.add(row.id));
+    }
+
+    const payloads = locations.flatMap((location) =>
+        titles.map(
+            (title): TripIdeaPayload => ({
+                created_by: user.id,
+                trip_id: tripId,
+                title,
+                description: null,
+                category: "Other",
+                tags: [],
+                days_of_week: [],
+                availability_start_date: null,
+                availability_end_date: null,
+                time_of_day: [],
+                opens_at: null,
+                closes_at: null,
+                location: location.label,
+                formatted_address: null,
+                google_place_id: location.googlePlaceId || null,
+                location_lat: null,
+                location_lng: null,
+                location_city: location.city || location.label,
+                location_region: null,
+                location_country: location.country || null,
+                location_country_code: location.countryCode || null,
+                location_postal_code: null,
+                location_website: null,
+                ticket_website: null,
+                is_24_hours: false,
+                ticket_policy: "any",
+                age_policy: "all_ages",
+                dress_code: null,
+                other_notes: null,
+                trip_leg_id:
+                    location.tripLegId && validTripLegIds.has(location.tripLegId)
+                        ? location.tripLegId
+                        : null,
+                is_private: false,
+                is_archived: false,
+                attended: false,
+            })
+        )
+    );
+    const insertError = await insertTripIdeaPayloadsWithFallback(payloads);
+    if (insertError) {
+        console.error("Error creating notepad idea cards:", insertError);
+        throw new Error("Could not create all idea cards.");
+    }
+
+    await supabase.rpc("notify_trip_members", {
+        target_trip_id: tripId,
+        notification_type: "trip_item_added",
+        notification_title: "Trip ideas added",
+        notification_body: `${titles.length * locations.length} ideas were added from the trip notepad.`,
+        notification_metadata: { itemType: "trip_idea" },
+    });
+
+    revalidateItineraryPaths(tripId);
+    redirect(`/trips/${tripId}?tab=ideas`);
+}
+
 async function updateTripIdea(formData: FormData) {
     "use server";
 
@@ -5643,7 +5820,7 @@ async function TripDetailContent({
                                         : missingTripDateLabel}
                                 </p>
                             </div>
-                            <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
+                            <div className="vaivia-countdown-card relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.24)]">
                                 <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
                                 <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
                                 <TripCountdown
@@ -5669,7 +5846,7 @@ async function TripDetailContent({
 
             <div className="mx-auto max-w-7xl px-4 sm:px-6">
                 {!hasExplicitTripTab ? (
-                    <section className="space-y-3 pb-8 sm:hidden">
+                    <section className="grid gap-3 pb-8 md:grid-cols-2 md:gap-4 xl:grid-cols-3">
                         <div className="grid grid-cols-[0.85fr_1.15fr] gap-3">
                             <MobileOverviewLongPressCard
                                 className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left text-white shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45"
@@ -5822,7 +5999,7 @@ async function TripDetailContent({
                             />
                         ) : null}
 
-                        <div className="relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.22)]">
+                        <div className="vaivia-countdown-card relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.22)]">
                             <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
                             <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
                             <TripCountdown
@@ -6122,7 +6299,7 @@ async function TripDetailContent({
 
                 <section
                     className={`space-y-6 ${
-                        hasExplicitTripTab ? "" : "hidden sm:block"
+                        hasExplicitTripTab ? "" : "hidden"
                     }`}
                 >
                     <ItineraryTabs
@@ -6149,6 +6326,7 @@ async function TripDetailContent({
                         createTransportationAction={createTransportationItem}
                         undoJourneyTransportationAction={undoJourneyTransportationItem}
                         createIdeaAction={createTripIdea}
+                        createIdeasFromNotepadAction={createTripIdeasFromNotepad}
                         updateIdeaAction={updateTripIdea}
                         deleteIdeaAction={deleteTripIdea}
                         saveTripNotesAction={saveTripNotes}

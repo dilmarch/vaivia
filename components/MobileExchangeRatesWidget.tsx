@@ -20,8 +20,8 @@ export default function MobileExchangeRatesWidget({
 }) {
     return (
         <section
-            aria-labelledby="mobile-exchange-rates-title"
-            className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-white shadow-xl shadow-black/15"
+            aria-labelledby="trip-exchange-rates-title"
+            className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-white shadow-xl shadow-black/15 md:p-5"
         >
             <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
@@ -33,7 +33,7 @@ export default function MobileExchangeRatesWidget({
                             Current exchange rates
                         </p>
                         <h2
-                            id="mobile-exchange-rates-title"
+                            id="trip-exchange-rates-title"
                             className="mt-0.5 text-sm font-black text-white"
                         >
                             Your {data.baseCurrency} travel cheat sheet
@@ -46,7 +46,7 @@ export default function MobileExchangeRatesWidget({
             </div>
 
             {data.rates.length > 0 ? (
-                <div className="mt-4 space-y-2.5">
+                <div className="mt-4 grid gap-2.5 2xl:grid-cols-2">
                     {data.rates.map((rate) => {
                         const isAvailable =
                             rate.baseToDestinationRate !== null &&

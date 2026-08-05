@@ -100,8 +100,58 @@ describe("trip idea editing", () => {
 
         expect(screen.getByRole("textbox", { name: "General trip notes" }))
             .toHaveValue("Book the museum on Friday");
+        expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+        expect(screen.getByText("General note")).toBeInTheDocument();
+    });
+
+    it("defaults multiline notes to one card per line and selected city", () => {
+        render(
+            <IdeasTab
+                tripId="trip-a"
+                ideas={[]}
+                tripLocations={[
+                    {
+                        id: "lisbon",
+                        source: "manual",
+                        persistedLegId: "leg-lisbon",
+                        name: "Lisbon",
+                        cityName: "Lisbon",
+                        countryCode: "PT",
+                    },
+                ]}
+                saveTripNotesAction={vi.fn(async () => undefined)}
+                createIdeasFromNotepadAction={vi.fn(async () => undefined)}
+                updateIdeaAction={vi.fn(async () => undefined)}
+                deleteIdeaAction={vi.fn(async () => undefined)}
+                toggleReactionAction={vi.fn(async () => undefined)}
+                toggleAttendedAction={vi.fn(async () => undefined)}
+                moveItemAction={vi.fn(async () => undefined)}
+                moveTargetTrips={[]}
+            />
+        );
+
+        fireEvent.change(screen.getByRole("textbox", { name: "General trip notes" }), {
+            target: { value: "Visit Old Port\nKaraoke\n\nBar in Village" },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+        const dialog = screen.getByRole("dialog", {
+            name: "Create cards or save one note?",
+        });
+        expect(within(dialog).getByText("3 cards per location")).toBeInTheDocument();
+        fireEvent.click(within(dialog).getByRole("button", { name: "Lisbon" }));
+
+        const createButton = within(dialog).getByRole("button", {
+            name: "Create 3 cards",
+        });
+        const createForm = createButton.closest("form");
+        expect(createForm).not.toBeNull();
+        expect(new FormData(createForm!).get("entries")).toBe(
+            "Visit Old Port\nKaraoke\n\nBar in Village"
+        );
+        expect(new FormData(createForm!).get("locations")).toContain("leg-lisbon");
         expect(
-            screen.getByRole("button", { name: "Save to trip notes" })
+            within(dialog).getByRole("button", { name: "Save as note" })
         ).toBeInTheDocument();
     });
 

@@ -10,6 +10,7 @@ export type CountdownDisplay = {
     value: string;
     label: string;
     lines?: string[];
+    state: "upcoming" | "arrived" | "expired" | "unset";
 };
 
 export const COUNTDOWN_UNITS: Array<{ value: CountdownUnit; label: string }> = [
@@ -97,16 +98,34 @@ export function getCountdownDisplay(
         return {
             value: "TBD",
             label: "Countdown target",
+            state: "unset",
         };
     }
 
     const differenceMs = targetDate.getTime() - now.getTime();
     const isPast = differenceMs < 0;
 
+    if (differenceMs <= -MS_PER_HOUR) {
+        return {
+            value: "",
+            label: "",
+            state: "expired",
+        };
+    }
+
+    if (differenceMs <= 0) {
+        return {
+            value: "The moment has finally arrived!",
+            label: "",
+            state: "arrived",
+        };
+    }
+
     if (Math.abs(differenceMs) < MS_PER_SECOND) {
         return {
             value: "0",
             label: "It begins now",
+            state: "upcoming",
         };
     }
 
@@ -119,6 +138,7 @@ export function getCountdownDisplay(
             value: lines.join(", "),
             lines,
             label: isPast ? "since it began" : "until it begins",
+            state: "upcoming",
         };
     }
 
@@ -131,5 +151,6 @@ export function getCountdownDisplay(
     return {
         value: formatCountdownNumber(absoluteValue),
         label: `${unitLabel} ${isPast ? "since it began" : "until it begins"}`,
+        state: "upcoming",
     };
 }

@@ -212,11 +212,7 @@ export default function TripCountdown({
                 ? MS_PER_SECOND
                 : unit === "mixed"
                 ? MS_PER_SECOND
-                : unit === "minutes" || unit === "hours"
-                  ? MS_PER_MINUTE
-                  : 0;
-
-        if (!intervalMs) return;
+                : MS_PER_MINUTE;
 
         const intervalId = window.setInterval(() => {
             setNow(new Date());
@@ -229,6 +225,12 @@ export default function TripCountdown({
         () => getCountdownDisplay(targetDate, unit, now),
         [now, targetDate, unit]
     );
+    const isArrivalMoment = countdown.state === "arrived";
+
+    if (countdown.state === "expired") {
+        return <span className="vaivia-countdown-hidden hidden" aria-hidden="true" />;
+    }
+
     const countdownLines = countdown.lines?.length ? countdown.lines : null;
     const countdownCharacterCount = Math.max(
         ...(countdownLines || [countdown.value]).map((line) => line.length),
@@ -343,11 +345,15 @@ export default function TripCountdown({
                 <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
             </button>
             <p className="text-xs font-black uppercase tracking-[0.24em] text-slate-950/70">
-                Countdown
+                {isArrivalMoment ? "Today" : "Countdown"}
             </p>
             <div className="mt-1 flex min-w-0 flex-col gap-1.5">
                 <span className="block w-full min-w-0 max-w-full pr-4 [container-type:inline-size]">
-                    {countdownLines ? (
+                    {isArrivalMoment ? (
+                        <span className="block max-w-[18ch] text-3xl font-black leading-[0.95] tracking-[-0.04em] sm:text-4xl">
+                            {countdown.value}
+                        </span>
+                    ) : countdownLines ? (
                         <span className="block space-y-0.5">
                             {countdownLines.map((line, index) => {
                                 const displayLine =
@@ -376,9 +382,11 @@ export default function TripCountdown({
                         </span>
                     )}
                 </span>
-                <span className="text-base font-black uppercase leading-tight tracking-[0.12em]">
-                    {countdown.label}
-                </span>
+                {countdown.label ? (
+                    <span className="text-base font-black uppercase leading-tight tracking-[0.12em]">
+                        {countdown.label}
+                    </span>
+                ) : null}
             </div>
 
             {isModalOpen ? (

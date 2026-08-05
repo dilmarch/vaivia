@@ -47,9 +47,11 @@ import { stripStructuredFlightNotes } from "@/lib/flightNotes";
 import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
 import {
     getLocalTimezone,
-    readSessionTimezone,
     writeSessionTimezone,
 } from "@/lib/sessionTimezone";
+import { buildItineraryTimezoneHints } from "@/lib/itineraryTimezoneHints";
+import { getDefaultItineraryDateKey } from "@/lib/itineraryDefaults";
+import { getAirlineCheckInUrl } from "@/lib/flightCheckIn";
 import type { SplitMethod } from "@/lib/budget";
 import { getZonedDurationLabel } from "@/lib/timezoneDuration";
 import type { TripAudienceMode, TripAudienceOption } from "@/lib/tripAudience";
@@ -70,7 +72,6 @@ import {
 } from "@/lib/itineraryCategories";
 import {
     buildItineraryViewUrl,
-    isItineraryDateKey,
     type ItineraryView,
 } from "@/lib/itineraryViewState";
 import type { TripIdea } from "@/lib/tripIdeas";
@@ -121,6 +122,8 @@ export type ItineraryCalendarItem = {
     source_table?: "itinerary_items" | "transportation_items";
     accommodation_id?: string | null;
     accommodation_hold_kind?: "check_in" | "check_out" | null;
+    is_flight_departure_buffer?: boolean;
+    buffer_for_item_id?: string | null;
     is_private?: boolean | null;
     audience_mode?: TripAudienceMode | null;
     linked_expense?: {
@@ -182,6 +185,7 @@ type ItineraryCalendarProps = {
     accommodations?: CalendarAccommodation[];
     memberLocations?: CalendarMemberLocation[];
     tripStartDate?: string | null;
+    tripEndDate?: string | null;
     tripDestination?: string | null;
     title?: string;
     listOnly?: boolean;
@@ -1273,6 +1277,35 @@ function FlightIconStack({ flight }: { flight: FlightDisplayData }) {
     );
 }
 
+function AirlineCheckInLink({
+    flight,
+    className = "",
+}: {
+    flight: FlightDisplayData;
+    className?: string;
+}) {
+    const checkInUrl = getAirlineCheckInUrl({
+        airlineCode: flight.airlineCode,
+        airlineName: flight.airlineName,
+        flightNumber: flight.flightNumber,
+    });
+
+    if (!checkInUrl) return null;
+
+    return (
+        <a
+            href={checkInUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`inline-flex items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/[0.08] font-black text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white ${className}`}
+            aria-label={`Check in with ${flight.airlineName || flight.airlineCode || "airline"}`}
+        >
+            Check in
+            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </a>
+    );
+}
+
 function FlightListCard({
     item,
     flight,
@@ -1456,6 +1489,10 @@ function FlightListCard({
                         className="min-h-8 !border-white/10 !bg-white/[0.08] px-3 py-1.5 text-xs !text-slate-100 shadow-none hover:!border-lime-300/30 hover:!bg-white/[0.14] hover:!text-white"
                     />
                 )}
+                <AirlineCheckInLink
+                    flight={flight}
+                    className="min-h-8 px-3 py-1.5 text-xs"
+                />
                 <EventCardActions item={item} onOpen={onOpen} />
             </div>
         </div>
@@ -1540,28 +1577,40 @@ function getListEntriesForAllItems(
 
 function getInitialAnchorDate(
     tripStartDate?: string | null,
+    tripEndDate?: string | null,
     itineraryViewDate?: string | null
 ) {
-    if (isItineraryDateKey(itineraryViewDate)) {
-        return parseDateKey(itineraryViewDate);
-    }
-    if (!tripStartDate) return new Date();
-    return parseDateKey(tripStartDate);
+    const todayKey = getLocalDateKey(new Date());
+    return parseDateKey(
+        getDefaultItineraryDateKey({
+            tripStartDate,
+            tripEndDate,
+            requestedDate: itineraryViewDate,
+            todayKey,
+        })
+    );
 }
 
 function getInitialListDate(
     tripStartDate?: string | null,
+    tripEndDate?: string | null,
     itineraryViewDate?: string | null
 ) {
-    if (isItineraryDateKey(itineraryViewDate)) {
-        return parseDateKey(itineraryViewDate);
-    }
+    return getInitialAnchorDate(tripStartDate, tripEndDate, itineraryViewDate);
+}
 
-    const today = new Date();
-    const todayKey = getLocalDateKey(today);
+function getDayBeginningTimezone(
+    items: ItineraryCalendarItem[],
+    dateKey?: string | null
+) {
+    if (!dateKey) return null;
 
-    if (!tripStartDate || tripStartDate <= todayKey) return parseDateKey(todayKey);
-    return parseDateKey(tripStartDate);
+    return (
+        sortItems(items)
+            .filter((item) => item.item_date === dateKey)
+            .map((item) => item.departure_timezone || item.timezone || null)
+            .find(Boolean) || null
+    );
 }
 
 function getEventSegmentsForDate(
@@ -1967,6 +2016,36 @@ function EventCard({
     timeLabel?: string;
     onOpen: (item: ItineraryCalendarItem) => void;
 }) {
+    if (item.is_flight_departure_buffer) {
+        return (
+            <div
+                data-flight-departure-buffer
+                className={`relative w-full overflow-hidden rounded-[1.25rem] border border-sky-300/25 border-l-[16px] border-l-sky-300 bg-sky-300/10 text-left text-white shadow-[0_18px_45px_rgba(0,0,0,0.22)] ${
+                    fillHeight ? "flex h-full flex-col justify-start" : ""
+                }`}
+            >
+                <div className={compact ? "p-3" : "p-4"}>
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-sky-200">
+                        {timeLabel ||
+                            `${formatTime(item.start_time)} - ${formatTime(
+                                item.end_time
+                            )}`}
+                    </p>
+                    <h3
+                        className={`mt-1 font-black ${
+                            compact ? "text-sm" : "text-base"
+                        }`}
+                    >
+                        Depart for airport
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold text-slate-300">
+                        Four-hour flight buffer · {item.departure_location || "Airport"}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     if (item.accommodation_hold_kind) {
         const mapsUrl = item.location_website || getLocationMapsUrl(item);
         const actionClass = `inline-flex items-center justify-center rounded-md border border-lime-200/25 bg-slate-950/50 font-black text-lime-100 transition hover:border-lime-200/50 hover:bg-slate-950/70 ${
@@ -2186,6 +2265,10 @@ function EventCard({
                             className="min-h-7 !border-white/10 !bg-white/[0.08] px-2 py-1 text-xs !text-slate-100 shadow-none hover:!border-lime-300/30 hover:!bg-white/[0.14] hover:!text-white"
                         />
                     )}
+                    <AirlineCheckInLink
+                        flight={flightDisplay}
+                        className="min-h-7 px-2 py-1 text-xs"
+                    />
                     <EventCardActions item={item} compact onOpen={onOpen} />
                 </div>
             </div>
@@ -3178,6 +3261,12 @@ function ItineraryItemModal({
                             className="h-10 gap-2 px-4"
                         />
                     )}
+                    {flightDisplay ? (
+                        <AirlineCheckInLink
+                            flight={flightDisplay}
+                            className="h-10 px-4 text-sm"
+                        />
+                    ) : null}
                     <button
                         type="button"
                         onClick={() => setIsConfirmingDelete(true)}
@@ -4150,6 +4239,7 @@ export default function ItineraryCalendar({
     accommodations = [],
     memberLocations = [],
     tripStartDate,
+    tripEndDate,
     tripDestination,
     title = "Itinerary",
     listOnly = false,
@@ -4192,10 +4282,10 @@ export default function ItineraryCalendar({
         null
     );
     const [anchorDate, setAnchorDate] = useState(() =>
-        getInitialAnchorDate(tripStartDate, initialViewDate)
+        getInitialAnchorDate(tripStartDate, tripEndDate, initialViewDate)
     );
     const [listStartDate, setListStartDate] = useState(() =>
-        getInitialListDate(tripStartDate, initialViewDate)
+        getInitialListDate(tripStartDate, tripEndDate, initialViewDate)
     );
     const [listDayCount, setListDayCount] = useState(INITIAL_LIST_DAYS);
     const [motionKey, setMotionKey] = useState(0);
@@ -4240,6 +4330,10 @@ export default function ItineraryCalendar({
     const tripTimezone = useMemo(
         () => destinationTimezone || getTripTimezone(items) || browserTimezone,
         [browserTimezone, destinationTimezone, items]
+    );
+    const itineraryTimezoneHints = useMemo(
+        () => buildItineraryTimezoneHints(items, tripEndDate),
+        [items, tripEndDate]
     );
     const displayTimezone = activeTimezone || tripTimezone;
     const scheduledItems = useMemo(
@@ -4432,9 +4526,19 @@ export default function ItineraryCalendar({
 
     useEffect(() => {
         const localTimezone = getLocalTimezone();
+        const todayKey = getLocalDateKey(new Date());
+        const hasTripStarted = !tripStartDate || todayKey >= tripStartDate;
+        const dayBeginningTimezone = getDayBeginningTimezone(items, tripStartDate);
         setBrowserTimezone(localTimezone);
-        setActiveTimezone(readSessionTimezone() || localTimezone);
-    }, []);
+        setActiveTimezone(
+            hasTripStarted
+                ? localTimezone
+                : dayBeginningTimezone ||
+                      itineraryTimezoneHints[tripStartDate || ""] ||
+                      destinationTimezone ||
+                      localTimezone
+        );
+    }, [destinationTimezone, itineraryTimezoneHints, items, tripStartDate]);
 
     useEffect(() => {
         onQuickAddDateChange?.(quickAddDateKey);

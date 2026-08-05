@@ -9,6 +9,8 @@ import FoodReactionBar from "@/components/FoodReactionBar";
 import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
+import TripNotepadComposer from "@/components/TripNotepadComposer";
+import type { NotepadLocation } from "@/lib/notepadEntries";
 import {
     FOOD_MEAL_OPTIONS,
     type FoodItemType,
@@ -30,6 +32,10 @@ type FoodPageClientProps = {
     moveTargetTrips: MoveTargetTrip[];
     toggleReactionAction: (formData: FormData) => Promise<void>;
     toggleTriedAction: (formData: FormData) => Promise<void>;
+    tripNotes?: string | null;
+    tripLocations?: NotepadLocation[];
+    saveTripNotesAction?: (formData: FormData) => Promise<void>;
+    createFoodFromNotepadAction?: (formData: FormData) => Promise<void>;
 };
 
 type ModalStep = "choose" | FoodItemType;
@@ -1318,6 +1324,10 @@ export default function FoodPageClient({
     moveTargetTrips,
     toggleReactionAction,
     toggleTriedAction,
+    tripNotes = "",
+    tripLocations = [],
+    saveTripNotesAction,
+    createFoodFromNotepadAction,
 }: FoodPageClientProps) {
     const routeSegment = tripRouteSegment || tripId;
     const searchParams = useSearchParams();
@@ -1365,6 +1375,18 @@ export default function FoodPageClient({
                     Add Food
                 </button>
             </div>
+
+            <TripNotepadComposer
+                tripId={tripId}
+                title="Eat & Drink notepad"
+                description="Keep food notes together, or make one place or food card for every non-empty line."
+                placeholder="Seafood market\nPastéis de nata\nRooftop bar"
+                existingNote={tripNotes}
+                locations={tripLocations}
+                saveNoteAction={saveTripNotesAction}
+                createCardsAction={createFoodFromNotepadAction}
+                cardKind="food"
+            />
 
             <div className="inline-flex rounded-full border border-white/10 bg-[#03030a] p-1 shadow-2xl shadow-black/20">
                 <Link

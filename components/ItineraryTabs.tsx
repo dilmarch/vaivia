@@ -24,6 +24,7 @@ import type { OnboardingProgress } from "@/lib/onboarding";
 import { buildItineraryTimezoneHints } from "@/lib/itineraryTimezoneHints";
 import { buildAccommodationItineraryHolds } from "@/lib/accommodationItineraryHolds";
 import { resolveAccommodationTimezones } from "@/lib/accommodationTimezones";
+import { buildFlightDepartureBuffers } from "@/lib/flightDepartureBuffers";
 
 type ItineraryTabsProps = {
     tripId: string;
@@ -47,6 +48,7 @@ type ItineraryTabsProps = {
     createTransportationAction: (formData: FormData) => Promise<void>;
     undoJourneyTransportationAction?: (formData: FormData) => Promise<void>;
     createIdeaAction: (formData: FormData) => Promise<void>;
+    createIdeasFromNotepadAction?: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
     saveTripNotesAction: (formData: FormData) => Promise<void>;
@@ -140,6 +142,7 @@ export default function ItineraryTabs({
     createTransportationAction,
     undoJourneyTransportationAction,
     createIdeaAction,
+    createIdeasFromNotepadAction,
     updateIdeaAction,
     deleteIdeaAction,
     saveTripNotesAction,
@@ -234,6 +237,7 @@ export default function ItineraryTabs({
     const itineraryItems = useMemo(
         () => [
             ...items,
+            ...buildFlightDepartureBuffers(items),
             ...buildAccommodationItineraryHolds({
                 accommodations,
                 items,
@@ -270,6 +274,7 @@ export default function ItineraryTabs({
                     accommodations={accommodations}
                     memberLocations={memberLocations}
                     tripStartDate={tripStartDate}
+                    tripEndDate={tripEndDate}
                     tripDestination={tripDestination}
                     defaultView={defaultItineraryView}
                     deleteAction={deleteItineraryAction}
@@ -369,6 +374,7 @@ export default function ItineraryTabs({
                                 items={journeyItems}
                                 accommodations={accommodations}
                                 tripStartDate={tripStartDate}
+                                tripEndDate={tripEndDate}
                                 tripDestination={tripDestination}
                                 title="Transport"
                                 listOnly
@@ -406,6 +412,8 @@ export default function ItineraryTabs({
                     ideas={ideas}
                     tripNotes={tripNotes}
                     saveTripNotesAction={saveTripNotesAction}
+                    createIdeasFromNotepadAction={createIdeasFromNotepadAction}
+                    tripLocations={tripLegLocations}
                     createItineraryAction={createItineraryAction}
                     updateIdeaAction={updateIdeaAction}
                     deleteIdeaAction={deleteIdeaAction}

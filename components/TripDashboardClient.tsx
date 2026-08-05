@@ -32,6 +32,7 @@ import {
     sanitizeTripSlugInput,
     slugifyTripTitle,
 } from "@/lib/tripRoutes";
+import { isTripVisibleOnDashboard } from "@/lib/tripDashboardVisibility";
 
 export type DashboardTrip = {
     id: string;
@@ -402,7 +403,9 @@ function getUpcomingTrips(trips: DashboardTrip[]) {
         const displayDateRange = getTripDisplayDateRange(trip);
         const endDate =
             displayDateRange.endDate || displayDateRange.startDate || trip.end_date || trip.start_date;
-        return endDate ? endDate >= todayKey : true;
+        if (!endDate) return true;
+
+        return isTripVisibleOnDashboard(endDate, todayKey);
     });
 }
 
@@ -1789,6 +1792,7 @@ export default function TripDashboardClient({
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
+    const upcomingTrips = useMemo(() => getUpcomingTrips(trips), [trips]);
 
     function closeModal() {
         setSelectedTrip(null);
@@ -1819,7 +1823,7 @@ export default function TripDashboardClient({
 
             <div className="space-y-8">
                 <TripsGrid
-                    trips={trips}
+                    trips={upcomingTrips}
                     isGoogleReady={isGoogleReady}
                     currentUserId={currentUserId}
                     onEditTrip={openEditModal}
@@ -1827,8 +1831,8 @@ export default function TripDashboardClient({
                 />
                 <DashboardEventsWidget events={events} canManageEvents={canManageEvents} />
                 <div className="grid gap-6 lg:grid-cols-3">
-                    <DashboardMonthCalendar trips={trips} />
-                    <DashboardTaskList trips={trips} />
+                    <DashboardMonthCalendar trips={upcomingTrips} />
+                    <DashboardTaskList trips={upcomingTrips} />
                     <DashboardPassportStampsWidget passportStamps={passportStamps} />
                 </div>
                 <div className="grid gap-6 lg:grid-cols-2">

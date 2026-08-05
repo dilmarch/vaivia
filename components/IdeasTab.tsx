@@ -4,7 +4,6 @@ import {
     CalendarPlus,
     Check,
     Lock,
-    NotebookPen,
     Pencil,
     Search,
     SlidersHorizontal,
@@ -19,6 +18,8 @@ import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
 import IdeaToItineraryForm from "@/components/IdeaToItineraryForm";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
+import TripNotepadComposer from "@/components/TripNotepadComposer";
+import type { TripLegLocation } from "@/components/TripLegLocationLine";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
@@ -49,6 +50,8 @@ type IdeasTabProps = {
     ideas: TripIdea[];
     tripNotes?: string | null;
     saveTripNotesAction?: (formData: FormData) => Promise<void>;
+    createIdeasFromNotepadAction?: (formData: FormData) => Promise<void>;
+    tripLocations?: TripLegLocation[];
     createItineraryAction?: (formData: FormData) => Promise<void>;
     updateIdeaAction: (formData: FormData) => Promise<void>;
     deleteIdeaAction: (formData: FormData) => Promise<void>;
@@ -1328,6 +1331,8 @@ export default function IdeasTab({
     ideas,
     tripNotes = "",
     saveTripNotesAction,
+    createIdeasFromNotepadAction,
+    tripLocations = [],
     createItineraryAction,
     updateIdeaAction,
     deleteIdeaAction,
@@ -1345,6 +1350,21 @@ export default function IdeasTab({
     const [locationFilter, setLocationFilter] = useState("");
     const [showArchived, setShowArchived] = useState(false);
     const [showFilters, setShowFilters] = useState(false);
+    const notepadLocations = useMemo(
+        () =>
+            tripLocations.map((location) => ({
+                key: `${location.source}:${location.id}`,
+                tripLegId:
+                    location.persistedLegId ||
+                    (location.source === "manual" ? location.id : null),
+                label: location.cityName || location.name,
+                city: location.cityName || location.name,
+                country: location.countryName || null,
+                countryCode: location.countryCode || null,
+                googlePlaceId: location.googlePlaceId || null,
+            })),
+        [tripLocations]
+    );
     const visibleIdeas = showArchived
         ? ideas
         : ideas.filter((idea) => !idea.is_archived);
@@ -1457,46 +1477,17 @@ export default function IdeasTab({
 
     return (
         <section className="space-y-6">
-            <form
-                action={saveTripNotesAction}
-                className="rounded-[1.5rem] border border-lime-300/20 bg-[radial-gradient(circle_at_top_right,rgba(var(--vaivia-neon-rgb),0.12),transparent_38%),rgba(255,255,255,0.045)] p-4 shadow-2xl shadow-black/20 sm:p-5"
-            >
-                <input type="hidden" name="trip_id" value={tripId} />
-                <div className="flex items-start gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-lime-300/25 bg-lime-300/10 text-lime-200">
-                        <NotebookPen className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                    <div>
-                        <h2 className="text-lg font-black text-white">
-                            Trip notepad
-                        </h2>
-                        <p className="mt-1 text-sm font-semibold text-slate-400">
-                            Keep general thoughts, reminders, and planning notes
-                            together for everyone on this trip.
-                        </p>
-                    </div>
-                </div>
-                <label className="mt-4 block">
-                    <span className="sr-only">General trip notes</span>
-                    <textarea
-                        name="notes"
-                        rows={5}
-                        defaultValue={tripNotes || ""}
-                        placeholder="Start typing trip notes..."
-                        {...travelInputProps()}
-                        className="w-full resize-y rounded-2xl border border-white/10 bg-slate-950/75 px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/45 focus:ring-2 focus:ring-lime-300/15"
-                    />
-                </label>
-                <div className="mt-3 flex justify-end">
-                    <button
-                        type="submit"
-                        className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200"
-                    >
-                        <Check className="h-4 w-4" aria-hidden="true" />
-                        Save to trip notes
-                    </button>
-                </div>
-            </form>
+            <TripNotepadComposer
+                tripId={tripId}
+                title="Trip notepad"
+                description="Keep general thoughts here, or turn every non-empty line into a separate idea card."
+                placeholder="Visit Old Port\nKaraoke\nBar in the Village"
+                existingNote={tripNotes}
+                locations={notepadLocations}
+                saveNoteAction={saveTripNotesAction}
+                createCardsAction={createIdeasFromNotepadAction}
+                cardKind="idea"
+            />
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>

@@ -1,6 +1,8 @@
 "use client";
 
-import { Check, Lock } from "lucide-react";
+import { CalendarPlus, Check, Lock, X } from "lucide-react";
+import { useState } from "react";
+import AnimatedModal from "@/components/AnimatedModal";
 import IdeaReactionBar from "@/components/IdeaReactionBar";
 import IdeaToItineraryForm from "@/components/IdeaToItineraryForm";
 import {
@@ -272,8 +274,10 @@ function IdeaSuggestionCard({
     toggleReactionAction?: (formData: FormData) => Promise<void>;
     toggleAttendedAction?: (formData: FormData) => Promise<void>;
 }) {
+    const [isConfirmingItinerary, setIsConfirmingItinerary] = useState(false);
 
     return (
+        <>
         <article
             className={`rounded-[1.15rem] border border-white/10 p-3 shadow-xl shadow-black/20 transition duration-300 hover:-translate-y-0.5 ${
                 idea.attended ? "bg-[#03030a]/70 opacity-80" : "bg-[#03030a]/90"
@@ -412,22 +416,61 @@ function IdeaSuggestionCard({
                 />
             ) : null}
 
-            <details className="mt-2 rounded-xl border border-white/10 bg-white/[0.055] p-2.5">
-                <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.14em] text-lime-200">
-                    Add to itinerary
-                </summary>
-                <div className="mt-2">
+            <button
+                type="button"
+                onClick={() => setIsConfirmingItinerary(true)}
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-lime-300 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.16)] transition hover:bg-lime-200"
+            >
+                <CalendarPlus className="h-4 w-4" aria-hidden="true" />
+                Add to itinerary
+            </button>
+        </article>
+
+        {isConfirmingItinerary ? (
+            <AnimatedModal
+                onClose={() => setIsConfirmingItinerary(false)}
+                panelClassName="max-w-lg"
+                labelledBy={`suggested-idea-itinerary-title-${idea.id}`}
+            >
+                {({ requestClose }) => (
+                    <>
+                        <div className="vaivia-modal-header flex items-start justify-between gap-4">
+                            <div className="min-w-0">
+                                <p className="vaivia-modal-eyebrow">Suggested idea</p>
+                                <h2
+                                    id={`suggested-idea-itinerary-title-${idea.id}`}
+                                    className="vaivia-modal-title"
+                                >
+                                    Add to itinerary
+                                </h2>
+                                <p className="mt-2 truncate text-sm font-semibold text-slate-300">
+                                    {idea.title}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={requestClose}
+                                className="vaivia-modal-close"
+                                aria-label={`Close add ${idea.title} to itinerary`}
+                            >
+                                <X className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                        </div>
+                        <div className="vaivia-modal-body">
                     <IdeaToItineraryForm
                         idea={idea}
                         tripId={tripId}
                         defaultDate={selectedDateKey}
                         action={promoteIdeaAction}
                         preserveItineraryView
-                        compact
+                        onSaved={requestClose}
                     />
-                </div>
-            </details>
-        </article>
+                        </div>
+                    </>
+                )}
+            </AnimatedModal>
+        ) : null}
+        </>
     );
 }
 

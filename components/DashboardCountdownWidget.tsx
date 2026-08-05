@@ -64,7 +64,7 @@ export default function DashboardCountdownWidget({
         return () => window.clearInterval(intervalId);
     }, [unit]);
 
-    if (!target) return null;
+    if (!target || countdown.state === "expired") return null;
 
     return (
         <aside className="vaivia-dashboard-countdown-widget rounded-[1.5rem] border border-white/10 bg-slate-950/55 p-4 text-white shadow-2xl shadow-black/35 backdrop-blur-xl md:min-w-72">
