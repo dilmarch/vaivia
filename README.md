@@ -143,10 +143,16 @@ bookings, or modify trip data.
 
 ```env
 GEMINI_ASSISTANT_API_KEY=
-GEMINI_ASSISTANT_MODEL=
+GEMINI_ASSISTANT_FAST_MODEL=gemini-3.1-flash-lite
+GEMINI_ASSISTANT_STRONG_MODEL=gemini-3.5-flash
 AI_DAILY_MESSAGE_LIMIT=
 GOOGLE_PLACES_API_KEY=
 ```
+
+Routine chat, stored-trip questions and tool selection use the fast model with
+minimal thinking. Only deterministic complex-planning intent uses the strong
+model with low thinking; message length alone never promotes a request. The
+legacy `GEMINI_ASSISTANT_MODEL` remains a fallback for the strong tier.
 
 `GOOGLE_PLACES_API_KEY` must be a dedicated key restricted to the Places API
 (New) and to the deployment's server environment. It is never exposed through a

@@ -12,6 +12,7 @@ const origin = { latitude: 43.6532, longitude: -79.3832 };
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
 });
 
 function response(body: unknown, status = 200) {
@@ -149,6 +150,8 @@ describe("server-only Google Places client", () => {
 
     it("maps provider errors to safe codes without returning raw responses", async () => {
         vi.stubEnv("GOOGLE_PLACES_API_KEY", "test-key");
+        vi.stubEnv("NODE_ENV", "production");
+        const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
         vi.stubGlobal(
             "fetch",
             vi.fn(async () =>
@@ -164,6 +167,10 @@ describe("server-only Google Places client", () => {
             code: "billing_or_configuration",
         });
         expect(JSON.stringify(result)).not.toContain("secret provider");
+        const logged = infoSpy.mock.calls.flat().join(" ");
+        expect(logged).toContain('"providerStatus":403');
+        expect(logged).toContain('"sanitizedError":"billing_or_configuration"');
+        expect(logged).not.toContain("secret provider configuration details");
     });
 
     it("refreshes an aging saved Place ID with an IDs-only field mask", async () => {

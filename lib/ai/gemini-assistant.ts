@@ -11,14 +11,19 @@ import {
   type GenerateContentConfig,
   type GenerateContentResponse,
   type GroundingMetadata,
+  type Part,
 } from "@google/genai";
+import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
+import type { AssistantModelTier } from "@/lib/ai/assistant-routing";
 
-const DEFAULT_GEMINI_ASSISTANT_MODEL = "gemini-3.5-flash";
+const DEFAULT_GEMINI_ASSISTANT_FAST_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_GEMINI_ASSISTANT_STRONG_MODEL = "gemini-3.5-flash";
 const DEFAULT_AI_DAILY_MESSAGE_LIMIT = 50;
 const GEMINI_REQUEST_TIMEOUT_MS = 30_000;
 export const GEMINI_ASSISTANT_API_VERSION = "v1beta";
 export const GEMINI_ASSISTANT_MAX_OUTPUT_TOKENS = 4_096;
-export const GEMINI_ASSISTANT_THINKING_LEVEL = ThinkingLevel.LOW;
+export const GEMINI_ASSISTANT_FAST_THINKING_LEVEL = ThinkingLevel.MINIMAL;
+export const GEMINI_ASSISTANT_STRONG_THINKING_LEVEL = ThinkingLevel.LOW;
 
 export const VAIVIA_ASSISTANT_UNAVAILABLE_MESSAGE =
   "The VAIVIA assistant is temporarily unavailable";
@@ -79,13 +84,29 @@ export type GeminiAssistantTurnResult =
     }
   | Exclude<GeminiAssistantGenerationResult, { status: "success" }>;
 
+type InspectedGeminiResponse = {
+  responseContent: Content;
+  message: string | null;
+  functionCalls: FunctionCall[];
+  partTypes: string[];
+  responseType: "text" | "function_call" | "mixed" | "empty";
+};
+
 function getAssistantApiKey() {
   return process.env.GEMINI_ASSISTANT_API_KEY?.trim() || null;
 }
 
-export function getGeminiAssistantModel() {
+export function getGeminiAssistantModel(tier: AssistantModelTier = "fast") {
+  if (tier === "strong") {
+    return (
+      process.env.GEMINI_ASSISTANT_STRONG_MODEL?.trim() ||
+      process.env.GEMINI_ASSISTANT_MODEL?.trim() ||
+      DEFAULT_GEMINI_ASSISTANT_STRONG_MODEL
+    );
+  }
   return (
-    process.env.GEMINI_ASSISTANT_MODEL?.trim() || DEFAULT_GEMINI_ASSISTANT_MODEL
+    process.env.GEMINI_ASSISTANT_FAST_MODEL?.trim() ||
+    DEFAULT_GEMINI_ASSISTANT_FAST_MODEL
   );
 }
 
@@ -97,11 +118,16 @@ export function getAiDailyMessageLimit() {
     : DEFAULT_AI_DAILY_MESSAGE_LIMIT;
 }
 
-export function getGeminiAssistantGenerationConfig(): GenerateContentConfig {
+export function getGeminiAssistantGenerationConfig(
+  tier: AssistantModelTier = "fast"
+): GenerateContentConfig {
   return {
     maxOutputTokens: GEMINI_ASSISTANT_MAX_OUTPUT_TOKENS,
     thinkingConfig: {
-      thinkingLevel: GEMINI_ASSISTANT_THINKING_LEVEL,
+      thinkingLevel:
+        tier === "strong"
+          ? GEMINI_ASSISTANT_STRONG_THINKING_LEVEL
+          : GEMINI_ASSISTANT_FAST_THINKING_LEVEL,
     },
   };
 }
@@ -213,6 +239,61 @@ function isBlockedFinishReason(finishReason: string | null) {
   ].includes(finishReason as FinishReason);
 }
 
+function getGeminiPartType(part: Part) {
+  if (part.functionCall) return "function_call";
+  if (part.functionResponse) return "function_response";
+  if (typeof part.text === "string") return part.thought ? "thought" : "text";
+  if (part.inlineData) return "inline_data";
+  if (part.fileData) return "file_data";
+  if (part.executableCode) return "executable_code";
+  if (part.codeExecutionResult) return "code_execution_result";
+  if (part.toolCall) return "tool_call";
+  if (part.toolResponse) return "tool_response";
+  return "unknown";
+}
+
+/**
+ * Reads the selected candidate's structured parts directly. Do not replace this
+ * with GenerateContentResponse.text: that SDK convenience getter warns for
+ * function calls and hides the distinction between text-only and tool turns.
+ */
+export function inspectGeminiAssistantResponse(
+  response: GenerateContentResponse
+): InspectedGeminiResponse {
+  const responseContent = response.candidates?.[0]?.content || {
+    role: "model",
+    parts: [],
+  };
+  const parts = responseContent.parts || [];
+  const partTypes = parts.map(getGeminiPartType);
+  const functionCalls = parts.flatMap((part) =>
+    part.functionCall ? [part.functionCall] : []
+  );
+  const message =
+    parts
+      .flatMap((part) =>
+        typeof part.text === "string" && !part.thought ? [part.text] : []
+      )
+      .join("")
+      .trim() || null;
+  const responseType =
+    functionCalls.length > 0 && message
+      ? "mixed"
+      : functionCalls.length > 0
+        ? "function_call"
+        : message
+          ? "text"
+          : "empty";
+
+  return {
+    responseContent,
+    message,
+    functionCalls,
+    partTypes,
+    responseType,
+  };
+}
+
 /**
  * Generates one non-streaming, stateless response with the supported
  * models.generateContent API. VAIVIA supplies and persists all history. The
@@ -222,13 +303,18 @@ function isBlockedFinishReason(finishReason: string | null) {
 export async function generateGeminiAssistantTurn({
   contents,
   config,
+  model = getGeminiAssistantModel(),
+  stream = false,
+  onTextDelta,
   signal,
 }: {
   contents: ContentListUnion;
   config?: GenerateContentConfig;
+  model?: string;
+  stream?: boolean;
+  onTextDelta?: (delta: string) => void;
   signal?: AbortSignal;
 }): Promise<GeminiAssistantTurnResult> {
-  const model = getGeminiAssistantModel();
   const startedAt = Date.now();
   const client = getGeminiAssistantClient();
   if (!client) {
@@ -263,7 +349,7 @@ export async function generateGeminiAssistantTurn({
   }, GEMINI_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await client.models.generateContent({
+    const request = {
       model,
       contents,
       config: {
@@ -274,13 +360,50 @@ export async function generateGeminiAssistantTurn({
           timeout: GEMINI_REQUEST_TIMEOUT_MS,
         },
       },
-    });
-    const message = response.text?.trim() || null;
-    const functionCalls = response.functionCalls || [];
+    };
+    let response: GenerateContentResponse;
+    if (stream) {
+      const chunks = await client.models.generateContentStream(request);
+      const parts: Part[] = [];
+      let lastChunk: GenerateContentResponse | null = null;
+      for await (const chunk of chunks) {
+        lastChunk = chunk;
+        for (const part of chunk.candidates?.[0]?.content?.parts || []) {
+          parts.push(part);
+          if (typeof part.text === "string" && !part.thought && part.text) {
+            onTextDelta?.(part.text);
+          }
+        }
+      }
+      response = {
+        ...(lastChunk || {}),
+        candidates: [
+          {
+            ...(lastChunk?.candidates?.[0] || {}),
+            content: { role: "model", parts },
+          },
+        ],
+      } as GenerateContentResponse;
+    } else {
+      response = await client.models.generateContent(request);
+    }
+    const inspected = inspectGeminiAssistantResponse(response);
+    const { message, functionCalls, responseContent, partTypes, responseType } =
+      inspected;
     const diagnostics = getResponseDiagnostics({
       response,
       model,
       elapsedMs: Date.now() - startedAt,
+    });
+    logAssistantDiagnostic({
+      stage: "gemini_generate_content",
+      code: "gemini_response_parts",
+      model: response.modelVersion?.trim() || model,
+      finishReason: diagnostics.finishReason,
+      partTypes,
+      finalResponseType: responseType,
+      toolCallCount: functionCalls.length,
+      elapsedMs: diagnostics.elapsedMs,
     });
 
     if (diagnostics.finishReason === FinishReason.MAX_TOKENS) {
@@ -313,10 +436,7 @@ export async function generateGeminiAssistantTurn({
     return {
       status: "success",
       message,
-      responseContent: response.candidates?.[0]?.content || {
-        role: "model",
-        parts: message ? [{ text: message }] : [],
-      },
+      responseContent,
       functionCalls,
       groundingMetadata: response.candidates?.[0]?.groundingMetadata || null,
       model: response.modelVersion?.trim() || model,

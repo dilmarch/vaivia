@@ -54,6 +54,55 @@ type ApiErrorPayload = {
     assistantMessage?: AssistantMessage;
 };
 
+const ASSISTANT_PROGRESS_LABELS: Record<string, string> = {
+    authentication_and_trip_access: "Trip access confirmed…",
+    trip_context_database: "Relevant trip details loaded…",
+    initial_gemini_request: "Answer path selected…",
+    function_call_decision: "Approved tool request validated…",
+    google_places_request: "Live places received…",
+    follow_up_gemini_request: "Preparing the final answer…",
+    message_persistence: "Saving this conversation…",
+};
+
+async function readAssistantResponse(
+    response: Response,
+    onStatus: (stage: string) => void,
+    onDelta: (delta: string) => void
+) {
+    if (!response.headers.get("content-type")?.includes("application/x-ndjson")) {
+        return { status: response.status, payload: (await response.json()) as ApiErrorPayload };
+    }
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Assistant response stream is unavailable");
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResult: { status: number; payload: ApiErrorPayload } | null = null;
+    while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const event = JSON.parse(line) as {
+                type?: string;
+                stage?: string;
+                delta?: string;
+                status?: number;
+                payload?: ApiErrorPayload;
+            };
+            if (event.type === "status" && event.stage) onStatus(event.stage);
+            if (event.type === "delta" && event.delta) onDelta(event.delta);
+            if (event.type === "result" && event.payload) {
+                finalResult = { status: event.status || 500, payload: event.payload };
+            }
+        }
+        if (done) break;
+    }
+    if (!finalResult) throw new Error("Assistant response stream ended early");
+    return finalResult;
+}
+
 function upsertConversation(
     conversations: AssistantConversation[],
     conversation: AssistantConversation
@@ -78,6 +127,8 @@ export default function TripAssistant({
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
+    const [pendingStatus, setPendingStatus] = useState("Checking trip access…");
+    const [streamingText, setStreamingText] = useState("");
     const [isDeleting, setIsDeleting] = useState(false);
     const [isDesktop, setIsDesktop] = useState(false);
     const [isConversationPanelOpen, setIsConversationPanelOpen] = useState(false);
@@ -273,6 +324,8 @@ export default function TripAssistant({
         if (!message || isSending || !configured || usage.remaining <= 0) return;
         shouldAutoScrollRef.current = true;
         setIsSending(true);
+        setPendingStatus("Checking trip access…");
+        setStreamingText("");
         setError(null);
         setErrorCode(null);
         setLastFailedMessage(null);
@@ -290,14 +343,25 @@ export default function TripAssistant({
         try {
             const response = await fetch(endpoint, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/x-ndjson",
+                },
                 body: JSON.stringify({
                     action: "message",
                     conversationId: activeConversationId,
                     message,
                 }),
             });
-            const payload = (await response.json()) as ApiErrorPayload;
+            const streamed = await readAssistantResponse(
+                response,
+                (stage) =>
+                    setPendingStatus(
+                        ASSISTANT_PROGRESS_LABELS[stage] || "Preparing your answer…"
+                    ),
+                (delta) => setStreamingText((current) => current + delta)
+            );
+            const payload = streamed.payload;
 
             if (payload.usage) setUsage(payload.usage);
             if (payload.conversation) {
@@ -317,7 +381,7 @@ export default function TripAssistant({
                 ];
             });
 
-            if (!response.ok) {
+            if (streamed.status < 200 || streamed.status >= 300) {
                 setError(payload.error || "The assistant could not answer right now");
                 setErrorCode(payload.code || "request_failed");
                 if (payload.code !== "quota_exceeded") setLastFailedMessage(message);
@@ -332,6 +396,7 @@ export default function TripAssistant({
             setError("The assistant could not answer right now. Please try again.");
             setErrorCode("request_failed");
         } finally {
+            setStreamingText("");
             setIsSending(false);
         }
     }
@@ -582,10 +647,18 @@ export default function TripAssistant({
                                     </article>
                                 ))}
                                 {isSending ? (
-                                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                                        <Loader2 className="h-4 w-4 animate-spin text-lime-300" aria-hidden="true" />
-                                        Reading your trip and approved live sources…
-                                    </div>
+                                    streamingText ? (
+                                        <article className="flex justify-start">
+                                            <div className="max-w-[92%] rounded-[1.5rem] rounded-bl-md border border-white/10 bg-white/[0.055] px-4 py-3 text-sm leading-7 text-slate-200 sm:max-w-[82%] sm:px-5">
+                                                <SafeMarkdown content={streamingText} />
+                                            </div>
+                                        </article>
+                                    ) : (
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-500" role="status">
+                                            <Loader2 className="h-4 w-4 animate-spin text-lime-300" aria-hidden="true" />
+                                            {pendingStatus}
+                                        </div>
+                                    )
                                 ) : null}
                                 <div ref={bottomRef} />
                             </div>

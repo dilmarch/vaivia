@@ -23,12 +23,15 @@ describe("assistant credential and dependency isolation", () => {
         expect(emailImport).not.toContain("GEMINI_ASSISTANT_API_KEY");
     });
 
-    it("defaults to Gemini 3.5 Flash while preserving the model override", () => {
+    it("routes routine and complex requests to independently configurable models", () => {
+        vi.stubEnv("GEMINI_ASSISTANT_FAST_MODEL", "");
+        vi.stubEnv("GEMINI_ASSISTANT_STRONG_MODEL", "");
         vi.stubEnv("GEMINI_ASSISTANT_MODEL", "");
-        expect(getGeminiAssistantModel()).toBe("gemini-3.5-flash");
+        expect(getGeminiAssistantModel("fast")).toBe("gemini-3.1-flash-lite");
+        expect(getGeminiAssistantModel("strong")).toBe("gemini-3.5-flash");
 
         vi.stubEnv("GEMINI_ASSISTANT_MODEL", "gemini-custom-model");
-        expect(getGeminiAssistantModel()).toBe("gemini-custom-model");
+        expect(getGeminiAssistantModel("strong")).toBe("gemini-custom-model");
     });
 
     it("uses the current SDK and documents empty server-only placeholders", () => {
@@ -40,9 +43,8 @@ describe("assistant credential and dependency isolation", () => {
         expect(packageJson.dependencies["@google/genai"]).toBeTruthy();
         expect(packageJson.dependencies["@google/generative-ai"]).toBeUndefined();
         expect(example).toContain("GEMINI_ASSISTANT_API_KEY=\n");
-        expect(example).toContain(
-            "# Optional; defaults to gemini-3.5-flash when empty"
-        );
+        expect(example).toContain("GEMINI_ASSISTANT_FAST_MODEL=gemini-3.1-flash-lite");
+        expect(example).toContain("GEMINI_ASSISTANT_STRONG_MODEL=gemini-3.5-flash");
         expect(example).toContain("GEMINI_ASSISTANT_MODEL=\n");
         expect(example).toContain("AI_DAILY_MESSAGE_LIMIT=\n");
         expect(example).toContain("GOOGLE_PLACES_API_KEY=\n");
@@ -110,10 +112,11 @@ describe("assistant database and read-only safeguards", () => {
         );
     });
 
-    it("keeps server diagnostics development-only and metadata-only", () => {
+    it("keeps production server diagnostics metadata-only", () => {
         const diagnostics = read("lib/ai/assistant-diagnostics.ts");
 
-        expect(diagnostics).toContain('process.env.NODE_ENV !== "development"');
+        expect(diagnostics).toContain('process.env.NODE_ENV === "test"');
+        expect(diagnostics).toContain("console.info");
         expect(diagnostics).not.toMatch(
             /\b(?:rawPrompt|rawMessage|tripContext|cookie|authorizationHeader|userId|tripId)\b/
         );

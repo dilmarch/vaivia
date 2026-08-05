@@ -6,6 +6,7 @@ import type {
     FunctionCall,
     FunctionDeclaration,
     GenerateContentConfig,
+    Part,
 } from "@google/genai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
@@ -42,13 +43,18 @@ import {
     generateCurrentWebGroundedResponse,
     GROUNDED_RESPONSE_REFRESH_PLACEHOLDER,
     SEARCH_CURRENT_WEB_DECLARATION,
+    parseCurrentWebArguments,
     selectAssistantRetrieval,
     type AssistantRetrievalDecision,
 } from "@/lib/ai/current-web-grounding";
 import type { AssistantWebGrounding } from "@/lib/ai/grounding-contract";
+import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
+import type { AssistantModelTier } from "@/lib/ai/assistant-routing";
+import type { AssistantTimingRecorder } from "@/lib/ai/assistant-timing";
 import type { Database } from "@/src/types/supabase";
 
 export const ASSISTANT_MAX_FUNCTION_CALLS = 4;
+export const ASSISTANT_MAX_TOOL_CALL_ITERATIONS = 4;
 export const ASSISTANT_MAX_PLACE_CANDIDATES = 20;
 export const ASSISTANT_MAX_SEARCH_RESULTS = 10;
 export const ASSISTANT_DEFAULT_SEARCH_RESULTS = 8;
@@ -167,6 +173,12 @@ export const VAIVIA_PLACES_TOOLS = [
         ],
     },
 ];
+
+const ALLOWED_ASSISTANT_TOOL_NAMES = new Set([
+    SEARCH_NEARBY_PLACES_DECLARATION.name,
+    GET_PLACE_DETAILS_DECLARATION.name,
+    SEARCH_CURRENT_WEB_DECLARATION.name,
+]);
 
 type SearchArguments = {
     query: string;
@@ -317,6 +329,30 @@ function parseSearchArguments(value: unknown): SearchArguments | null {
                     : "PRICE_LEVEL_EXPENSIVE"
         ),
         searchPreferences: [...dietary, ...accessibility].slice(0, 8),
+    };
+}
+
+function parsePlaceDetailsArguments(value: unknown) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const resultId = clean((value as Record<string, unknown>).result_id, 40);
+    return /^place_[1-9]\d*$/.test(resultId) ? { resultId } : null;
+}
+
+function validateAssistantToolCall(call: FunctionCall) {
+    const name = clean(call.name, 64);
+    if (!ALLOWED_ASSISTANT_TOOL_NAMES.has(name)) {
+        return { name, validation: "unknown_tool" as const };
+    }
+
+    const valid =
+        name === SEARCH_NEARBY_PLACES_DECLARATION.name
+            ? Boolean(parseSearchArguments(call.args))
+            : name === GET_PLACE_DETAILS_DECLARATION.name
+              ? Boolean(parsePlaceDetailsArguments(call.args))
+              : Boolean(parseCurrentWebArguments(call.args));
+    return {
+        name,
+        validation: valid ? ("valid" as const) : ("invalid" as const),
     };
 }
 
@@ -489,7 +525,8 @@ function emptyTokenUsage(): GeminiAssistantTokenUsage {
 async function resolveAnchorLocation(
     anchor: TripPlaceAnchor,
     signal: AbortSignal | undefined,
-    incrementExternalCall: () => boolean
+    incrementExternalCall: () => boolean,
+    timing?: AssistantTimingRecorder
 ): Promise<
     | { status: "success"; location: TrustedPlaceLocation }
     | { status: "failure"; code: GooglePlacesFailureCode | "tool_limit" }
@@ -497,8 +534,12 @@ async function resolveAnchorLocation(
     if (anchor.location) return { status: "success", location: anchor.location };
     if (!incrementExternalCall()) return { status: "failure", code: "tool_limit" };
     const resolved = anchor.placeId
-        ? await getGooglePlaceDetails({ placeId: anchor.placeId, signal })
-        : await findGooglePlaceByText({ query: anchor.address || anchor.label, signal });
+        ? await getGooglePlaceDetails({ placeId: anchor.placeId, signal, timing })
+        : await findGooglePlaceByText({
+              query: anchor.address || anchor.label,
+              signal,
+              timing,
+          });
     return resolved.status === "success"
         ? { status: "success", location: resolved.data.location }
         : resolved;
@@ -517,6 +558,10 @@ export async function generateTripAssistantResponse({
     contents: initialContents,
     systemInstruction,
     retrievalDecision,
+    model,
+    modelTier = "fast",
+    timing,
+    onTextDelta,
     signal,
 }: {
     supabase: SupabaseClient<Database>;
@@ -524,6 +569,10 @@ export async function generateTripAssistantResponse({
     contents: Content[];
     systemInstruction: string;
     retrievalDecision?: AssistantRetrievalDecision;
+    model?: string;
+    modelTier?: AssistantModelTier;
+    timing?: AssistantTimingRecorder;
+    onTextDelta?: (delta: string) => void;
     signal?: AbortSignal;
 }): Promise<AssistantPlacesGenerationResult> {
     const contents = [...initialContents];
@@ -537,6 +586,8 @@ export async function generateTripAssistantResponse({
     let lastDiagnostics: GeminiAssistantDiagnostics | null = null;
     let webSearchOperations = 0;
     let webSearchQueries = 0;
+    let toolCallIterations = 0;
+    let placesProviderFailure: GooglePlacesFailureCode | null = null;
     const retrieval =
         retrievalDecision || selectAssistantRetrieval({ contents: initialContents });
     let placesPathSelected = retrieval.mode === "places";
@@ -589,9 +640,13 @@ export async function generateTripAssistantResponse({
             const located = await resolveAnchorLocation(
                 anchor,
                 signal,
-                incrementExternalCall
+                incrementExternalCall,
+                timing
             );
             if (located.status === "failure") {
+                if (located.code !== "tool_limit") {
+                    placesProviderFailure = located.code;
+                }
                 return {
                     error:
                         located.code === "tool_limit"
@@ -616,8 +671,10 @@ export async function generateTripAssistantResponse({
             maxResults: Math.min(args.maxResults, available),
             priceLevels: args.priceLevels,
             signal,
+            timing,
         });
         if (providerResult.status === "failure") {
+            placesProviderFailure = providerResult.code;
             return { error: toolFailureMessage(providerResult.code) };
         }
 
@@ -672,11 +729,11 @@ export async function generateTripAssistantResponse({
     };
 
     const executeDetails = (call: FunctionCall) => {
-        const resultId =
-            call.args && typeof call.args === "object"
-                ? clean((call.args as Record<string, unknown>).result_id, 40)
-                : "";
-        const candidate = candidatesByResultId.get(resultId);
+        const args = parsePlaceDetailsArguments(call.args);
+        if (!args) {
+            return { error: "Invalid place-details arguments." };
+        }
+        const candidate = candidatesByResultId.get(args.resultId);
         return candidate
             ? { result: toolCandidate(candidate), source: "Google Places" }
             : {
@@ -723,7 +780,9 @@ export async function generateTripAssistantResponse({
         turn: { diagnostics: GeminiAssistantDiagnostics }
     ): AssistantPlacesGenerationResult => ({
         status: "empty_output",
-        message: ASSISTANT_PLACES_UNAVAILABLE_MESSAGE,
+        message: placesProviderFailure
+            ? ASSISTANT_PLACES_UNAVAILABLE_MESSAGE
+            : "The VAIVIA assistant is temporarily unavailable",
         diagnostics: { ...turn.diagnostics, tokenUsage },
         toolUsage: {
             functionCalls,
@@ -735,9 +794,35 @@ export async function generateTripAssistantResponse({
     const executeCurrentWeb = async (
         call: FunctionCall
     ): Promise<AssistantPlacesGenerationResult> => {
+        const argumentsValid = Boolean(parseCurrentWebArguments(call.args));
+        logAssistantDiagnostic({
+            stage: "gemini_tool_loop",
+            code: "tool_execution_start",
+            requestedFunction: call.name || "",
+            argumentValidation: argumentsValid ? "valid" : "invalid",
+            toolExecution: argumentsValid ? "started" : "skipped",
+            toolCallIteration: toolCallIterations,
+        });
         const priorElapsedMs = lastDiagnostics?.elapsedMs || 0;
         const grounded = await generateCurrentWebGroundedResponse({ call, signal });
+        timing?.record(
+            "initial_gemini_request",
+            grounded.status === "success" || grounded.status === "unusable_grounding"
+                ? grounded.turn.diagnostics.elapsedMs
+                : grounded.status === "invalid_arguments"
+                  ? 0
+                  : grounded.diagnostics.elapsedMs,
+            { iteration: toolCallIterations }
+        );
         if (grounded.status === "invalid_arguments") {
+            logAssistantDiagnostic({
+                stage: "gemini_tool_loop",
+                code: "tool_execution_invalid_arguments",
+                requestedFunction: call.name || "",
+                argumentValidation: "invalid",
+                toolExecution: "skipped",
+                toolCallIteration: toolCallIterations,
+            });
             return currentWebFailure(
                 lastDiagnostics || {
                     apiVersion: "v1beta",
@@ -752,6 +837,19 @@ export async function generateTripAssistantResponse({
                 }
             );
         }
+
+        logAssistantDiagnostic({
+            stage: "gemini_tool_loop",
+            code:
+                grounded.status === "success"
+                    ? "tool_execution_completed"
+                    : "tool_execution_failed",
+            requestedFunction: call.name || "",
+            argumentValidation: "valid",
+            toolExecution:
+                grounded.status === "success" ? "completed" : "failed",
+            toolCallIteration: toolCallIterations,
+        });
 
         externalToolCalls = 1;
         if (grounded.status === "success" || grounded.status === "unusable_grounding") {
@@ -809,10 +907,19 @@ export async function generateTripAssistantResponse({
         return executeCurrentWeb(retrieval.call);
     }
 
-    for (let turnIndex = 0; turnIndex <= ASSISTANT_MAX_FUNCTION_CALLS; turnIndex += 1) {
-        const baseConfig = getGeminiAssistantGenerationConfig();
+    for (
+        let generationIndex = 0;
+        generationIndex <= ASSISTANT_MAX_TOOL_CALL_ITERATIONS;
+        generationIndex += 1
+    ) {
+        const baseConfig = getGeminiAssistantGenerationConfig(modelTier);
+        const safeFinalStream = Boolean(onTextDelta) &&
+            (retrieval.mode === "none" || candidatesByPlaceId.size > 0);
         const allowTools =
-            retrieval.mode !== "none" && functionCalls < ASSISTANT_MAX_FUNCTION_CALLS;
+            !safeFinalStream &&
+            retrieval.mode !== "none" &&
+            functionCalls < ASSISTANT_MAX_FUNCTION_CALLS &&
+            toolCallIterations < ASSISTANT_MAX_TOOL_CALL_ITERATIONS;
         const config: GenerateContentConfig = {
             ...baseConfig,
             systemInstruction,
@@ -836,7 +943,21 @@ export async function generateTripAssistantResponse({
                   }
                 : {}),
         };
-        const turn = await generateGeminiAssistantTurn({ contents, config, signal });
+        const turn = await generateGeminiAssistantTurn({
+            contents,
+            config,
+            model,
+            stream: safeFinalStream,
+            onTextDelta,
+            signal,
+        });
+        timing?.record(
+            generationIndex === 0
+                ? "initial_gemini_request"
+                : "follow_up_gemini_request",
+            turn.diagnostics.elapsedMs,
+            { iteration: toolCallIterations }
+        );
         if (turn.status !== "success") {
             return failureFromTurn(turn, {
                 functionCalls,
@@ -847,10 +968,70 @@ export async function generateTripAssistantResponse({
         tokenUsage = addTokenUsage(tokenUsage, turn.tokenUsage);
         lastDiagnostics = turn.diagnostics;
 
+        const responseType =
+            turn.functionCalls.length > 0 && turn.message
+                ? "mixed"
+                : turn.functionCalls.length > 0
+                  ? "function_call"
+                  : turn.message
+                    ? "text"
+                    : "empty";
+        logAssistantDiagnostic({
+            stage: "gemini_tool_loop",
+            code:
+                turn.functionCalls.length > 0
+                    ? "tool_calls_requested"
+                    : "final_response_received",
+            finalResponseType: responseType,
+            toolCallCount: turn.functionCalls.length,
+            toolCallIteration: toolCallIterations,
+        });
+
+        const functionDecisionStartedAt = performance.now();
+        for (const call of turn.functionCalls) {
+            const validation = validateAssistantToolCall(call);
+            logAssistantDiagnostic({
+                stage: "gemini_tool_loop",
+                code: "tool_call_validated",
+                requestedFunction: validation.name,
+                argumentValidation: validation.validation,
+                toolCallIteration: toolCallIterations + 1,
+            });
+        }
+        timing?.record(
+            "function_call_decision",
+            performance.now() - functionDecisionStartedAt,
+            { iteration: toolCallIterations }
+        );
+
+        if (
+            turn.functionCalls.length > 0 &&
+            toolCallIterations >= ASSISTANT_MAX_TOOL_CALL_ITERATIONS
+        ) {
+            logAssistantDiagnostic({
+                stage: "gemini_tool_loop",
+                code: "tool_iteration_limit_reached",
+                finalResponseType: responseType,
+                toolCallCount: turn.functionCalls.length,
+                toolCallIteration: toolCallIterations,
+            });
+            return {
+                status: "empty_output",
+                message: "The VAIVIA assistant is temporarily unavailable",
+                diagnostics: { ...turn.diagnostics, tokenUsage },
+                toolUsage: {
+                    functionCalls,
+                    externalToolCalls,
+                    placeResults: candidatesByPlaceId.size,
+                },
+            };
+        }
+
         const webCalls = turn.functionCalls.filter(
             (call) => call.name === SEARCH_CURRENT_WEB_DECLARATION.name
         );
         if (webCalls.length > 0) {
+            toolCallIterations += 1;
             functionCalls += turn.functionCalls.length;
             const cannotUseGrounding =
                 retrieval.mode === "places" ||
@@ -907,33 +1088,99 @@ export async function generateTripAssistantResponse({
             };
         }
 
+        toolCallIterations += 1;
         contents.push(turn.responseContent);
-        const responses = [];
-            for (const call of turn.functionCalls) {
-                functionCalls += 1;
-                if (
-                    call.name === "search_nearby_places" ||
-                    call.name === "get_place_details"
-                ) {
-                    placesPathSelected = true;
-                }
+        const responses: Part[] = [];
+        for (const call of turn.functionCalls) {
+            functionCalls += 1;
+            const validation = validateAssistantToolCall(call);
+            const isPlacesCall =
+                call.name === SEARCH_NEARBY_PLACES_DECLARATION.name ||
+                call.name === GET_PLACE_DETAILS_DECLARATION.name;
+            if (isPlacesCall) placesPathSelected = true;
             const overLimit = functionCalls > ASSISTANT_MAX_FUNCTION_CALLS;
             let response: Record<string, unknown>;
-            try {
-                response = overLimit
-                    ? { error: "The assistant tool-call limit was reached for this request." }
-                    : call.name === "search_nearby_places"
-                      ? await executeSearch(call)
-                      : call.name === "get_place_details"
-                        ? executeDetails(call)
-                        : { error: "Unsupported tool." };
-            } catch {
+            if (overLimit) {
                 response = {
-                    error:
-                        "The saved trip location could not be read. Live place discovery is temporarily unavailable.",
+                    error: "The assistant tool-call limit was reached for this request.",
                 };
+                logAssistantDiagnostic({
+                    stage: "gemini_tool_loop",
+                    code: "tool_execution_skipped_limit",
+                    requestedFunction: validation.name,
+                    argumentValidation: validation.validation,
+                    toolExecution: "skipped",
+                    toolCallIteration: toolCallIterations,
+                });
+            } else if (validation.validation === "unknown_tool") {
+                response = { error: "Unsupported tool." };
+                logAssistantDiagnostic({
+                    stage: "gemini_tool_loop",
+                    code: "tool_execution_unknown_tool",
+                    requestedFunction: validation.name,
+                    argumentValidation: "unknown_tool",
+                    toolExecution: "skipped",
+                    toolCallIteration: toolCallIterations,
+                });
+            } else if (validation.validation === "invalid") {
+                response = { error: "Invalid tool arguments." };
+                logAssistantDiagnostic({
+                    stage: "gemini_tool_loop",
+                    code: "tool_execution_invalid_arguments",
+                    requestedFunction: validation.name,
+                    argumentValidation: "invalid",
+                    toolExecution: "skipped",
+                    toolCallIteration: toolCallIterations,
+                });
+            } else {
+                logAssistantDiagnostic({
+                    stage: "gemini_tool_loop",
+                    code: "tool_execution_start",
+                    requestedFunction: validation.name,
+                    argumentValidation: "valid",
+                    toolExecution: "started",
+                    toolCallIteration: toolCallIterations,
+                });
+                try {
+                    response =
+                        call.name === SEARCH_NEARBY_PLACES_DECLARATION.name
+                            ? await executeSearch(call)
+                            : executeDetails(call);
+                    const executionFailed = typeof response.error === "string";
+                    logAssistantDiagnostic({
+                        stage: "gemini_tool_loop",
+                        code: executionFailed
+                            ? "tool_execution_failed"
+                            : "tool_execution_completed",
+                        requestedFunction: validation.name,
+                        argumentValidation: "valid",
+                        toolExecution: executionFailed ? "failed" : "completed",
+                        toolCallIteration: toolCallIterations,
+                        sanitizedError: executionFailed
+                            ? placesProviderFailure || "tool_result_error"
+                            : null,
+                    });
+                } catch {
+                    if (isPlacesCall) placesProviderFailure = "provider_failure";
+                    response = {
+                        error:
+                            "The saved trip location could not be read. Live place discovery is temporarily unavailable.",
+                    };
+                    logAssistantDiagnostic({
+                        stage: "gemini_tool_loop",
+                        code: "tool_execution_failed",
+                        requestedFunction: validation.name,
+                        argumentValidation: "valid",
+                        toolExecution: "failed",
+                        toolCallIteration: toolCallIterations,
+                        sanitizedError: "tool_execution_failed",
+                    });
+                }
             }
-            if (call.name === "search_nearby_places") {
+            if (
+                call.name === SEARCH_NEARBY_PLACES_DECLARATION.name &&
+                validation.validation === "valid"
+            ) {
                 requiredPlacesSearchPending = false;
             }
             if (requiredPlacesTerminalMessage) {
@@ -951,6 +1198,12 @@ export async function generateTripAssistantResponse({
             });
         }
         contents.push({ role: "user", parts: responses });
+        logAssistantDiagnostic({
+            stage: "gemini_tool_loop",
+            code: "follow_up_gemini_request",
+            toolCallCount: responses.length,
+            toolCallIteration: toolCallIterations,
+        });
     }
 
     return {

@@ -258,6 +258,34 @@ describe("secure trip context loader", () => {
         expect(database.auth.getUser).toHaveBeenCalledOnce();
         expect(database.selects[0]?.table).toBe("trips");
     });
+
+    it("reuses an authorized lightweight trip and queries staged sections only", async () => {
+        const database = contextDatabase();
+        const context = await loadTripAssistantContext(
+            database as never,
+            TRIP_A,
+            new Date("2026-07-18T12:00:00Z"),
+            {
+                authorizedUserId: USER_A,
+                authorizedTrip: {
+                    title: "Selected trip",
+                    destination: "Japan",
+                    start_date: "2026-09-01",
+                    end_date: "2026-09-08",
+                },
+                sections: ["stays", "transportation"],
+            }
+        );
+
+        expect(database.auth.getUser).not.toHaveBeenCalled();
+        expect(database.selects.map(({ table }) => table)).toEqual([
+            "transportation_items",
+            "trip_accommodations",
+        ]);
+        expect(context.stays).toHaveLength(1);
+        expect(context.itinerary_plans).toBeUndefined();
+        expect(context.budget_summary).toBeUndefined();
+    });
 });
 
 function selectedFields(

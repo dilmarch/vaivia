@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/src/types/supabase";
 
-const MAX_CONTEXT_ROWS_PER_SECTION = 100;
+const MAX_CONTEXT_ROWS_PER_SECTION = 40;
 const MAX_CONTEXT_STRING_LENGTH = 500;
 
 /** Fields that may leave VAIVIA and be included in the assistant context. */
@@ -167,6 +167,45 @@ export type VaiviaTripContext = {
     context_notice: string;
 };
 
+export type TripContextSection =
+    | "legs"
+    | "itinerary"
+    | "transportation"
+    | "stays"
+    | "ideas"
+    | "food"
+    | "travelers"
+    | "budget"
+    | "preferences";
+
+export const ALL_TRIP_CONTEXT_SECTIONS: readonly TripContextSection[] = [
+    "legs",
+    "itinerary",
+    "transportation",
+    "stays",
+    "ideas",
+    "food",
+    "travelers",
+    "budget",
+    "preferences",
+];
+
+export type AuthorizedTripContextSnapshot = {
+    title: string;
+    notes?: string | null;
+    destination?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+};
+
+export type TripContextLoadOptions = {
+    /** Set only after the route has authenticated and authorized this trip. */
+    authorizedUserId?: string;
+    /** RLS-authorized lightweight trip row from the route access check. */
+    authorizedTrip?: AuthorizedTripContextSnapshot;
+    sections?: readonly TripContextSection[];
+};
+
 function sanitizeContextValue(value: unknown): unknown {
     if (typeof value === "string") {
         return value.trim().slice(0, MAX_CONTEXT_STRING_LENGTH);
@@ -226,120 +265,114 @@ function addRowsWhenPresent(
 export async function loadTripAssistantContext(
     supabase: SupabaseClient<Database>,
     tripId: string,
-    now = new Date()
+    now = new Date(),
+    options: TripContextLoadOptions = {}
 ): Promise<VaiviaTripContext> {
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("Trip context is unavailable");
-
-    const tripResult = await supabase
-        .from("trips")
-        .select("title,notes,destination,start_date,end_date")
-        .eq("id", tripId)
-        .single();
-
-    if (tripResult.error || !tripResult.data) {
-        throw new Error("Trip context is unavailable");
+    let userId = options.authorizedUserId || null;
+    let tripData = options.authorizedTrip || null;
+    if (!userId || !tripData) {
+        const {
+            data: { user },
+        } = await supabase.auth.getUser();
+        if (!user) throw new Error("Trip context is unavailable");
+        userId = user.id;
+        const tripResult = await supabase
+            .from("trips")
+            .select("title,notes,destination,start_date,end_date")
+            .eq("id", tripId)
+            .single();
+        if (tripResult.error || !tripResult.data) {
+            throw new Error("Trip context is unavailable");
+        }
+        tripData = tripResult.data;
     }
 
-    const [
-        legsResult,
-        itineraryResult,
-        transportationResult,
-        accommodationsResult,
-        ideasResult,
-        foodResult,
-        membersResult,
-        budgetsResult,
-        budgetPlanResult,
-        expensesResult,
-        preferencesResult,
-    ] = await Promise.all([
-        supabase
+    const requested = new Set(options.sections || ALL_TRIP_CONTEXT_SECTIONS);
+    const queries: Array<PromiseLike<{ data: unknown; error: unknown }>> = [];
+    const keys: string[] = [];
+    const addQuery = (key: string, query: PromiseLike<{ data: unknown; error: unknown }>) => {
+        keys.push(key);
+        queries.push(query);
+    };
+
+    if (requested.has("legs")) addQuery("legs", supabase
             .from("trip_legs")
             .select("name,city_name,country_code,region_code,leg_type,start_date,end_date")
             .eq("trip_id", tripId)
             .order("start_date")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("itinerary")) addQuery("itinerary", supabase
             .from("itinerary_items")
             .select("title,category,status,item_date,end_date,start_time,end_time,timezone,location,formatted_address")
             .eq("trip_id", tripId)
             .order("item_date")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("transportation")) addQuery("transportation", supabase
             .from("transportation_items")
             .select("title,transport_type,status,provider_name,provider_code,transport_number,departure_date,departure_time,departure_timezone,departure_location,departure_formatted_address,departure_terminal,departure_gate,departure_platform,arrival_date,arrival_time,arrival_timezone,arrival_location,arrival_formatted_address,arrival_terminal,arrival_gate,arrival_platform,pickup_location,pickup_formatted_address,dropoff_location,dropoff_formatted_address")
             .eq("trip_id", tripId)
             .order("departure_date")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("stays")) addQuery("stays", supabase
             .from("trip_accommodations")
             .select("hotel_name,accommodation_type,status,address,city,region,country,check_in_date,check_in_time_start,check_in_time_end,check_out_date,check_out_time,free_cancellation_ends_on")
             .eq("trip_id", tripId)
             .eq("is_planning_option", false)
             .order("check_in_date")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("ideas")) addQuery("ideas", supabase
             .from("trip_ideas")
             .select("title,description,category,location,formatted_address,location_city,location_region,location_country,days_of_week,availability_start_date,availability_end_date,time_of_day,timezone,opens_at,closes_at,is_24_hours,estimated_cost,currency,ticket_policy,age_policy,dress_code,tags")
             .eq("trip_id", tripId)
             .eq("is_archived", false)
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("food")) addQuery("food", supabase
             .from("trip_food_items")
             .select("item_type,name,description,region,formatted_address,business_status,meal_categories,place_types,primary_place_type")
             .eq("trip_id", tripId)
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("travelers")) addQuery("travelers", supabase
             .from("trip_members")
             .select("user_id,role,confirmed_start_date,confirmed_end_date,personal_start_date,personal_end_date")
             .eq("trip_id", tripId)
             .eq("status", "active")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    if (requested.has("budget")) {
+        addQuery("budgets", supabase
             .from("trip_budgets")
             .select("name,reporting_currency,total_budget_amount")
             .eq("trip_id", tripId)
             .eq("is_active", true)
-            .limit(5),
-        supabase
+            .limit(5));
+        addQuery("budgetPlan", supabase
             .from("trip_budget_line_items")
             .select("name,linked_expense_category,planned_amount,currency")
             .eq("trip_id", tripId)
             .order("sort_order")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+        addQuery("expenses", supabase
             .from("trip_expenses")
             .select("description,category,amount,currency,amount_in_reporting_currency,reporting_currency,expense_date,transaction_date,source_type")
             .eq("trip_id", tripId)
             .is("deleted_at", null)
             .order("expense_date")
-            .limit(MAX_CONTEXT_ROWS_PER_SECTION),
-        supabase
+            .limit(MAX_CONTEXT_ROWS_PER_SECTION));
+    }
+    if (requested.has("preferences")) addQuery("preferences", supabase
             .from("user_preferences")
             .select("clock_format,default_time_zone")
-            .eq("user_id", user.id)
-            .maybeSingle(),
-    ]);
+            .eq("user_id", userId)
+            .maybeSingle());
 
-    const sectionErrors = [
-        legsResult.error,
-        itineraryResult.error,
-        transportationResult.error,
-        accommodationsResult.error,
-        ideasResult.error,
-        foodResult.error,
-        membersResult.error,
-        budgetsResult.error,
-        budgetPlanResult.error,
-        expensesResult.error,
-        preferencesResult.error,
-    ].filter(Boolean);
-    if (sectionErrors.length > 0) throw new Error("Trip context is incomplete");
+    const results = await Promise.all(queries);
+    const resultByKey = new Map(keys.map((key, index) => [key, results[index]!]));
+    if (results.some((result) => result.error)) {
+        throw new Error("Trip context is incomplete");
+    }
 
-    const members = membersResult.data || [];
+    const rows = (key: string) =>
+        ((resultByKey.get(key)?.data || []) as Record<string, unknown>[]);
+    const members = rows("travelers") as Array<Record<string, unknown> & { user_id: string }>;
     const memberUserIds = members.map((member) => member.user_id);
     const profileNames = new Map<string, string>();
 
@@ -371,11 +404,11 @@ export async function loadTripAssistantContext(
 
     const trip = allowlistRecord(
         {
-            title: tripResult.data.title,
-            description: tripResult.data.notes,
-            destination: tripResult.data.destination,
-            start_date: tripResult.data.start_date,
-            end_date: tripResult.data.end_date,
+            title: tripData.title,
+            description: tripData.notes,
+            destination: tripData.destination,
+            start_date: tripData.start_date,
+            end_date: tripData.end_date,
         },
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trips
     );
@@ -388,7 +421,7 @@ export async function loadTripAssistantContext(
     };
 
     addRowsWhenPresent(context, "legs", allowlistRows(
-        legsResult.data as Record<string, unknown>[],
+        rows("legs"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_legs
     ));
     addRowsWhenPresent(context, "travelers", allowlistRows(
@@ -396,41 +429,42 @@ export async function loadTripAssistantContext(
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_members
     ));
     addRowsWhenPresent(context, "itinerary_plans", allowlistRows(
-        itineraryResult.data as Record<string, unknown>[],
+        rows("itinerary"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.itinerary_items
     ));
     addRowsWhenPresent(context, "transportation", allowlistRows(
-        transportationResult.data as Record<string, unknown>[],
+        rows("transportation"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.transportation_items
     ));
     addRowsWhenPresent(context, "stays", allowlistRows(
-        accommodationsResult.data as Record<string, unknown>[],
+        rows("stays"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_accommodations
     ));
     addRowsWhenPresent(context, "saved_ideas", allowlistRows(
-        ideasResult.data as Record<string, unknown>[],
+        rows("ideas"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_ideas
     ));
     addRowsWhenPresent(context, "food_ideas", allowlistRows(
-        foodResult.data as Record<string, unknown>[],
+        rows("food"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_food_items
     ));
     addRowsWhenPresent(context, "budget_summary", allowlistRows(
-        budgetsResult.data as Record<string, unknown>[],
+        rows("budgets"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_budgets
     ));
     addRowsWhenPresent(context, "budget_plan", allowlistRows(
-        budgetPlanResult.data as Record<string, unknown>[],
+        rows("budgetPlan"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_budget_line_items
     ));
     addRowsWhenPresent(context, "expenses", allowlistRows(
-        expensesResult.data as Record<string, unknown>[],
+        rows("expenses"),
         TRIP_CONTEXT_FIELD_ALLOWLISTS.trip_expenses
     ));
 
-    if (preferencesResult.data) {
+    const preferences = resultByKey.get("preferences")?.data;
+    if (preferences) {
         const preferences = allowlistRecord(
-            preferencesResult.data as Record<string, unknown>,
+            resultByKey.get("preferences")!.data as Record<string, unknown>,
             TRIP_CONTEXT_FIELD_ALLOWLISTS.user_preferences
         );
         if (Object.keys(preferences).length > 0) context.travel_preferences = preferences;

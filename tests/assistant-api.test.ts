@@ -400,7 +400,15 @@ describe("trip assistant persistence and quota", () => {
             routeContext()
         );
         expect(response.status).toBe(429);
-        expect(mocks.loadContext).toHaveBeenCalledWith(expect.anything(), TRIP_A);
+        expect(mocks.loadContext).toHaveBeenCalledWith(
+            expect.anything(),
+            TRIP_A,
+            expect.any(Date),
+            expect.objectContaining({
+                authorizedUserId: USER_A,
+                sections: ["stays"],
+            })
+        );
         expect(mocks.generate).not.toHaveBeenCalled();
         expect(userDatabase.writes).toHaveLength(0);
     });
@@ -422,7 +430,15 @@ describe("trip assistant persistence and quota", () => {
             },
             usage: { used: 1, remaining: 49 },
         });
-        expect(mocks.loadContext).toHaveBeenCalledWith(expect.anything(), TRIP_A);
+        expect(mocks.loadContext).toHaveBeenCalledWith(
+            expect.anything(),
+            TRIP_A,
+            expect.any(Date),
+            expect.objectContaining({
+                authorizedUserId: USER_A,
+                sections: [],
+            })
+        );
         expect(mocks.generate).toHaveBeenCalledWith(
             expect.objectContaining({
                 tripId: TRIP_A,
@@ -464,6 +480,74 @@ describe("trip assistant persistence and quota", () => {
         expect(
             userDatabase.writes.every((write) => write.table.startsWith("ai_"))
         ).toBe(true);
+    });
+
+    it("answers exact saved trip dates without a Gemini round trip", async () => {
+        const userDatabase = fakeSupabase({ conversation: conversation() });
+        mocks.createClient.mockResolvedValue(userDatabase);
+        mocks.loadContext.mockResolvedValue({
+            current_date_utc: "2026-07-18",
+            trip: {
+                title: "Trip A",
+                start_date: "2026-09-01",
+                end_date: "2026-09-08",
+            },
+            context_notice: "allowlisted",
+        });
+
+        const response = await POST(messageRequest(), routeContext());
+        const payload = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(mocks.generate).not.toHaveBeenCalled();
+        expect(payload.assistantMessage.content).toBe(
+            "Your saved trip dates are 2026-09-01 through 2026-09-08."
+        );
+        expect(response.headers.get("server-timing")).toContain("total_request");
+    });
+
+    it("streams progress metadata and the persisted result as bounded NDJSON", async () => {
+        mocks.createClient.mockResolvedValue(
+            fakeSupabase({ conversation: conversation() })
+        );
+        const request = new NextRequest(
+            "http://localhost/api/trips/trip-a/assistant",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/x-ndjson",
+                },
+                body: JSON.stringify({
+                    action: "message",
+                    conversationId: CONVERSATION_A,
+                    message: "Summarize this trip",
+                }),
+            }
+        );
+
+        const response = await POST(request, routeContext());
+        const events = (await response.text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+
+        expect(response.headers.get("content-type")).toContain(
+            "application/x-ndjson"
+        );
+        expect(events).toContainEqual(
+            expect.objectContaining({
+                type: "status",
+                stage: "authentication_and_trip_access",
+            })
+        );
+        expect(events.find((event) => event.type === "result")).toMatchObject({
+            type: "result",
+            status: 200,
+            payload: {
+                assistantMessage: { content: "Your trip starts on Monday." },
+            },
+        });
     });
 
     it("persists only typed place references while returning hydrated cards and usage counts", async () => {

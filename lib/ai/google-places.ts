@@ -1,5 +1,8 @@
 import "server-only";
 
+import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
+import type { AssistantTimingRecorder } from "@/lib/ai/assistant-timing";
+
 const GOOGLE_PLACES_TEXT_SEARCH_URL =
     "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_PLACES_DETAILS_URL = "https://places.googleapis.com/v1/places";
@@ -245,10 +248,23 @@ function sanitizePlace(
 async function placesFetch(
     url: string,
     init: RequestInit,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    timing?: AssistantTimingRecorder
 ): Promise<GooglePlacesResult<unknown>> {
+    const startedAt = Date.now();
     const apiKey = getGooglePlacesApiKey();
-    if (!apiKey) return { status: "failure", code: "missing_configuration" };
+    if (!apiKey) {
+        logAssistantDiagnostic({
+            stage: "places_http",
+            code: "places_missing_configuration",
+            toolExecution: "failed",
+            sanitizedError: "missing_configuration",
+        });
+        timing?.record("google_places_request", Date.now() - startedAt, {
+            outcome: "missing_configuration",
+        });
+        return { status: "failure", code: "missing_configuration" };
+    }
 
     const controller = new AbortController();
     let timedOut = false;
@@ -271,21 +287,53 @@ async function placesFetch(
             },
         });
         if (!response.ok) {
-            if (response.status === 429) {
-                return { status: "failure", code: "rate_limited" };
-            }
-            if (response.status === 400 || response.status === 403) {
-                return { status: "failure", code: "billing_or_configuration" };
-            }
-            return { status: "failure", code: "provider_failure" };
+            const code: GooglePlacesFailureCode =
+                response.status === 429
+                    ? "rate_limited"
+                    : response.status === 400 || response.status === 403
+                      ? "billing_or_configuration"
+                      : "provider_failure";
+            logAssistantDiagnostic({
+                stage: "places_http",
+                code: "places_http_failed",
+                providerStatus: response.status,
+                providerCode: code,
+                toolExecution: "failed",
+                sanitizedError: code,
+                elapsedMs: Date.now() - startedAt,
+            });
+            return { status: "failure", code };
         }
-        return { status: "success", data: await response.json() };
-    } catch {
+        const data = await response.json();
+        logAssistantDiagnostic({
+            stage: "places_http",
+            code: "places_http_completed",
+            providerStatus: response.status,
+            toolExecution: "completed",
+            elapsedMs: Date.now() - startedAt,
+        });
+        return { status: "success", data };
+    } catch (error) {
+        const code: GooglePlacesFailureCode = timedOut
+            ? "timeout"
+            : "provider_failure";
+        logAssistantDiagnostic({
+            stage: "places_http",
+            code: "places_http_failed",
+            providerCode: code,
+            toolExecution: "failed",
+            sanitizedError:
+                error instanceof Error
+                    ? cleanString(error.name || code, 80)
+                    : code,
+            elapsedMs: Date.now() - startedAt,
+        });
         return {
             status: "failure",
-            code: timedOut ? "timeout" : "provider_failure",
+            code,
         };
     } finally {
+        timing?.record("google_places_request", Date.now() - startedAt);
         clearTimeout(timeout);
         signal?.removeEventListener("abort", abortFromCaller);
     }
@@ -298,6 +346,7 @@ export async function searchGooglePlaces({
     maxResults,
     priceLevels = [],
     signal,
+    timing,
 }: {
     query: string;
     origin: TrustedPlaceLocation;
@@ -305,6 +354,7 @@ export async function searchGooglePlaces({
     maxResults: number;
     priceLevels?: string[];
     signal?: AbortSignal;
+    timing?: AssistantTimingRecorder;
 }): Promise<GooglePlacesResult<SanitizedGooglePlace[]>> {
     const safeQuery = cleanString(query, 160);
     if (!safeQuery || !isTrustedLocation(origin)) {
@@ -339,7 +389,8 @@ export async function searchGooglePlaces({
                     : {}),
             }),
         },
-        signal
+        signal,
+        timing
     );
     if (result.status === "failure") return result;
 
@@ -363,9 +414,11 @@ export async function searchGooglePlaces({
 export async function findGooglePlaceByText({
     query,
     signal,
+    timing,
 }: {
     query: string;
     signal?: AbortSignal;
+    timing?: AssistantTimingRecorder;
 }): Promise<GooglePlacesResult<SanitizedGooglePlace>> {
     const safeQuery = cleanString(query, 240);
     if (!safeQuery) return { status: "failure", code: "provider_failure" };
@@ -376,7 +429,8 @@ export async function findGooglePlaceByText({
             headers: { "X-Goog-FieldMask": SEARCH_FIELD_MASK },
             body: JSON.stringify({ textQuery: safeQuery, pageSize: 1 }),
         },
-        signal
+        signal,
+        timing
     );
     if (result.status === "failure") return result;
     const payload = result.data as { places?: unknown };
@@ -392,10 +446,12 @@ export async function getGooglePlaceDetails({
     placeId,
     origin,
     signal,
+    timing,
 }: {
     placeId: string;
     origin?: TrustedPlaceLocation;
     signal?: AbortSignal;
+    timing?: AssistantTimingRecorder;
 }): Promise<GooglePlacesResult<SanitizedGooglePlace>> {
     const safePlaceId = cleanString(placeId, 255);
     if (!safePlaceId) return { status: "failure", code: "provider_failure" };
@@ -405,7 +461,8 @@ export async function getGooglePlaceDetails({
             method: "GET",
             headers: { "X-Goog-FieldMask": DETAILS_FIELD_MASK },
         },
-        signal
+        signal,
+        timing
     );
     if (result.status === "failure") return result;
     const place = sanitizePlace(result.data as GooglePlacePayload, origin);
@@ -421,9 +478,11 @@ export async function getGooglePlaceDetails({
 export async function refreshGooglePlaceId({
     placeId,
     signal,
+    timing,
 }: {
     placeId: string;
     signal?: AbortSignal;
+    timing?: AssistantTimingRecorder;
 }): Promise<GooglePlacesResult<string>> {
     const safePlaceId = cleanString(placeId, 255);
     if (!safePlaceId) return { status: "failure", code: "provider_failure" };
@@ -433,7 +492,8 @@ export async function refreshGooglePlaceId({
             method: "GET",
             headers: { "X-Goog-FieldMask": "id" },
         },
-        signal
+        signal,
+        timing
     );
     if (result.status === "failure") return result;
     const refreshedId = cleanString(

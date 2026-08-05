@@ -33,6 +33,18 @@ import { selectAssistantRetrieval } from "@/lib/ai/current-web-grounding";
 import { logAssistantDiagnostic } from "@/lib/ai/assistant-diagnostics";
 import { buildVaiviaAssistantSystemInstruction } from "@/lib/ai/system-instruction";
 import { loadTripAssistantContext } from "@/lib/ai/trip-context";
+import {
+    answerDirectTripQuestion,
+    buildCompactAssistantHistory,
+    classifyAssistantIntent,
+    selectAssistantModelTier,
+    selectTripContextSections,
+} from "@/lib/ai/assistant-routing";
+import {
+    createAssistantTimingRecorder,
+    measureAssistantStage,
+    type AssistantTimingRecorder,
+} from "@/lib/ai/assistant-timing";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 import { resolveTripRouteParam } from "@/lib/tripRoutes";
@@ -79,7 +91,15 @@ async function authenticateTrip(context: RouteContext) {
         id: string;
         slug: string;
         title: string;
-    }>(supabase, routeParam, "id,slug,title");
+        notes: string | null;
+        destination: string | null;
+        start_date: string | null;
+        end_date: string | null;
+    }>(
+        supabase,
+        routeParam,
+        "id,slug,title,notes,destination,start_date,end_date"
+    );
 
     if (!resolved.trip) {
         return { error: safeError("Trip not found", 404, "trip_not_found") };
@@ -339,8 +359,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
     });
 }
 
-export async function POST(request: NextRequest, context: RouteContext) {
-    const authenticated = await authenticateTrip(context);
+async function handleAssistantPost(
+    request: NextRequest,
+    context: RouteContext,
+    timing: AssistantTimingRecorder,
+    onTextDelta?: (delta: string) => void
+) {
+    const authenticated = await measureAssistantStage(
+        timing,
+        "authentication_and_trip_access",
+        () => authenticateTrip(context)
+    );
     if ("error" in authenticated) return authenticated.error!;
     const { supabase, user, trip } = authenticated;
 
@@ -389,6 +418,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
             "invalid_message"
         );
     }
+    const intent = classifyAssistantIntent(message);
+    const modelTier = selectAssistantModelTier(intent);
+    const model = getGeminiAssistantModel(modelTier);
+    logAssistantDiagnostic({
+        stage: "retrieval_routing",
+        code: "assistant_intent_selected",
+        intent,
+        modelTier,
+        model,
+    });
 
     const suppliedConversationId = body.conversationId ?? null;
     if (suppliedConversationId !== null && !isUuid(suppliedConversationId)) {
@@ -413,7 +452,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     let tripContext;
     try {
-        tripContext = await loadTripAssistantContext(supabase, trip.id);
+        tripContext = await measureAssistantStage(
+            timing,
+            "trip_context_database",
+            () =>
+                loadTripAssistantContext(supabase, trip.id, new Date(), {
+                    authorizedUserId: user.id,
+                    authorizedTrip: trip,
+                    sections: selectTripContextSections(intent, message),
+                })
+        );
     } catch {
         logAssistantDiagnostic({ stage: "trip_context", code: "context_failed" });
         return safeError("Unable to read the saved trip details", 500, "context_failed");
@@ -465,7 +513,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
             .eq("user_id", user.id);
     };
 
-    const model = getGeminiAssistantModel();
     const dailyLimit = getAiDailyMessageLimit();
     let usageRows;
     let usageError;
@@ -520,18 +567,21 @@ export async function POST(request: NextRequest, context: RouteContext) {
         return safeError("Unable to verify daily usage", 500, "usage_failed");
     }
 
-    const { data: userMessage, error: messageInsertError } = await supabase
-        .from("ai_messages")
-        .insert({
-            conversation_id: conversation.id,
-            trip_id: trip.id,
-            user_id: user.id,
-            role: "user",
-            status: "pending",
-            content: message,
-        })
-        .select("id,role,status,content,created_at")
-        .single();
+    const { data: userMessage, error: messageInsertError } =
+        await measureAssistantStage(timing, "message_persistence", () =>
+            supabase
+                .from("ai_messages")
+                .insert({
+                    conversation_id: conversation.id,
+                    trip_id: trip.id,
+                    user_id: user.id,
+                    role: "user",
+                    status: "pending",
+                    content: message,
+                })
+                .select("id,role,status,content,created_at")
+                .single()
+        );
     if (messageInsertError || !userMessage) {
         logAssistantDiagnostic({
             stage: "user_message_persistence",
@@ -562,13 +612,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         .select("id,title,created_at,updated_at,last_message_at")
         .single();
 
-    const contents: Content[] = history
-        .reverse()
-        .filter((item) => item.role === "user" || item.role === "assistant")
-        .map((item) => ({
-            role: item.role === "assistant" ? "model" : "user",
-            parts: [{ text: item.content }],
-        }));
+    const contents: Content[] = buildCompactAssistantHistory(history);
     contents.push({ role: "user", parts: [{ text: message }] });
 
     const systemInstruction = buildVaiviaAssistantSystemInstruction(tripContext);
@@ -582,14 +626,54 @@ export async function POST(request: NextRequest, context: RouteContext) {
                 ? retrievalDecision.isGroundedFollowUp
                 : false,
     });
-    const generation = await generateTripAssistantResponse({
-        supabase,
-        tripId: trip.id,
-        contents,
-        systemInstruction,
-        retrievalDecision,
-        signal: request.signal,
-    });
+    const directMessage = answerDirectTripQuestion(intent, tripContext);
+    const generation: AssistantPlacesGenerationResult = directMessage
+        ? {
+              status: "success",
+              message: directMessage,
+              model: "vaivia-deterministic",
+              tokenUsage: {
+                  promptTokenCount: 0,
+                  candidateTokenCount: 0,
+                  thoughtsTokenCount: 0,
+                  totalTokenCount: 0,
+              },
+              diagnostics: {
+                  apiVersion: "local",
+                  model: "vaivia-deterministic",
+                  providerStatus: null,
+                  providerCode: null,
+                  providerMessage: null,
+                  finishReason: "DETERMINISTIC",
+                  promptBlockReason: null,
+                  elapsedMs: 0,
+                  tokenUsage: {
+                      promptTokenCount: 0,
+                      candidateTokenCount: 0,
+                      thoughtsTokenCount: 0,
+                      totalTokenCount: 0,
+                  },
+              },
+              metadata: {},
+              recommendations: [],
+              toolUsage: {
+                  functionCalls: 0,
+                  externalToolCalls: 0,
+                  placeResults: 0,
+              },
+          }
+        : await generateTripAssistantResponse({
+              supabase,
+              tripId: trip.id,
+              contents,
+              systemInstruction,
+              retrievalDecision,
+              model,
+              modelTier,
+              timing,
+              onTextDelta,
+              signal: request.signal,
+          });
     if (
         generation.toolUsage.externalToolCalls > 0 &&
         (generation.toolUsage.webSearchOperations || 0) === 0
@@ -679,20 +763,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
     let assistantInsertError: unknown = null;
     try {
         const serviceSupabase = createServiceRoleClient();
-        const result = await serviceSupabase
-            .from("ai_messages")
-            .insert({
-                conversation_id: conversation.id,
-                trip_id: trip.id,
-                user_id: user.id,
-                role: "assistant",
-                status: "complete",
-                content: generation.persistedMessage || generation.message,
-                model: generation.model,
-                metadata: generation.metadata,
-            })
-            .select("id,role,status,content,created_at")
-            .single();
+        const result = await measureAssistantStage(
+            timing,
+            "message_persistence",
+            () =>
+                serviceSupabase
+                    .from("ai_messages")
+                    .insert({
+                        conversation_id: conversation.id,
+                        trip_id: trip.id,
+                        user_id: user.id,
+                        role: "assistant",
+                        status: "complete",
+                        content: generation.persistedMessage || generation.message,
+                        model: generation.model,
+                        metadata: generation.metadata,
+                    })
+                    .select("id,role,status,content,created_at")
+                    .single()
+        );
         assistantMessage = result.data;
         assistantInsertError = result.error;
     } catch (error) {
@@ -729,13 +818,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
         );
     }
 
-    const { error: userStatusError } = await supabase
-        .from("ai_messages")
-        .update({ status: "complete" })
-        .eq("id", userMessage.id)
-        .eq("conversation_id", conversation.id)
-        .eq("trip_id", trip.id)
-        .eq("user_id", user.id);
+    const { error: userStatusError } = await measureAssistantStage(
+        timing,
+        "message_persistence",
+        () =>
+            supabase
+                .from("ai_messages")
+                .update({ status: "complete" })
+                .eq("id", userMessage.id)
+                .eq("conversation_id", conversation.id)
+                .eq("trip_id", trip.id)
+                .eq("user_id", user.id)
+    );
     if (userStatusError) {
         logAssistantDiagnostic({
             stage: "request_finalization",
@@ -814,6 +908,65 @@ export async function POST(request: NextRequest, context: RouteContext) {
         );
     }
     return NextResponse.json(payload);
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+    if (request.headers.get("accept")?.includes("application/x-ndjson")) {
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+                const send = (event: Record<string, unknown>) => {
+                    controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+                };
+                const timing = createAssistantTimingRecorder((stage) => {
+                    send({ type: "status", stage });
+                });
+                const startedAt = performance.now();
+                void (async () => {
+                    try {
+                        const response = await handleAssistantPost(
+                            request,
+                            context,
+                            timing,
+                            (delta) => send({ type: "delta", delta })
+                        );
+                        const payload = await response.json();
+                        send({ type: "result", status: response.status, payload });
+                    } catch {
+                        send({
+                            type: "result",
+                            status: 500,
+                            payload: {
+                                error: "The assistant could not answer right now",
+                                code: "request_failed",
+                            },
+                        });
+                    } finally {
+                        timing.record("total_request", performance.now() - startedAt);
+                        controller.close();
+                    }
+                })();
+            },
+        });
+        return new NextResponse(stream, {
+            headers: {
+                "Content-Type": "application/x-ndjson; charset=utf-8",
+                "Cache-Control": "no-store, no-transform",
+                "X-Content-Type-Options": "nosniff",
+            },
+        });
+    }
+
+    const timing = createAssistantTimingRecorder();
+    const startedAt = performance.now();
+    let response: NextResponse;
+    try {
+        response = await handleAssistantPost(request, context, timing);
+    } finally {
+        timing.record("total_request", performance.now() - startedAt);
+    }
+    response.headers.set("Server-Timing", timing.serverTimingHeader());
+    return response;
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {

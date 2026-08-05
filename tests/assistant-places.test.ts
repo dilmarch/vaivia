@@ -34,6 +34,7 @@ vi.mock("@/lib/ai/google-places", () => ({
 
 import {
     ASSISTANT_MAX_FUNCTION_CALLS,
+    ASSISTANT_MAX_TOOL_CALL_ITERATIONS,
     ASSISTANT_PLACE_LOCATION_NEEDED_MESSAGE,
     VAIVIA_PLACES_TOOLS,
     generateTripAssistantResponse,
@@ -460,6 +461,214 @@ describe("VAIVIA controlled Places tool loop", () => {
         expect(browserSafeToolJson).not.toContain("ChIJCafeCandidate123");
     });
 
+    it("executes multiple Places function calls from one model response", async () => {
+        const calls = [searchCall("call-parallel-1"), searchCall("call-parallel-2")];
+        mocks.turn
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: "I’ll check two live searches.",
+                    responseContent: {
+                        role: "model",
+                        parts: [
+                            { text: "I’ll check two live searches." },
+                            ...calls.map((call) => ({ functionCall: call })),
+                        ],
+                    },
+                    functionCalls: calls,
+                })
+            )
+            .mockResolvedValueOnce(successfulTurn({ message: "Here are the live results." }));
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [{ role: "user", parts: [{ text: "Find places near my hotel." }] }],
+            systemInstruction: "system",
+            retrievalDecision: { mode: "auto" },
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            message: "Here are the live results.",
+            toolUsage: { functionCalls: 2, externalToolCalls: 2 },
+        });
+        expect(mocks.search).toHaveBeenCalledTimes(2);
+        const followUp = mocks.turn.mock.calls[1]?.[0]?.contents;
+        expect(followUp.at(-2)).toEqual(
+            expect.objectContaining({ role: "model" })
+        );
+        expect(followUp.at(-1)?.parts).toHaveLength(2);
+    });
+
+    it("returns an explicit function response for an unknown tool without executing it", async () => {
+        const unknownCall = {
+            id: "call-unknown",
+            name: "read_private_trip_data",
+            args: {},
+        };
+        mocks.turn
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: {
+                        role: "model",
+                        parts: [{ functionCall: unknownCall }],
+                    },
+                    functionCalls: [unknownCall],
+                })
+            )
+            .mockResolvedValueOnce(
+                successfulTurn({ message: "I can’t use that tool." })
+            );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [],
+            systemInstruction: "system",
+            retrievalDecision: { mode: "auto" },
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            message: "I can’t use that tool.",
+            toolUsage: { functionCalls: 1, externalToolCalls: 0 },
+        });
+        expect(JSON.stringify(mocks.turn.mock.calls[1]?.[0]?.contents)).toContain(
+            "Unsupported tool"
+        );
+        expect(mocks.search).not.toHaveBeenCalled();
+    });
+
+    it("returns an invalid-arguments function response without calling Places", async () => {
+        const invalidCall = {
+            ...searchCall("call-invalid"),
+            args: { query: "", anchor_kind: "accommodation" },
+        };
+        mocks.turn
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: {
+                        role: "model",
+                        parts: [{ functionCall: invalidCall }],
+                    },
+                    functionCalls: [invalidCall],
+                })
+            )
+            .mockResolvedValueOnce(
+                successfulTurn({ message: "Which kind of place should I search for?" })
+            );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [],
+            systemInstruction: "system",
+            retrievalDecision: { mode: "auto" },
+        });
+
+        expect(result).toMatchObject({
+            status: "success",
+            message: "Which kind of place should I search for?",
+        });
+        expect(JSON.stringify(mocks.turn.mock.calls[1]?.[0]?.contents)).toContain(
+            "Invalid tool arguments"
+        );
+        expect(mocks.search).not.toHaveBeenCalled();
+    });
+
+    it("keeps a required Places search pending until Gemini supplies valid arguments", async () => {
+        const invalidCall = {
+            ...searchCall("call-invalid-required"),
+            args: { query: "", anchor_kind: "accommodation" },
+        };
+        const validCall = searchCall("call-valid-retry");
+        mocks.turn
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: {
+                        role: "model",
+                        parts: [{ functionCall: invalidCall }],
+                    },
+                    functionCalls: [invalidCall],
+                })
+            )
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: {
+                        role: "model",
+                        parts: [{ functionCall: validCall }],
+                    },
+                    functionCalls: [validCall],
+                })
+            )
+            .mockResolvedValueOnce(
+                successfulTurn({ message: "Here are the verified live places." })
+            );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [
+                { role: "user", parts: [{ text: "Find restaurants near my hotel." }] },
+            ],
+            systemInstruction: "system",
+        });
+
+        expect(mocks.search).toHaveBeenCalledTimes(1);
+        expect(mocks.turn.mock.calls[1]?.[0]?.config?.toolConfig).toEqual({
+            functionCallingConfig: {
+                mode: "ANY",
+                allowedFunctionNames: ["search_nearby_places"],
+            },
+        });
+        expect(result).toMatchObject({
+            status: "success",
+            message: "Here are the verified live places.",
+            toolUsage: { functionCalls: 2, externalToolCalls: 1, placeResults: 1 },
+        });
+    });
+
+    it("uses the Places unavailable message only after an actual provider failure", async () => {
+        mocks.search.mockResolvedValueOnce({
+            status: "failure",
+            code: "billing_or_configuration",
+        });
+        mocks.turn
+            .mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: {
+                        role: "model",
+                        parts: [{ functionCall: searchCall("call-provider-failure") }],
+                    },
+                    functionCalls: [searchCall("call-provider-failure")],
+                })
+            )
+            .mockResolvedValueOnce(
+                successfulTurn({ message: "Live place discovery is temporarily unavailable." })
+            );
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [
+                { role: "user", parts: [{ text: "Find restaurants near my hotel." }] },
+            ],
+            systemInstruction: "system",
+        });
+
+        expect(mocks.search).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({
+            status: "empty_output",
+            message: "Live place discovery is temporarily unavailable. Please try again.",
+            toolUsage: { externalToolCalls: 1, placeResults: 0 },
+        });
+    });
+
     it("rejects model prose when a required Places call is skipped", async () => {
         mocks.turn.mockResolvedValueOnce(
             successfulTurn({
@@ -481,7 +690,7 @@ describe("VAIVIA controlled Places tool loop", () => {
 
         expect(result).toMatchObject({
             status: "empty_output",
-            message: "Live place discovery is temporarily unavailable. Please try again.",
+            message: "The VAIVIA assistant is temporarily unavailable",
             toolUsage: {
                 functionCalls: 0,
                 externalToolCalls: 0,
@@ -591,7 +800,7 @@ describe("VAIVIA controlled Places tool loop", () => {
         });
         expect(mocks.details).not.toHaveBeenCalled();
         expect(JSON.stringify(mocks.turn.mock.calls[1]?.[0]?.contents)).toContain(
-            "Unknown result ID"
+            "Invalid tool arguments"
         );
     });
 
@@ -636,5 +845,49 @@ describe("VAIVIA controlled Places tool loop", () => {
         expect(JSON.stringify(mocks.turn.mock.calls[1]?.[0]?.contents)).not.toContain(
             "GOOGLE_PLACES_API_KEY"
         );
+    });
+
+    it("stops repeated function-call rounds at the strict iteration limit", async () => {
+        const repeatedCalls = Array.from(
+            { length: ASSISTANT_MAX_TOOL_CALL_ITERATIONS + 1 },
+            (_, index) => ({
+                id: `unknown-${index}`,
+                name: "unsupported_repeated_tool",
+                args: {},
+            })
+        );
+        for (const call of repeatedCalls) {
+            mocks.turn.mockResolvedValueOnce(
+                successfulTurn({
+                    message: null,
+                    responseContent: {
+                        role: "model",
+                        parts: [{ functionCall: call }],
+                    },
+                    functionCalls: [call],
+                })
+            );
+        }
+
+        const result = await generateTripAssistantResponse({
+            supabase: {} as never,
+            tripId: "trip-a",
+            contents: [],
+            systemInstruction: "system",
+            retrievalDecision: { mode: "auto" },
+        });
+
+        expect(mocks.turn).toHaveBeenCalledTimes(
+            ASSISTANT_MAX_TOOL_CALL_ITERATIONS + 1
+        );
+        expect(result).toMatchObject({
+            status: "empty_output",
+            message: "The VAIVIA assistant is temporarily unavailable",
+            toolUsage: {
+                functionCalls: ASSISTANT_MAX_TOOL_CALL_ITERATIONS,
+                externalToolCalls: 0,
+            },
+        });
+        expect(mocks.search).not.toHaveBeenCalled();
     });
 });
