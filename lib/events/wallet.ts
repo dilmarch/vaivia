@@ -2,6 +2,8 @@ import "server-only";
 
 import { SignJWT, importPKCS8 } from "jose";
 import { PKPass } from "passkit-generator";
+import { getMigrationCompatibleAppOrigins } from "@/lib/appOrigins";
+import { getAppUrl } from "@/lib/appUrl";
 
 export function getAppleWalletStatus() {
   const required = [
@@ -44,10 +46,7 @@ export async function createGoogleWalletSaveUrl(input: {
   const objectId = `${issuerId}.${input.ticketId.replace(/-/g, "")}`;
   const classId = `${issuerId}.vaivia_events`;
   const token = await new SignJWT({
-    origins: [
-      process.env.NEXT_PUBLIC_APP_URL ||
-        "https://app.thetravellinglinguist.com",
-    ],
+    origins: getMigrationCompatibleAppOrigins(getAppUrl()),
     typ: "savetowallet",
     payload: {
       eventTicketObjects: [

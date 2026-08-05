@@ -9,6 +9,7 @@ import {
   sendOrderConfirmation,
   sendRsvpConfirmation,
 } from "@/lib/events/order-confirmation";
+import { getEventCheckoutRedirectUrls } from "@/lib/events/urls";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -149,9 +150,10 @@ export async function POST(
   const items = Array.isArray(orderRow.event_order_items)
     ? orderRow.event_order_items
     : [];
-  const appUrl = (
-    process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-  ).replace(/\/$/, "");
+  const { successUrl, cancelUrl } = getEventCheckoutRedirectUrls({
+    orderId: orderRow.id,
+    eventSlug: event?.slug || "",
+  });
 
   try {
     const stripe = getEventStripeClient();
@@ -182,8 +184,8 @@ export async function POST(
             vaivia_user_id: user.id,
           },
         },
-        success_url: `${appUrl}/events/checkout/success?order=${encodeURIComponent(orderRow.id)}`,
-        cancel_url: `${appUrl}/events/${encodeURIComponent(event?.slug || "")}?checkout=cancelled`,
+        success_url: successUrl,
+        cancel_url: cancelUrl,
         expires_at: Math.floor(
           new Date(
             orderRow.hold_expires_at || Date.now() + 30 * 60 * 1000,

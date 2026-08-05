@@ -11,13 +11,22 @@ npm run build
 
 Then open `chrome://extensions`, enable Developer mode, choose **Load unpacked**, and select `browser-extension/dist`.
 
-The default build connects to `https://app.thetravellinglinguist.com`. To build against local VAIVIA:
+Set the application origin when building the extension. Production builds use:
+
+```bash
+VITE_VAIVIA_APP_URL=https://vaivia.app npm run build
+```
+
+To build against local VAIVIA:
 
 ```bash
 VITE_VAIVIA_APP_URL=http://localhost:3000 npm run build
 ```
 
 Chrome will ask for access to the local origin when the user chooses **Connect to VAIVIA**.
+During the production-domain migration the manifest permits both `https://vaivia.app`
+and `https://app.thetravellinglinguist.com` so previously released integrations can
+continue operating. Remove the legacy permission only after the migration window closes.
 
 ## Current supported extraction
 

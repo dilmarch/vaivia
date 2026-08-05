@@ -1,7 +1,11 @@
 import "./sidepanel.css";
 import type { FlightCapture, FlightLeg, HotelCapture, StoredSession, TravelCapture, VaiviaTrip } from "./types";
 
-const API_BASE_URL = (import.meta.env.VITE_VAIVIA_APP_URL || "https://app.thetravellinglinguist.com").replace(/\/$/, "");
+const configuredAppUrl = import.meta.env.VITE_VAIVIA_APP_URL?.trim();
+if (!configuredAppUrl) {
+    throw new Error("VITE_VAIVIA_APP_URL must be configured when building the VAIVIA extension.");
+}
+const API_BASE_URL = configuredAppUrl.replace(/\/$/, "");
 const SESSION_KEY = "vaiviaSession";
 const AUTO_DETECT_KEY = "vaiviaAutoDetect";
 const PENDING_CAPTURE_KEY = "vaiviaPendingCapture";

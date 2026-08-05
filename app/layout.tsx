@@ -8,18 +8,28 @@ import CountdownPreferenceProvider from "@/components/CountdownPreferenceProvide
 import PinkModeProvider from "@/components/PinkModeProvider";
 import PwaInstallPrompt from "@/components/pwa/PwaInstallPrompt";
 import ServiceWorkerRegistration from "@/components/pwa/ServiceWorkerRegistration";
+import { getAppUrl } from "@/lib/appUrl";
 import "./globals.css";
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const appUrl = getAppUrl();
 
 export const metadata: Metadata = {
-  metadataBase: new URL(defaultUrl),
+  metadataBase: new URL(appUrl),
   title: "VAIVIA",
   description: "Plan trips, itineraries, trip ideas, and transport in one place.",
   applicationName: "VAIVIA",
   manifest: "/manifest.webmanifest",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: "VAIVIA",
+    title: "VAIVIA",
+    description: "Plan trips, itineraries, trip ideas, and transport in one place.",
+    images: ["/opengraph-image.png"],
+  },
   appleWebApp: {
     capable: true,
     title: "VAIVIA",

@@ -5,15 +5,17 @@ import {
   mergeProfileWithAuthDefaults,
 } from "@/lib/userProfileDefaults";
 import { normalizeAuthConfirmNext } from "@/lib/authConfirmRedirect";
+import { getTrustedRequestOrigin } from "@/lib/appUrl";
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const appOrigin = getTrustedRequestOrigin(requestUrl.origin);
   const code = requestUrl.searchParams.get("code");
-  const next = normalizeAuthConfirmNext(requestUrl.searchParams.get("next"), requestUrl.origin);
-  const redirectTo = new URL(next, requestUrl.origin);
+  const next = normalizeAuthConfirmNext(requestUrl.searchParams.get("next"), appOrigin);
+  const redirectTo = new URL(next, appOrigin);
 
   if (!code) {
-    const loginUrl = new URL("/auth/login", requestUrl.origin);
+    const loginUrl = new URL("/auth/login", appOrigin);
     loginUrl.searchParams.set("error", "Google sign-in did not return an auth code.");
     return NextResponse.redirect(loginUrl);
   }
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
   const { error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error) {
-    const loginUrl = new URL("/auth/login", requestUrl.origin);
+    const loginUrl = new URL("/auth/login", appOrigin);
     loginUrl.searchParams.set(
       "error",
       error.message || "Google sign-in could not be completed.",

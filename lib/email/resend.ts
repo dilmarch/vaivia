@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Resend } from "resend";
+import { getAppUrl } from "@/lib/appUrl";
 
 let resendClient: Resend | null = null;
 
@@ -19,12 +20,12 @@ export function getResendClient() {
 }
 
 export function getEmailSenderConfig() {
-    const from =
-        process.env.RESEND_FROM_EMAIL ||
-        "VAIVIA <notifications@updates.thetravellinglinguist.com>";
+    const from = process.env.RESEND_FROM_EMAIL?.trim();
+    if (!from) {
+        throw new Error("RESEND_FROM_EMAIL is not configured.");
+    }
     const replyTo = process.env.RESEND_REPLY_TO_EMAIL || undefined;
-    const appUrl =
-        process.env.NEXT_PUBLIC_APP_URL || "https://app.thetravellinglinguist.com";
+    const appUrl = getAppUrl();
 
     return {
         from,

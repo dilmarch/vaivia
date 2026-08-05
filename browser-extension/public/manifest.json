@@ -13,6 +13,7 @@
     "storage"
   ],
   "host_permissions": [
+    "https://vaivia.app/*",
     "https://app.thetravellinglinguist.com/*"
   ],
   "optional_host_permissions": [

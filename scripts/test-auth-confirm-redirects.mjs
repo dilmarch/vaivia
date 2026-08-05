@@ -28,7 +28,8 @@ const {
     normalizeAuthConfirmNext,
 } = cjsModule.exports;
 
-const origin = "https://app.thetravellinglinguist.com";
+const origin = "https://vaivia.app";
+const legacyOrigin = "https://app.thetravellinglinguist.com";
 
 assert.equal(normalizeAuthConfirmNext("/", origin), "/");
 assert.equal(normalizeAuthConfirmNext("/settings", origin), "/settings");
@@ -36,7 +37,7 @@ assert.equal(
     normalizeAuthConfirmNext(
         new URL(
             `${origin}/auth/confirm?next=${encodeURIComponent(
-                "https://app.thetravellinglinguist.com/settings?tab=profile#details"
+                "https://vaivia.app/settings?tab=profile#details"
             )}`
         ).searchParams.get("next"),
         origin
@@ -52,6 +53,10 @@ assert.equal(
     "/"
 );
 assert.equal(normalizeAuthConfirmNext("//evil.example/settings", origin), "/");
+assert.equal(
+    normalizeAuthConfirmNext(`${legacyOrigin}/settings`, legacyOrigin),
+    "/settings"
+);
 
 const confirmedUser = {
     id: "user_123",

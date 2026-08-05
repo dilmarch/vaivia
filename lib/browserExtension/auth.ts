@@ -2,6 +2,7 @@ import "server-only";
 
 import { createHash, randomBytes } from "node:crypto";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { isAllowedServerAppOrigin } from "@/lib/appUrl";
 
 const EXTENSION_ID_PATTERN = /^[a-p]{32}$/;
 const TOKEN_PREFIX = "vaivia_ext_";
@@ -199,14 +200,22 @@ export function getExtensionCorsHeaders(request: Request, expectedExtensionId?: 
 
 export function isSameOriginRequest(request: Request) {
     const requestUrl = new URL(request.url);
+    if (!isAllowedServerAppOrigin(requestUrl.origin)) return false;
+
     const origin = request.headers.get("origin");
     const referer = request.headers.get("referer");
 
-    if (origin) return origin === requestUrl.origin;
+    if (origin) {
+        return origin === requestUrl.origin && isAllowedServerAppOrigin(origin);
+    }
     if (!referer) return false;
 
     try {
-        return new URL(referer).origin === requestUrl.origin;
+        const refererOrigin = new URL(referer).origin;
+        return (
+            refererOrigin === requestUrl.origin &&
+            isAllowedServerAppOrigin(refererOrigin)
+        );
     } catch {
         return false;
     }

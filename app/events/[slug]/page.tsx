@@ -6,6 +6,7 @@ import EventRegistrationPanel from "@/components/events/EventRegistrationPanel";
 import { getPublicEventBySlug } from "@/lib/events/data";
 import { eventLocationLabel, formatEventDateTime } from "@/lib/events/format";
 import { createClient } from "@/lib/supabase/server";
+import { getAppUrl } from "@/lib/appUrl";
 
 export async function generateMetadata({
   params,
@@ -19,12 +20,16 @@ export async function generateMetadata({
       title: "Event not found – VAIVIA",
       robots: { index: false, follow: false },
     };
+  const eventUrl = `${getAppUrl()}/events/${encodeURIComponent(slug)}`;
+
   return {
     title: `${result.event.title} – VAIVIA Events`,
     description: result.event.short_summary || undefined,
+    alternates: { canonical: eventUrl },
     openGraph: {
       title: result.event.title,
       description: result.event.short_summary || undefined,
+      url: eventUrl,
       images: result.event.coverImageUrl
         ? [
             {

@@ -106,9 +106,9 @@ development values may live in `.env.local`, which must remain ignored by Git.
 
 ```env
 RESEND_API_KEY=
-RESEND_FROM_EMAIL=VAIVIA <notifications@updates.thetravellinglinguist.com>
+RESEND_FROM_EMAIL=VAIVIA <notifications@updates.vaivia.app>
 RESEND_REPLY_TO_EMAIL=
-NEXT_PUBLIC_APP_URL=https://app.thetravellinglinguist.com
+NEXT_PUBLIC_APP_URL=https://vaivia.app
 ```
 
 Never place the Resend API key in source code, commit it, prefix it with
@@ -128,6 +128,10 @@ Legacy `trips+<48-character-token>@<domain>` addresses remain valid. A username
 change creates a new primary address while the old address stays active; rotation
 also keeps the previous address active unless the user explicitly confirms its
 deactivation. Alias records are never reassigned to another user.
+
+The inbound domain is independent from the web application origin. Verify
+`inbound.vaivia.app` in Resend and publish its required DNS records before changing
+`EMAIL_IMPORT_DOMAIN`; keep the previous receiving domain active during the transition.
 
 ## VAIVIA assistant
 
@@ -170,6 +174,32 @@ VAIVIA_BROWSER_EXTENSION_IDS=your_32_character_chrome_extension_id
 
 Multiple IDs, such as development and production packages, may be supplied as
 a comma-separated list. Keep this variable server-only.
+
+Build the production extension with `VITE_VAIVIA_APP_URL=https://vaivia.app`.
+Its manifest temporarily permits both VAIVIA production origins during the
+domain migration.
+
+## Production domain configuration
+
+`NEXT_PUBLIC_APP_URL` is VAIVIA's canonical application-origin setting. Set it
+to `https://vaivia.app` for Vercel Production. Do not override it for Preview:
+preview deployments use their deployment-specific `VERCEL_URL`, while local
+development continues to use `http://localhost:3000` when the variable is absent.
+
+During the migration, keep both `https://vaivia.app/**` and
+`https://app.thetravellinglinguist.com/**` in Supabase Auth's redirect allowlist,
+but set the Supabase Site URL to `https://vaivia.app`. Keep Vercel's old domain
+attached until the redirect window closes; the application deliberately does not
+force that redirect. The Supabase API URL and provider callback endpoint remain
+on the Supabase project domain.
+
+Before switching traffic, also update the public application URL or redirect
+allowlist in Stripe, Resend, Google Cloud/Wallet, passkey relying-party settings,
+and any webhook consumers that store the old hostname. Register
+`https://vaivia.app/api/events/stripe/webhook` in Stripe before retiring the old
+webhook endpoint. Build and publish a new Chrome extension package with
+`VITE_VAIVIA_APP_URL=https://vaivia.app`; retain the legacy host permission for
+the migration window.
 
 ## Feedback and issues
 

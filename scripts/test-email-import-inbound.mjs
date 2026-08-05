@@ -27,7 +27,7 @@ const {
 } = cjsModule.exports;
 
 const token = "a".repeat(48);
-const domain = "inbound.thetravellinglinguist.com";
+const domain = "inbound.example.com";
 
 assert.equal(
     normalizeEmailAddress("Dill <Trips+ABC@example.com>"),
@@ -35,7 +35,7 @@ assert.equal(
 );
 
 const validMatch = extractInboundRecipientToken(
-    ` trips+${token}@INBOUND.THETRAVELLINGLINGUIST.COM `,
+    ` trips+${token}@INBOUND.EXAMPLE.COM `,
     domain
 );
 assert.equal(validMatch?.address, `trips+${token}@${domain}`);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { getBrowserAbsoluteAppUrl } from "@/lib/appOrigins";
 
 export type SocialAuthProvider = "google" | "apple" | "azure" | "facebook";
 
@@ -83,9 +84,10 @@ export function SocialLoginButton({
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
-          redirectTo
-        )}`,
+        redirectTo: getBrowserAbsoluteAppUrl(
+          `/auth/callback?next=${encodeURIComponent(redirectTo)}`,
+          window.location.origin
+        ),
       },
     });
 

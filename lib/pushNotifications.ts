@@ -33,11 +33,10 @@ type PushSubscriptionRow = {
 function configureWebPush() {
     const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
     const privateKey = process.env.VAPID_PRIVATE_KEY;
-    const subject =
-        process.env.VAPID_SUBJECT || "mailto:support@thetravellinglinguist.com";
+    const subject = process.env.VAPID_SUBJECT?.trim();
 
-    if (!publicKey || !privateKey) {
-        throw new Error("VAPID keys are not configured.");
+    if (!publicKey || !privateKey || !subject) {
+        throw new Error("VAPID keys and subject are not configured.");
     }
 
     webpush.setVapidDetails(subject, publicKey, privateKey);

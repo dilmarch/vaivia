@@ -24,6 +24,7 @@ import {
   isUsernameConflictError,
   normalizeUsername,
 } from "@/lib/usernames";
+import { getBrowserAbsoluteAppUrl } from "@/lib/appOrigins";
 
 type SignupStep = "account" | "photo" | "confirm" | "invites" | "start";
 
@@ -295,8 +296,11 @@ export function SignUpForm({
         password,
         options: {
           emailRedirectTo: safeNext
-            ? `${window.location.origin}/auth/confirm?next=${encodeURIComponent(safeNext)}`
-            : `${window.location.origin}/`,
+            ? getBrowserAbsoluteAppUrl(
+                `/auth/confirm?next=${encodeURIComponent(safeNext)}`,
+                window.location.origin
+              )
+            : getBrowserAbsoluteAppUrl("/", window.location.origin),
           data: {
             first_name: cleanFirstName,
             last_name: cleanLastName,

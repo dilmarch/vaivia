@@ -11,6 +11,7 @@ import {
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { type NextRequest } from "next/server";
+import { getTrustedRequestOrigin } from "@/lib/appUrl";
 
 function redirectAuthError(message: string): never {
   redirect(`/auth/error?error=${encodeURIComponent(message)}`);
@@ -18,10 +19,11 @@ function redirectAuthError(message: string): never {
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
+  const appOrigin = getTrustedRequestOrigin(requestUrl.origin);
   const { searchParams } = requestUrl;
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const next = normalizeAuthConfirmNext(searchParams.get("next"), requestUrl.origin);
+  const next = normalizeAuthConfirmNext(searchParams.get("next"), appOrigin);
   const supabase = await createClient();
 
   if (token_hash && type) {
