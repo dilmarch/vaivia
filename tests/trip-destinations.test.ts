@@ -13,6 +13,8 @@ describe("trip destination country metadata", () => {
                     placeId: "google-place-toronto",
                     countryCode: "ca",
                     countryName: "Canada",
+                    latitude: 43.6532,
+                    longitude: -79.3832,
                 },
                 {
                     label: "Lisbon",
@@ -29,12 +31,16 @@ describe("trip destination country metadata", () => {
                 placeId: "google-place-toronto",
                 countryCode: "CA",
                 countryName: "Canada",
+                latitude: 43.6532,
+                longitude: -79.3832,
             },
             {
                 label: "Lisbon",
                 placeId: "google-place-lisbon",
                 countryCode: "PT",
                 countryName: "Portugal",
+                latitude: null,
+                longitude: null,
             },
         ]);
     });
@@ -49,12 +55,16 @@ describe("trip destination country metadata", () => {
                 placeId: null,
                 countryCode: null,
                 countryName: null,
+                latitude: null,
+                longitude: null,
             },
             {
                 label: "Lisbon",
                 placeId: null,
                 countryCode: null,
                 countryName: null,
+                latitude: null,
+                longitude: null,
             },
         ]);
     });

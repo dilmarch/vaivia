@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import type { UserPreferences, UserProfile } from "@/components/AccountMenu";
@@ -53,8 +54,18 @@ export function AppNavFallback() {
     return (
         <>
             <aside className="fixed left-0 top-0 z-50 hidden h-screen w-24 flex-col border-r border-white/10 bg-slate-950/95 px-4 py-6 shadow-2xl shadow-black/40 backdrop-blur-xl md:flex">
-                <Link href="/" className="mb-12 text-center text-lg font-black tracking-[0.18em] text-lime-300">
-                    VAIVIA
+                <Link
+                    href="/"
+                    className="mb-12 flex justify-center"
+                    aria-label="VAIVIA home"
+                >
+                    <Image
+                        src="/icons/vaivia-favicon.png"
+                        alt=""
+                        width={44}
+                        height={44}
+                        className="h-11 w-11 rounded-[0.9rem] object-cover"
+                    />
                 </Link>
                 <div className="space-y-3">
                     {Array.from({ length: 7 }, (_, index) => (
@@ -288,7 +299,9 @@ export default async function AppNav() {
                     <GlobalQuickAdd trips={upcomingTrips} />
                     <MobilePushPrompt
                         vapidPublicKey={
-                            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null
+                            process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY ||
+                            process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
+                            null
                         }
                     />
                 </>

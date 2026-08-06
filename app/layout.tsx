@@ -40,10 +40,16 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: "/vaivia-icon.svg", type: "image/svg+xml" },
-      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/favicon.ico", sizes: "64x64", type: "image/x-icon" },
+      { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
+      {
+        url: "/icons/vaivia-favicon.png",
+        sizes: "256x256",
+        type: "image/png",
+      },
     ],
+    shortcut: "/favicon.ico",
     apple: "/icons/apple-touch-icon.png",
   },
 };

@@ -4,6 +4,7 @@ export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
 export type NotificationPreference = {
     notificationType: string;
+    masterEnabled: boolean;
     inAppEnabled: boolean;
     pushEnabled: boolean;
     emailEnabled: boolean;
@@ -55,6 +56,12 @@ export const NOTIFICATION_TYPE_OPTIONS = [
         type: "flight_check_in_reminder",
         label: "Flight check-in reminders",
         description: "24 hours before a flight in your itinerary departs.",
+    },
+    {
+        type: "weather_alert",
+        label: "Weather alerts",
+        description:
+            "Official alerts and conservative travel-impact signals for active trips.",
     },
     {
         type: "trip_slug_changed",
@@ -133,6 +140,8 @@ export const NOTIFICATION_TYPE_OPTIONS = [
     },
 ] as const;
 
+export const WEATHER_NOTIFICATION_TYPE = "weather_alert";
+
 const REQUIRED_NOTIFICATION_TYPE_VALUES = ["terms_updated"] as const;
 const DEFAULT_EMAIL_NOTIFICATION_TYPE_VALUES = [
     "trip_invite_received",
@@ -155,6 +164,11 @@ export const CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS =
         (option) => !REQUIRED_NOTIFICATION_TYPE_SET.has(option.type)
     );
 
+export const GENERAL_NOTIFICATION_TYPE_OPTIONS =
+    CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
+        (option) => option.type !== WEATHER_NOTIFICATION_TYPE
+    );
+
 export const NOTIFICATION_TYPES = NOTIFICATION_TYPE_OPTIONS.map(
     (option) => option.type
 );
@@ -175,11 +189,14 @@ export function isKnownNotificationType(value: unknown): value is string {
 export function getDefaultNotificationPreference(
     notificationType: string
 ): NotificationPreference {
+    const isWeatherAlert = notificationType === WEATHER_NOTIFICATION_TYPE;
     return {
         notificationType,
+        masterEnabled: true,
         inAppEnabled: true,
-        pushEnabled: true,
+        pushEnabled: isWeatherAlert ? false : true,
         emailEnabled:
+            !isWeatherAlert &&
             DEFAULT_EMAIL_NOTIFICATION_TYPE_SET.has(notificationType),
     };
 }
@@ -190,6 +207,7 @@ export function mergeNotificationPreferences(
         in_app_enabled?: boolean | null;
         push_enabled?: boolean | null;
         email_enabled?: boolean | null;
+        master_enabled?: boolean | null;
     }>
 ) {
     const rowsByType = new Map(
@@ -204,6 +222,10 @@ export function mergeNotificationPreferences(
 
         return {
             notificationType,
+            masterEnabled:
+                typeof row?.master_enabled === "boolean"
+                    ? row.master_enabled
+                    : fallback.masterEnabled,
             inAppEnabled:
                 typeof row?.in_app_enabled === "boolean"
                     ? row.in_app_enabled

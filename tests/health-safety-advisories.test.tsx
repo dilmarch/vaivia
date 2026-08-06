@@ -52,6 +52,8 @@ function destination(
         placeId: `place-${sortOrder}`,
         countryCode,
         countryName: null,
+        latitude: null,
+        longitude: null,
         sortOrder,
     };
 }

@@ -50,6 +50,7 @@ import TripCountdown, {
 } from "@/components/TripCountdown";
 import MobileTripInviteLauncher from "@/components/MobileTripInviteLauncher";
 import MobileExchangeRatesWidget from "@/components/MobileExchangeRatesWidget";
+import TripWeatherCard from "@/components/weather/TripWeatherCard";
 import TripMembersPanel, {
     type TripHeaderFamilyMember,
     type TripHeaderInvitation,
@@ -6011,6 +6012,8 @@ async function TripDetailContent({
                                 updateCountdownTargetAction={updateTripCountdownTarget}
                             />
                         </div>
+
+                        <TripWeatherCard tripId={trip.id} />
 
                         <div className="grid grid-cols-2 gap-3">
                             <MobileOverviewTile

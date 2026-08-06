@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
     NOTIFICATION_TYPES,
+    WEATHER_NOTIFICATION_TYPE,
     getDefaultNotificationPreference,
     isKnownNotificationType,
     isRequiredNotificationType,
@@ -32,8 +33,31 @@ export async function saveNotificationPreferences(formData: FormData) {
     const inAppTypes = new Set(formData.getAll("in_app").map(String));
     const pushTypes = new Set(formData.getAll("push").map(String));
     const emailTypes = new Set(formData.getAll("email").map(String));
+    const weatherMasterEnabled = formData.get("weather_master") === "on";
+    const weatherInAppEnabled = formData.get("weather_in_app") === "on";
+    const weatherEmailEnabled = formData.get("weather_email") === "on";
+    const weatherPushRequested = formData.get("weather_push") === "on";
     const now = new Date().toISOString();
     const database = supabase as NotificationPreferencesClient;
+    let weatherPushEnabled = false;
+
+    if (weatherPushRequested) {
+        const { count, error: subscriptionError } = await supabase
+            .from("user_push_subscriptions")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .is("revoked_at", null);
+        if (subscriptionError) {
+            return { ok: false, error: "Could not verify your push devices." };
+        }
+        if (!count) {
+            return {
+                ok: false,
+                error: "Enable push on at least one device before turning on weather push alerts.",
+            };
+        }
+        weatherPushEnabled = true;
+    }
 
     const rows = NOTIFICATION_TYPES.map((notificationType) => {
         const requiredPreference = getDefaultNotificationPreference(
@@ -43,15 +67,25 @@ export async function saveNotificationPreferences(formData: FormData) {
         return {
             user_id: user.id,
             notification_type: notificationType,
+            master_enabled:
+                notificationType === WEATHER_NOTIFICATION_TYPE
+                    ? weatherMasterEnabled
+                    : true,
             in_app_enabled: isRequiredNotificationType(notificationType)
                 ? requiredPreference.inAppEnabled
-                : inAppTypes.has(notificationType),
+                : notificationType === WEATHER_NOTIFICATION_TYPE
+                  ? weatherInAppEnabled
+                  : inAppTypes.has(notificationType),
             push_enabled: isRequiredNotificationType(notificationType)
                 ? requiredPreference.pushEnabled
-                : pushTypes.has(notificationType),
+                : notificationType === WEATHER_NOTIFICATION_TYPE
+                  ? weatherPushEnabled
+                  : pushTypes.has(notificationType),
             email_enabled: isRequiredNotificationType(notificationType)
                 ? requiredPreference.emailEnabled
-                : emailTypes.has(notificationType),
+                : notificationType === WEATHER_NOTIFICATION_TYPE
+                  ? weatherEmailEnabled
+                  : emailTypes.has(notificationType),
             updated_at: now,
         };
     });
@@ -129,7 +163,9 @@ export async function savePushSubscription(
         const preferenceRows = NOTIFICATION_TYPES.map((notificationType) => ({
             user_id: user.id,
             notification_type: notificationType,
-            push_enabled: true,
+            // Device enrollment enables existing general push categories but
+            // never silently opts the user into weather push.
+            push_enabled: notificationType !== WEATHER_NOTIFICATION_TYPE,
             updated_at: now,
         }));
         const { error: preferenceError } = await database
@@ -184,6 +220,29 @@ export async function revokePushSubscription(endpoint?: string | null) {
         return { ok: false, error: "Could not turn off push on this device." };
     }
 
+    return { ok: true };
+}
+
+export async function revokePushSubscriptionById(subscriptionId: string) {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "Unauthorized" };
+
+    const id = subscriptionId.trim();
+    if (!id) return { ok: false, error: "Missing device identifier." };
+    const { error } = await supabase
+        .from("user_push_subscriptions")
+        .update({
+            revoked_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq("user_id", user.id);
+    if (error) return { ok: false, error: "Could not remove this push device." };
+
+    revalidatePath("/settings");
     return { ok: true };
 }
 

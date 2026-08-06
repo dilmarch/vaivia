@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -62,10 +63,16 @@ export default function PublicHome() {
         <header className="flex items-center justify-between gap-4">
           <Link
             href="/"
-            className="text-xl font-black tracking-[0.2em] text-lime-300 sm:text-2xl"
+            className="inline-flex min-h-11 items-center rounded-xl focus:outline-none focus:ring-2 focus:ring-lime-300/60"
             aria-label="VAIVIA home"
           >
-            VAIVIA
+            <Image
+              src="/icons/vaivia-header-logo.png"
+              alt=""
+              width={190}
+              height={40}
+              className="h-8 w-auto object-contain sm:h-10"
+            />
           </Link>
           <nav className="flex items-center gap-2 sm:gap-3" aria-label="Account">
             <Link

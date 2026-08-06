@@ -1821,8 +1821,11 @@ export type Database = {
           notification_id: string
           notification_type: string
           payload: Json
+          provider: string
           provider_message_id: string | null
           recipient_email: string
+          destination_identifier_hash: string | null
+          idempotency_key: string
           sent_at: string | null
           status: string
           subject: string
@@ -1841,8 +1844,11 @@ export type Database = {
           notification_id: string
           notification_type: string
           payload?: Json
+          provider?: string
           provider_message_id?: string | null
           recipient_email: string
+          destination_identifier_hash?: string | null
+          idempotency_key: string
           sent_at?: string | null
           status?: string
           subject: string
@@ -1861,8 +1867,11 @@ export type Database = {
           notification_id?: string
           notification_type?: string
           payload?: Json
+          provider?: string
           provider_message_id?: string | null
           recipient_email?: string
+          destination_identifier_hash?: string | null
+          idempotency_key?: string
           sent_at?: string | null
           status?: string
           subject?: string
@@ -1895,6 +1904,8 @@ export type Database = {
           notification_id: string
           notification_type: string
           payload: Json
+          provider: string
+          idempotency_key: string
           processed_at: string | null
           sent_at: string | null
           status: string
@@ -1916,6 +1927,8 @@ export type Database = {
           notification_id: string
           notification_type: string
           payload?: Json
+          provider?: string
+          idempotency_key: string
           processed_at?: string | null
           sent_at?: string | null
           status?: string
@@ -1937,6 +1950,8 @@ export type Database = {
           notification_id?: string
           notification_type?: string
           payload?: Json
+          provider?: string
+          idempotency_key?: string
           processed_at?: string | null
           sent_at?: string | null
           status?: string
@@ -1954,16 +1969,104 @@ export type Database = {
           },
         ]
       }
+      notification_push_deliveries: {
+        Row: {
+          attempts: number
+          created_at: string
+          destination_identifier_hash: string
+          error_code: string | null
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          last_attempt_at: string | null
+          next_attempt_at: string | null
+          notification_id: string
+          provider: string
+          provider_message_id: string | null
+          push_outbox_id: string
+          sent_at: string | null
+          status: string
+          subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          destination_identifier_hash: string
+          error_code?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          notification_id: string
+          provider?: string
+          provider_message_id?: string | null
+          push_outbox_id: string
+          sent_at?: string | null
+          status?: string
+          subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          destination_identifier_hash?: string
+          error_code?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          last_attempt_at?: string | null
+          next_attempt_at?: string | null
+          notification_id?: string
+          provider?: string
+          provider_message_id?: string | null
+          push_outbox_id?: string
+          sent_at?: string | null
+          status?: string
+          subscription_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_push_deliveries_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_push_deliveries_push_outbox_id_fkey"
+            columns: ["push_outbox_id"]
+            isOneToOne: false
+            referencedRelation: "notification_push_outbox"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_push_deliveries_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "user_push_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           actor_user_id: string | null
           archived_at: string | null
           body: string | null
           created_at: string | null
+          deduplication_key: string | null
+          deep_link: string | null
           id: string
           invitation_id: string | null
           metadata: Json
           read_at: string | null
+          severity: string | null
           title: string
           trip_id: string | null
           type: string
@@ -1974,10 +2077,13 @@ export type Database = {
           archived_at?: string | null
           body?: string | null
           created_at?: string | null
+          deduplication_key?: string | null
+          deep_link?: string | null
           id?: string
           invitation_id?: string | null
           metadata?: Json
           read_at?: string | null
+          severity?: string | null
           title: string
           trip_id?: string | null
           type: string
@@ -1988,10 +2094,13 @@ export type Database = {
           archived_at?: string | null
           body?: string | null
           created_at?: string | null
+          deduplication_key?: string | null
+          deep_link?: string | null
           id?: string
           invitation_id?: string | null
           metadata?: Json
           read_at?: string | null
+          severity?: string | null
           title?: string
           trip_id?: string | null
           type?: string
@@ -2795,6 +2904,8 @@ export type Database = {
           google_place_id: string | null
           id: string
           label: string
+          latitude: number | null
+          longitude: number | null
           sort_order: number
           trip_id: string
           updated_at: string
@@ -2807,6 +2918,8 @@ export type Database = {
           google_place_id?: string | null
           id?: string
           label: string
+          latitude?: number | null
+          longitude?: number | null
           sort_order?: number
           trip_id: string
           updated_at?: string
@@ -2819,6 +2932,8 @@ export type Database = {
           google_place_id?: string | null
           id?: string
           label?: string
+          latitude?: number | null
+          longitude?: number | null
           sort_order?: number
           trip_id?: string
           updated_at?: string
@@ -4390,6 +4505,7 @@ export type Database = {
           created_at: string
           email_enabled: boolean
           in_app_enabled: boolean
+          master_enabled: boolean
           notification_type: string
           push_enabled: boolean
           updated_at: string
@@ -4399,6 +4515,7 @@ export type Database = {
           created_at?: string
           email_enabled?: boolean
           in_app_enabled?: boolean
+          master_enabled?: boolean
           notification_type: string
           push_enabled?: boolean
           updated_at?: string
@@ -4408,6 +4525,7 @@ export type Database = {
           created_at?: string
           email_enabled?: boolean
           in_app_enabled?: boolean
+          master_enabled?: boolean
           notification_type?: string
           push_enabled?: boolean
           updated_at?: string
@@ -4975,6 +5093,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      weather_alert_job_runs: {
+        Row: {
+          completed_at: string | null
+          errors: number
+          locations_checked: number
+          notifications_created: number
+          run_key: string
+          started_at: string
+          status: string
+          trips_considered: number
+          trips_processed: number
+        }
+        Insert: {
+          completed_at?: string | null
+          errors?: number
+          locations_checked?: number
+          notifications_created?: number
+          run_key: string
+          started_at?: string
+          status?: string
+          trips_considered?: number
+          trips_processed?: number
+        }
+        Update: {
+          completed_at?: string | null
+          errors?: number
+          locations_checked?: number
+          notifications_created?: number
+          run_key?: string
+          started_at?: string
+          status?: string
+          trips_considered?: number
+          trips_processed?: number
+        }
+        Relationships: []
       }
     }
     Views: {

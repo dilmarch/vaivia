@@ -1,4 +1,4 @@
-const VAIVIA_STATIC_CACHE = "vaivia-static-v1";
+const VAIVIA_STATIC_CACHE = "vaivia-static-v2";
 const VAIVIA_ICON_ASSETS = [
   "/vaivia-icon.svg",
   "/icons/icon-192.png",
@@ -96,21 +96,52 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl = new URL(
-    event.notification.data?.url || "/notifications",
-    self.location.origin
-  ).toString();
+  let targetUrl = new URL("/notifications", self.location.origin);
+  try {
+    const requestedUrl = new URL(
+      event.notification.data?.url || "/notifications",
+      self.location.origin
+    );
+    if (requestedUrl.origin === self.location.origin) targetUrl = requestedUrl;
+  } catch {
+    // Keep the safe notifications fallback.
+  }
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ("focus" in client && client.url === targetUrl) {
+        if ("focus" in client && client.url === targetUrl.toString()) {
           return client.focus();
         }
       }
 
+      for (const client of clients) {
+        try {
+          if (
+            new URL(client.url).origin === self.location.origin &&
+            "navigate" in client &&
+            "focus" in client
+          ) {
+            return client
+              .navigate(targetUrl.toString())
+              .then((navigatedClient) =>
+                navigatedClient && "focus" in navigatedClient
+                  ? navigatedClient.focus()
+                  : client.focus()
+              )
+              .catch(() =>
+                self.clients.openWindow
+                  ? self.clients.openWindow(targetUrl.toString())
+                  : undefined
+              );
+          }
+        } catch {
+          // Ignore malformed client URLs and continue to open a safe new window.
+        }
+      }
+
       if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
+        return self.clients.openWindow(targetUrl.toString());
       }
 
       return undefined;

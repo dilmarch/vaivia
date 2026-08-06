@@ -113,9 +113,13 @@ function upsertConversation(
 export default function TripAssistant({
     tripId,
     tripTitle,
+    initialPrompt,
+    initialContextLabel,
 }: {
     tripId: string;
     tripTitle: string;
+    initialPrompt?: string;
+    initialContextLabel?: string;
 }) {
     const endpoint = `/api/trips/${encodeURIComponent(tripId)}/assistant`;
     const [conversations, setConversations] = useState<AssistantConversation[]>([]);
@@ -145,6 +149,7 @@ export default function TripAssistant({
     const shouldAutoScrollRef = useRef(true);
     const drawerWasOpenRef = useRef(false);
     const restoreDrawerFocusRef = useRef(true);
+    const appliedInitialPromptRef = useRef("");
 
     const loadAssistant = useCallback(
         async (conversationId?: string | null) => {
@@ -213,6 +218,20 @@ export default function TripAssistant({
         void loadAssistant();
         return () => loadAbortRef.current?.abort();
     }, [tripId, loadAssistant]);
+
+    useEffect(() => {
+        if (
+            isLoading ||
+            messages.length > 0 ||
+            !initialPrompt ||
+            appliedInitialPromptRef.current === initialPrompt
+        ) {
+            return;
+        }
+        appliedInitialPromptRef.current = initialPrompt;
+        setInput(initialPrompt);
+        requestAnimationFrame(() => composerRef.current?.focus());
+    }, [initialPrompt, isLoading, messages.length]);
 
     useEffect(() => {
         if (shouldAutoScrollRef.current) {
@@ -567,6 +586,12 @@ export default function TripAssistant({
                                         searches.
                                     </p>
                                 </div>
+                                {initialContextLabel && initialPrompt ? (
+                                    <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-sky-300/20 bg-sky-300/[0.07] px-4 py-3 text-center text-xs font-bold text-sky-100">
+                                        {initialContextLabel} is ready in the composer.
+                                        Send it when you want VAIVIA to review your plans.
+                                    </div>
+                                ) : null}
                                 <div className="mt-7 grid gap-3 sm:grid-cols-2">
                                     {ASSISTANT_STARTER_PROMPTS.map((prompt) => (
                                         <button

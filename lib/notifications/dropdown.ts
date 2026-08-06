@@ -14,6 +14,7 @@ const ACTION_REQUIRED_NOTIFICATION_TYPES = new Set([
     "travel_email_ready",
     "travel_email_needs_review",
     "travel_email_failed",
+    "weather_alert",
 ]);
 
 const ACTION_REQUIRED_UNTIL_READ_TYPES = new Set([
@@ -45,6 +46,7 @@ export type DropdownNotification = Omit<NotificationRow, "metadata"> & {
 
 type NotificationPreferenceRow = {
     notification_type?: string | null;
+    master_enabled?: boolean | null;
     in_app_enabled?: boolean | null;
     push_enabled?: boolean | null;
     email_enabled?: boolean | null;
@@ -97,7 +99,10 @@ export function filterInAppNotifications(
     notifications: DropdownNotification[],
     preferenceRows: NotificationPreferenceRow[]
 ) {
-    const preferencesByType = new Map<string, { inAppEnabled: boolean }>(
+    const preferencesByType = new Map<
+        string,
+        { masterEnabled: boolean; inAppEnabled: boolean }
+    >(
         mergeNotificationPreferences(preferenceRows).map((preference) => [
             preference.notificationType,
             preference,
@@ -106,7 +111,10 @@ export function filterInAppNotifications(
 
     return notifications.filter((notification) => {
         if (!notification.type) return true;
-        return preferencesByType.get(notification.type)?.inAppEnabled ?? true;
+        const preference = preferencesByType.get(notification.type);
+        return preference
+            ? preference.masterEnabled && preference.inAppEnabled
+            : true;
     });
 }
 
@@ -247,12 +255,14 @@ export async function loadActiveDropdownNotifications(
             .eq("user_id", userId)
             .is("archived_at", null)
             .or(
-                "read_at.is.null,type.in.(trip_invite_received,friend_request_received,passport_stamp_share_received,profile_onboarding_prompt,theme_exploration_prompt,travel_email_ready,travel_email_needs_review,travel_email_failed)"
+                "read_at.is.null,type.in.(trip_invite_received,friend_request_received,passport_stamp_share_received,profile_onboarding_prompt,theme_exploration_prompt,travel_email_ready,travel_email_needs_review,travel_email_failed,weather_alert)"
             )
             .order("created_at", { ascending: false }),
         supabase
             .from("user_notification_preferences")
-            .select("notification_type,in_app_enabled,push_enabled,email_enabled")
+            .select(
+                "notification_type,master_enabled,in_app_enabled,push_enabled,email_enabled"
+            )
             .eq("user_id", userId),
     ]);
 

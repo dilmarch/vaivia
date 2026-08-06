@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import NotificationActionButton from "@/components/NotificationActionButton";
+import WeatherAlertNotificationDetails from "@/components/weather/WeatherAlertNotificationDetails";
 import {
     DROPDOWN_NOTIFICATION_SELECT,
     filterInAppNotifications,
@@ -150,9 +151,10 @@ export default async function NotificationsPage() {
             .select(DROPDOWN_NOTIFICATION_SELECT)
             .eq("user_id", user.id)
             .order("created_at", { ascending: false }),
-        (supabase.from as any)("user_notification_preferences")
+        supabase
+            .from("user_notification_preferences")
             .select(
-                "notification_type,in_app_enabled,push_enabled,email_enabled"
+                "notification_type,master_enabled,in_app_enabled,push_enabled,email_enabled"
             )
             .eq("user_id", user.id),
     ]);
@@ -171,6 +173,7 @@ export default async function NotificationsPage() {
         mergeNotificationPreferences(
             (notificationPreferenceRows || []) as Array<{
                 notification_type?: string | null;
+                master_enabled?: boolean | null;
                 in_app_enabled?: boolean | null;
                 push_enabled?: boolean | null;
                 email_enabled?: boolean | null;
@@ -181,6 +184,7 @@ export default async function NotificationsPage() {
         ((data || []) as DropdownNotification[]).map(normalizeNotification),
         (notificationPreferenceRows || []) as Array<{
             notification_type?: string | null;
+            master_enabled?: boolean | null;
             in_app_enabled?: boolean | null;
             push_enabled?: boolean | null;
             email_enabled?: boolean | null;
@@ -274,6 +278,14 @@ export default async function NotificationsPage() {
                                                         {notification.body}
                                                     </p>
                                                 ) : null}
+                                                {notification.type ===
+                                                "weather_alert" ? (
+                                                    <WeatherAlertNotificationDetails
+                                                        metadata={
+                                                            notification.metadata
+                                                        }
+                                                    />
+                                                ) : null}
                                                 <p className="mt-2 text-xs font-bold text-slate-500">
                                                     {formatNotificationDate(
                                                         notification.created_at
@@ -340,7 +352,10 @@ export default async function NotificationsPage() {
                                                             className="h-4 w-4"
                                                             aria-hidden="true"
                                                         />
-                                                        Archive
+                                                        {notification.type ===
+                                                        "weather_alert"
+                                                            ? "Dismiss"
+                                                            : "Archive"}
                                                     </button>
                                                 </form>
                                             )}

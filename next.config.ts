@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
         hostname: "*.supabase.co",
         pathname: "/storage/v1/object/sign/event-covers/**",
       },
+      {
+        protocol: "https",
+        hostname: "maps.gstatic.com",
+        pathname: "/weather/**",
+      },
     ],
   },
 };

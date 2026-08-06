@@ -10,6 +10,8 @@ export type TripDestinationInput = {
     placeId: string | null;
     countryCode: string | null;
     countryName: string | null;
+    latitude: number | null;
+    longitude: number | null;
 };
 
 export type TripDestinationRecord = TripDestinationInput & {
@@ -26,6 +28,19 @@ function normalizeCountryCode(value: unknown) {
     return /^[A-Z]{2}$/.test(countryCode) ? countryCode : null;
 }
 
+function normalizeCoordinate(
+    value: unknown,
+    minimum: number,
+    maximum: number
+) {
+    return typeof value === "number" &&
+        Number.isFinite(value) &&
+        value >= minimum &&
+        value <= maximum
+        ? value
+        : null;
+}
+
 function parseLegacyDestinationLabels(
     value: FormDataEntryValue | string | null | undefined
 ) {
@@ -38,6 +53,8 @@ function parseLegacyDestinationLabels(
             placeId: null,
             countryCode: null,
             countryName: null,
+            latitude: null,
+            longitude: null,
         }));
 }
 
@@ -61,12 +78,17 @@ export function parseTripDestinationsFormData(formData: FormData) {
             const record = candidate as Record<string, unknown>;
             const label = cleanText(record.label, 200);
             if (!label) return null;
+            const latitude = normalizeCoordinate(record.latitude, -90, 90);
+            const longitude = normalizeCoordinate(record.longitude, -180, 180);
+            const hasCoordinatePair = latitude !== null && longitude !== null;
 
             return {
                 label,
                 placeId: cleanText(record.placeId, 255) || null,
                 countryCode: normalizeCountryCode(record.countryCode),
                 countryName: cleanText(record.countryName, 120) || null,
+                latitude: hasCoordinatePair ? latitude : null,
+                longitude: hasCoordinatePair ? longitude : null,
             };
         })
         .filter((destination): destination is TripDestinationInput =>
@@ -107,7 +129,9 @@ export async function syncTripDestinationsFromForm({
     const destinations = parseTripDestinationsFormData(formData);
     const { data: existingRows, error: existingError } = await supabase
         .from("trip_destinations")
-        .select("label,google_place_id,country_code,country_name")
+        .select(
+            "label,google_place_id,country_code,country_name,latitude,longitude"
+        )
         .eq("trip_id", tripId);
 
     if (existingError) {
@@ -120,6 +144,8 @@ export async function syncTripDestinationsFromForm({
             country_code: string | null;
             country_name: string | null;
             google_place_id: string | null;
+            latitude: number | null;
+            longitude: number | null;
         }
     >();
     (existingRows || []).forEach((row) => {
@@ -128,6 +154,8 @@ export async function syncTripDestinationsFromForm({
             placeId: row.google_place_id,
             countryCode: row.country_code,
             countryName: row.country_name,
+            latitude: row.latitude,
+            longitude: row.longitude,
         };
         destinationLookupKeys(normalized).forEach((key) =>
             existingByKey.set(key, row)
@@ -149,6 +177,8 @@ export async function syncTripDestinationsFromForm({
                     destination.countryCode || existing?.country_code || null,
                 country_name:
                     destination.countryName || existing?.country_name || null,
+                latitude: destination.latitude ?? existing?.latitude ?? null,
+                longitude: destination.longitude ?? existing?.longitude ?? null,
                 sort_order: sortOrder,
             };
         });
@@ -189,7 +219,7 @@ export async function loadTripDestinations({
             supabase
                 .from("trip_destinations")
                 .select(
-                    "id,label,google_place_id,country_code,country_name,sort_order"
+                    "id,label,google_place_id,country_code,country_name,latitude,longitude,sort_order"
                 )
                 .eq("trip_id", tripId)
                 .order("sort_order", { ascending: true }),
@@ -241,6 +271,8 @@ export async function loadTripDestinations({
                 placeId: row.google_place_id,
                 countryCode: row.country_code || matchingLeg?.country_code || null,
                 countryName: row.country_name,
+                latitude: row.latitude,
+                longitude: row.longitude,
                 sortOrder: row.sort_order,
             };
         });
@@ -263,6 +295,8 @@ export async function loadTripDestinations({
             placeId: leg.google_place_id,
             countryCode: leg.country_code,
             countryName: null,
+            latitude: null,
+            longitude: null,
             sortOrder: index,
         }));
     }

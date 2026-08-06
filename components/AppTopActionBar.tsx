@@ -228,6 +228,14 @@ function getProminentActionCopy(notification: AppNotification) {
 }
 
 function getNotificationActionHref(notification: AppNotification) {
+    if (notification.type === "weather_alert") {
+        const deepLink = getNotificationMetadataString(
+            notification,
+            "deepLink"
+        );
+        return deepLink.startsWith("/trips/") ? deepLink : "/notifications";
+    }
+
     if (
         notification.type === "travel_email_ready" ||
         notification.type === "travel_email_needs_review" ||

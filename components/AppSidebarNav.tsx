@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -546,11 +547,23 @@ export default function AppSidebarNav({
                         className="relative mb-5 flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:justify-start"
                         aria-label="VAIVIA home"
                     >
-                        <span className="flex h-12 w-12 items-center justify-center text-3xl font-black tracking-normal text-lime-300 drop-shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.55)] transition-all duration-300 group-hover/sidebar:opacity-0">
-                            V
+                        <span className="flex h-12 w-12 items-center justify-center transition-all duration-300 group-hover/sidebar:opacity-0">
+                            <Image
+                                src="/icons/vaivia-favicon.png"
+                                alt=""
+                                width={44}
+                                height={44}
+                                className="h-11 w-11 rounded-[0.9rem] object-cover drop-shadow-[0_0_18px_rgba(var(--vaivia-neon-rgb),0.38)]"
+                            />
                         </span>
-                        <span className="absolute left-0 max-w-0 overflow-hidden whitespace-nowrap text-lg font-black tracking-[0.18em] text-lime-300 opacity-0 transition-all duration-300 group-hover/sidebar:max-w-44 group-hover/sidebar:opacity-100">
-                            VAIVIA
+                        <span className="absolute left-0 flex max-w-0 items-center overflow-hidden opacity-0 transition-all duration-300 group-hover/sidebar:max-w-44 group-hover/sidebar:opacity-100">
+                            <Image
+                                src="/icons/vaivia-header-logo.png"
+                                alt=""
+                                width={168}
+                                height={36}
+                                className="h-9 w-auto max-w-none object-contain"
+                            />
                         </span>
                     </Link>
 
@@ -622,7 +635,13 @@ export default function AppSidebarNav({
                 aria-label="VAIVIA home"
                 prefetch
             >
-                V
+                <Image
+                    src="/icons/vaivia-favicon.png"
+                    alt=""
+                    width={44}
+                    height={44}
+                    className="h-11 w-11 rounded-[0.9rem] object-cover"
+                />
             </Link>
 
             <nav

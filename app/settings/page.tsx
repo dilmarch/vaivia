@@ -44,9 +44,17 @@ type SettingsPageProps = {
 
 type NotificationPreferenceRow = {
     notification_type?: string | null;
+    master_enabled?: boolean | null;
     in_app_enabled?: boolean | null;
     push_enabled?: boolean | null;
     email_enabled?: boolean | null;
+};
+
+type PushDeviceRow = {
+    id: string;
+    platform: string | null;
+    user_agent: string | null;
+    last_seen_at: string | null;
 };
 
 type SettingsUntypedClient = {
@@ -754,6 +762,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         { data: userPreferences },
         { data: userProfile },
         { data: notificationPreferenceRows },
+        { data: pushDeviceRows },
     ] =
         await Promise.all([
         supabase
@@ -791,9 +800,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         (supabase as unknown as SettingsUntypedClient)
             .from("user_notification_preferences")
             .select(
-                "notification_type,in_app_enabled,push_enabled,email_enabled"
+                "notification_type,master_enabled,in_app_enabled,push_enabled,email_enabled"
             )
             .eq("user_id", user.id),
+        supabase
+            .from("user_push_subscriptions")
+            .select("id,platform,user_agent,last_seen_at")
+            .eq("user_id", user.id)
+            .is("revoked_at", null)
+            .order("last_seen_at", { ascending: false }),
     ]);
 
     const categories = sortCategoriesByName((categoryRows || []) as UserCategory[]);
@@ -1242,8 +1257,19 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
                             <SettingsNotificationsClient
                                 preferences={notificationPreferences}
                                 vapidPublicKey={
-                                    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || null
+                                    process.env
+                                        .NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY ||
+                                    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
+                                    null
                                 }
+                                pushDevices={((pushDeviceRows || []) as PushDeviceRow[]).map(
+                                    (device) => ({
+                                        id: device.id,
+                                        platform: device.platform,
+                                        userAgent: device.user_agent,
+                                        lastSeenAt: device.last_seen_at,
+                                    })
+                                )}
                             />
                         </div>
                     ) : activeSection === "data" ? (

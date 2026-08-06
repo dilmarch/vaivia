@@ -84,6 +84,7 @@ export async function POST() {
             recipient_email: recipientEmail,
             subject: "Test email notification",
             template_key: "terms_updated",
+            idempotency_key: `notification-email-${data.id}`,
             payload: {
                 notificationId: data.id,
                 type: "terms_updated",

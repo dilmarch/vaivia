@@ -56,6 +56,7 @@ describe("flight check-in reminders", () => {
             getDefaultNotificationPreference("flight_check_in_reminder")
         ).toEqual({
             notificationType: "flight_check_in_reminder",
+            masterEnabled: true,
             inAppEnabled: true,
             pushEnabled: true,
             emailEnabled: true,

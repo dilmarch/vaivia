@@ -9,6 +9,8 @@ export type TripDestinationSelection = {
     placeId?: string | null;
     countryCode?: string | null;
     countryName?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
 };
 
 type TripDestinationPickerProps = {
@@ -34,6 +36,8 @@ type DestinationOption = {
     placeId?: string | null;
     countryCode?: string | null;
     countryName?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
 };
 
 type UnsplashResult = {
@@ -139,6 +143,8 @@ export default function TripDestinationPicker({
                 placeId: destination.placeId || null,
                 countryCode: destination.countryCode || null,
                 countryName: destination.countryName || null,
+                latitude: destination.latitude ?? null,
+                longitude: destination.longitude ?? null,
                 coverImageUrl: "",
             })) || parseDestinations(initialDestination);
 
@@ -170,6 +176,8 @@ export default function TripDestinationPicker({
                   placeId: destination.placeId || null,
                   countryCode: destination.countryCode || null,
                   countryName: destination.countryName || null,
+                  latitude: destination.latitude ?? null,
+                  longitude: destination.longitude ?? null,
                   coverImageUrl: "",
               }))
             : parseDestinations(initialDestination);
@@ -213,6 +221,8 @@ export default function TripDestinationPicker({
                 placeId: destination.placeId || null,
                 countryCode: destination.countryCode || null,
                 countryName: destination.countryName || null,
+                latitude: destination.latitude ?? null,
+                longitude: destination.longitude ?? null,
             }))
         );
     }, [destinations, onDestinationsChange]);
@@ -240,6 +250,7 @@ export default function TripDestinationPicker({
                     "address_components",
                     "name",
                     "formatted_address",
+                    "geometry",
                     "photos",
                     "types",
                 ],
@@ -270,6 +281,13 @@ export default function TripDestinationPicker({
             );
             if (!label) return;
             const country = getCountryDetails(place);
+            const latitude = place.geometry?.location?.lat();
+            const longitude = place.geometry?.location?.lng();
+            const hasCoordinates =
+                typeof latitude === "number" &&
+                Number.isFinite(latitude) &&
+                typeof longitude === "number" &&
+                Number.isFinite(longitude);
 
             const coverPhotoUrl =
                 place.photos?.[0]?.getUrl({
@@ -294,6 +312,8 @@ export default function TripDestinationPicker({
                         placeId: place.place_id || null,
                         countryCode: country.countryCode,
                         countryName: country.countryName,
+                        latitude: hasCoordinates ? latitude : null,
+                        longitude: hasCoordinates ? longitude : null,
                         coverImageUrl: coverPhotoUrl,
                     },
                 ];
@@ -401,6 +421,8 @@ export default function TripDestinationPicker({
                         placeId: destination.placeId || null,
                         countryCode: destination.countryCode || null,
                         countryName: destination.countryName || null,
+                        latitude: destination.latitude ?? null,
+                        longitude: destination.longitude ?? null,
                     }))
                 )}
             />

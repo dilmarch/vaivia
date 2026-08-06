@@ -3,15 +3,13 @@ import "server-only";
 import { processNotificationEmailOutbox } from "@/lib/emailNotifications";
 import { processExternalInviteEmailOutbox } from "@/lib/externalInviteEmails";
 import { processNotificationPushOutbox } from "@/lib/pushNotifications";
+import {
+    dispatchNotificationChannels,
+    type NotificationDeliveryResult,
+} from "@/lib/notifications/deliveryChannels";
 import { createServiceRoleClient } from "@/lib/supabase/service";
 
-type QueueResult = {
-    id: string;
-    status?: string;
-    reason?: string;
-    error?: string;
-    sentCount?: number;
-};
+type QueueResult = NotificationDeliveryResult;
 
 type QueueChannel = "reminder" | "push" | "email";
 
@@ -124,17 +122,30 @@ export async function processNotificationQueues(limit = 25) {
         }
     });
 
-    const [pushResult, emailResult, externalEmailResult] = await Promise.allSettled([
-        processNotificationPushOutbox(limit),
-        processNotificationEmailOutbox(limit),
-        processExternalInviteEmailOutbox(limit),
+    const [channelResults, [externalEmailResult]] = await Promise.all([
+        dispatchNotificationChannels<QueueResult>(
+            [
+                {
+                    channel: "web_push",
+                    delivery: "queued",
+                    process: processNotificationPushOutbox,
+                },
+                {
+                    channel: "email",
+                    delivery: "queued",
+                    process: processNotificationEmailOutbox,
+                },
+            ],
+            limit
+        ),
+        Promise.allSettled([processExternalInviteEmailOutbox(limit)]),
     ]);
+    const pushResult = channelResults.find((result) => result.channel === "web_push")!;
+    const emailResult = channelResults.find((result) => result.channel === "email")!;
     const pushResults =
-        pushResult.status === "fulfilled" ? (pushResult.value as QueueResult[]) : [];
+        pushResult.results;
     const emailResults =
-        emailResult.status === "fulfilled"
-            ? (emailResult.value as QueueResult[])
-            : [];
+        emailResult.results;
     const externalEmailResults =
         externalEmailResult.status === "fulfilled"
             ? (externalEmailResult.value as QueueResult[])
@@ -145,11 +156,11 @@ export async function processNotificationQueues(limit = 25) {
     const combinedEmailCounts = combineCounts(emailCounts, externalEmailCounts);
     const errors = [
         ...reminderErrors,
-        pushResult.status === "rejected"
-            ? getQueueError("push", pushResult.reason)
+        pushResult.error
+            ? getQueueError("push", pushResult.error)
             : null,
-        emailResult.status === "rejected"
-            ? getQueueError("email", emailResult.reason)
+        emailResult.error
+            ? getQueueError("email", emailResult.error)
             : null,
         externalEmailResult.status === "rejected"
             ? getQueueError("email", externalEmailResult.reason)

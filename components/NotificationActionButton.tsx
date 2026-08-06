@@ -31,7 +31,12 @@ export default function NotificationActionButton({
                 ? notification.metadata.importId
                 : "";
         const href =
-            notification.type === "travel_email_ready" ||
+            notification.type === "weather_alert"
+                ? typeof notification.metadata?.deepLink === "string" &&
+                  notification.metadata.deepLink.startsWith("/trips/")
+                    ? notification.metadata.deepLink
+                    : "/notifications"
+                : notification.type === "travel_email_ready" ||
             notification.type === "travel_email_needs_review" ||
             notification.type === "travel_email_failed"
                 ? importId
@@ -77,7 +82,11 @@ export default function NotificationActionButton({
                 disabled={isRouting}
                 className="inline-flex h-9 items-center rounded-full bg-lime-300 px-4 text-xs font-black uppercase tracking-[0.12em] text-slate-950 transition hover:bg-lime-200"
             >
-                {isRouting ? "Opening..." : "Review"}
+                {isRouting
+                    ? "Opening..."
+                    : notification.type === "weather_alert"
+                      ? "Review plans"
+                      : "Review"}
             </button>
             <TripInviteReviewModal
                 notification={

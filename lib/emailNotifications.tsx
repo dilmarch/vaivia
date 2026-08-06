@@ -1,9 +1,12 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import { render, toPlainText } from "react-email";
 import { GenericNotificationEmail } from "@/emails/notifications/GenericNotificationEmail";
+import { WeatherAlertEmail } from "@/emails/notifications/WeatherAlertEmail";
 import { getEmailSenderConfig, getResendClient } from "@/lib/email/resend";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import { isNotificationChannelEnabled } from "@/lib/notifications/deliveryChannels";
 
 type EmailOutboxRow = {
     id: string;
@@ -45,7 +48,8 @@ function getNotificationTitle(row: EmailOutboxRow) {
 
 function getNotificationUrl(row: EmailOutboxRow, appUrl: string) {
     const metadata = asRecord(row.payload.metadata);
-    const candidate = metadata.url || metadata.href || metadata.path;
+    const candidate =
+        metadata.deepLink || metadata.url || metadata.href || metadata.path;
     const path =
         typeof candidate === "string" && candidate.startsWith("/")
             ? candidate
@@ -84,7 +88,14 @@ function getRetryDelayMinutes(attempts: number) {
 
 function isPermanentResendError(error: unknown) {
     const message =
-        error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+        error instanceof Error
+            ? error.message.toLowerCase()
+            : error &&
+                typeof error === "object" &&
+                "message" in error &&
+                typeof error.message === "string"
+              ? error.message.toLowerCase()
+              : String(error).toLowerCase();
 
     return (
         message.includes("invalid") ||
@@ -94,6 +105,40 @@ function isPermanentResendError(error: unknown) {
         message.includes("domain") ||
         message.includes("recipient")
     );
+}
+
+export function sanitizeEmailErrorCode(error: unknown) {
+    const message =
+        error instanceof Error
+            ? error.message.toLowerCase()
+            : error &&
+                typeof error === "object" &&
+                "message" in error &&
+                typeof error.message === "string"
+              ? error.message.toLowerCase()
+              : String(error).toLowerCase();
+    if (message.includes("unauthorized")) return "provider_unauthorized";
+    if (message.includes("forbidden")) return "provider_forbidden";
+    if (message.includes("domain")) return "sender_domain_invalid";
+    if (message.includes("recipient") || message.includes("invalid")) {
+        return "recipient_invalid";
+    }
+    return "provider_unavailable";
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string, fallback: string) {
+    const value = metadata[key];
+    return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function safeHttpsUrl(value: unknown) {
+    if (typeof value !== "string") return undefined;
+    try {
+        const url = new URL(value);
+        return url.protocol === "https:" ? url.toString() : undefined;
+    } catch {
+        return undefined;
+    }
 }
 
 async function markEmailOutbox(
@@ -131,8 +176,7 @@ async function failOrRetryEmailOutbox(
     error: unknown,
     permanent = false
 ): Promise<ProcessedEmailResult> {
-    const message =
-        error instanceof Error ? error.message : "Could not send email notification.";
+    const message = sanitizeEmailErrorCode(error);
     const shouldFail = permanent || row.attempts >= 5;
     const nextAttemptAt = new Date(
         Date.now() + getRetryDelayMinutes(row.attempts) * 60 * 1000
@@ -140,7 +184,7 @@ async function failOrRetryEmailOutbox(
 
     await markEmailOutbox(supabase, row.id, {
         status: shouldFail ? "failed" : "queued",
-        last_error: message.slice(0, 1000),
+        last_error: message,
         failed_at: shouldFail ? new Date().toISOString() : null,
         next_attempt_at: shouldFail ? null : nextAttemptAt,
     });
@@ -162,13 +206,13 @@ async function sendEmailForOutboxRow(
     if (!isAdminEmailTest) {
         const { data: preference, error: preferenceError } = await supabase
             .from("user_notification_preferences")
-            .select("email_enabled")
+            .select("master_enabled,email_enabled")
             .eq("user_id", row.user_id)
             .eq("notification_type", row.notification_type)
             .maybeSingle();
 
         if (preferenceError) throw new Error(preferenceError.message);
-        if (!preference?.email_enabled) {
+        if (!isNotificationChannelEnabled(preference, "email")) {
             return cancelEmailOutbox(supabase, row, "preference_disabled");
         }
     }
@@ -185,19 +229,42 @@ async function sendEmailForOutboxRow(
         throw new PermanentEmailError("recipient_email_missing");
     }
 
+    await markEmailOutbox(supabase, row.id, {
+        destination_identifier_hash: createHash("sha256")
+            .update(currentEmail.toLowerCase())
+            .digest("hex"),
+    });
+
     const sender = getEmailSenderConfig();
     const actionUrl = getNotificationUrl(row, sender.appUrl);
-    const email = (
-        <GenericNotificationEmail
-            appUrl={sender.appUrl}
-            eyebrow={getEmailEyebrow(row.notification_type)}
-            title={getNotificationTitle(row)}
-            body={getNotificationBody(row)}
-            actionUrl={actionUrl}
-            actionLabel={getActionLabel(row.notification_type)}
-            preview={getPreview(row)}
-        />
-    );
+    const email =
+        row.notification_type === "weather_alert" ? (
+            <WeatherAlertEmail
+                appUrl={sender.appUrl}
+                tripName={metadataString(metadata, "tripName", "Your trip")}
+                location={metadataString(metadata, "locationLabel", "Trip area")}
+                eventWindow={metadataString(
+                    metadata,
+                    "eventWindowLabel",
+                    "See the latest alert timing in VAIVIA"
+                )}
+                eventTitle={getNotificationTitle(row)}
+                relevance={getNotificationBody(row)}
+                sourceName={metadataString(metadata, "sourceName", "Google Weather")}
+                sourceUrl={safeHttpsUrl(metadata.sourceAuthorityUrl)}
+                actionUrl={actionUrl}
+            />
+        ) : (
+            <GenericNotificationEmail
+                appUrl={sender.appUrl}
+                eyebrow={getEmailEyebrow(row.notification_type)}
+                title={getNotificationTitle(row)}
+                body={getNotificationBody(row)}
+                actionUrl={actionUrl}
+                actionLabel={getActionLabel(row.notification_type)}
+                preview={getPreview(row)}
+            />
+        );
     const html = await render(email);
     const text = toPlainText(html);
     const resend = getResendClient();
@@ -211,9 +278,7 @@ async function sendEmailForOutboxRow(
             text,
         },
         {
-            headers: {
-                "Idempotency-Key": `notification-email-${row.notification_id}`,
-            },
+            idempotencyKey: `notification-email-${row.notification_id}`,
         }
     );
 

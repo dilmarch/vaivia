@@ -1,21 +1,29 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { Bell, Mail, MonitorSmartphone } from "lucide-react";
+import { Bell, CloudLightning, Mail, MonitorSmartphone } from "lucide-react";
 import {
     revokePushSubscription,
+    revokePushSubscriptionById,
     saveNotificationPreferences,
     savePushSubscription,
 } from "@/app/actions/notificationPreferences";
 import {
-    CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS,
+    GENERAL_NOTIFICATION_TYPE_OPTIONS,
     getDefaultNotificationPreference,
     type NotificationPreference,
+    WEATHER_NOTIFICATION_TYPE,
 } from "@/lib/notificationTypes";
 
 type SettingsNotificationsClientProps = {
     preferences: NotificationPreference[];
     vapidPublicKey?: string | null;
+    pushDevices?: Array<{
+        id: string;
+        platform: string | null;
+        userAgent: string | null;
+        lastSeenAt: string | null;
+    }>;
 };
 
 function urlBase64ToUint8Array(base64String: string) {
@@ -46,6 +54,7 @@ function getPushSupportLabel({
 export default function SettingsNotificationsClient({
     preferences,
     vapidPublicKey,
+    pushDevices = [],
 }: SettingsNotificationsClientProps) {
     const initialSelections = useMemo(() => {
         const preferencesByType = new Map(
@@ -57,21 +66,21 @@ export default function SettingsNotificationsClient({
 
         return {
             in_app: new Set<string>(
-                CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
+                GENERAL_NOTIFICATION_TYPE_OPTIONS.filter(
                     (option) =>
                         preferencesByType.get(option.type)?.inAppEnabled ??
                         getDefaultNotificationPreference(option.type).inAppEnabled
                 ).map((option) => option.type)
             ),
             push: new Set<string>(
-                CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
+                GENERAL_NOTIFICATION_TYPE_OPTIONS.filter(
                     (option) =>
                         preferencesByType.get(option.type)?.pushEnabled ??
                         getDefaultNotificationPreference(option.type).pushEnabled
                 ).map((option) => option.type)
             ),
             email: new Set<string>(
-                CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.filter(
+                GENERAL_NOTIFICATION_TYPE_OPTIONS.filter(
                     (option) =>
                         preferencesByType.get(option.type)?.emailEnabled ??
                         getDefaultNotificationPreference(option.type).emailEnabled
@@ -84,6 +93,9 @@ export default function SettingsNotificationsClient({
     );
     const [isSupported, setIsSupported] = useState(false);
     const [isSubscribed, setIsSubscribed] = useState(false);
+    const [isIosBrowser, setIsIosBrowser] = useState(false);
+    const [isStandalone, setIsStandalone] = useState(false);
+    const [visiblePushDevices, setVisiblePushDevices] = useState(pushDevices);
     const [statusMessage, setStatusMessage] = useState("");
     const [isPending, startTransition] = useTransition();
     const [selectedInAppTypes, setSelectedInAppTypes] = useState(
@@ -95,10 +107,30 @@ export default function SettingsNotificationsClient({
     const [selectedEmailTypes, setSelectedEmailTypes] = useState(
         () => initialSelections.email
     );
+    const initialWeatherPreference = useMemo(
+        () =>
+            preferences.find(
+                (preference) =>
+                    preference.notificationType === WEATHER_NOTIFICATION_TYPE
+            ) || getDefaultNotificationPreference(WEATHER_NOTIFICATION_TYPE),
+        [preferences]
+    );
+    const [weatherMasterEnabled, setWeatherMasterEnabled] = useState(
+        initialWeatherPreference.masterEnabled
+    );
+    const [weatherInAppEnabled, setWeatherInAppEnabled] = useState(
+        initialWeatherPreference.inAppEnabled
+    );
+    const [weatherEmailEnabled, setWeatherEmailEnabled] = useState(
+        initialWeatherPreference.emailEnabled
+    );
+    const [weatherPushEnabled, setWeatherPushEnabled] = useState(
+        initialWeatherPreference.pushEnabled
+    );
     const isConfigured = Boolean(vapidPublicKey);
     const allNotificationTypes = useMemo(
         () =>
-            CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.map(
+            GENERAL_NOTIFICATION_TYPE_OPTIONS.map(
                 (option) => option.type
             ),
         []
@@ -135,7 +167,11 @@ export default function SettingsNotificationsClient({
         setSelectedInAppTypes(initialSelections.in_app);
         setSelectedPushTypes(initialSelections.push);
         setSelectedEmailTypes(initialSelections.email);
-    }, [initialSelections]);
+        setWeatherMasterEnabled(initialWeatherPreference.masterEnabled);
+        setWeatherInAppEnabled(initialWeatherPreference.inAppEnabled);
+        setWeatherEmailEnabled(initialWeatherPreference.emailEnabled);
+        setWeatherPushEnabled(initialWeatherPreference.pushEnabled);
+    }, [initialSelections, initialWeatherPreference]);
 
     function setChannelValue(
         channel: keyof typeof channelSelections,
@@ -162,6 +198,12 @@ export default function SettingsNotificationsClient({
     }
 
     useEffect(() => {
+        const ios = /iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+        const standalone =
+            window.matchMedia?.("(display-mode: standalone)").matches ||
+            Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+        setIsIosBrowser(ios);
+        setIsStandalone(standalone);
         const supported =
             typeof window !== "undefined" &&
             "Notification" in window &&
@@ -182,6 +224,16 @@ export default function SettingsNotificationsClient({
             })
             .catch(() => undefined);
     }, []);
+
+    async function removeSavedDevice(id: string) {
+        const result = await revokePushSubscriptionById(id);
+        if (!result.ok) {
+            setStatusMessage(result.error || "Could not remove this push device.");
+            return;
+        }
+        setVisiblePushDevices((devices) => devices.filter((device) => device.id !== id));
+        setStatusMessage("Push was removed from that device.");
+    }
 
     async function enablePush() {
         if (!isSupported || !vapidPublicKey) return;
@@ -296,6 +348,44 @@ export default function SettingsNotificationsClient({
                         {statusMessage}
                     </p>
                 ) : null}
+                {isIosBrowser && !isStandalone ? (
+                    <p className="mt-4 rounded-2xl border border-sky-300/20 bg-sky-300/[0.07] p-3 text-sm font-semibold leading-6 text-sky-100">
+                        On iPhone or iPad, add VAIVIA to your Home Screen from
+                        Safari&apos;s Share menu, open the installed app, then enable push
+                        here.
+                    </p>
+                ) : null}
+                {visiblePushDevices.length > 0 ? (
+                    <div className="mt-4 border-t border-white/10 pt-4">
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+                            Saved devices
+                        </p>
+                        <div className="mt-2 space-y-2">
+                            {visiblePushDevices.map((device) => (
+                                <div
+                                    key={device.id}
+                                    className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3"
+                                >
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-black capitalize text-white">
+                                            {device.platform || "Web device"}
+                                        </p>
+                                        <p className="truncate text-xs font-semibold text-slate-500">
+                                            {device.userAgent || "Browser subscription"}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => void removeSavedDevice(device.id)}
+                                        className="min-h-10 shrink-0 rounded-full border border-white/10 px-3 text-xs font-black text-slate-200 hover:bg-white/10"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ) : null}
             </section>
 
             <form
@@ -361,8 +451,86 @@ export default function SettingsNotificationsClient({
                     </div>
                 </div>
 
+                <section className="mt-5 rounded-[1.25rem] border border-sky-300/20 bg-sky-300/[0.06] p-4">
+                    <div className="flex items-start gap-3">
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-sky-200/20 bg-sky-200/10 text-sky-200">
+                            <CloudLightning className="h-5 w-5" aria-hidden="true" />
+                        </span>
+                        <div>
+                            <p className="text-sm font-black text-white">
+                                Weather alerts
+                            </p>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                                Monitor active trips for qualifying official alerts and
+                                conservative forecast-derived travel disruption signals.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        <label className="flex min-h-12 items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/55 px-3 text-xs font-black text-slate-200">
+                            <input
+                                type="checkbox"
+                                name="weather_master"
+                                checked={weatherMasterEnabled}
+                                onChange={(event) =>
+                                    setWeatherMasterEnabled(event.target.checked)
+                                }
+                                className="h-4 w-4 accent-lime-300"
+                            />
+                            Weather alerts
+                        </label>
+                        <label className="flex min-h-12 items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/55 px-3 text-xs font-black text-slate-200">
+                            <input
+                                type="checkbox"
+                                name="weather_in_app"
+                                checked={weatherInAppEnabled}
+                                disabled={!weatherMasterEnabled}
+                                onChange={(event) =>
+                                    setWeatherInAppEnabled(event.target.checked)
+                                }
+                                className="h-4 w-4 accent-lime-300 disabled:opacity-50"
+                            />
+                            In-app
+                        </label>
+                        <label className="flex min-h-12 items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/55 px-3 text-xs font-black text-slate-200">
+                            <input
+                                type="checkbox"
+                                name="weather_email"
+                                checked={weatherEmailEnabled}
+                                disabled={!weatherMasterEnabled}
+                                onChange={(event) =>
+                                    setWeatherEmailEnabled(event.target.checked)
+                                }
+                                className="h-4 w-4 accent-lime-300 disabled:opacity-50"
+                            />
+                            Email
+                        </label>
+                        <label className="flex min-h-12 items-center gap-2 rounded-2xl border border-white/10 bg-slate-950/55 px-3 text-xs font-black text-slate-200">
+                            <input
+                                type="checkbox"
+                                name="weather_push"
+                                checked={weatherPushEnabled}
+                                disabled={
+                                    !weatherMasterEnabled ||
+                                    (!isSubscribed && visiblePushDevices.length === 0)
+                                }
+                                onChange={(event) =>
+                                    setWeatherPushEnabled(event.target.checked)
+                                }
+                                className="h-4 w-4 accent-lime-300 disabled:opacity-50"
+                            />
+                            Push
+                        </label>
+                    </div>
+                    {!isSubscribed && visiblePushDevices.length === 0 ? (
+                        <p className="mt-2 text-xs font-semibold text-slate-400">
+                            Enable push on a device before opting into weather push.
+                        </p>
+                    ) : null}
+                </section>
+
                 <div className="mt-5 space-y-3">
-                    {CONFIGURABLE_NOTIFICATION_TYPE_OPTIONS.map((option) => {
+                    {GENERAL_NOTIFICATION_TYPE_OPTIONS.map((option) => {
                         return (
                             <div
                                 key={option.type}
