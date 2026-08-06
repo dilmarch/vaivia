@@ -398,47 +398,6 @@ function formatShortDate(date: Date) {
     });
 }
 
-function formatViewTitle(view: CalendarView, anchorDate: Date) {
-    if (view === "month") {
-        return anchorDate.toLocaleDateString("en-CA", {
-            month: "long",
-            year: "numeric",
-        });
-    }
-
-    if (view === "week") {
-        const weekStart = startOfWeek(anchorDate);
-        const weekEnd = addDays(weekStart, 6);
-
-        return `${weekStart.toLocaleDateString("en-CA", {
-            month: "short",
-            day: "numeric",
-        })} - ${weekEnd.toLocaleDateString("en-CA", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-        })}`;
-    }
-
-    return anchorDate.toLocaleDateString("en-CA", {
-        weekday: "long",
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-    });
-}
-
-function formatDateRange(startDate: Date, endDate: Date) {
-    return `${startDate.toLocaleDateString("en-CA", {
-        month: "short",
-        day: "numeric",
-    })} - ${endDate.toLocaleDateString("en-CA", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    })}`;
-}
-
 function formatTime(timeString?: string | null) {
     if (!timeString) return "No time";
 
@@ -3477,16 +3436,22 @@ function MonthView({
         addDays(gridStart, index)
     );
     const todayKey = getLocalDateKey(new Date());
+    const monthTitle = anchorDate.toLocaleDateString("en-CA", {
+        month: "long",
+        year: "numeric",
+    });
 
     return (
         <div
             className="overflow-x-auto rounded-[1.35rem] border border-white/10 bg-slate-950/70"
-            aria-label={anchorDate.toLocaleDateString("en-CA", {
-                month: "long",
-                year: "numeric",
-            })}
+            aria-label={monthTitle}
         >
             <div className="min-w-[840px]">
+                <div className="bg-slate-950/95 px-4 pt-4">
+                    <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
+                        {monthTitle}
+                    </h3>
+                </div>
                 <div className="grid grid-cols-7 border-b border-white/10 bg-slate-950/95">
                     {MONTH_WEEKDAY_LABELS.map((label) => (
                         <div
@@ -3753,7 +3718,7 @@ function CalendarTimeRangeSelector({
                     endTime: "12:30",
                 });
             }}
-            className={`absolute bottom-0 top-0 z-[1] cursor-crosshair overflow-hidden text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime-300 ${
+            className={`absolute bottom-0 top-0 z-[1] cursor-default overflow-hidden text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-lime-300 ${
                 insetLeft ? "left-[52px]" : "left-0"
             } right-0`}
             style={{ touchAction: "pan-x pan-y" }}
@@ -3826,10 +3791,10 @@ function DayColumn({
     return (
         <div className="min-w-0 border-white/10 bg-slate-900/85">
             {showDateHeader && (
-                <div className="sticky top-0 z-10 border-b border-white/10 bg-slate-950/95 px-3 py-3 backdrop-blur">
-                    <p className="text-sm font-bold text-lime-300">
-                        {formatShortDate(date)}
-                    </p>
+                <div className="sticky top-0 z-10 bg-slate-950/95 px-4 pt-4 backdrop-blur">
+                    <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
+                        {formatDateHeader(dateKey)}
+                    </h3>
                 </div>
             )}
 
@@ -4272,9 +4237,6 @@ export default function ItineraryCalendar({
     }, [defaultView, listOnly]);
 
     const effectiveView: CalendarView = listOnly ? "list" : view;
-    const normalizedTitle = title.trim().toLowerCase();
-    const showHeaderDateSubtitle =
-        normalizedTitle !== "journey" && normalizedTitle !== "transport";
     const [browserTimezone, setBrowserTimezone] = useState("UTC");
     const [activeTimezone, setActiveTimezone] = useState("UTC");
     const [isGoogleReady, setIsGoogleReady] = useState(false);
@@ -4836,13 +4798,6 @@ export default function ItineraryCalendar({
                         <h2 className="mt-2 text-3xl font-black text-white">
                             {title}
                         </h2>
-                        {showHeaderDateSubtitle && (
-                            <p className="mt-1 text-sm font-semibold text-slate-300">
-                                {effectiveView === "list"
-                                    ? formatDateRange(listStartDate, listEndDate)
-                                    : formatViewTitle(effectiveView, anchorDate)}
-                            </p>
-                        )}
                     </div>
 
                     {!listOnly && (

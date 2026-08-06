@@ -25,6 +25,7 @@ browser-extension/dist/
 # misc
 .DS_Store
 *.pem
+public/trip-cards/~ai-*.tmp
 
 # debug
 npm-debug.log*

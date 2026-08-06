@@ -166,6 +166,21 @@
   }
 }
 
+/* The root route serves both the signed-in dashboard and the public home page. */
+[data-app-shell]:has([data-public-home]) [data-app-navigation] {
+  display: none;
+}
+
+[data-app-shell]:has([data-public-home]) [data-app-content] {
+  padding-bottom: 0;
+}
+
+@media (min-width: 768px) {
+  [data-app-shell]:has([data-public-home]) [data-app-content] {
+    padding-left: 0;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

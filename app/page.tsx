@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import type { User } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import DashboardHero from "@/components/DashboardHero";
+import PublicHome from "@/components/PublicHome";
 import TripDashboardClient, {
   type DashboardEvent,
   type DashboardPassportStamp,
@@ -34,7 +36,9 @@ import { assertDateRangeOrdered } from "@/lib/dateRange";
 import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
 
 export const metadata: Metadata = {
-  title: "Dashboard – VIVIA",
+  title: "VAIVIA – Plan travel together",
+  description:
+    "Plan itineraries, stays, transport, discoveries, and budgets together with VAIVIA.",
 };
 
 type TripUpdatePayload = {
@@ -540,18 +544,8 @@ async function archiveTrip(formData: FormData) {
   redirect("/");
 }
 
-async function TripsDashboard() {
-  await connection();
-
+async function TripsDashboard({ user }: { user: User }) {
   const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/auth/login");
-  }
 
   const { trips, error } = await loadActiveMemberTrips(supabase, user.id);
 
@@ -741,7 +735,18 @@ async function TripsDashboard() {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  await connection();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return <PublicHome />;
+  }
+
   return (
     <Suspense
       fallback={
@@ -751,7 +756,7 @@ export default function Home() {
         />
       }
     >
-      <TripsDashboard />
+      <TripsDashboard user={user} />
     </Suspense>
   );
 }

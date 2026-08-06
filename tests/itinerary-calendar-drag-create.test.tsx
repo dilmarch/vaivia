@@ -73,6 +73,8 @@ describe("calendar drag creation", () => {
             const surface = screen.getByRole("button", {
                 name: /Create an itinerary item on .*September 2, 2026.*Click and drag/i,
             });
+            expect(surface).toHaveClass("cursor-default");
+            expect(surface).not.toHaveClass("cursor-crosshair");
             preparePointerSurface(surface);
 
             fireEvent.pointerDown(surface, {
@@ -114,6 +116,9 @@ describe("calendar drag creation", () => {
         );
 
         expect(screen.getByLabelText("September 2026")).toBeInTheDocument();
+        expect(
+            screen.getByRole("heading", { name: "September 2026", level: 3 })
+        ).toHaveClass("border-lime-300/20", "text-2xl", "text-lime-300");
 
         fireEvent.click(
             screen.getByRole("button", {
@@ -121,9 +126,29 @@ describe("calendar drag creation", () => {
             })
         );
 
-        expect(screen.getByText("Wednesday, September 2, 2026"))
-            .toBeInTheDocument();
+        expect(
+            screen.getByRole("heading", {
+                name: "Wednesday, September 2, 2026",
+                level: 3,
+            })
+        ).toHaveClass("border-lime-300/20", "text-2xl", "text-lime-300");
         expect(screen.getByRole("button", { name: "Day" }))
             .toHaveClass("bg-lime-300");
+    });
+
+    it("does not repeat a view date range under the itinerary heading", () => {
+        render(
+            <ItineraryCalendar
+                tripId="trip-a"
+                items={[]}
+                tripStartDate="2026-08-02"
+                defaultView="week"
+                moveTargetTrips={[]}
+                {...actions}
+            />
+        );
+
+        expect(screen.getByRole("heading", { name: "Itinerary" })).toBeInTheDocument();
+        expect(screen.queryByText("Aug 2 - Aug 8, 2026")).not.toBeInTheDocument();
     });
 });

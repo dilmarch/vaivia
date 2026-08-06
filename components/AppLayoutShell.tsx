@@ -14,9 +14,12 @@ export default function AppLayoutShell({ children, nav }: AppLayoutShellProps) {
     const isAuthRoute = pathname?.startsWith("/auth");
 
     return (
-        <>
-            {isAuthRoute ? null : nav}
+        <div data-app-shell>
+            {isAuthRoute ? null : (
+                <div data-app-navigation>{nav}</div>
+            )}
             <div
+                data-app-content
                 className={
                     isAuthRoute
                         ? "min-h-screen pb-8"
@@ -32,6 +35,6 @@ export default function AppLayoutShell({ children, nav }: AppLayoutShellProps) {
                     }
                 />
             </div>
-        </>
+        </div>
     );
 }
