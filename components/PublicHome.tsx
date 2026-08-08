@@ -67,11 +67,11 @@ export default function PublicHome() {
             aria-label="VAIVIA home"
           >
             <Image
-              src="/icons/vaivia-header-logo.png"
+              src="/icons/vaivia-header-logo.svg"
               alt=""
-              width={190}
-              height={40}
-              className="h-8 w-auto object-contain sm:h-10"
+              width={181}
+              height={80}
+              className="h-10 w-auto object-contain sm:h-16"
             />
           </Link>
           <nav className="flex items-center gap-2 sm:gap-3" aria-label="Account">
