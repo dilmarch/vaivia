@@ -1,9 +1,6 @@
-const VAIVIA_STATIC_CACHE = "vaivia-static-v4";
+const VAIVIA_STATIC_CACHE = "vaivia-static-v5";
 const VAIVIA_ICON_ASSETS = [
   "/vaivia-icon.svg",
-  "/favicon.ico",
-  "/favicon-16.png",
-  "/favicon-32.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/icon-maskable-192.png",
