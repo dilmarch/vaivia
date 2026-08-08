@@ -1,4 +1,4 @@
-const VAIVIA_STATIC_CACHE = "vaivia-static-v3";
+const VAIVIA_STATIC_CACHE = "vaivia-static-v4";
 const VAIVIA_ICON_ASSETS = [
   "/vaivia-icon.svg",
   "/favicon.ico",
