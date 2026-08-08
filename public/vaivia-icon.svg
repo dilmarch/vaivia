@@ -1,5 +1,67 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="VAIVIA">
-  <rect width="512" height="512" rx="112" fill="#0c0115"/>
-  <circle cx="256" cy="256" r="190" fill="#bef264" opacity="0.12"/>
-  <path d="M125 146h72l58 204 60-204h72L295 366h-79L125 146z" fill="#bef264"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 458.85 431.51">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: url(#linear-gradient-3);
+      }
+
+      .cls-2 {
+        fill: url(#linear-gradient-2);
+      }
+
+      .cls-3 {
+        fill: url(#linear-gradient);
+      }
+
+      .cls-4 {
+        fill: #1e1e1e;
+      }
+
+      .cls-5 {
+        fill: #fff;
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="35.65" y1="21.98" x2="423.2" y2="409.53" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#e6e54c"/>
+      <stop offset=".16" stop-color="#e79250"/>
+      <stop offset=".28" stop-color="#e85a54"/>
+      <stop offset="1" stop-color="#cb38d7"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-2" x1="128.45" y1="89.48" x2="335.98" y2="297.01" gradientUnits="userSpaceOnUse">
+      <stop offset=".13" stop-color="#bef264"/>
+      <stop offset=".15" stop-color="#c1e867"/>
+      <stop offset=".32" stop-color="#db9f81"/>
+      <stop offset=".46" stop-color="#ee6995"/>
+      <stop offset=".57" stop-color="#fa48a1"/>
+      <stop offset=".62" stop-color="#ff3ca6"/>
+      <stop offset=".63" stop-color="#fc3ca7"/>
+      <stop offset=".71" stop-color="#ce3cc6"/>
+      <stop offset=".8" stop-color="#aa3cdf"/>
+      <stop offset=".87" stop-color="#913cf0"/>
+      <stop offset=".94" stop-color="#813cfb"/>
+      <stop offset="1" stop-color="#7c3cff"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient-3" x1="229.42" y1="97.57" x2="229.42" y2="333.95" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e1e1e" stop-opacity="0"/>
+      <stop offset=".11" stop-color="#1e1e1e"/>
+      <stop offset=".9" stop-color="#1e1e1e"/>
+      <stop offset="1" stop-color="#1e1e1e" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <g id="Layer_3" data-name="Layer 3">
+    <g>
+      <rect class="cls-3" width="458.85" height="431.51" rx="98.38" ry="98.38"/>
+      <rect class="cls-4" width="458.85" height="431.51" rx="98.38" ry="98.38"/>
+      <g>
+        <path class="cls-2" d="M232.21,37.26c-33.05,0-64.77,13.22-88.56,37.01-23.79,23.79-37.01,55.52-37.01,88.56,0,81.96,93.85,200.92,125.58,237.94,31.72-37.01,125.58-155.98,125.58-237.94,0-33.05-13.22-64.77-37.01-88.56s-54.2-37.01-88.56-37.01Z"/>
+        <circle class="cls-4" cx="235.61" cy="164.96" r="79.8"/>
+      </g>
+      <rect class="cls-1" y="97.57" width="458.85" height="236.38"/>
+      <g>
+        <path class="cls-5" d="M53.09,141.46h42.87l57.74,98.16,57.54-98.16h41.68l-87.96,148.6h-22.66L53.09,141.46Z"/>
+        <path class="cls-5" d="M246.85,290.06h-39.29l89.66-148.6h21.5l87.03,148.6h-38.6l-59.09-98.79-61.22,98.79Z"/>
+      </g>
+    </g>
+  </g>
 </svg>

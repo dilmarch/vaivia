@@ -40,6 +40,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
+      { url: "/vaivia-icon.svg", sizes: "any", type: "image/svg+xml" },
       { url: "/favicon.ico", sizes: "64x64", type: "image/x-icon" },
       { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
       { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },

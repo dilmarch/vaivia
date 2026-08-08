@@ -1,11 +1,15 @@
-const VAIVIA_STATIC_CACHE = "vaivia-static-v2";
+const VAIVIA_STATIC_CACHE = "vaivia-static-v3";
 const VAIVIA_ICON_ASSETS = [
   "/vaivia-icon.svg",
+  "/favicon.ico",
+  "/favicon-16.png",
+  "/favicon-32.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/icon-maskable-192.png",
   "/icons/icon-maskable-512.png",
   "/icons/apple-touch-icon.png",
+  "/icons/vaivia-favicon.png",
 ];
 
 self.addEventListener("install", (event) => {
