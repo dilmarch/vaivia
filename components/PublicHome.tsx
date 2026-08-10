@@ -67,7 +67,7 @@ export default function PublicHome() {
             aria-label="VAIVIA home"
           >
             <Image
-              src="/icons/vaivia-header-logo.svg"
+              src="/icons/vaivia-expanded-logo.png"
               alt=""
               width={181}
               height={80}

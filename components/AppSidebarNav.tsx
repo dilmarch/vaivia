@@ -544,7 +544,7 @@ export default function AppSidebarNav({
                 <div className="flex min-h-0 flex-1 flex-col pb-4">
                     <Link
                         href="/"
-                        className="relative mb-5 flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:h-24 group-hover/sidebar:justify-start"
+                        className="relative mb-5 flex h-12 w-full items-center justify-center overflow-hidden rounded-2xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-lime-300/50 group-hover/sidebar:h-[4.2rem] group-hover/sidebar:justify-start"
                         aria-label="VAIVIA home"
                     >
                         <span className="flex h-12 w-12 items-center justify-center transition-all duration-300 group-hover/sidebar:opacity-0">
@@ -558,11 +558,11 @@ export default function AppSidebarNav({
                         </span>
                         <span className="absolute left-0 flex max-w-0 items-center overflow-hidden opacity-0 transition-all duration-300 group-hover/sidebar:max-w-52 group-hover/sidebar:opacity-100">
                             <Image
-                                src="/icons/vaivia-header-logo.svg"
+                                src="/icons/vaivia-expanded-logo.png"
                                 alt=""
-                                width={181}
-                                height={80}
-                                className="h-20 w-auto max-w-none object-contain"
+                                width={127}
+                                height={56}
+                                className="h-14 w-auto max-w-none object-contain"
                             />
                         </span>
                     </Link>
