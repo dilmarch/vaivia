@@ -52,8 +52,67 @@ export type MobileTripsResponse = {
 };
 
 export type MobileTripDetailResponse = {
-  trip: MobileTripSummary & Pick<TripRow, "notes">;
+  trip: MobileTripSummary &
+    Pick<
+      TripRow,
+      | "notes"
+      | "cover_image_source"
+      | "cover_image_photographer_name"
+      | "cover_image_photographer_url"
+    >;
+  overview: MobileTripOverview;
   itinerary: MobileItineraryItem[];
+};
+
+export type MobileTripOverviewLocation = {
+  id: string;
+  flag: string;
+  label: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export type MobileTripOverviewPerson = {
+  id: string;
+  label: string;
+  avatarUrl: string | null;
+  initial: string;
+};
+
+export type MobileTripOverviewTransportation = {
+  id: string;
+  modeEmoji: string;
+  departureLabel: string | null;
+  arrivalLabel: string | null;
+  summary: string;
+  detail: string | null;
+  pauseLabel: string | null;
+};
+
+export type MobileTripOverviewStay = {
+  id: string;
+  checkInDate: string;
+  checkOutDate: string;
+  label: string;
+  kind: "booked" | "missing" | "tentative";
+  omitCheckIn?: boolean;
+};
+
+export type MobileTripOverview = {
+  locations: MobileTripOverviewLocation[];
+  going: MobileTripOverviewPerson[];
+  invited: MobileTripOverviewPerson[];
+  displayStartDate: string | null;
+  displayEndDate: string | null;
+  missingDateLabel: string;
+  transportation: MobileTripOverviewTransportation[];
+  stays: MobileTripOverviewStay[];
+  budget: {
+    currency: string;
+    budgeted: number;
+    spent: number;
+    hasBudget: boolean;
+  };
 };
 
 export type MobileNotification = Pick<

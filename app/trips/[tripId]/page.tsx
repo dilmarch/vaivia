@@ -4,10 +4,8 @@ import { connection } from "next/server";
 import { revalidatePath } from "next/cache";
 import { Suspense, type ReactNode } from "react";
 import {
-    ArrowRight,
     BedDouble,
     CalendarCheck,
-    Flag,
     ListChecks,
     Mail,
     PiggyBank,
@@ -15,7 +13,6 @@ import {
     Route,
     Sparkles,
     Utensils,
-    UserPlus,
     type LucideIcon,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -27,6 +24,17 @@ import type {
 import ItineraryTabs from "@/components/ItineraryTabs";
 import TripDocumentTitle from "@/components/TripDocumentTitle";
 import TripHeaderCover from "@/components/TripHeaderCover";
+import { TripHeaderTitlePresentation } from "@/components/trips/TripHeaderPresentation";
+import {
+    TripOverviewComparisonPresentation,
+    TripOverviewCountdownPresentation,
+    TripOverviewLocationDatesPresentation,
+    TripOverviewPeoplePresentation,
+    TripOverviewPresentation,
+    TripOverviewStayTimeline,
+    TripOverviewTilePresentation,
+    TripOverviewTransportTimeline,
+} from "@/components/trips/TripOverviewPresentation";
 import {
     buildTripCoverPayloadFromForm,
     cleanupReplacedTripCover,
@@ -1680,127 +1688,90 @@ function MobilePeopleSummary({
     showAddFriendAction?: boolean;
     inviteAction?: ReactNode;
 }) {
-    const visiblePeople = people.slice(0, 5);
-    const hiddenCount = Math.max(people.length - visiblePeople.length, 0);
-
     return (
-        <MobileOverviewLongPressCard
-            className="min-w-0 rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-3 text-left text-white shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45"
-            modalTitle={modalTitle || title}
-            modalEyebrow={modalEyebrow || "Trip people"}
-            ariaLabel={`Show ${title.toLowerCase()} details`}
-            modalContent={
-                people.length > 0 ? (
-                    <div className="space-y-3">
-                        {people.map((person) => (
-                            <div
-                                key={person.id}
-                                className="flex items-center justify-between gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3"
-                            >
-                                <div className="flex min-w-0 items-center gap-3">
-                                    <MobilePersonAvatar
-                                        person={person}
-                                        sizeClassName="h-11 w-11 text-xs"
-                                    />
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-black text-white">
-                                            {person.label}
-                                        </p>
-                                        {person.detail ? (
-                                            <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
-                                                {person.detail}
-                                            </p>
+        <TripOverviewPeoplePresentation
+            title={title}
+            people={people}
+            emptyText={emptyText}
+            inviteMode={inviteMode}
+            inviteAction={inviteAction}
+            renderAction={({ children, className }) => (
+                <MobileOverviewLongPressCard
+                    className={className}
+                    modalTitle={modalTitle || title}
+                    modalEyebrow={modalEyebrow || "Trip people"}
+                    ariaLabel={`Show ${title.toLowerCase()} details`}
+                    modalContent={
+                        people.length > 0 ? (
+                            <div className="space-y-3">
+                                {people.map((person) => (
+                                    <div
+                                        key={person.id}
+                                        className="flex items-center justify-between gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3"
+                                    >
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <MobilePersonAvatar
+                                                person={person}
+                                                sizeClassName="h-11 w-11 text-xs"
+                                            />
+                                            <div className="min-w-0">
+                                                <p className="truncate text-sm font-black text-white">
+                                                    {person.label}
+                                                </p>
+                                                {person.detail ? (
+                                                    <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
+                                                        {person.detail}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                        </div>
+                                        {showAddFriendAction ? (
+                                            (() => {
+                                                const actionLabel = getMobileFriendActionLabel(person);
+                                                if (!actionLabel) return null;
+                                                if (actionLabel === "Invited") {
+                                                    return (
+                                                        <span className="shrink-0 rounded-full border border-lime-300/25 bg-lime-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100">
+                                                            Invited
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <Link
+                                                        href="/profile?modal=friends"
+                                                        className="shrink-0 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
+                                                    >
+                                                        Add friend
+                                                    </Link>
+                                                );
+                                            })()
                                         ) : null}
                                     </div>
-                                </div>
-                                {showAddFriendAction ? (
-                                    (() => {
-                                        const actionLabel =
-                                            getMobileFriendActionLabel(person);
-
-                                        if (!actionLabel) return null;
-
-                                        if (actionLabel === "Invited") {
-                                            return (
-                                                <span className="shrink-0 rounded-full border border-lime-300/25 bg-lime-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100">
-                                                    Invited
-                                                </span>
-                                            );
-                                        }
-
-                                        return (
-                                            <Link
-                                                href="/profile?modal=friends"
-                                                className="shrink-0 rounded-full border border-lime-300/30 bg-lime-300/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
-                                            >
-                                                Add friend
-                                            </Link>
-                                        );
-                                    })()
-                                ) : null}
+                                ))}
+                                {inviteAction}
                             </div>
-                        ))}
-                        {inviteAction}
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
-                            {emptyText}
-                        </p>
-                        {inviteAction}
-                    </div>
-                )
-            }
-        >
-            <div className="flex items-center justify-between gap-2">
-                <p className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                    <span>{title}</span>
-                </p>
-                <span className="text-xs font-black text-slate-400">
-                    {people.length}
-                </span>
-            </div>
-            {people.length > 0 ? (
-                <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5">
-                    {inviteMode && inviteAction ? (
-                        <span
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/30 bg-lime-300/10 text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
-                            aria-label="Invite someone"
-                        >
-                            <UserPlus className="h-4 w-4" aria-hidden="true" />
-                        </span>
-                    ) : null}
-                    {visiblePeople.map((person) => (
-                        <MobilePersonAvatar key={person.id} person={person} />
-                    ))}
-                    {hiddenCount > 0 ? (
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/25 bg-lime-300/10 text-[10px] font-black text-lime-100">
-                            +{hiddenCount}
-                        </span>
-                    ) : null}
-                </div>
-            ) : (
-                <p className="mt-3 flex items-center gap-2 text-xs font-semibold leading-5 text-slate-400">
-                    {inviteMode && inviteAction ? (
-                        <span
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-lime-300/30 bg-lime-300/10 text-lime-100 transition hover:bg-lime-300 hover:text-slate-950"
-                            aria-label="Invite someone"
-                        >
-                            <UserPlus className="h-4 w-4" aria-hidden="true" />
-                        </span>
-                    ) : null}
-                    <span>{emptyText}</span>
-                </p>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
+                                    {emptyText}
+                                </p>
+                                {inviteAction}
+                            </div>
+                        )
+                    }
+                >
+                    {children}
+                </MobileOverviewLongPressCard>
             )}
-        </MobileOverviewLongPressCard>
+        />
     );
 }
 
-function MobileOverviewTile({
+function WebTripOverviewTile({
     title,
     description,
     href,
-    icon: Icon,
+    icon,
     buttonLabel,
     children,
     disabled = false,
@@ -1815,48 +1786,27 @@ function MobileOverviewTile({
     disabled?: boolean;
     alignTop?: boolean;
 }) {
-    const content = (
-        <>
-            <div className="flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/75 text-lime-200 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.12)]">
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <span className="min-w-0">
-                    <span className="block text-sm font-black text-white">
-                        {title}
-                    </span>
-                    <span className="mt-1 block text-[11px] font-semibold leading-4 text-slate-400">
-                        {description}
-                    </span>
-                </span>
-            </div>
-            {children ? <div className="mt-3">{children}</div> : null}
-            <span
-                className={`mt-4 inline-flex w-full items-center justify-center rounded-full px-3 py-2 text-center text-[11px] font-black uppercase tracking-[0.12em] transition ${
-                    disabled
-                        ? "border border-white/10 bg-white/[0.04] text-slate-500"
-                        : "bg-lime-300 text-slate-950 group-hover:bg-lime-200"
-                }`}
-            >
-                {buttonLabel}
-            </span>
-        </>
+    return (
+        <TripOverviewTilePresentation
+            title={title}
+            description={description}
+            icon={icon}
+            buttonLabel={buttonLabel}
+            disabled={disabled}
+            alignTop={alignTop}
+            renderAction={
+                href
+                    ? ({ children: actionChildren, className }) => (
+                          <Link href={href} className={className} prefetch>
+                              {actionChildren}
+                          </Link>
+                      )
+                    : undefined
+            }
+        >
+            {children}
+        </TripOverviewTilePresentation>
     );
-
-    const className =
-        `group flex min-h-40 flex-col ${
-            alignTop ? "justify-start" : "justify-between"
-        } rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45`;
-
-    if (href && !disabled) {
-        return (
-            <Link href={href} className={className} prefetch>
-                {content}
-            </Link>
-        );
-    }
-
-    return <div className={className}>{content}</div>;
 }
 
 function getCompactRouteLocationLabel(location?: string | null) {
@@ -5752,14 +5702,10 @@ async function TripDetailContent({
                     updateTripAction={updateTrip}
                     deleteTripAction={deleteTrip}
                 >
-                    <div className="space-y-3">
-                        <p className="text-sm font-black uppercase tracking-[0.3em] text-lime-200 drop-shadow-[0_4px_18px_rgba(0,0,0,0.65)] sm:text-base">
-                            {trip.title || "Untitled trip"}
-                        </p>
-                        <h1 className="vaivia-trip-hero-title max-w-5xl text-5xl font-black tracking-tight text-white drop-shadow-[0_6px_24px_rgba(0,0,0,0.65)] sm:text-7xl lg:text-8xl">
-                            {tripHeroPageLabel}
-                        </h1>
-                    </div>
+                    <TripHeaderTitlePresentation
+                        tripTitle={trip.title || "Untitled trip"}
+                        pageLabel={tripHeroPageLabel}
+                    />
                 </TripHeaderCover>
 
                 <div
@@ -5847,113 +5793,57 @@ async function TripDetailContent({
 
             <div className="mx-auto max-w-7xl px-4 sm:px-6">
                 {!hasExplicitTripTab ? (
-                    <section className="grid gap-3 pb-8 md:grid-cols-2 md:gap-4 xl:grid-cols-3">
-                        <div className="grid grid-cols-[0.85fr_1.15fr] gap-3">
-                            <MobileOverviewLongPressCard
-                                className="rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-left text-white shadow-xl shadow-black/15 transition hover:border-lime-300/30 hover:bg-white/[0.1] focus:outline-none focus:ring-2 focus:ring-lime-300/45"
-                                modalTitle="Trip legs"
-                                modalEyebrow="Trip legs"
-                                ariaLabel="Show all trip legs"
-                                modalContent={
-                                    visibleHeroLocations.length > 0 ? (
-                                        <div className="grid gap-3">
-                                            {visibleHeroLocations.map((location) => (
-                                                <div
-                                                    key={location.id}
-                                                    className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3"
-                                                >
-                                                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950/80 text-3xl ring-1 ring-lime-300/20">
-                                                        {getMobileLocationFlag(location)}
-                                                    </span>
-                                                    <div className="min-w-0">
-                                                        <p className="truncate text-sm font-black text-white">
-                                                            {getMobileLocationLabel(
-                                                                location
-                                                            ) || location.name}
-                                                        </p>
-                                                        <p className="mt-0.5 text-xs font-semibold text-slate-400">
-                                                            {getMobileLocationDateRange(
-                                                                location
-                                                            )}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
-                                            Add trip legs to see your dates here.
-                                        </p>
-                                    )
-                                }
-                            >
-                                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                                    Trip Legs
-                                </p>
-                                <div className="mt-3 min-h-10 space-y-2">
-                                    {visibleHeroLocations.length > 0 ? (
-                                        <>
-                                            {visibleHeroLocations
-                                                .slice(0, 3)
-                                                .map((location) => (
+                    <TripOverviewPresentation>
+                        <TripOverviewLocationDatesPresentation
+                            locations={visibleHeroLocations.map((location) => ({
+                                id: location.id,
+                                flag: getMobileLocationFlag(location),
+                                label: getMobileLocationLabel(location) || location.name,
+                                startDate: location.startDate,
+                                endDate: location.endDate,
+                            }))}
+                            startDate={displayTripStartDate}
+                            endDate={displayTripEndDate}
+                            missingDateLabel={missingTripDateLabel}
+                            renderLocationsAction={({ children, className }) => (
+                                <MobileOverviewLongPressCard
+                                    className={className}
+                                    modalTitle="Trip legs"
+                                    modalEyebrow="Trip legs"
+                                    ariaLabel="Show all trip legs"
+                                    modalContent={
+                                        visibleHeroLocations.length > 0 ? (
+                                            <div className="grid gap-3">
+                                                {visibleHeroLocations.map((location) => (
                                                     <div
                                                         key={location.id}
-                                                        className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1.5"
+                                                        className="flex items-center gap-3 rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-3"
                                                     >
-                                                        <span className="text-xl leading-none">
-                                                            {getMobileLocationFlag(
-                                                                location
-                                                            )}
+                                                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950/80 text-3xl ring-1 ring-lime-300/20">
+                                                            {getMobileLocationFlag(location)}
                                                         </span>
-                                                        <span className="truncate text-xs font-black text-slate-100">
-                                                            {location.startDate
-                                                                ? formatCompactTripDate(
-                                                                      location.startDate
-                                                                  )
-                                                                : missingTripDateLabel}
-                                                        </span>
+                                                        <div className="min-w-0">
+                                                            <p className="truncate text-sm font-black text-white">
+                                                                {getMobileLocationLabel(location) || location.name}
+                                                            </p>
+                                                            <p className="mt-0.5 text-xs font-semibold text-slate-400">
+                                                                {getMobileLocationDateRange(location)}
+                                                            </p>
+                                                        </div>
                                                     </div>
                                                 ))}
-                                            {visibleHeroLocations.length > 3 ? (
-                                                <p className="pl-1 text-[10px] font-black uppercase tracking-[0.14em] text-lime-100/80">
-                                                    +{visibleHeroLocations.length - 3} more
-                                                </p>
-                                            ) : null}
-                                        </>
-                                    ) : (
-                                        <div className="flex items-center gap-2 rounded-full border border-lime-300/20 bg-lime-300/10 px-2.5 py-1.5 text-lime-100">
-                                            <Flag className="h-4 w-4" aria-hidden="true" />
-                                            <span className="truncate text-xs font-black">
-                                                Add a leg
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            </MobileOverviewLongPressCard>
-
-                            <div className="space-y-2 rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-4 text-white shadow-xl shadow-black/15">
-                                <div>
-                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                                        Departing
-                                    </p>
-                                    <p className="mt-1 text-sm font-black">
-                                        {displayTripStartDate
-                                            ? formatCompactTripDate(displayTripStartDate)
-                                            : missingTripDateLabel}
-                                    </p>
-                                </div>
-                                <div className="border-t border-white/10 pt-2">
-                                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-lime-300">
-                                        Returning
-                                    </p>
-                                    <p className="mt-1 text-sm font-black">
-                                        {displayTripEndDate
-                                            ? formatCompactTripDate(displayTripEndDate)
-                                            : missingTripDateLabel}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
+                                            </div>
+                                        ) : (
+                                            <p className="rounded-[1.25rem] border border-white/10 bg-white/[0.05] p-4 text-sm font-semibold leading-6 text-slate-300">
+                                                Add trip legs to see your dates here.
+                                            </p>
+                                        )
+                                    }
+                                >
+                                    {children}
+                                </MobileOverviewLongPressCard>
+                            )}
+                        />
 
                         <div
                             className={`grid gap-3 ${
@@ -6000,9 +5890,7 @@ async function TripDetailContent({
                             />
                         ) : null}
 
-                        <div className="vaivia-countdown-card relative overflow-hidden rounded-[1.35rem] border border-lime-300/30 bg-lime-300 p-5 text-slate-950 shadow-[0_0_50px_rgba(var(--vaivia-neon-rgb),0.22)]">
-                            <div className="absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/35 blur-2xl" />
-                            <div className="absolute -bottom-12 left-8 h-24 w-24 rounded-full bg-fuchsia-400/20 blur-2xl" />
+                        <TripOverviewCountdownPresentation>
                             <TripCountdown
                                 tripId={trip.id}
                                 startDate={displayTripStartDate}
@@ -6011,19 +5899,19 @@ async function TripDetailContent({
                                 targets={countdownTargetOptions}
                                 updateCountdownTargetAction={updateTripCountdownTarget}
                             />
-                        </div>
+                        </TripOverviewCountdownPresentation>
 
                         <TripWeatherCard tripId={trip.id} />
 
                         <div className="grid grid-cols-2 gap-3">
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Itinerary"
                                 description="Schedule the days, tickets, and timed plans."
                                 href={getTripItineraryHref(trip)}
                                 icon={CalendarCheck}
                                 buttonLabel="Visit itinerary"
                             />
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Trip Ideas"
                                 description="Brainstorm ideas of trip activities without scheduling them for a specific time on the itinerary."
                                 href={getTripHref(trip, "?tab=ideas")}
@@ -6033,7 +5921,7 @@ async function TripDetailContent({
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Transport"
                                 description="Transportation from start to finish."
                                 href={getTripHref(trip, "?tab=journey")}
@@ -6041,108 +5929,28 @@ async function TripDetailContent({
                                 buttonLabel="Visit transport"
                                 alignTop
                             >
-                                <div>
-                                    {mobileTransportationItems.length > 0 ? (
-                                        <div className="relative space-y-2.5 pl-5 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:border-l before:border-dotted before:border-lime-300/45">
-                                            {mobileTransportationItems.map(
-                                                (item, index) => {
-                                                    const routeParts =
-                                                        getMobileTransportationRouteParts(
-                                                            item
-                                                        );
-                                                    const detail =
-                                                        getMobileJourneyDetail(item);
-                                                    const pauseLabel =
-                                                        mobileTransportationItems[
-                                                            index + 1
-                                                        ]
-                                                            ? getMobileJourneyPauseLabel(
-                                                                  item,
-                                                                  mobileTransportationItems[
-                                                                      index + 1
-                                                                  ]
-                                                              )
-                                                            : "";
+                                <TripOverviewTransportTimeline
+                                    items={mobileTransportationItems.map((item, index) => {
+                                        const routeParts = getMobileTransportationRouteParts(item);
+                                        return {
+                                            id: item.id,
+                                            modeEmoji: getTransportationModeEmoji(item.transportation_mode),
+                                            departureLabel: routeParts[0] || null,
+                                            arrivalLabel: routeParts[1] || null,
+                                            summary: getTransportationSummary(item),
+                                            detail: getMobileJourneyDetail(item),
+                                            pauseLabel: mobileTransportationItems[index + 1]
+                                                ? getMobileJourneyPauseLabel(
+                                                      item,
+                                                      mobileTransportationItems[index + 1]
+                                                  )
+                                                : "",
+                                        };
+                                    })}
+                                />
+                            </WebTripOverviewTile>
 
-                                                    return (
-                                                        <div
-                                                            key={item.id}
-                                                            className="space-y-1.5 text-[11px] font-semibold leading-4 text-slate-300"
-                                                        >
-                                                            <div className="relative rounded-xl border border-white/10 bg-slate-950/45 px-2.5 py-2 text-slate-200">
-                                                                <span
-                                                                    className="absolute -left-[19px] top-3 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
-                                                                    aria-hidden="true"
-                                                                >
-                                                                    <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
-                                                                </span>
-                                                                {routeParts.length >= 2 ? (
-                                                                    <p className="flex flex-wrap items-center gap-1.5 font-black text-slate-100">
-                                                                        <span>
-                                                                            {getTransportationModeEmoji(
-                                                                                item.transportation_mode
-                                                                            )}
-                                                                        </span>
-                                                                        <span>
-                                                                            {
-                                                                                routeParts[0]
-                                                                            }
-                                                                        </span>
-                                                                        <ArrowRight
-                                                                            className="h-3 w-3 shrink-0 text-lime-200"
-                                                                            aria-hidden="true"
-                                                                        />
-                                                                        <span>
-                                                                            {
-                                                                                routeParts[1]
-                                                                            }
-                                                                        </span>
-                                                                    </p>
-                                                                ) : (
-                                                                    <p className="font-black text-slate-100">
-                                                                        {getTransportationSummary(
-                                                                            item
-                                                                        )}
-                                                                    </p>
-                                                                )}
-                                                                {detail ? (
-                                                                    <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
-                                                                        {detail}
-                                                                    </p>
-                                                                ) : null}
-                                                            </div>
-                                                            {pauseLabel ? (
-                                                                <p className="pl-2 text-[10px] font-bold uppercase tracking-[0.08em] text-lime-100/80">
-                                                                    {pauseLabel}
-                                                                </p>
-                                                            ) : null}
-                                                        </div>
-                                                    );
-                                                }
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="relative pl-5">
-                                            <div className="relative rounded-xl border border-white/10 bg-slate-950/45 px-2.5 py-2 text-[11px] font-semibold leading-4 text-slate-300">
-                                                <span
-                                                    className="absolute -left-[19px] top-3 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
-                                                    aria-hidden="true"
-                                                >
-                                                    <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
-                                                </span>
-                                                <p className="font-black text-slate-100">
-                                                    nothing booked
-                                                </p>
-                                                <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
-                                                    add a transportation item to the itinerary
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </MobileOverviewTile>
-
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Stays"
                                 description="Booked hotels, homes, or places to sleep."
                                 href={getTripHref(trip, "/accommodations")}
@@ -6150,92 +5958,31 @@ async function TripDetailContent({
                                 buttonLabel="Visit stays"
                                 alignTop
                             >
-                                <div>
-                                    {mobileStayTimeline.length > 0 ? (
-                                        <div className="relative space-y-2 pl-5 before:absolute before:bottom-3 before:left-[5px] before:top-3 before:border-l before:border-dotted before:border-lime-300/45">
-                                            {mobileStayTimeline.map((entry) => (
-                                                <div
-                                                    key={entry.id}
-                                                    className="space-y-1.5 text-[11px] font-semibold leading-4 text-slate-300"
-                                                >
-                                                    {!entry.omitCheckIn ? (
-                                                        <p className="relative flex items-start">
-                                                            <span
-                                                                className="absolute -left-[19px] top-1 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
-                                                                aria-hidden="true"
-                                                            >
-                                                                <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
-                                                            </span>
-                                                            <span>
-                                                                {formatCompactTripDate(
-                                                                    entry.checkInDate
-                                                                )}
-                                                            </span>
-                                                        </p>
-                                                    ) : null}
-                                                    <p className="rounded-xl border border-white/10 bg-slate-950/45 px-2.5 py-2 text-slate-200">
-                                                        <span className="mr-1.5">
-                                                            {entry.kind === "booked"
-                                                                ? "🏨"
-                                                                : entry.kind === "tentative"
-                                                                  ? "⚠️"
-                                                                  : "❗"}
-                                                        </span>
-                                                        <span>{entry.label}</span>
-                                                    </p>
-                                                    <p className="relative flex items-start">
-                                                        <span
-                                                            className="absolute -left-[19px] top-1 flex h-3 w-3 items-center justify-center rounded-full border border-lime-300/70 bg-[#0c0115] shadow-[0_0_10px_rgba(var(--vaivia-neon-rgb),0.25)]"
-                                                            aria-hidden="true"
-                                                        >
-                                                            <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
-                                                        </span>
-                                                        <span>
-                                                            {formatCompactTripDate(
-                                                                entry.checkOutDate
-                                                            )}
-                                                        </span>
-                                                    </p>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-[11px] font-semibold leading-4 text-slate-400">
-                                            None booked yet
-                                        </p>
-                                    )}
-                                </div>
-                            </MobileOverviewTile>
+                                <TripOverviewStayTimeline items={mobileStayTimeline} />
+                            </WebTripOverviewTile>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                            <Link
-                                href={getTripHref(trip, "?tab=journey-planning")}
-                                className="rounded-[1.35rem] border border-lime-300/25 bg-lime-300 p-4 text-center text-sm font-black leading-5 text-slate-950 shadow-[0_0_32px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/45"
-                                prefetch
-                            >
-                                Compare flights
-                                <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-800/75">
-                                    Add flights to compare
-                                </span>
-                            </Link>
-                            <div className="rounded-[1.35rem] border border-white/10 bg-white/[0.04] p-4 text-center text-sm font-black leading-5 text-slate-500 shadow-xl shadow-black/15">
-                                Compare stays
-                                <span className="mt-1 block text-[11px] font-black uppercase tracking-[0.12em]">
-                                    Coming soon
-                                </span>
-                            </div>
-                        </div>
+                        <TripOverviewComparisonPresentation
+                            renderFlightsAction={({ children, className }) => (
+                                <Link
+                                    href={getTripHref(trip, "?tab=journey-planning")}
+                                    className={className}
+                                    prefetch
+                                >
+                                    {children}
+                                </Link>
+                            )}
+                        />
 
                         <div className="grid grid-cols-2 gap-3">
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Restaurants"
                                 description="Add places you want to check out."
                                 href={getTripHref(trip, "/food?tab=places")}
                                 icon={Utensils}
                                 buttonLabel="Visit restaurants"
                             />
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Foods"
                                 description="Track foods you want to try."
                                 href={getTripHref(trip, "/food?tab=foods")}
@@ -6245,7 +5992,7 @@ async function TripDetailContent({
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Budget"
                                 description={
                                     hasMobileBudget
@@ -6266,7 +6013,7 @@ async function TripDetailContent({
                                         : "Add budget"
                                 }
                             />
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Expenses"
                                 description={`${formatMoneyAmount(
                                     mobileExpenseTotal,
@@ -6279,7 +6026,7 @@ async function TripDetailContent({
                         </div>
 
                         {isMobileGroupTrip ? (
-                            <MobileOverviewTile
+                            <WebTripOverviewTile
                                 title="Who owes what"
                                 description={
                                     mobileSettlementSummaries.length > 0
@@ -6297,7 +6044,7 @@ async function TripDetailContent({
                                 data={mobileExchangeRateData}
                             />
                         ) : null}
-                    </section>
+                    </TripOverviewPresentation>
                 ) : null}
 
                 <section

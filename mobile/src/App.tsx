@@ -44,7 +44,6 @@ export default function App() {
       <TripDetailScreen
         apiClient={apiClient}
         tripId={selectedTripId}
-        onBack={() => setSelectedTripId(null)}
       />
   ) : (
     <TripsScreen

@@ -13,6 +13,7 @@ import {
     useTripCoverImage,
     type TripCoverTrip,
 } from "@/components/TripCoverImage";
+import { TripHeaderPresentation } from "@/components/trips/TripHeaderPresentation";
 import { sanitizeTripSlugInput, slugifyTripTitle } from "@/lib/tripRoutes";
 
 type TripHeaderCoverProps = {
@@ -68,32 +69,17 @@ export default function TripHeaderCover({
                 onReady={() => setIsGoogleReady(true)}
             />
 
-            {coverImageUrl && !coverLoadError && (
-                <div className="vaivia-trip-header-cover relative overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                        src={coverImageUrl}
-                        alt=""
-                        className="vaivia-trip-header-cover-media aspect-[16/7] w-full object-cover"
-                        onLoad={() => setCoverLoadError("")}
-                        onError={() =>
-                            setCoverLoadError(
-                                "This image could not be loaded. Try a direct .jpg, .jpeg, .png, .webp, .gif, .avif, or .svg image URL from a host that allows embedding."
-                            )
-                        }
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/15 to-transparent" />
-                    {children && (
-                        <div className="vaivia-trip-header-cover-content absolute bottom-6 left-6 right-24 sm:bottom-8 sm:left-8">
-                            {children}
-                        </div>
-                    )}
-                    {coverLoadError && (
-                        <div className="absolute left-4 top-4 max-w-lg rounded-md bg-white/95 px-3 py-2 text-sm text-red-700 shadow-sm">
-                            {coverLoadError}
-                        </div>
-                    )}
-                    {trip.cover_image_source === "unsplash" &&
+            <TripHeaderPresentation
+                coverImageUrl={coverImageUrl}
+                imageErrorMessage={coverLoadError}
+                onImageLoad={() => setCoverLoadError("")}
+                onImageError={() =>
+                    setCoverLoadError(
+                        "This image could not be loaded. Try a direct .jpg, .jpeg, .png, .webp, .gif, .avif, or .svg image URL from a host that allows embedding."
+                    )
+                }
+                attribution={
+                    trip.cover_image_source === "unsplash" &&
                     trip.cover_image_photographer_name ? (
                         <div className="absolute left-4 top-4 rounded-full bg-slate-950/70 px-3 py-1.5 text-xs font-semibold text-white shadow-xl shadow-black/30 backdrop-blur">
                             Photo by{" "}
@@ -119,7 +105,10 @@ export default function TripHeaderCover({
                                 Unsplash
                             </a>
                         </div>
-                    ) : null}
+                    ) : null
+                }
+                actions={
+                    <>
                     <button
                         type="button"
                         onClick={() => setIsModalOpen(true)}
@@ -136,35 +125,11 @@ export default function TripHeaderCover({
                     >
                         <Share2 className="h-4 w-4" aria-hidden="true" />
                     </button>
-                </div>
-            )}
-
-            {(!coverImageUrl || coverLoadError) && (
-                <div className="vaivia-trip-header-cover vaivia-trip-header-cover-fallback relative flex min-h-72 items-end overflow-hidden bg-slate-900 p-6 sm:p-8">
-                    {children}
-                    {coverLoadError && (
-                        <div className="absolute left-4 top-4 max-w-lg rounded-md bg-white/95 px-3 py-2 text-sm text-red-700 shadow-sm">
-                            {coverLoadError}
-                        </div>
-                    )}
-                    <button
-                        type="button"
-                        onClick={() => setIsModalOpen(true)}
-                        className="absolute bottom-4 right-4 inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
-                        aria-label="Edit trip"
-                    >
-                        <Pencil className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setIsShareModalOpen(true)}
-                        className="absolute bottom-4 right-[4.25rem] inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-white/15"
-                        aria-label="Share trip"
-                    >
-                        <Share2 className="h-4 w-4" aria-hidden="true" />
-                    </button>
-                </div>
-            )}
+                    </>
+                }
+            >
+                {children}
+            </TripHeaderPresentation>
 
             <ShareTripModal
                 tripId={trip.id}

@@ -8,6 +8,7 @@ import type {
     WeatherForecast,
     WeatherWidgetResponse,
 } from "@/lib/weather/contracts";
+import { TripOverviewWeatherUnavailablePresentation } from "@/components/trips/TripOverviewPresentation";
 
 const CLIENT_WEATHER_CACHE_MS = 5 * 60 * 1_000;
 
@@ -176,25 +177,9 @@ export default function TripWeatherCard({ tripId }: { tripId: string }) {
 
     if (state.type === "unavailable") {
         return (
-            <section
-                className="md:col-span-2 xl:col-span-3 rounded-[1.35rem] border border-white/10 bg-white/[0.06] p-5 text-white shadow-xl shadow-black/15"
-                aria-labelledby="trip-weather-title"
-                aria-live="polite"
-            >
-                <div className="flex items-start gap-3">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-slate-300">
-                        <CloudSun className="h-5 w-5" aria-hidden="true" />
-                    </span>
-                    <div>
-                        <h2 id="trip-weather-title" className="text-sm font-black">
-                            Weather in {state.data.destinationName}
-                        </h2>
-                        <p className="mt-1 text-sm font-semibold text-slate-400" role="status">
-                            Weather forecast unavailable for this destination
-                        </p>
-                    </div>
-                </div>
-            </section>
+            <TripOverviewWeatherUnavailablePresentation
+                destinationName={state.data.destinationName}
+            />
         );
     }
 
