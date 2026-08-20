@@ -16,6 +16,7 @@ type TripNotepadComposerProps = {
     saveNoteAction?: (formData: FormData) => Promise<void>;
     createCardsAction?: (formData: FormData) => Promise<void>;
     cardKind: "idea" | "food";
+    readOnly?: boolean;
 };
 
 export default function TripNotepadComposer({
@@ -28,6 +29,7 @@ export default function TripNotepadComposer({
     saveNoteAction,
     createCardsAction,
     cardKind,
+    readOnly = false,
 }: TripNotepadComposerProps) {
     const [draft, setDraft] = useState(existingNote || "");
     const [isConfirming, setIsConfirming] = useState(false);
@@ -82,6 +84,7 @@ export default function TripNotepadComposer({
                             data-form-type="other"
                             data-lpignore="true"
                             data-1p-ignore="true"
+                            readOnly={readOnly}
                             className="w-full resize-y rounded-2xl border border-white/10 bg-slate-950/75 px-4 py-3 text-sm font-medium leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/45 focus:ring-2 focus:ring-lime-300/15"
                         />
                     </label>
@@ -93,7 +96,8 @@ export default function TripNotepadComposer({
                         </p>
                         <button
                             type="submit"
-                            disabled={lines.length === 0}
+                            disabled={readOnly || lines.length === 0}
+                            title={readOnly ? "Editing is available on web" : undefined}
                             className="inline-flex shrink-0 items-center gap-2 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.2)] transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-45"
                         >
                             <Check className="h-4 w-4" aria-hidden="true" />

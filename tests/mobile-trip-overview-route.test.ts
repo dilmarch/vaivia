@@ -357,6 +357,58 @@ describe("mobile trip overview route", () => {
         ],
         error: null,
       },
+      trip_food_items: {
+        data: [
+          {
+            id: "food-1",
+            trip_id: "trip-1",
+            item_type: "place",
+            name: "Joe Beef",
+            description: "Montreal restaurant",
+            region: "Little Burgundy",
+            personal_note: "Reserve early.",
+            google_place_id: "google-place-1",
+            place_source: "google_places",
+            formatted_address: "2491 Notre-Dame St W, Montreal, QC",
+            location_lat: 45.482,
+            location_lng: -73.575,
+            primary_place_type: "restaurant",
+            place_types: ["restaurant", "food"],
+            business_status: "OPERATIONAL",
+            regular_opening_hours: {
+              open_now: true,
+              weekday_text: ["Monday: 5:30 PM – 11:00 PM"],
+            },
+            website_url: "https://joebeef.com",
+            phone_number: "+15149356500",
+            google_maps_url: "https://maps.google.com/example",
+            facebook_url: null,
+            instagram_url: "https://instagram.com/joebeef",
+            meal_categories: ["dinner"],
+            created_by: "user-123",
+            created_at: "2026-08-02T00:00:00Z",
+            updated_at: "2026-08-02T00:00:00Z",
+          },
+        ],
+        error: null,
+      },
+      trip_food_reactions: {
+        data: [
+          {
+            food_item_id: "food-1",
+            user_id: "user-123",
+            reaction: "heart",
+            score: 2,
+          },
+        ],
+        error: null,
+      },
+      trip_food_tried: {
+        data: [
+          { food_item_id: "food-1", user_id: "user-123" },
+        ],
+        error: null,
+      },
       trip_idea_reactions: {
         data: [
           {
@@ -530,6 +582,20 @@ describe("mobile trip overview route", () => {
           }),
         ],
         currentUserTripMemberId: "member-1",
+      },
+      food: {
+        items: [
+          expect.objectContaining({
+            id: "food-1",
+            name: "Joe Beef",
+            formatted_address: "2491 Notre-Dame St W, Montreal, QC",
+            meal_categories: ["dinner"],
+            current_user_reaction: "heart",
+            reaction_score: 2,
+            current_user_tried: true,
+            tried_count: 1,
+          }),
+        ],
       },
     });
 

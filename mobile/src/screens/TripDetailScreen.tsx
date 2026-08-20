@@ -37,6 +37,7 @@ type TripDetailScreenProps = {
   onItinerary?: () => void;
   onIdeas?: () => void;
   onTransport?: () => void;
+  onFood?: () => void;
   onStays?: () => void;
 };
 
@@ -90,6 +91,7 @@ export function TripDetailScreen({
   onItinerary,
   onIdeas,
   onTransport,
+  onFood,
   onStays,
 }: TripDetailScreenProps) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
@@ -303,12 +305,14 @@ export function TripDetailScreen({
               description="Add places you want to check out."
               icon={Utensils}
               buttonLabel="Visit restaurants"
+              onAction={onFood}
             />
             <OverviewTile
               title="Foods"
               description="Track foods you want to try."
               icon={ListChecks}
               buttonLabel="Visit foods"
+              onAction={onFood}
             />
           </div>
 

@@ -50,6 +50,7 @@ type MobileAppChromeProps = {
     | "ideas"
     | "budget"
     | "transport"
+    | "food"
     | "stays"
     | null;
   userEmail?: string | null;
@@ -61,6 +62,7 @@ type MobileAppChromeProps = {
   onTripIdeas: () => void;
   onTripBudget: () => void;
   onTripTransport: () => void;
+  onTripFood: () => void;
   onTripStays: () => void;
   onSignOut: () => Promise<void>;
 };
@@ -150,6 +152,7 @@ export function MobileAppChrome({
   onTripIdeas,
   onTripBudget,
   onTripTransport,
+  onTripFood,
   onTripStays,
   onSignOut,
 }: MobileAppChromeProps) {
@@ -263,6 +266,7 @@ export function MobileAppChrome({
           (index === 2 && activeTripView === "ideas") ||
           (index === 3 && activeTripView === "budget") ||
           (index === 4 && activeTripView === "transport") ||
+          (index === 5 && activeTripView === "food") ||
           (index === 6 && activeTripView === "stays"),
         supported:
           index === 0 ||
@@ -270,6 +274,7 @@ export function MobileAppChrome({
           index === 2 ||
           index === 3 ||
           index === 4 ||
+          index === 5 ||
           index === 6,
         action:
           index === 0
@@ -296,6 +301,11 @@ export function MobileAppChrome({
                 ? () => {
                     closeMenus();
                     onTripTransport();
+                  }
+              : index === 5
+                ? () => {
+                    closeMenus();
+                    onTripFood();
                   }
               : index === 6
                 ? () => {

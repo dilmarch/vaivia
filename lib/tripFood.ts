@@ -180,3 +180,115 @@ export function formatFoodMealCategory(value: string) {
         FOOD_MEAL_OPTIONS.find((option) => option.value === value)?.label || value
     );
 }
+
+export function attachFoodMetadata({
+    items,
+    reactions,
+    triedRows,
+    profilesById,
+    currentUserId,
+}: {
+    items: TripFoodItem[];
+    reactions: TripFoodReactionRecord[];
+    triedRows: TripFoodTriedRecord[];
+    profilesById: Map<string, IdeaReactionProfile>;
+    currentUserId: string;
+}) {
+    const reactionsByFoodId = new Map<string, TripFoodReactionRecord[]>();
+    const triedByFoodId = new Map<string, TripFoodTriedRecord[]>();
+
+    reactions.forEach((reaction) => {
+        const normalizedReaction = normalizeFoodReaction(reaction.reaction);
+        if (!normalizedReaction) return;
+
+        const currentReactions = reactionsByFoodId.get(reaction.food_item_id) || [];
+        currentReactions.push({ ...reaction, reaction: normalizedReaction });
+        reactionsByFoodId.set(reaction.food_item_id, currentReactions);
+    });
+
+    triedRows.forEach((tried) => {
+        const currentRows = triedByFoodId.get(tried.food_item_id) || [];
+        currentRows.push(tried);
+        triedByFoodId.set(tried.food_item_id, currentRows);
+    });
+
+    return items
+        .map((item) => {
+            const itemReactions = reactionsByFoodId.get(item.id) || [];
+            const itemTriedRows = triedByFoodId.get(item.id) || [];
+            const reactionScore = itemReactions.reduce((total, reaction) => {
+                const normalizedReaction = normalizeFoodReaction(reaction.reaction);
+                if (!normalizedReaction) return total;
+
+                return (
+                    total +
+                    (typeof reaction.score === "number"
+                        ? reaction.score
+                        : FOOD_REACTION_VALUES[normalizedReaction])
+                );
+            }, 0);
+            const currentUserReaction =
+                normalizeFoodReaction(
+                    itemReactions.find((reaction) => reaction.user_id === currentUserId)
+                        ?.reaction
+                ) || null;
+            const reactionSummaries = FOOD_REACTION_TYPES.map(
+                (reactionType): FoodReactionSummary => {
+                    const matchingReactions = itemReactions.filter(
+                        (reaction) => reaction.reaction === reactionType
+                    );
+                    return {
+                        reaction: reactionType,
+                        value: FOOD_REACTION_VALUES[reactionType],
+                        count: matchingReactions.length,
+                        profiles: matchingReactions.map((reaction) => {
+                            const profile = profilesById.get(reaction.user_id);
+                            return {
+                                user_id: reaction.user_id,
+                                avatar_url: profile?.avatar_url || null,
+                                first_name: profile?.first_name || null,
+                                last_name: profile?.last_name || null,
+                                username: profile?.username || null,
+                            };
+                        }),
+                    };
+                }
+            );
+
+            return {
+                ...item,
+                reaction_score: reactionScore,
+                current_user_reaction: currentUserReaction,
+                reaction_summaries: reactionSummaries,
+                tried_count: itemTriedRows.length,
+                tried_profiles: itemTriedRows.map((tried) => {
+                    const profile = profilesById.get(tried.user_id);
+                    return {
+                        user_id: tried.user_id,
+                        avatar_url: profile?.avatar_url || null,
+                        first_name: profile?.first_name || null,
+                        last_name: profile?.last_name || null,
+                        username: profile?.username || null,
+                    };
+                }),
+                current_user_tried: itemTriedRows.some(
+                    (tried) => tried.user_id === currentUserId
+                ),
+            };
+        })
+        .sort((a, b) => {
+            if (a.current_user_tried !== b.current_user_tried) {
+                return a.current_user_tried ? 1 : -1;
+            }
+
+            const scoreSort = (b.reaction_score || 0) - (a.reaction_score || 0);
+            if (scoreSort !== 0) return scoreSort;
+
+            const createdSort =
+                new Date(b.created_at || 0).getTime() -
+                new Date(a.created_at || 0).getTime();
+            if (createdSort !== 0) return createdSort;
+
+            return a.name.localeCompare(b.name);
+        });
+}

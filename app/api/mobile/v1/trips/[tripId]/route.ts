@@ -35,6 +35,13 @@ import {
   normalizeExpenseSplit,
 } from "@/lib/budgetServer";
 import type { BudgetParticipant } from "@/lib/budget";
+import {
+  attachFoodMetadata,
+  normalizeTripFoodItem,
+  type TripFoodReactionRecord,
+  type TripFoodTriedRecord,
+} from "@/lib/tripFood";
+import type { IdeaReactionProfile } from "@/lib/tripIdeas";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { Tables } from "@/src/types/supabase";
 
@@ -262,6 +269,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     budgetLineItemResult,
     expenseResult,
     ideaResult,
+    foodResult,
     expenseSplitResult,
     expenseSettlementResult,
     financeSettingsResult,
@@ -330,6 +338,11 @@ export async function GET(request: Request, { params }: RouteContext) {
       .eq("trip_id", trip.id)
       .order("created_at", { ascending: true }),
     context.supabase
+      .from("trip_food_items")
+      .select("id,trip_id,item_type,name,description,region,personal_note,google_place_id,place_source,formatted_address,location_lat,location_lng,primary_place_type,place_types,business_status,regular_opening_hours,website_url,phone_number,google_maps_url,facebook_url,instagram_url,meal_categories,created_by,created_at,updated_at")
+      .eq("trip_id", trip.id)
+      .order("created_at", { ascending: false }),
+    context.supabase
       .from("trip_expense_splits")
       .select("id,expense_id,trip_id,participant_kind,trip_member_id,invitation_id,family_member_id,user_id,guest_name,split_amount,split_percentage,currency,amount_in_reporting_currency,is_included")
       .eq("trip_id", trip.id),
@@ -357,6 +370,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     budgetLineItemResult.error ||
     expenseResult.error ||
     ideaResult.error ||
+    foodResult.error ||
     expenseSplitResult.error ||
     expenseSettlementResult.error ||
     financeSettingsResult.error;
@@ -381,6 +395,9 @@ export async function GET(request: Request, { params }: RouteContext) {
   const rawTransportationItems = transportationResult.data || [];
   const rawIdeas = ((ideaResult.data || []) as Record<string, unknown>[]).map(
     normalizeTripIdea,
+  );
+  const rawFoodItems = ((foodResult.data || []) as Record<string, unknown>[]).map(
+    normalizeTripFoodItem,
   );
   const mobileBudget = normalizeBudget(
     budgetResult.data as Record<string, unknown> | null,
@@ -409,6 +426,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     ...accommodationIds,
   ];
   const ideaIds = rawIdeas.map((idea) => idea.id).filter(Boolean);
+  const foodItemIds = rawFoodItems.map((item) => item.id).filter(Boolean);
 
   const [
     profileResult,
@@ -419,6 +437,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     participantResult,
     transportationTravelerResult,
     ideaReactionResult,
+    foodReactionResult,
+    foodTriedResult,
     coverageMemberLegResult,
     invitationLegResult,
   ] = await Promise.all([
@@ -477,6 +497,20 @@ export async function GET(request: Request, { params }: RouteContext) {
           .eq("trip_id", trip.id)
           .in("idea_id", ideaIds)
       : Promise.resolve({ data: [], error: null }),
+    foodItemIds.length
+      ? context.supabase
+          .from("trip_food_reactions")
+          .select("food_item_id,user_id,reaction,score")
+          .eq("trip_id", trip.id)
+          .in("food_item_id", foodItemIds)
+      : Promise.resolve({ data: [], error: null }),
+    foodItemIds.length
+      ? context.supabase
+          .from("trip_food_tried")
+          .select("food_item_id,user_id")
+          .eq("trip_id", trip.id)
+          .in("food_item_id", foodItemIds)
+      : Promise.resolve({ data: [], error: null }),
     legIds.length
       ? context.supabase
           .from("trip_member_legs")
@@ -505,6 +539,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     participantResult.error ||
     transportationTravelerResult.error ||
     ideaReactionResult.error ||
+    foodReactionResult.error ||
+    foodTriedResult.error ||
     coverageMemberLegResult.error ||
     invitationLegResult.error;
   if (secondaryError) {
@@ -539,10 +575,15 @@ export async function GET(request: Request, { params }: RouteContext) {
 
   const profilesById = new Map((profileResult.data || []).map((profile) => [profile.id, profile]));
   const ideaReactions = (ideaReactionResult.data || []) as TripIdeaReactionRecord[];
+  const foodReactions = (foodReactionResult.data || []) as TripFoodReactionRecord[];
+  const foodTriedRows = (foodTriedResult.data || []) as TripFoodTriedRecord[];
   const missingReactionProfileIds = Array.from(
     new Set(
-      ideaReactions
-        .map((reaction) => reaction.user_id)
+      [
+        ...ideaReactions.map((reaction) => reaction.user_id),
+        ...foodReactions.map((reaction) => reaction.user_id),
+        ...foodTriedRows.map((tried) => tried.user_id),
+      ]
         .filter((userId) => !profilesById.has(userId)),
     ),
   );
@@ -553,18 +594,30 @@ export async function GET(request: Request, { params }: RouteContext) {
         .in("id", missingReactionProfileIds)
     : { data: [], error: null };
   if (additionalReactionProfilesResult.error) {
-    console.error("Mobile trip ideas reaction profiles request failed:", {
+    console.error("Mobile trip reaction profiles request failed:", {
       userId: context.user.id,
       tripId,
       message: additionalReactionProfilesResult.error.message,
       code: additionalReactionProfilesResult.error.code,
     });
-    return mobileJson(request, { error: "Could not load trip ideas" }, { status: 500 });
+    return mobileJson(request, { error: "Could not load trip reactions" }, { status: 500 });
   }
-  const ideaReactionProfiles = [
+  const reactionProfiles = [
     ...(profileResult.data || []),
     ...(additionalReactionProfilesResult.data || []),
-  ] as IdeaReactionUserProfile[];
+  ];
+  const ideaReactionProfiles = reactionProfiles as IdeaReactionUserProfile[];
+  const foodProfilesById = new Map<string, IdeaReactionProfile>();
+  reactionProfiles.forEach((profile) => {
+    if (!profile.id) return;
+    foodProfilesById.set(profile.id, {
+      user_id: profile.id,
+      avatar_url: profile.avatar_url || null,
+      first_name: profile.first_name || null,
+      last_name: profile.last_name || null,
+      username: profile.username || null,
+    });
+  });
   const going = memberUserIds.map((userId) => {
     const profile = profilesById.get(userId);
     const label =
@@ -1234,6 +1287,13 @@ export async function GET(request: Request, { params }: RouteContext) {
     );
     return createdSort || left.title.localeCompare(right.title);
   });
+  const foodItems = attachFoodMetadata({
+    items: rawFoodItems,
+    reactions: foodReactions,
+    triedRows: foodTriedRows,
+    profilesById: foodProfilesById,
+    currentUserId: context.user.id,
+  });
 
   return mobileJson(request, {
     trip: mobileTrip,
@@ -1257,6 +1317,9 @@ export async function GET(request: Request, { params }: RouteContext) {
       travelers: stayCoverageTravelers,
       legs: stayCoverageLegs,
       currentUserTripMemberId,
+    },
+    food: {
+      items: foodItems,
     },
   });
 }

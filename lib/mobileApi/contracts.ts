@@ -5,6 +5,7 @@ import type {
   TripAudienceParticipantKind,
 } from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
+import type { TripFoodItem } from "@/lib/tripFood";
 import type {
   BudgetParticipant,
   TripBudget,
@@ -110,6 +111,11 @@ export type MobileTripDetailResponse = {
   ideas: TripIdea[];
   budget: MobileTripBudgetData;
   stays?: MobileTripStaysData;
+  food?: MobileTripFoodData;
+};
+
+export type MobileTripFoodData = {
+  items: TripFoodItem[];
 };
 
 export type MobileStayAudienceParticipant = {

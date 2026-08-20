@@ -172,4 +172,23 @@ describe("mobile trip overview visual parity", () => {
     fireEvent.click(screen.getByRole("button", { name: /Visit transport/ }));
     expect(onTransport).toHaveBeenCalledOnce();
   });
+
+  it("opens Eat & Drink from both shared overview tiles", async () => {
+    const onFood = vi.fn();
+    const apiClient = {
+      getTrip: vi.fn().mockResolvedValue(detail),
+    } as unknown as MobileApiClient;
+    render(
+      <TripDetailScreen
+        apiClient={apiClient}
+        tripId="trip-1"
+        onFood={onFood}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Trip Overview" });
+    fireEvent.click(screen.getByRole("button", { name: /Visit restaurants/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Visit foods/ }));
+    expect(onFood).toHaveBeenCalledTimes(2);
+  });
 });

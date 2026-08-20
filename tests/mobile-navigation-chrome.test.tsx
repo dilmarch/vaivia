@@ -59,6 +59,7 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onTripIdeas: vi.fn(),
     onTripBudget: vi.fn(),
     onTripTransport: vi.fn(),
+    onTripFood: vi.fn(),
     onTripStays: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -130,6 +131,7 @@ describe("mobile navigation chrome parity", () => {
     const onTripIdeas = vi.fn();
     const onTripBudget = vi.fn();
     const onTripTransport = vi.fn();
+    const onTripFood = vi.fn();
     const onTripStays = vi.fn();
     renderChrome({
       activeTripId: trip.id,
@@ -138,6 +140,7 @@ describe("mobile navigation chrome parity", () => {
       onTripIdeas,
       onTripBudget,
       onTripTransport,
+      onTripFood,
       onTripStays,
     });
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
@@ -155,7 +158,7 @@ describe("mobile navigation chrome parity", () => {
       "Trip Ideas",
       "Budget",
       "Transport",
-      "Eat & Drink coming soon",
+      "Eat & Drink",
       "Stays",
       "Ask Concierge coming soon",
       "Health & Safety coming soon",
@@ -179,6 +182,10 @@ describe("mobile navigation chrome parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
     fireEvent.click(screen.getByRole("button", { name: "Transport" }));
     expect(onTripTransport).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+    fireEvent.click(screen.getByRole("button", { name: "Eat & Drink" }));
+    expect(onTripFood).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
     fireEvent.click(screen.getByRole("button", { name: "Stays" }));
@@ -232,6 +239,19 @@ describe("mobile navigation chrome parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
 
     expect(screen.getByRole("button", { name: "Stays" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("marks Eat & Drink active in trip navigation", () => {
+    renderChrome({
+      activeTripId: trip.id,
+      activeTripView: "food",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+
+    expect(screen.getByRole("button", { name: "Eat & Drink" })).toHaveAttribute(
       "aria-current",
       "page",
     );

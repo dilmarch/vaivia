@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Check, ChevronLeft, Coffee, ExternalLink, MapPin, Pencil, Plus, Trash2, Utensils, X } from "lucide-react";
+import { ChevronLeft, MapPin, Trash2, Utensils, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import FoodReactionBar from "@/components/FoodReactionBar";
+import {
+    FoodCardPresentation,
+    FoodPresentation,
+} from "@/components/food/FoodPresentation";
 import { GooglePlaceCoverPhoto } from "@/components/GooglePlaceCoverPhoto";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
@@ -16,7 +20,6 @@ import {
     type FoodItemType,
     type FoodMealCategory,
     type TripFoodItem,
-    formatFoodMealCategory,
 } from "@/lib/tripFood";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 
@@ -39,12 +42,6 @@ type FoodPageClientProps = {
 };
 
 type ModalStep = "choose" | FoodItemType;
-type SerializedOpeningHours = {
-    open_now?: boolean;
-    utc_offset_minutes?: number | null;
-    weekday_text?: string[];
-    periods?: unknown[];
-};
 
 function getTabHref(tripRouteSegment: string, tab: FoodItemType) {
     return `/trips/${tripRouteSegment}/food?tab=${tab === "place" ? "places" : "foods"}`;
@@ -101,77 +98,6 @@ function serializeOpeningHours(place: google.maps.places.PlaceResult) {
         weekday_text: openingHours.weekday_text || [],
         periods: openingHours.periods || [],
     });
-}
-
-function parseOpeningHours(value: TripFoodItem["regular_opening_hours"]) {
-    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-    return value as SerializedOpeningHours;
-}
-
-function isOpen24Hours(hours: SerializedOpeningHours) {
-    const weekdayText = hours.weekday_text || [];
-    if (
-        weekdayText.length > 0 &&
-        weekdayText.every((entry) => /open 24 hours/i.test(entry))
-    ) {
-        return true;
-    }
-
-    const periods = Array.isArray(hours.periods) ? hours.periods : [];
-    if (periods.length !== 1) return false;
-
-    const period = periods[0] as {
-        open?: { day?: number; time?: string };
-        close?: { day?: number; time?: string };
-    };
-
-    return (
-        period.open?.day === 0 &&
-        period.open?.time === "0000" &&
-        (!period.close || !period.close.time)
-    );
-}
-
-function getTodayOpeningHoursText(hours: SerializedOpeningHours) {
-    const weekdayText = hours.weekday_text || [];
-    if (weekdayText.length === 0) return null;
-
-    const today = new Date().getDay();
-    const todayText = weekdayText[today === 0 ? 6 : today - 1];
-    if (!todayText) return null;
-
-    return todayText.replace(/^[^:]+:\s*/, "");
-}
-
-function FoodOpeningHoursBadge({ item }: { item: TripFoodItem }) {
-    const hours = parseOpeningHours(item.regular_opening_hours);
-    if (!hours) return null;
-
-    const is24Hours = isOpen24Hours(hours);
-    const todayText = getTodayOpeningHoursText(hours);
-    const statusText = is24Hours
-        ? "Open 24 hours"
-        : hours.open_now === true
-          ? "Open now"
-          : hours.open_now === false
-            ? "Closed now"
-            : todayText
-              ? "Hours today"
-              : "Hours available";
-    const detailText = !is24Hours && todayText ? todayText : null;
-
-    return (
-        <div className="mt-3 inline-flex max-w-full flex-col rounded-2xl border border-lime-300/20 bg-lime-300/10 px-3 py-2 text-lime-100 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.08)]">
-            <span className="text-xs font-black uppercase tracking-[0.16em]">
-                {statusText}
-            </span>
-            {detailText ? (
-                <span className="mt-1 max-w-full truncate text-xs font-semibold text-slate-300">
-                    {detailText}
-                </span>
-            ) : null}
-        </div>
-    );
 }
 
 function FoodMealSelector({
@@ -1130,13 +1056,7 @@ function FoodCard({
     const [isEditing, setIsEditing] = useState(false);
 
     return (
-        <article
-            className={`relative overflow-hidden rounded-[1.75rem] border shadow-2xl shadow-black/20 transition duration-300 hover:-translate-y-1 ${
-                item.current_user_tried
-                    ? "border-white/10 bg-[#03030a]/70 opacity-85"
-                    : "border-white/10 bg-[#03030a]/90"
-            }`}
-        >
+        <>
             {isEditing ? (
                 <FoodEditModal
                     item={item}
@@ -1148,167 +1068,41 @@ function FoodCard({
                     onClose={() => setIsEditing(false)}
                 />
             ) : null}
-            {item.item_type === "place" && item.google_place_id ? (
-                <GooglePlaceCoverPhoto
-                    placeId={item.google_place_id}
-                    fallbackSourceUrl={item.google_maps_url}
-                    alt={`${item.name} from Google Maps`}
-                />
-            ) : null}
-            <div className="relative p-5">
-            <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/70 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
-                aria-label={`Edit ${item.name}`}
-                title="Edit"
-            >
-                <Pencil className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <div className="flex items-start gap-4">
-                <form action={toggleTriedAction} className="pt-1">
-                    <input type="hidden" name="trip_id" value={tripId} />
-                    <input type="hidden" name="food_item_id" value={item.id} />
-                    <input
-                        type="hidden"
-                        name="tried"
-                        value={item.current_user_tried ? "false" : "true"}
+            <FoodCardPresentation
+                item={item}
+                cover={
+                    item.item_type === "place" && item.google_place_id ? (
+                        <GooglePlaceCoverPhoto
+                            placeId={item.google_place_id}
+                            fallbackSourceUrl={item.google_maps_url}
+                            alt={`${item.name} from Google Maps`}
+                        />
+                    ) : undefined
+                }
+                onEdit={() => setIsEditing(true)}
+                renderTriedAction={(action) => (
+                    <form action={toggleTriedAction}>
+                        <input type="hidden" name="trip_id" value={tripId} />
+                        <input type="hidden" name="food_item_id" value={item.id} />
+                        <input
+                            type="hidden"
+                            name="tried"
+                            value={item.current_user_tried ? "false" : "true"}
+                        />
+                        {action}
+                    </form>
+                )}
+                reactionBar={
+                    <FoodReactionBar
+                        tripId={tripId}
+                        foodItemId={item.id}
+                        summaries={item.reaction_summaries}
+                        currentUserReaction={item.current_user_reaction}
+                        toggleReactionAction={toggleReactionAction}
                     />
-                    <button
-                        type="submit"
-                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition ${
-                            item.current_user_tried
-                                ? "border-lime-300 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.24)]"
-                                : "border-white/20 bg-white/[0.04] text-transparent hover:border-lime-300/60 hover:bg-white/[0.08]"
-                        }`}
-                        aria-pressed={item.current_user_tried}
-                        aria-label={
-                            item.current_user_tried
-                                ? `Mark ${item.name} as not tried`
-                                : `Mark ${item.name} as tried`
-                        }
-                        title={item.current_user_tried ? "Tried" : "Mark as tried"}
-                    >
-                        {item.current_user_tried ? (
-                            <Check className="h-4 w-4" aria-hidden="true" />
-                        ) : null}
-                    </button>
-                </form>
-
-                <div className="min-w-0 flex-1 pr-10">
-                    <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-lime-300">
-                            {item.item_type === "place"
-                                ? "Place to Eat"
-                                : "Food to Try"}
-                        </p>
-                        {item.current_user_tried ? (
-                            <span className="rounded-full border border-lime-300/30 bg-lime-300/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.18em] text-lime-100">
-                                Tried
-                            </span>
-                        ) : null}
-                    </div>
-                    <h3 className="mt-2 text-2xl font-black tracking-tight text-white">
-                        {item.name}
-                    </h3>
-                    {item.formatted_address || item.region ? (
-                        <p className="mt-2 text-sm font-semibold text-slate-200">
-                            {item.formatted_address || item.region}
-                        </p>
-                    ) : null}
-                    {item.item_type === "place" ? (
-                        <FoodOpeningHoursBadge item={item} />
-                    ) : null}
-                    {item.description ? (
-                        <p className="mt-2 text-sm leading-6 text-slate-300">
-                            {item.description}
-                        </p>
-                    ) : null}
-                    {item.personal_note ? (
-                        <p className="mt-2 text-sm leading-6 text-slate-300">
-                            {item.personal_note}
-                        </p>
-                    ) : null}
-                </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-                {item.meal_categories.map((meal) => (
-                    <span
-                        key={meal}
-                        className="rounded-full border border-white/10 bg-white/[0.07] px-2.5 py-1 text-xs font-semibold text-slate-200"
-                    >
-                        {formatFoodMealCategory(meal)}
-                    </span>
-                ))}
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-                {item.website_url ? (
-                    <a
-                        href={item.website_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                    >
-                        Website <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                    </a>
-                ) : null}
-                {item.google_maps_url ? (
-                    <a
-                        href={item.google_maps_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                    >
-                        Maps <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                    </a>
-                ) : null}
-                {item.phone_number ? (
-                    <a
-                        href={`tel:${item.phone_number}`}
-                        className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                    >
-                        Phone
-                    </a>
-                ) : null}
-                {item.facebook_url ? (
-                    <a
-                        href={item.facebook_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                    >
-                        Facebook
-                    </a>
-                ) : null}
-                {item.instagram_url ? (
-                    <a
-                        href={item.instagram_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-xs font-bold uppercase tracking-[0.14em] text-slate-200 transition hover:border-lime-300/50 hover:bg-white/10 hover:text-white"
-                    >
-                        Instagram
-                    </a>
-                ) : null}
-            </div>
-
-            <FoodReactionBar
-                tripId={tripId}
-                foodItemId={item.id}
-                summaries={item.reaction_summaries}
-                currentUserReaction={item.current_user_reaction}
-                toggleReactionAction={toggleReactionAction}
+                }
             />
-
-            <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
-                <p className="text-xs font-semibold text-slate-400">
-                    {item.tried_count || 0} tried
-                </p>
-            </div>
-            </div>
-        </article>
+        </>
     );
 }
 
@@ -1332,10 +1126,6 @@ export default function FoodPageClient({
     const routeSegment = tripRouteSegment || tripId;
     const searchParams = useSearchParams();
     const [modalStep, setModalStep] = useState<ModalStep | null>(null);
-    const selectedItems = useMemo(
-        () => items.filter((item) => item.item_type === initialTab),
-        [initialTab, items]
-    );
 
     useEffect(() => {
         if (searchParams.get("addFood") === "1") {
@@ -1344,7 +1134,7 @@ export default function FoodPageClient({
     }, [initialTab, searchParams]);
 
     return (
-        <section className="space-y-6 px-4 pb-24 pt-10 text-white sm:px-6 lg:px-8">
+        <>
             {modalStep ? (
                 <FoodAddModal
                     tripId={tripId}
@@ -1353,121 +1143,54 @@ export default function FoodPageClient({
                     onClose={() => setModalStep(null)}
                 />
             ) : null}
-
-            <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                    <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-300">
-                        Eat &amp; Drink
-                    </p>
-                    <h1 className="mt-2 text-4xl font-black tracking-tight sm:text-5xl">
-                        Eat &amp; Drink
-                    </h1>
-                    <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-300">
-                        Save places to eat and local flavours to try.
-                    </p>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => setModalStep(initialTab)}
-                    className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.24)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-                >
-                    <Plus className="h-5 w-5" aria-hidden="true" />
-                    Add Food
-                </button>
-            </div>
-
-            <TripNotepadComposer
-                tripId={tripId}
-                title="Eat & Drink notepad"
-                description="Keep food notes together, or make one place or food card for every non-empty line."
-                placeholder="Seafood market\nPastéis de nata\nRooftop bar"
-                existingNote={tripNotes}
-                locations={tripLocations}
-                saveNoteAction={saveTripNotesAction}
-                createCardsAction={createFoodFromNotepadAction}
-                cardKind="food"
+            <FoodPresentation
+                activeTab={initialTab}
+                items={items}
+                beforeContent={
+                    <TripNotepadComposer
+                        tripId={tripId}
+                        title="Eat & Drink notepad"
+                        description="Keep food notes together, or make one place or food card for every non-empty line."
+                        placeholder="Seafood market\nPastéis de nata\nRooftop bar"
+                        existingNote={tripNotes}
+                        locations={tripLocations}
+                        saveNoteAction={saveTripNotesAction}
+                        createCardsAction={createFoodFromNotepadAction}
+                        cardKind="food"
+                    />
+                }
+                renderAddAction={(label, action) => (
+                    <div
+                        className="contents"
+                        onClick={() =>
+                            setModalStep(label === "Add a Food" ? "food" : initialTab)
+                        }
+                    >
+                        {action}
+                    </div>
+                )}
+                renderTab={(tab, label, className) => (
+                    <Link
+                        href={getTabHref(routeSegment, tab)}
+                        className={className}
+                    >
+                        {label}
+                    </Link>
+                )}
+                renderCard={(item) => (
+                    <FoodCard
+                        key={item.id}
+                        item={item}
+                        tripId={tripId}
+                        updateFoodAction={updateFoodAction}
+                        deleteFoodAction={deleteFoodAction}
+                        moveItemAction={moveItemAction}
+                        moveTargetTrips={moveTargetTrips}
+                        toggleReactionAction={toggleReactionAction}
+                        toggleTriedAction={toggleTriedAction}
+                    />
+                )}
             />
-
-            <div className="inline-flex rounded-full border border-white/10 bg-[#03030a] p-1 shadow-2xl shadow-black/20">
-                <Link
-                    href={getTabHref(routeSegment, "place")}
-                    className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
-                        initialTab === "place"
-                            ? "bg-lime-300 text-slate-950"
-                            : "text-slate-300 hover:bg-white/10 hover:text-white"
-                    }`}
-                >
-                    Places to Eat
-                </Link>
-                <Link
-                    href={getTabHref(routeSegment, "food")}
-                    className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
-                        initialTab === "food"
-                            ? "bg-lime-300 text-slate-950"
-                            : "text-slate-300 hover:bg-white/10 hover:text-white"
-                    }`}
-                >
-                    Foods to Try
-                </Link>
-            </div>
-
-            {selectedItems.length === 0 ? (
-                <div className="rounded-[1.75rem] border border-dashed border-white/15 bg-white/[0.045] p-8 text-center">
-                    {initialTab === "place" ? (
-                        <>
-                            <Coffee className="mx-auto h-10 w-10 text-lime-300" />
-                            <h2 className="mt-4 text-2xl font-black">
-                                No places saved yet
-                            </h2>
-                            <p className="mx-auto mt-2 max-w-md text-sm text-slate-300">
-                                Save restaurants, cafes, bars, markets, and other
-                                spots you want to visit.
-                            </p>
-                            <button
-                                type="button"
-                                onClick={() => setModalStep("place")}
-                                className="mt-5 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950"
-                            >
-                                Add a Place
-                            </button>
-                        </>
-                    ) : (
-                        <>
-                            <Utensils className="mx-auto h-10 w-10 text-lime-300" />
-                            <h2 className="mt-4 text-2xl font-black">
-                                No foods saved yet
-                            </h2>
-                            <p className="mx-auto mt-2 max-w-md text-sm text-slate-300">
-                                Make a list of local dishes, drinks, and specialties
-                                to try on your trip.
-                            </p>
-                            <button
-                                type="button"
-                                onClick={() => setModalStep("food")}
-                                className="mt-5 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950"
-                            >
-                                Add a Food
-                            </button>
-                        </>
-                    )}
-                </div>
-            ) : (
-                <div className="grid gap-5 md:grid-cols-2">
-                    {selectedItems.map((item) => (
-                        <FoodCard
-                            key={item.id}
-                            item={item}
-                            tripId={tripId}
-                            updateFoodAction={updateFoodAction}
-                            deleteFoodAction={deleteFoodAction}
-                            moveItemAction={moveItemAction}
-                            moveTargetTrips={moveTargetTrips}
-                            toggleReactionAction={toggleReactionAction}
-                            toggleTriedAction={toggleTriedAction}
-                        />
-                    ))}
-                </div>
-            )}
-        </section>
+        </>
     );
 }
