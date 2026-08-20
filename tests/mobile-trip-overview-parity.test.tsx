@@ -76,6 +76,15 @@ const detail: MobileTripDetailResponse = {
   ],
   itineraryTimezones: [],
   ideas: [],
+  budget: {
+    budget: null,
+    lineItems: [],
+    expenses: [],
+    splits: [],
+    settlementPayments: [],
+    participants: [],
+    defaultCurrency: "CAD",
+  },
 };
 
 afterEach(() => cleanup());

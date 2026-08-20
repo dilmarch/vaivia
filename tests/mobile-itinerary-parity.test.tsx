@@ -32,6 +32,15 @@ const detail: MobileTripDetailResponse = {
   },
   itineraryTimezones: ["America/St_Johns", "America/Toronto"],
   ideas: [],
+  budget: {
+    budget: null,
+    lineItems: [],
+    expenses: [],
+    splits: [],
+    settlementPayments: [],
+    participants: [],
+    defaultCurrency: "CAD",
+  },
   itinerary: [
     {
       id: "transportation:flight-1",

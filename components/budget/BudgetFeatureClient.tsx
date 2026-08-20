@@ -1,20 +1,14 @@
 "use client";
 
-import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import {
-    Banknote,
-    ChartPie,
-    Copy,
-    FileText,
-    Pencil,
-    Plus,
-    Receipt,
-    Trash2,
-    X,
-} from "lucide-react";
+import { X } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
+import {
+    BudgetFeaturePresentation,
+    type BudgetSettlement,
+} from "@/components/budget/BudgetPresentation";
 import { BudgetParticipantDropdown } from "@/components/budget/BudgetParticipantDropdown";
 import { ExpenseCategoryPicker } from "@/components/budget/ExpenseCategoryPicker";
 import { DateInput } from "@/components/ui/date-input";
@@ -29,12 +23,6 @@ import {
 import {
     COMMON_CURRENCIES,
     DEFAULT_BUDGET_CATEGORIES,
-    DEFAULT_EXPENSE_CATEGORY_LABELS,
-    calculateBudgetTotals,
-    calculateCategoryActuals,
-    formatCurrency,
-    formatPercent,
-    getExpenseReportingAmount,
     getLocalDateKey,
     type BudgetParticipant,
     type ExpenseCategory,
@@ -64,14 +52,6 @@ type BudgetFeatureProps = {
 };
 
 type ExpenseModalMode = "add" | "edit" | "duplicate";
-
-type Settlement = {
-    fromValue: string;
-    from: string;
-    toValue: string;
-    to: string;
-    amount: number;
-};
 
 const splitMethodOptions: Array<{
     value: SplitMethod;
@@ -119,47 +99,6 @@ function participantValue(participant: BudgetParticipant) {
 function getBudgetParticipantLabel(participant?: BudgetParticipant | null) {
     if (!participant) return null;
     return participant.isCurrentUser ? "Me" : participant.label;
-}
-
-function getPayerParticipant(
-    expense: TripExpense,
-    participants: BudgetParticipant[]
-) {
-    return participants.find((participant) => {
-        if (
-            participant.kind === "member" &&
-            participant.tripMemberId === expense.paid_by_trip_member_id
-        ) {
-            return true;
-        }
-        if (
-            participant.kind === "member" &&
-            participant.userId === expense.paid_by_user_id
-        ) {
-            return true;
-        }
-        if (
-            participant.kind === "invitation" &&
-            participant.invitationId === expense.paid_by_invitation_id
-        ) {
-            return true;
-        }
-        if (
-            participant.kind === "family_member" &&
-            participant.familyMemberId === expense.paid_by_family_member_id
-        ) {
-            return true;
-        }
-        return false;
-    });
-}
-
-function getPayerLabel(expense: TripExpense, participants: BudgetParticipant[]) {
-    return (
-        getBudgetParticipantLabel(getPayerParticipant(expense, participants)) ||
-        expense.paid_by_guest_name ||
-        "Someone"
-    );
 }
 
 function ParticipantAvatar({
@@ -211,191 +150,6 @@ function getExpensePayerValue(expense?: TripExpense | null) {
     }
     if (expense.paid_by_guest_name) return `guest:${expense.paid_by_guest_name}`;
     return "";
-}
-
-function getSplitReportingAmount(
-    split: TripExpenseSplit,
-    expenseById: Map<string, TripExpense>
-) {
-    const reportingAmount = Number(split.amount_in_reporting_currency);
-    const splitAmount = Number(split.split_amount || 0);
-    if (
-        Number.isFinite(reportingAmount) &&
-        (reportingAmount !== 0 || splitAmount === 0)
-    ) {
-        return reportingAmount;
-    }
-
-    const expense = expenseById.get(split.expense_id);
-    const rate = Number(expense?.exchange_rate_used || 1);
-
-    return Number.isFinite(splitAmount * rate) ? splitAmount * rate : 0;
-}
-
-function getParticipantLabelFromValue(
-    value: string,
-    participants: BudgetParticipant[]
-) {
-    const participant = participants.find(
-        (option) => participantValue(option) === value
-    );
-    const participantLabel = getBudgetParticipantLabel(participant);
-    if (participantLabel) return participantLabel;
-
-    if (value.startsWith("guest:")) return value.replace(/^guest:/, "") || "Guest";
-    return "Someone";
-}
-
-function calculateExpenseBalances({
-    expenses,
-    splits,
-    participants,
-    settlementPayments,
-}: {
-    expenses: TripExpense[];
-    splits: TripExpenseSplit[];
-    participants: BudgetParticipant[];
-    settlementPayments: TripExpenseSettlement[];
-}) {
-    const balances = new Map<
-        string,
-        { value: string; label: string; amount: number }
-    >();
-    const expenseById = new Map(expenses.map((expense) => [expense.id, expense]));
-
-    function ensureBalance(value: string) {
-        if (!balances.has(value)) {
-            balances.set(value, {
-                value,
-                label: getParticipantLabelFromValue(value, participants),
-                amount: 0,
-            });
-        }
-        return balances.get(value)!;
-    }
-
-    participants.forEach((participant) => {
-        ensureBalance(participantValue(participant));
-    });
-
-    expenses.forEach((expense) => {
-        const payerValue = getExpensePayerValue(expense);
-        if (payerValue) {
-            const payerBalance = ensureBalance(payerValue);
-            payerBalance.amount += getExpenseReportingAmount(expense);
-        }
-    });
-
-    splits.forEach((split) => {
-        const value = getParticipantValueForSplit(split);
-        if (!value) return;
-
-        const splitBalance = ensureBalance(value);
-        splitBalance.amount -= getSplitReportingAmount(split, expenseById);
-    });
-
-    settlementPayments.forEach((settlement) => {
-        const payerBalance = ensureBalance(settlement.paid_by_participant_value);
-        const recipientBalance = ensureBalance(
-            settlement.received_by_participant_value
-        );
-        payerBalance.amount += Number(settlement.amount || 0);
-        recipientBalance.amount -= Number(settlement.amount || 0);
-    });
-
-    return [...balances.values()]
-        .filter((balance) => Math.abs(balance.amount) >= 0.01)
-        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
-}
-
-function calculateExpenseSettlements({
-    expenses,
-    splits,
-    participants,
-    settlementPayments,
-}: {
-    expenses: TripExpense[];
-    splits: TripExpenseSplit[];
-    participants: BudgetParticipant[];
-    settlementPayments: TripExpenseSettlement[];
-}) {
-    const balances = calculateExpenseBalances({
-        expenses,
-        splits,
-        participants,
-        settlementPayments,
-    });
-    const debtors = balances
-        .filter((balance) => balance.amount < -0.01)
-        .map((balance) => ({ ...balance, amount: Math.abs(balance.amount) }));
-    const creditors = balances
-        .filter((balance) => balance.amount > 0.01)
-        .map((balance) => ({ ...balance }));
-    const settlements: Settlement[] = [];
-    let debtorIndex = 0;
-    let creditorIndex = 0;
-
-    while (debtorIndex < debtors.length && creditorIndex < creditors.length) {
-        const debtor = debtors[debtorIndex];
-        const creditor = creditors[creditorIndex];
-        const amount = Math.min(debtor.amount, creditor.amount);
-
-        if (amount >= 0.01) {
-            settlements.push({
-                fromValue: debtor.value,
-                from: debtor.label,
-                toValue: creditor.value,
-                to: creditor.label,
-                amount,
-            });
-        }
-
-        debtor.amount -= amount;
-        creditor.amount -= amount;
-
-        if (debtor.amount < 0.01) debtorIndex += 1;
-        if (creditor.amount < 0.01) creditorIndex += 1;
-    }
-
-    return settlements;
-}
-
-function BudgetTabs({
-    tripId,
-    tripRouteSegment,
-    mode,
-}: {
-    tripId: string;
-    tripRouteSegment?: string;
-    mode: "budget" | "expenses";
-}) {
-    const routeSegment = tripRouteSegment || tripId;
-    const tabs = [
-        { label: "Budget", href: `/trips/${routeSegment}/budget`, value: "budget" },
-        {
-            label: "Expenses",
-            href: `/trips/${routeSegment}/budget/expenses`,
-            value: "expenses",
-        },
-    ] as const;
-
-    return (
-        <div className="inline-flex rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-xl shadow-black/20">
-            {tabs.map((tab) => (
-                <Link
-                    key={tab.value}
-                    href={tab.href}
-                    className={`rounded-full px-5 py-2 text-sm font-black transition ${
-                        mode === tab.value
-                            ? "bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.22)]"
-                            : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
-                    }`}
-                >
-                    {tab.label}
-                </Link>
-            ))}
-        </div>
-    );
 }
 
 function Field({
@@ -1441,135 +1195,6 @@ export function AddExpenseModal({
     );
 }
 
-function SummaryCard({
-    label,
-    value,
-    tone = "neutral",
-}: {
-    label: string;
-    value: string;
-    tone?: "neutral" | "good" | "warning";
-}) {
-    return (
-        <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/20">
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
-                {label}
-            </p>
-            <p
-                className={`mt-3 text-3xl font-black tracking-tight ${
-                    tone === "good"
-                        ? "text-lime-200"
-                        : tone === "warning"
-                          ? "text-amber-200"
-                          : "text-white"
-                }`}
-            >
-                {value}
-            </p>
-        </div>
-    );
-}
-
-const EXPENSE_CHART_COLORS = [
-    "#bef264",
-    "#22d3ee",
-    "#c084fc",
-    "#fb7185",
-    "#fbbf24",
-    "#60a5fa",
-    "#a3e635",
-];
-
-function ExpenseCategoryPieChart({
-    expenses,
-    reportingCurrency,
-}: {
-    expenses: TripExpense[];
-    reportingCurrency: string;
-}) {
-    const amounts = expenses.reduce<Map<ExpenseCategory, number>>(
-        (totals, expense) => {
-            totals.set(
-                expense.category,
-                (totals.get(expense.category) || 0) +
-                    getExpenseReportingAmount(expense)
-            );
-            return totals;
-        },
-        new Map()
-    );
-    const entries = Array.from(amounts.entries())
-        .filter(([, amount]) => amount > 0)
-        .sort(([, firstAmount], [, secondAmount]) =>
-            secondAmount - firstAmount
-        );
-    const total = entries.reduce((sum, [, amount]) => sum + amount, 0);
-
-    if (total <= 0) return null;
-
-    let cursor = 0;
-    const segments = entries.map(([, amount], index) => {
-        const start = cursor;
-        cursor += (amount / total) * 100;
-        return `${EXPENSE_CHART_COLORS[index % EXPENSE_CHART_COLORS.length]} ${start}% ${cursor}%`;
-    });
-
-    return (
-        <section className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
-            <div>
-                <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
-                    Category distribution
-                </p>
-                <h2 className="mt-2 text-2xl font-black text-white">
-                    Where the trip money went
-                </h2>
-            </div>
-            <div className="mt-6 grid items-center gap-6 md:grid-cols-[minmax(12rem,18rem)_1fr]">
-                <div
-                    role="img"
-                    aria-label={`Expense distribution across ${entries.length} categories`}
-                    className="mx-auto aspect-square w-full max-w-64 rounded-full border-4 border-[#140a1f] bg-clip-padding shadow-[0_0_40px_rgba(var(--vaivia-neon-rgb),0.12)]"
-                    style={{
-                        backgroundImage: `conic-gradient(${segments.join(", ")})`,
-                    }}
-                />
-                <div className="grid gap-3 sm:grid-cols-2">
-                    {entries.map(([category, amount], index) => (
-                        <div
-                            key={category}
-                            className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3"
-                        >
-                            <div className="flex min-w-0 items-center gap-3">
-                                <span
-                                    className="h-3 w-3 shrink-0 rounded-full"
-                                    style={{
-                                        backgroundColor:
-                                            EXPENSE_CHART_COLORS[
-                                                index % EXPENSE_CHART_COLORS.length
-                                            ],
-                                    }}
-                                    aria-hidden="true"
-                                />
-                                <span className="truncate text-sm font-black text-white">
-                                    {DEFAULT_EXPENSE_CATEGORY_LABELS[category]}
-                                </span>
-                            </div>
-                            <div className="shrink-0 text-right">
-                                <p className="text-sm font-black text-white">
-                                    {formatCurrency(amount, reportingCurrency)}
-                                </p>
-                                <p className="text-[11px] font-bold text-slate-400">
-                                    {formatPercent((amount / total) * 100)}
-                                </p>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </section>
-    );
-}
-
 function SettleUpModal({
     tripId,
     participants,
@@ -1580,7 +1205,7 @@ function SettleUpModal({
     tripId: string;
     participants: BudgetParticipant[];
     reportingCurrency: string;
-    suggestedSettlement?: Settlement;
+    suggestedSettlement?: BudgetSettlement;
     onClose: () => void;
 }) {
     const participantValues = participants.map(participantValue);
@@ -1716,108 +1341,29 @@ function SettleUpModal({
     );
 }
 
-function RunningTotalCard({
-    tripId,
-    settlements,
-    participants,
-    reportingCurrency,
-}: {
-    tripId: string;
-    settlements: Settlement[];
-    participants: BudgetParticipant[];
-    reportingCurrency: string;
-}) {
-    const [isSettlingUp, setIsSettlingUp] = useState(false);
-
-    return (
-        <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 text-white shadow-2xl shadow-black/30">
-            {isSettlingUp ? (
-                <SettleUpModal
-                    tripId={tripId}
-                    participants={participants}
-                    reportingCurrency={reportingCurrency}
-                    suggestedSettlement={settlements[0]}
-                    onClose={() => setIsSettlingUp(false)}
-                />
-            ) : null}
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
-                        Running total
-                    </p>
-                    <h2 className="mt-2 text-2xl font-black">
-                        Who owes whom
-                    </h2>
-                </div>
-                <div className="flex flex-wrap items-center gap-3">
-                    <p className="text-xs font-bold text-slate-400">
-                        Net of expenses, assigned splits, and recorded payments
-                    </p>
-                    <button
-                        type="button"
-                        onClick={() => setIsSettlingUp(true)}
-                        disabled={participants.length < 2}
-                        className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                        Settle up
-                    </button>
-                </div>
-            </div>
-            {settlements.length > 0 ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {settlements.map((settlement) => (
-                        <div
-                            key={`${settlement.from}-${settlement.to}-${settlement.amount}`}
-                            className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
-                        >
-                            <p className="text-sm font-black text-white">
-                                {settlement.from} owes {settlement.to}
-                            </p>
-                            <p className="mt-2 text-xl font-black text-amber-200">
-                                {formatCurrency(
-                                    settlement.amount,
-                                    reportingCurrency
-                                )}
-                            </p>
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <p className="mt-4 rounded-2xl border border-white/10 bg-slate-950/50 p-4 text-sm font-bold text-slate-300">
-                    Everyone is settled up.
-                </p>
-            )}
-        </div>
-    );
-}
-
-function BudgetDashboard({
-    tripId,
-    tripRouteSegment,
-    tripTitle,
-    budget,
-    lineItems,
-    expenseCategories = [],
-    expenses,
-    splits = [],
-    settlementPayments = [],
-    participants,
-    defaultCurrency,
-}: BudgetFeatureProps) {
+function BudgetDashboard(props: BudgetFeatureProps) {
+    const {
+        tripId,
+        tripRouteSegment,
+        tripTitle,
+        budget,
+        lineItems,
+        expenseCategories = [],
+        expenses,
+        splits = [],
+        settlementPayments = [],
+        participants,
+        defaultCurrency,
+    } = props;
     const [isCreatingBudget, setIsCreatingBudget] = useState(false);
     const [isEditingBudget, setIsEditingBudget] = useState(false);
     const [isAddingExpense, setIsAddingExpense] = useState(false);
-    const totals = calculateBudgetTotals({ budget, lineItems, expenses });
-    const categoryActuals = calculateCategoryActuals(expenses);
+    const [settlementDialog, setSettlementDialog] = useState<{
+        suggestedSettlement?: BudgetSettlement;
+    } | null>(null);
     const reportingCurrency =
         budget?.reporting_currency || defaultCurrency || "CAD";
-    const progressWidth = `${Math.min(Math.max(totals.percentUsed, 0), 100)}%`;
-    const settlements = calculateExpenseSettlements({
-        expenses,
-        splits,
-        participants,
-        settlementPayments,
-    });
+    const routeSegment = tripRouteSegment || tripId;
 
     return (
         <>
@@ -1848,350 +1394,79 @@ function BudgetDashboard({
                     onClose={() => setIsAddingExpense(false)}
                 />
             ) : null}
-            <section className="space-y-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p className="text-sm font-black uppercase tracking-[0.28em] text-lime-300">
-                            {tripTitle}
-                        </p>
-                        <h1 className="mt-2 text-5xl font-black tracking-tight text-white">
-                            Budget
-                        </h1>
-                        <p className="mt-2 text-sm font-semibold text-slate-400">
-                            Reporting in {reportingCurrency}
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <BudgetTabs
-                            tripId={tripId}
-                            tripRouteSegment={tripRouteSegment}
-                            mode="budget"
+            {settlementDialog ? (
+                <SettleUpModal
+                    tripId={tripId}
+                    participants={participants}
+                    reportingCurrency={reportingCurrency}
+                    suggestedSettlement={settlementDialog.suggestedSettlement}
+                    onClose={() => setSettlementDialog(null)}
+                />
+            ) : null}
+            <BudgetFeaturePresentation
+                mode="budget"
+                data={{
+                    tripId,
+                    tripTitle,
+                    budget,
+                    lineItems,
+                    expenses,
+                    splits,
+                    settlementPayments,
+                    participants,
+                    defaultCurrency,
+                }}
+                actions={{
+                    onCreateBudget: () => setIsCreatingBudget(true),
+                    onEditBudget: budget
+                        ? () => setIsEditingBudget(true)
+                        : undefined,
+                    onAddExpense: () => setIsAddingExpense(true),
+                    onSettleUp: (suggestedSettlement) =>
+                        setSettlementDialog({ suggestedSettlement }),
+                    renderTabAction: (mode, tabProps) => (
+                        <Link
+                            key={mode}
+                            href={
+                                mode === "budget"
+                                    ? `/trips/${routeSegment}/budget`
+                                    : `/trips/${routeSegment}/budget/expenses`
+                            }
+                            {...tabProps}
                         />
-                        {budget ? (
-                            <button
-                                type="button"
-                                onClick={() => setIsEditingBudget(true)}
-                                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-5 py-3 text-sm font-black text-white transition hover:border-lime-300/30 hover:bg-white/[0.14]"
-                            >
-                                <Pencil className="h-4 w-4" aria-hidden="true" />
-                                Edit budget
-                            </button>
-                        ) : null}
-                        <button
-                            type="button"
-                            onClick={() => setIsAddingExpense(true)}
-                            className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
-                        >
-                            <Plus className="h-4 w-4" aria-hidden="true" />
-                            Add expense
-                        </button>
-                    </div>
-                </div>
-
-                {!budget ? (
-                    <div className="space-y-5">
-                        <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 text-white shadow-2xl shadow-black/30">
-                            <ChartPie className="h-10 w-10 text-lime-300" />
-                            <h2 className="mt-4 text-2xl font-black">
-                                No budget yet.
-                            </h2>
-                            <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-400">
-                                You can still track expenses now. Create a budget
-                                when you&apos;re ready to compare spending against a
-                                plan.
-                            </p>
-                            <div className="mt-5 flex flex-wrap gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsCreatingBudget(true)}
-                                    className="rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950"
-                                >
-                                    Create budget
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAddingExpense(true)}
-                                    className="rounded-full border border-white/10 bg-white/[0.08] px-5 py-3 text-sm font-black text-white"
-                                >
-                                    Add expense
-                                </button>
-                            </div>
-                        </div>
-
-                        {expenses.length > 0 ? (
-                            <>
-                                <div className="grid gap-4 md:grid-cols-3">
-                                    <SummaryCard
-                                        label="Total expenses"
-                                        value={formatCurrency(
-                                            totals.spent,
-                                            reportingCurrency
-                                        )}
-                                    />
-                                    <SummaryCard
-                                        label="Expenses"
-                                        value={String(expenses.length)}
-                                    />
-                                    <SummaryCard
-                                        label="Reporting currency"
-                                        value={reportingCurrency}
-                                    />
-                                </div>
-                                <RunningTotalCard
-                                    tripId={tripId}
-                                    settlements={settlements}
-                                    participants={participants}
-                                    reportingCurrency={reportingCurrency}
-                                />
-                                <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
-                                    <div className="flex flex-wrap items-center justify-between gap-3">
-                                        <div>
-                                            <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200">
-                                                Expense tally
-                                            </p>
-                                            <h2 className="mt-2 text-2xl font-black text-white">
-                                                Spending so far
-                                            </h2>
-                                        </div>
-                                        <span className="rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-sm font-black text-white">
-                                            No planned budget
-                                        </span>
-                                    </div>
-                                    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                                        {Object.entries(categoryActuals)
-                                            .sort(([, first], [, second]) => second - first)
-                                            .map(([category, amount]) => (
-                                                <div
-                                                    key={category}
-                                                    className="rounded-2xl border border-white/10 bg-slate-950/50 p-4"
-                                                >
-                                                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                                        {DEFAULT_EXPENSE_CATEGORY_LABELS[
-                                                            category as ExpenseCategory
-                                                        ] || "Other"}
-                                                    </p>
-                                                    <p className="mt-2 text-xl font-black text-white">
-                                                        {formatCurrency(
-                                                            amount,
-                                                            reportingCurrency
-                                                        )}
-                                                    </p>
-                                                </div>
-                                            ))}
-                                    </div>
-                                </div>
-                            </>
-                        ) : null}
-                    </div>
-                ) : (
-                    <>
-                        <div className="grid gap-4 md:grid-cols-4">
-                            <SummaryCard
-                                label="Total budget"
-                                value={formatCurrency(
-                                    totals.budgeted,
-                                    reportingCurrency
-                                )}
-                            />
-                            <SummaryCard
-                                label="Total spent"
-                                value={formatCurrency(totals.spent, reportingCurrency)}
-                            />
-                            <SummaryCard
-                                label="Remaining"
-                                value={formatCurrency(
-                                    totals.remaining,
-                                    reportingCurrency
-                                )}
-                                tone={totals.remaining >= 0 ? "good" : "warning"}
-                            />
-                            <SummaryCard
-                                label="Percent used"
-                                value={formatPercent(totals.percentUsed)}
-                                tone={totals.percentUsed > 90 ? "warning" : "neutral"}
-                            />
-                        </div>
-                        <RunningTotalCard
-                            tripId={tripId}
-                            settlements={settlements}
-                            participants={participants}
-                            reportingCurrency={reportingCurrency}
-                        />
-                        <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-6 shadow-2xl shadow-black/30">
-                            <div className="flex items-center justify-between gap-3">
-                                <div>
-                                    <p className="text-xs font-black uppercase tracking-[0.24em] text-lime-200">
-                                        Budget tracker
-                                    </p>
-                                    <h2 className="mt-2 text-2xl font-black text-white">
-                                        {formatCurrency(totals.spent, reportingCurrency)}{" "}
-                                        spent
-                                    </h2>
-                                </div>
-                                <span className="rounded-full border border-white/10 bg-slate-950/70 px-4 py-2 text-sm font-black text-white">
-                                    {formatPercent(totals.percentUsed)}
-                                </span>
-                            </div>
-                            <div className="mt-6 h-5 overflow-hidden rounded-full bg-slate-950/80 shadow-inner shadow-black/40">
-                                <div
-                                    className="h-full rounded-full bg-lime-300 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.32)] transition-all"
-                                    style={{ width: progressWidth }}
-                                />
-                            </div>
-                        </div>
-                        <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] shadow-2xl shadow-black/30">
-                            <div className="border-b border-white/10 p-5">
-                                <h2 className="text-xl font-black text-white">
-                                    Category budgets
-                                </h2>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-[720px] w-full text-left">
-                                    <thead className="bg-white/[0.04] text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                        <tr>
-                                            <th className="px-5 py-3">Category</th>
-                                            <th className="px-5 py-3">Budgeted</th>
-                                            <th className="px-5 py-3">Actual</th>
-                                            <th className="px-5 py-3">Remaining</th>
-                                            <th className="px-5 py-3">Used</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-white/10 text-sm">
-                                        {lineItems.map((item) => {
-                                            const actual =
-                                                categoryActuals[
-                                                    item.category_id ||
-                                                        item.linked_expense_category
-                                                ] || 0;
-                                            const remaining =
-                                                Number(item.planned_amount || 0) -
-                                                actual;
-                                            const percent =
-                                                item.planned_amount > 0
-                                                    ? (actual /
-                                                          Number(
-                                                              item.planned_amount
-                                                          )) *
-                                                      100
-                                                    : actual > 0
-                                                      ? 100
-                                                      : 0;
-                                            const isOverBudget = actual > Number(
-                                                item.planned_amount || 0
-                                            );
-                                            const categoryProgressWidth = `${Math.min(
-                                                Math.max(percent, 0),
-                                                100
-                                            )}%`;
-                                            return (
-                                                <Fragment key={item.id}>
-                                                    <tr className="text-white">
-                                                        <td className="px-5 pb-2 pt-4 font-bold">
-                                                            {item.name}
-                                                        </td>
-                                                        <td className="px-5 pb-2 pt-4">
-                                                            {formatCurrency(
-                                                                item.planned_amount,
-                                                                reportingCurrency
-                                                            )}
-                                                        </td>
-                                                        <td
-                                                            className={`px-5 pb-2 pt-4 font-bold ${
-                                                                isOverBudget
-                                                                    ? "text-red-300"
-                                                                    : ""
-                                                            }`}
-                                                        >
-                                                            {formatCurrency(
-                                                                actual,
-                                                                reportingCurrency
-                                                            )}
-                                                        </td>
-                                                        <td
-                                                            className={`px-5 pb-2 pt-4 ${
-                                                                isOverBudget
-                                                                    ? "text-red-300"
-                                                                    : ""
-                                                            }`}
-                                                        >
-                                                            {formatCurrency(
-                                                                remaining,
-                                                                reportingCurrency
-                                                            )}
-                                                        </td>
-                                                        <td
-                                                            className={`px-5 pb-2 pt-4 font-bold ${
-                                                                isOverBudget
-                                                                    ? "text-red-300"
-                                                                    : ""
-                                                            }`}
-                                                        >
-                                                            {formatPercent(percent)}
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td
-                                                            colSpan={5}
-                                                            className="px-5 pb-4 pt-1"
-                                                        >
-                                                            <div className="h-2 overflow-hidden rounded-full bg-slate-950/80 shadow-inner shadow-black/40">
-                                                                <div
-                                                                    className={`h-full rounded-full transition-all ${
-                                                                        isOverBudget
-                                                                            ? "bg-red-400 shadow-[0_0_20px_rgba(248,113,113,0.28)]"
-                                                                            : "bg-lime-300 shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.24)]"
-                                                                    }`}
-                                                                    style={{
-                                                                        width: categoryProgressWidth,
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                </Fragment>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </>
-                )}
-            </section>
+                    ),
+                }}
+            />
         </>
     );
 }
 
-function ExpensesDashboard({
-    tripId,
-    tripRouteSegment,
-    tripTitle,
-    budget,
-    lineItems,
-    expenseCategories = [],
-    expenses,
-    splits = [],
-    settlementPayments = [],
-    participants,
-    defaultCurrency,
-}: BudgetFeatureProps) {
+function ExpensesDashboard(props: BudgetFeatureProps) {
+    const {
+        tripId,
+        tripRouteSegment,
+        tripTitle,
+        budget,
+        lineItems,
+        expenseCategories = [],
+        expenses,
+        splits = [],
+        settlementPayments = [],
+        participants,
+        defaultCurrency,
+    } = props;
     const searchParams = useSearchParams();
     const [isAddingExpense, setIsAddingExpense] = useState(false);
     const [editingExpense, setEditingExpense] = useState<TripExpense | null>(null);
     const [duplicatingExpense, setDuplicatingExpense] =
         useState<TripExpense | null>(null);
     const [deletingExpense, setDeletingExpense] = useState<TripExpense | null>(null);
-    const reportingCurrency = budget?.reporting_currency || defaultCurrency || "CAD";
-    const totalSpent = expenses.reduce(
-        (sum, expense) => sum + getExpenseReportingAmount(expense),
-        0
-    );
-    const settlements = calculateExpenseSettlements({
-        expenses,
-        splits,
-        participants,
-        settlementPayments,
-    });
+    const [settlementDialog, setSettlementDialog] = useState<{
+        suggestedSettlement?: BudgetSettlement;
+    } | null>(null);
+    const reportingCurrency =
+        budget?.reporting_currency || defaultCurrency || "CAD";
+    const routeSegment = tripRouteSegment || tripId;
 
     useEffect(() => {
         if (searchParams.get("addExpense") === "1") {
@@ -2312,213 +1587,56 @@ function ExpensesDashboard({
                     )}
                 </AnimatedModal>
             ) : null}
-            <section className="space-y-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
-                        <p className="text-sm font-black uppercase tracking-[0.28em] text-lime-300">
-                            {tripTitle}
-                        </p>
-                        <h1 className="mt-2 text-5xl font-black tracking-tight text-white">
-                            Expenses
-                        </h1>
-                        <p className="mt-2 text-sm font-semibold text-slate-400">
-                            Stable reporting totals use stored exchange rates.
-                        </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <BudgetTabs
-                            tripId={tripId}
-                            tripRouteSegment={tripRouteSegment}
-                            mode="expenses"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setIsAddingExpense(true)}
-                            className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
-                        >
-                            <Plus className="h-4 w-4" aria-hidden="true" />
-                            Add expense
-                        </button>
-                    </div>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2">
-                    <SummaryCard
-                        label="Total spent"
-                        value={formatCurrency(totalSpent, reportingCurrency)}
-                    />
-                    <SummaryCard label="Expenses" value={String(expenses.length)} />
-                </div>
-                <RunningTotalCard
+            {settlementDialog ? (
+                <SettleUpModal
                     tripId={tripId}
-                    settlements={settlements}
                     participants={participants}
                     reportingCurrency={reportingCurrency}
+                    suggestedSettlement={settlementDialog.suggestedSettlement}
+                    onClose={() => setSettlementDialog(null)}
                 />
-                <ExpenseCategoryPieChart
-                    expenses={expenses}
-                    reportingCurrency={reportingCurrency}
-                />
-                {expenses.length === 0 ? (
-                    <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-8 text-white shadow-2xl shadow-black/30">
-                        <Receipt className="h-10 w-10 text-lime-300" />
-                        <h2 className="mt-4 text-2xl font-black">
-                            No expenses yet.
-                        </h2>
-                        <p className="mt-2 text-sm font-semibold text-slate-400">
-                            Add costs as you book or pay for things. The original
-                            amount and currency stay preserved.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] shadow-2xl shadow-black/30">
-                        <div className="overflow-x-auto">
-                            <table className="min-w-[1080px] w-full text-left">
-                                <thead className="bg-white/[0.04] text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-                                    <tr>
-                                        <th className="px-5 py-3">Date</th>
-                                        <th className="px-5 py-3">Description</th>
-                                        <th className="px-5 py-3">Category</th>
-                                        <th className="px-5 py-3">Original</th>
-                                        <th className="px-5 py-3">Rate</th>
-                                        <th className="px-5 py-3">Reporting</th>
-                                        <th className="px-5 py-3">Paid by</th>
-                                        <th className="px-5 py-3">
-                                            <span className="sr-only">Actions</span>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-white/10 text-sm">
-                                    {expenses.map((expense) => {
-                                        const payer = getPayerParticipant(
-                                            expense,
-                                            participants
-                                        );
-                                        const payerLabel = getPayerLabel(
-                                            expense,
-                                            participants
-                                        );
-
-                                        return (
-                                        <tr key={expense.id} className="text-white">
-                                            <td className="px-5 py-4 font-semibold text-lime-100">
-                                                {expense.expense_date}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <span className="font-bold">
-                                                    {expense.description}
-                                                </span>
-                                                <span className="mt-1 block text-xs uppercase tracking-wide text-slate-500">
-                                                    {expense.source_type.replace(
-                                                        "_",
-                                                        " "
-                                                    )}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                {lineItems.find(
-                                                    (item) =>
-                                                        item.category_id ===
-                                                        expense.budget_category_id
-                                                )?.name ||
-                                                    DEFAULT_EXPENSE_CATEGORY_LABELS[
-                                                        expense.category
-                                                    ]}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                {formatCurrency(
-                                                    expense.amount,
-                                                    expense.currency
-                                                )}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <span className="font-mono">
-                                                    {expense.exchange_rate_used}
-                                                </span>
-                                                {expense.exchange_rate_is_manual ? (
-                                                    <span className="ml-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">
-                                                        Manual
-                                                    </span>
-                                                ) : null}
-                                            </td>
-                                            <td className="px-5 py-4 font-black">
-                                                {formatCurrency(
-                                                    getExpenseReportingAmount(expense),
-                                                    expense.reporting_currency
-                                                )}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 py-1.5 pl-1.5 pr-3 text-sm font-black text-white">
-                                                    <ParticipantAvatar
-                                                        participant={payer}
-                                                        label={payerLabel}
-                                                    />
-                                                    <span className="max-w-36 truncate">
-                                                        {payerLabel}
-                                                    </span>
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="flex flex-wrap gap-2">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setEditingExpense(expense)}
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white"
-                                                        aria-label={`Edit expense ${expense.description}`}
-                                                        title="Edit expense"
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setDuplicatingExpense(expense)}
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white"
-                                                        aria-label={`Duplicate expense ${expense.description}`}
-                                                        title="Duplicate expense"
-                                                    >
-                                                        <Copy className="h-4 w-4" />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setDeletingExpense(expense)
-                                                        }
-                                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-300/20 bg-red-300/10 text-red-100 transition hover:bg-red-300/20"
-                                                        aria-label={`Delete expense ${expense.description}`}
-                                                        title="Delete expense"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-            </section>
+            ) : null}
+            <BudgetFeaturePresentation
+                mode="expenses"
+                data={{
+                    tripId,
+                    tripTitle,
+                    budget,
+                    lineItems,
+                    expenses,
+                    splits,
+                    settlementPayments,
+                    participants,
+                    defaultCurrency,
+                }}
+                actions={{
+                    onAddExpense: () => setIsAddingExpense(true),
+                    onSettleUp: (suggestedSettlement) =>
+                        setSettlementDialog({ suggestedSettlement }),
+                    onEditExpense: setEditingExpense,
+                    onDuplicateExpense: setDuplicatingExpense,
+                    onDeleteExpense: setDeletingExpense,
+                    renderTabAction: (mode, tabProps) => (
+                        <Link
+                            key={mode}
+                            href={
+                                mode === "budget"
+                                    ? `/trips/${routeSegment}/budget`
+                                    : `/trips/${routeSegment}/budget/expenses`
+                            }
+                            {...tabProps}
+                        />
+                    ),
+                }}
+            />
         </>
     );
 }
 
 export default function BudgetFeatureClient(props: BudgetFeatureProps) {
-    return (
-        <section className="px-4 pb-24 text-white md:px-8">
-            <div className="mx-auto max-w-7xl">
-                <div className="mb-6 flex items-center gap-3 text-sm font-bold text-slate-400">
-                    <Banknote className="h-5 w-5 text-lime-300" />
-                    <span>Trip money</span>
-                    <span className="h-px flex-1 bg-white/10" />
-                    <FileText className="h-5 w-5 text-slate-500" />
-                </div>
-                {props.mode === "budget" ? (
-                    <BudgetDashboard {...props} />
-                ) : (
-                    <ExpensesDashboard {...props} />
-                )}
-            </div>
-        </section>
+    return props.mode === "budget" ? (
+        <BudgetDashboard {...props} />
+    ) : (
+        <ExpensesDashboard {...props} />
     );
 }

@@ -44,7 +44,7 @@ type MobileAppChromeProps = {
   apiClient: MobileApiClient;
   trips: MobileTripSummary[];
   activeTripId: string | null;
-  activeTripView: "overview" | "itinerary" | "ideas" | null;
+  activeTripView: "overview" | "itinerary" | "ideas" | "budget" | null;
   userEmail?: string | null;
   userRole?: string | null;
   onTrips: () => void;
@@ -52,6 +52,7 @@ type MobileAppChromeProps = {
   onTripOverview: () => void;
   onTripItinerary: () => void;
   onTripIdeas: () => void;
+  onTripBudget: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -138,6 +139,7 @@ export function MobileAppChrome({
   onTripOverview,
   onTripItinerary,
   onTripIdeas,
+  onTripBudget,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -247,8 +249,9 @@ export function MobileAppChrome({
         active:
           (index === 0 && activeTripView === "overview") ||
           (index === 1 && activeTripView === "itinerary") ||
-          (index === 2 && activeTripView === "ideas"),
-        supported: index === 0 || index === 1 || index === 2,
+          (index === 2 && activeTripView === "ideas") ||
+          (index === 3 && activeTripView === "budget"),
+        supported: index === 0 || index === 1 || index === 2 || index === 3,
         action:
           index === 0
             ? () => {
@@ -264,6 +267,11 @@ export function MobileAppChrome({
                 ? () => {
                     closeMenus();
                     onTripIdeas();
+                  }
+              : index === 3
+                ? () => {
+                    closeMenus();
+                    onTripBudget();
                   }
               : undefined,
       }))

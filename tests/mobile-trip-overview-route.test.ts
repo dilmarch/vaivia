@@ -176,20 +176,51 @@ describe("mobile trip overview route", () => {
       trip_budgets: {
         data: {
           id: "budget-1",
+          trip_id: "trip-1",
+          name: "Montreal budget",
           reporting_currency: "CAD",
           total_budget_amount: 2000,
           is_active: true,
         },
         error: null,
       },
-      trip_budget_line_items: { data: [], error: null },
+      trip_budget_line_items: {
+        data: [
+          {
+            id: "line-1",
+            budget_id: "budget-1",
+            trip_id: "trip-1",
+            category_id: "budget-category-1",
+            name: "Entertainment",
+            linked_expense_category: "entertainment",
+            planned_amount: 500,
+            currency: "CAD",
+            notes: null,
+            sort_order: 0,
+          },
+        ],
+        error: null,
+      },
       trip_expenses: {
         data: [
           {
+            id: "expense-1",
+            trip_id: "trip-1",
+            expense_date: "2026-09-11",
+            transaction_date: "2026-09-11",
+            description: "Museum tickets",
+            category: "entertainment",
+            budget_category_id: "budget-category-1",
             amount: 450,
             amount_in_reporting_currency: 450,
             reporting_currency: "CAD",
             currency: "CAD",
+            exchange_rate_used: 1,
+            exchange_rate_is_manual: false,
+            paid_by_trip_member_id: "member-1",
+            paid_by_user_id: "user-123",
+            split_method: "equal",
+            source_type: "manual",
           },
         ],
         error: null,
@@ -292,6 +323,28 @@ describe("mobile trip overview route", () => {
         ],
         error: null,
       },
+      trip_expense_splits: {
+        data: [
+          {
+            id: "split-1",
+            expense_id: "expense-1",
+            trip_id: "trip-1",
+            participant_kind: "member",
+            trip_member_id: "member-1",
+            split_amount: 450,
+            split_percentage: 100,
+            currency: "CAD",
+            amount_in_reporting_currency: 450,
+            is_included: true,
+          },
+        ],
+        error: null,
+      },
+      trip_expense_settlements: { data: [], error: null },
+      user_finance_settings: {
+        data: { home_currency: "USD" },
+        error: null,
+      },
     };
     const from = vi.fn((table: string) => {
       const result = tableResults[table] || { data: [], error: null };
@@ -354,6 +407,40 @@ describe("mobile trip overview route", () => {
           reaction_score: 2,
         }),
       ],
+      budget: {
+        budget: expect.objectContaining({
+          id: "budget-1",
+          reporting_currency: "CAD",
+        }),
+        lineItems: [
+          expect.objectContaining({
+            id: "line-1",
+            name: "Entertainment",
+            planned_amount: 500,
+          }),
+        ],
+        expenses: [
+          expect.objectContaining({
+            id: "expense-1",
+            description: "Museum tickets",
+            amount_in_reporting_currency: 450,
+          }),
+        ],
+        splits: [expect.objectContaining({ id: "split-1" })],
+        settlementPayments: [],
+        participants: expect.arrayContaining([
+          expect.objectContaining({
+            userId: "user-123",
+            label: "Alex Rivera",
+            isCurrentUser: true,
+          }),
+          expect.objectContaining({
+            invitationId: "invite-1",
+            label: "guest@example.com",
+          }),
+        ]),
+        defaultCurrency: "USD",
+      },
     });
 
     const body = await (await GET(request, {

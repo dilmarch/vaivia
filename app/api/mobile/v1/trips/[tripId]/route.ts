@@ -25,6 +25,14 @@ import {
   type IdeaReactionUserProfile,
   type TripIdeaReactionRecord,
 } from "@/lib/tripIdeas";
+import {
+  normalizeBudget,
+  normalizeBudgetLineItem,
+  normalizeExpense,
+  normalizeExpenseSettlement,
+  normalizeExpenseSplit,
+} from "@/lib/budgetServer";
+import type { BudgetParticipant } from "@/lib/budget";
 import type { Tables } from "@/src/types/supabase";
 
 export const dynamic = "force-dynamic";
@@ -250,6 +258,9 @@ export async function GET(request: Request, { params }: RouteContext) {
     budgetLineItemResult,
     expenseResult,
     ideaResult,
+    expenseSplitResult,
+    expenseSettlementResult,
+    financeSettingsResult,
   ] = await Promise.all([
     context.supabase
       .from("itinerary_items")
@@ -285,8 +296,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     context.supabase
       .from("trip_family_members")
       .select("id,family_member_id,status")
-      .eq("trip_id", trip.id)
-      .eq("status", "going"),
+      .eq("trip_id", trip.id),
     context.supabase
       .from("trip_legs")
       .select("id,name,city_name,country_code,icon_emoji,start_date,end_date,leg_type,sort_order")
@@ -295,24 +305,40 @@ export async function GET(request: Request, { params }: RouteContext) {
       .order("sort_order", { ascending: true }),
     context.supabase
       .from("trip_budgets")
-      .select("id,reporting_currency,total_budget_amount,is_active")
+      .select("id,trip_id,name,reporting_currency,total_budget_amount,is_active")
       .eq("trip_id", trip.id)
       .eq("is_active", true)
       .maybeSingle(),
     context.supabase
       .from("trip_budget_line_items")
-      .select("planned_amount,currency")
-      .eq("trip_id", trip.id),
+      .select("id,budget_id,trip_id,category_id,name,linked_expense_category,planned_amount,currency,notes,sort_order")
+      .eq("trip_id", trip.id)
+      .order("sort_order", { ascending: true }),
     context.supabase
       .from("trip_expenses")
-      .select("amount,amount_in_reporting_currency,reporting_currency,currency")
+      .select("id,trip_id,expense_date,transaction_date,description,category,budget_category_id,amount,currency,original_amount,original_currency,reporting_currency,fetched_exchange_rate,manual_exchange_rate,exchange_rate_used,exchange_rate_is_manual,amount_in_reporting_currency,paid_by_trip_member_id,paid_by_invitation_id,paid_by_family_member_id,paid_by_user_id,paid_by_guest_name,split_method,source_type,transportation_item_id,itinerary_event_id,accommodation_id,notes,created_at,updated_at")
       .eq("trip_id", trip.id)
-      .is("deleted_at", null),
+      .is("deleted_at", null)
+      .order("expense_date", { ascending: false }),
     context.supabase
       .from("trip_ideas")
       .select("id,trip_id,created_by,title,description,category,tags,days_of_week,availability_start_date,availability_end_date,time_of_day,opens_at,closes_at,location,formatted_address,google_place_id,location_city,location_region,location_country,location_country_code,is_24_hours,ticket_policy,age_policy,dress_code,is_private,is_archived,attended,created_at,updated_at")
       .eq("trip_id", trip.id)
       .order("created_at", { ascending: true }),
+    context.supabase
+      .from("trip_expense_splits")
+      .select("id,expense_id,trip_id,participant_kind,trip_member_id,invitation_id,family_member_id,user_id,guest_name,split_amount,split_percentage,currency,amount_in_reporting_currency,is_included")
+      .eq("trip_id", trip.id),
+    context.supabase
+      .from("trip_expense_settlements")
+      .select("id,trip_id,paid_by_participant_value,received_by_participant_value,amount,reporting_currency,settled_on,created_by,created_at")
+      .eq("trip_id", trip.id)
+      .order("settled_on", { ascending: false }),
+    context.supabase
+      .from("user_finance_settings")
+      .select("home_currency")
+      .eq("user_id", context.user.id)
+      .maybeSingle(),
   ]);
 
   const requiredError =
@@ -326,7 +352,10 @@ export async function GET(request: Request, { params }: RouteContext) {
     budgetResult.error ||
     budgetLineItemResult.error ||
     expenseResult.error ||
-    ideaResult.error;
+    ideaResult.error ||
+    expenseSplitResult.error ||
+    expenseSettlementResult.error ||
+    financeSettingsResult.error;
   if (requiredError) {
     console.error("Mobile trip overview request failed:", {
       userId: context.user.id,
@@ -349,6 +378,21 @@ export async function GET(request: Request, { params }: RouteContext) {
   const rawIdeas = ((ideaResult.data || []) as Record<string, unknown>[]).map(
     normalizeTripIdea,
   );
+  const mobileBudget = normalizeBudget(
+    budgetResult.data as Record<string, unknown> | null,
+  );
+  const mobileBudgetLineItems = (
+    (budgetLineItemResult.data || []) as Record<string, unknown>[]
+  ).map(normalizeBudgetLineItem);
+  const mobileExpenses = (
+    (expenseResult.data || []) as Record<string, unknown>[]
+  ).map(normalizeExpense);
+  const mobileExpenseSplits = (
+    (expenseSplitResult.data || []) as Record<string, unknown>[]
+  ).map(normalizeExpenseSplit);
+  const mobileExpenseSettlements = (
+    (expenseSettlementResult.data || []) as Record<string, unknown>[]
+  ).map(normalizeExpenseSettlement);
   const itineraryItemIds = rawItineraryItems.map((item) => item.id);
   const transportationItemIds = rawTransportationItems.map((item) => item.id);
   const categoryIds = Array.from(
@@ -492,7 +536,9 @@ export async function GET(request: Request, { params }: RouteContext) {
     };
   });
   const familyById = new Map((familyResult.data || []).map((member) => [member.id, member]));
-  (familyMembershipResult.data || []).forEach((membership) => {
+  (familyMembershipResult.data || [])
+    .filter((membership) => membership.status === "going")
+    .forEach((membership) => {
     const member = familyById.get(membership.family_member_id);
     if (!member) return;
     going.push({
@@ -502,6 +548,56 @@ export async function GET(request: Request, { params }: RouteContext) {
       initial: getInitials(member.name),
     });
   });
+  const memberByUserId = new Map(
+    memberRows.map((member) => [member.user_id, member]),
+  );
+  const budgetParticipants: BudgetParticipant[] = [
+    ...memberUserIds.map((userId) => {
+      const profile = profilesById.get(userId);
+      const member = memberByUserId.get(userId);
+      const label =
+        [profile?.first_name, profile?.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim() ||
+        profile?.username ||
+        "Trip member";
+      return {
+        id: member?.id || `owner:${userId}`,
+        kind: "member" as const,
+        label,
+        secondaryLabel: profile?.username ? `@${profile.username}` : null,
+        avatarUrl: profile?.avatar_url || null,
+        userId,
+        tripMemberId: member?.id || null,
+        isCurrentUser: userId === context.user.id,
+      };
+    }),
+    ...(invitationResult.data || []).map((invitation) => {
+      const label =
+        invitation.invited_username ||
+        invitation.invited_email ||
+        "Pending invite";
+      return {
+        id: invitation.id,
+        kind: "invitation" as const,
+        label,
+        secondaryLabel: "Pending invitation",
+        invitationId: invitation.id,
+      };
+    }),
+    ...(familyMembershipResult.data || []).map((membership) => {
+      const member = familyById.get(membership.family_member_id);
+      return {
+        id: membership.family_member_id || membership.id,
+        kind: "family_member" as const,
+        label: member?.name || "Family member",
+        secondaryLabel: "Managed by you",
+        avatarUrl: member?.avatar_url || null,
+        familyMemberId: membership.family_member_id,
+      };
+    }),
+  ];
   const invited = (invitationResult.data || []).map((invitation) => {
     const label = invitation.invited_username || invitation.invited_email || "Invited guest";
     return {
@@ -890,5 +986,14 @@ export async function GET(request: Request, { params }: RouteContext) {
     itinerary: mobileItinerary,
     itineraryTimezones,
     ideas,
+    budget: {
+      budget: mobileBudget,
+      lineItems: mobileBudgetLineItems,
+      expenses: mobileExpenses,
+      splits: mobileExpenseSplits,
+      settlementPayments: mobileExpenseSettlements,
+      participants: budgetParticipants,
+      defaultCurrency: financeSettingsResult.data?.home_currency || "CAD",
+    },
   });
 }

@@ -1,5 +1,13 @@
 import type { Tables } from "@/src/types/supabase";
 import type { TripIdea } from "@/lib/tripIdeas";
+import type {
+  BudgetParticipant,
+  TripBudget,
+  TripBudgetLineItem,
+  TripExpense,
+  TripExpenseSettlement,
+  TripExpenseSplit,
+} from "@/lib/budget";
 
 type TripRow = Tables<"trips">;
 type ItineraryItemRow = Tables<"itinerary_items">;
@@ -94,6 +102,17 @@ export type MobileTripDetailResponse = {
   itinerary: MobileItineraryItem[];
   itineraryTimezones: string[];
   ideas: TripIdea[];
+  budget: MobileTripBudgetData;
+};
+
+export type MobileTripBudgetData = {
+  budget: TripBudget | null;
+  lineItems: TripBudgetLineItem[];
+  expenses: TripExpense[];
+  splits: TripExpenseSplit[];
+  settlementPayments: TripExpenseSettlement[];
+  participants: BudgetParticipant[];
+  defaultCurrency: string;
 };
 
 export type MobileTripOverviewLocation = {

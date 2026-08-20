@@ -7,6 +7,7 @@ export default {
     "./mobile/**/*.{js,ts,jsx,tsx}",
     "./components/itinerary/**/*.{js,ts,jsx,tsx}",
     "./components/ideas/**/*.{js,ts,jsx,tsx}",
+    "./components/budget/BudgetPresentation.tsx",
     "./components/navigation/MobileAppChromePresentation.tsx",
     "./components/trips/**/*Presentation.tsx",
     "./components/AirlineIcon.tsx",

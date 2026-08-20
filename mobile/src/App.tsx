@@ -6,6 +6,7 @@ import { LoginScreen } from "./screens/LoginScreen";
 import { TripDetailScreen } from "./screens/TripDetailScreen";
 import { TripItineraryScreen } from "./screens/TripItineraryScreen";
 import { TripIdeasScreen } from "./screens/TripIdeasScreen";
+import { TripBudgetScreen } from "./screens/TripBudgetScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
@@ -15,7 +16,7 @@ export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [activeTripView, setActiveTripView] = useState<
-    "overview" | "itinerary" | "ideas"
+    "overview" | "itinerary" | "ideas" | "budget"
   >("overview");
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
   const environment = useMemo(() => getMobileEnvironment(), []);
@@ -60,6 +61,8 @@ export default function App() {
       <TripItineraryScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "ideas" ? (
       <TripIdeasScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : activeTripView === "budget" ? (
+      <TripBudgetScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : (
       <TripDetailScreen
         apiClient={apiClient}
@@ -99,6 +102,7 @@ export default function App() {
         onTripOverview={() => setActiveTripView("overview")}
         onTripItinerary={() => setActiveTripView("itinerary")}
         onTripIdeas={() => setActiveTripView("ideas")}
+        onTripBudget={() => setActiveTripView("budget")}
         onSignOut={async () => {
           openTrips();
           await signOut();

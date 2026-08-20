@@ -32,6 +32,15 @@ const detail: MobileTripDetailResponse = {
   },
   itinerary: [],
   itineraryTimezones: [],
+  budget: {
+    budget: null,
+    lineItems: [],
+    expenses: [],
+    splits: [],
+    settlementPayments: [],
+    participants: [],
+    defaultCurrency: "CAD",
+  },
   ideas: [
     {
       id: "idea-1",
