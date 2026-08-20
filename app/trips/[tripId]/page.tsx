@@ -72,13 +72,13 @@ import {
     type UserCategory,
 } from "@/lib/itineraryCategories";
 import {
+    attachIdeaReactions,
     normalizeIdeaAgePolicy,
+    normalizeIdeaReaction,
     normalizeIdeaTicketPolicy,
     normalizeTripIdea,
-    type IdeaReactionProfile,
-    type IdeaReactionSummary,
-    type IdeaReactionType,
-    type TripIdea,
+    type IdeaReactionUserProfile,
+    type TripIdeaReactionRecord,
     toIdeaDayValue,
     toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
@@ -4085,114 +4085,6 @@ function getDefaultItineraryView(
         : "list";
 }
 
-type TripIdeaReactionRecord = {
-    idea_id: string;
-    user_id: string;
-    reaction: string;
-    score?: number | null;
-};
-
-type UserProfileRecord = {
-    id: string;
-    first_name?: string | null;
-    last_name?: string | null;
-    username?: string | null;
-    avatar_url?: string | null;
-};
-
-const IDEA_REACTION_VALUES: Record<IdeaReactionType, 2 | 1 | -1> = {
-    heart: 2,
-    thumbs_up: 1,
-    thumbs_down: -1,
-};
-
-function normalizeIdeaReaction(value: unknown): IdeaReactionType | null {
-    if (
-        value === "heart" ||
-        value === "thumbs_up" ||
-        value === "thumbs_down"
-    ) {
-        return value;
-    }
-
-    return null;
-}
-
-function attachIdeaReactions({
-    ideas,
-    reactions,
-    profiles,
-    currentUserId,
-}: {
-    ideas: TripIdea[];
-    reactions: TripIdeaReactionRecord[];
-    profiles: UserProfileRecord[];
-    currentUserId: string;
-}) {
-    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
-    const reactionsByIdeaId = new Map<string, TripIdeaReactionRecord[]>();
-
-    reactions.forEach((reaction) => {
-        const normalizedReaction = normalizeIdeaReaction(reaction.reaction);
-        if (!normalizedReaction) return;
-
-        const ideaReactions = reactionsByIdeaId.get(reaction.idea_id) || [];
-        ideaReactions.push({ ...reaction, reaction: normalizedReaction });
-        reactionsByIdeaId.set(reaction.idea_id, ideaReactions);
-    });
-
-    return ideas.map((idea) => {
-        const ideaReactions = reactionsByIdeaId.get(idea.id) || [];
-        const currentUserReaction =
-            normalizeIdeaReaction(
-                ideaReactions.find((reaction) => reaction.user_id === currentUserId)
-                    ?.reaction
-            ) || null;
-        const reactionScore = ideaReactions.reduce((total, reaction) => {
-            const normalizedReaction = normalizeIdeaReaction(reaction.reaction);
-            if (!normalizedReaction) return total;
-
-            return (
-                total +
-                (typeof reaction.score === "number"
-                    ? reaction.score
-                    : IDEA_REACTION_VALUES[normalizedReaction])
-            );
-        }, 0);
-        const reactionSummaries = (
-            ["heart", "thumbs_up", "thumbs_down"] as IdeaReactionType[]
-        ).map((reactionType): IdeaReactionSummary => {
-            const matchingReactions = ideaReactions.filter(
-                (reaction) => reaction.reaction === reactionType
-            );
-            const reactionProfiles = matchingReactions.map((reaction) => {
-                const profile = profilesById.get(reaction.user_id);
-                return {
-                    user_id: reaction.user_id,
-                    avatar_url: profile?.avatar_url || null,
-                    first_name: profile?.first_name || null,
-                    last_name: profile?.last_name || null,
-                    username: profile?.username || null,
-                } satisfies IdeaReactionProfile;
-            });
-
-            return {
-                reaction: reactionType,
-                value: IDEA_REACTION_VALUES[reactionType],
-                count: matchingReactions.length,
-                profiles: reactionProfiles,
-            };
-        });
-
-        return {
-            ...idea,
-            current_user_reaction: currentUserReaction,
-            reaction_summaries: reactionSummaries,
-            reaction_score: reactionScore,
-        };
-    });
-}
-
 async function toggleTripIdeaReaction(formData: FormData) {
     "use server";
 
@@ -5380,7 +5272,7 @@ async function TripDetailContent({
     );
     const ideaIds = normalizedIdeas.map((idea) => idea.id).filter(Boolean);
     let tripIdeaReactions: TripIdeaReactionRecord[] = [];
-    let ideaReactionProfiles: UserProfileRecord[] = [];
+    let ideaReactionProfiles: IdeaReactionUserProfile[] = [];
 
     if (ideaIds.length > 0) {
         const { data: reactionRows, error: reactionsError } = await supabase
@@ -5418,7 +5310,7 @@ async function TripDetailContent({
                     hint: profilesError.hint,
                 });
             } else {
-                ideaReactionProfiles = (profileRows || []) as UserProfileRecord[];
+                ideaReactionProfiles = (profileRows || []) as IdeaReactionUserProfile[];
             }
         }
     }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MobileTripDetailResponse } from "@/lib/mobileApi/contracts";
 import type { MobileApiClient } from "@/mobile/src/lib/apiClient";
@@ -75,6 +75,7 @@ const detail: MobileTripDetailResponse = {
     },
   ],
   itineraryTimezones: [],
+  ideas: [],
 };
 
 afterEach(() => cleanup());
@@ -124,4 +125,24 @@ describe("mobile trip overview visual parity", () => {
       );
     },
   );
+
+  it("opens Trip Ideas from the shared overview tile", async () => {
+    const onIdeas = vi.fn();
+    const apiClient = {
+      getTrip: vi.fn().mockResolvedValue(detail),
+    } as unknown as MobileApiClient;
+    render(
+      <TripDetailScreen
+        apiClient={apiClient}
+        tripId="trip-1"
+        onIdeas={onIdeas}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Trip Overview" });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Visit trip ideas/ }),
+    );
+    expect(onIdeas).toHaveBeenCalledOnce();
+  });
 });

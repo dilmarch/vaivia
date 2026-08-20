@@ -1,4 +1,5 @@
 import type { Tables } from "@/src/types/supabase";
+import type { TripIdea } from "@/lib/tripIdeas";
 
 type TripRow = Tables<"trips">;
 type ItineraryItemRow = Tables<"itinerary_items">;
@@ -92,6 +93,7 @@ export type MobileTripDetailResponse = {
   overview: MobileTripOverview;
   itinerary: MobileItineraryItem[];
   itineraryTimezones: string[];
+  ideas: TripIdea[];
 };
 
 export type MobileTripOverviewLocation = {

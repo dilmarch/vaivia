@@ -240,6 +240,58 @@ describe("mobile trip overview route", () => {
         ],
         error: null,
       },
+      trip_ideas: {
+        data: [
+          {
+            id: "idea-1",
+            trip_id: "trip-1",
+            created_by: "user-123",
+            title: "Visit the Biodome",
+            description: "Rainy-day option.",
+            category: "Sightseeing",
+            tags: ["family", "rainy day"],
+            days_of_week: ["friday"],
+            availability_start_date: "2026-09-10",
+            availability_end_date: "2026-09-14",
+            time_of_day: ["afternoon"],
+            opens_at: null,
+            closes_at: null,
+            location: "Montreal Biodome",
+            address: null,
+            formatted_address: "4777 Pierre-de Coubertin Ave",
+            google_place_id: "place-1",
+            location_city: "Montreal",
+            location_region: "Quebec",
+            location_country: "Canada",
+            location_country_code: "CA",
+            location_website: "https://example.com/venue",
+            ticket_website: "https://example.com/tickets",
+            is_24_hours: false,
+            ticket_policy: "advance_ticket",
+            ticket_type: null,
+            age_policy: "all_ages",
+            dress_code: null,
+            other_notes: null,
+            is_private: false,
+            is_archived: false,
+            attended: false,
+            created_at: "2026-08-01T00:00:00Z",
+            updated_at: "2026-08-01T00:00:00Z",
+          },
+        ],
+        error: null,
+      },
+      trip_idea_reactions: {
+        data: [
+          {
+            idea_id: "idea-1",
+            user_id: "user-123",
+            reaction: "heart",
+            score: 2,
+          },
+        ],
+        error: null,
+      },
     };
     const from = vi.fn((table: string) => {
       const result = tableResults[table] || { data: [], error: null };
@@ -293,6 +345,15 @@ describe("mobile trip overview route", () => {
         "America/St_Johns",
         "America/Toronto",
       ]),
+      ideas: [
+        expect.objectContaining({
+          id: "idea-1",
+          title: "Visit the Biodome",
+          location_city: "Montreal",
+          current_user_reaction: "heart",
+          reaction_score: 2,
+        }),
+      ],
     });
 
     const body = await (await GET(request, {

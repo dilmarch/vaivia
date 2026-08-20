@@ -102,6 +102,35 @@ export type IdeaReactionSummary = {
     profiles?: IdeaReactionProfile[];
 };
 
+export type TripIdeaReactionRecord = {
+    idea_id: string;
+    user_id: string;
+    reaction: string;
+    score?: number | null;
+};
+
+export type IdeaReactionUserProfile = IdeaReactionProfile & {
+    id: string;
+};
+
+export const IDEA_REACTION_VALUES: Record<IdeaReactionType, 2 | 1 | -1> = {
+    heart: 2,
+    thumbs_up: 1,
+    thumbs_down: -1,
+};
+
+export function normalizeIdeaReaction(value: unknown): IdeaReactionType | null {
+    if (
+        value === "heart" ||
+        value === "thumbs_up" ||
+        value === "thumbs_down"
+    ) {
+        return value;
+    }
+
+    return null;
+}
+
 export type TripIdea = {
     id: string;
     trip_id: string;
@@ -144,6 +173,81 @@ export type TripIdea = {
     created_at?: string | null;
     updated_at?: string | null;
 };
+
+export function attachIdeaReactions({
+    ideas,
+    reactions,
+    profiles,
+    currentUserId,
+}: {
+    ideas: TripIdea[];
+    reactions: TripIdeaReactionRecord[];
+    profiles: IdeaReactionUserProfile[];
+    currentUserId: string;
+}) {
+    const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+    const reactionsByIdeaId = new Map<string, TripIdeaReactionRecord[]>();
+
+    reactions.forEach((reaction) => {
+        const normalizedReaction = normalizeIdeaReaction(reaction.reaction);
+        if (!normalizedReaction) return;
+
+        const ideaReactions = reactionsByIdeaId.get(reaction.idea_id) || [];
+        ideaReactions.push({ ...reaction, reaction: normalizedReaction });
+        reactionsByIdeaId.set(reaction.idea_id, ideaReactions);
+    });
+
+    return ideas.map((idea) => {
+        const ideaReactions = reactionsByIdeaId.get(idea.id) || [];
+        const currentUserReaction =
+            normalizeIdeaReaction(
+                ideaReactions.find((reaction) => reaction.user_id === currentUserId)
+                    ?.reaction
+            ) || null;
+        const reactionScore = ideaReactions.reduce((total, reaction) => {
+            const normalizedReaction = normalizeIdeaReaction(reaction.reaction);
+            if (!normalizedReaction) return total;
+
+            return (
+                total +
+                (typeof reaction.score === "number"
+                    ? reaction.score
+                    : IDEA_REACTION_VALUES[normalizedReaction])
+            );
+        }, 0);
+        const reactionSummaries = (
+            ["heart", "thumbs_up", "thumbs_down"] as IdeaReactionType[]
+        ).map((reactionType): IdeaReactionSummary => {
+            const matchingReactions = ideaReactions.filter(
+                (reaction) => reaction.reaction === reactionType
+            );
+            const reactionProfiles = matchingReactions.map((reaction) => {
+                const profile = profilesById.get(reaction.user_id);
+                return {
+                    user_id: reaction.user_id,
+                    avatar_url: profile?.avatar_url || null,
+                    first_name: profile?.first_name || null,
+                    last_name: profile?.last_name || null,
+                    username: profile?.username || null,
+                } satisfies IdeaReactionProfile;
+            });
+
+            return {
+                reaction: reactionType,
+                value: IDEA_REACTION_VALUES[reactionType],
+                count: matchingReactions.length,
+                profiles: reactionProfiles,
+            };
+        });
+
+        return {
+            ...idea,
+            current_user_reaction: currentUserReaction,
+            reaction_summaries: reactionSummaries,
+            reaction_score: reactionScore,
+        };
+    });
+}
 
 export function normalizeStringArray(value: unknown) {
     if (Array.isArray(value)) {

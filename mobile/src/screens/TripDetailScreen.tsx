@@ -35,6 +35,7 @@ type TripDetailScreenProps = {
   apiClient: MobileApiClient;
   tripId: string;
   onItinerary?: () => void;
+  onIdeas?: () => void;
 };
 
 function formatMoney(amount: number, currency: string) {
@@ -85,6 +86,7 @@ export function TripDetailScreen({
   apiClient,
   tripId,
   onItinerary,
+  onIdeas,
 }: TripDetailScreenProps) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -262,6 +264,7 @@ export function TripDetailScreen({
               description="Brainstorm ideas of trip activities without scheduling them for a specific time on the itinerary."
               icon={Sparkles}
               buttonLabel="Visit trip ideas"
+              onAction={onIdeas}
             />
           </div>
 

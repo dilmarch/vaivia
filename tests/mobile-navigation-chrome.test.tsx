@@ -56,6 +56,7 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onSelectTrip: vi.fn(),
     onTripOverview: vi.fn(),
     onTripItinerary: vi.fn(),
+    onTripIdeas: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -121,12 +122,14 @@ describe("mobile navigation chrome parity", () => {
     expect(screen.getByRole("button", { name: "Account" })).toBeEnabled();
   });
 
-  it("shows the exact trip-context item order and enables overview and itinerary", () => {
+  it("shows the exact trip-context item order and enables overview, itinerary, and ideas", () => {
     const onTripItinerary = vi.fn();
+    const onTripIdeas = vi.fn();
     renderChrome({
       activeTripId: trip.id,
       activeTripView: "overview",
       onTripItinerary,
+      onTripIdeas,
     });
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
 
@@ -140,7 +143,7 @@ describe("mobile navigation chrome parity", () => {
     expect(labels.slice(0, 9)).toEqual([
       "Trip overview",
       "Itinerary",
-      "Trip Ideas coming soon",
+      "Trip Ideas",
       "Budget coming soon",
       "Transport coming soon",
       "Eat & Drink coming soon",
@@ -155,6 +158,23 @@ describe("mobile navigation chrome parity", () => {
     expect(screen.getByRole("button", { name: "Itinerary" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Itinerary" }));
     expect(onTripItinerary).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+    fireEvent.click(screen.getByRole("button", { name: "Trip Ideas" }));
+    expect(onTripIdeas).toHaveBeenCalledOnce();
+  });
+
+  it("marks Trip Ideas active in trip navigation", () => {
+    renderChrome({
+      activeTripId: trip.id,
+      activeTripView: "ideas",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+
+    expect(screen.getByRole("button", { name: "Trip Ideas" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
   });
 
   it("supports trips, account sign-out, search input, and outside-click closing", () => {

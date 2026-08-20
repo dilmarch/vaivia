@@ -19,6 +19,12 @@ import {
 } from "@/lib/itineraryCategories";
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
 import { getTransportationModeEmoji } from "@/lib/transportationModes";
+import {
+  attachIdeaReactions,
+  normalizeTripIdea,
+  type IdeaReactionUserProfile,
+  type TripIdeaReactionRecord,
+} from "@/lib/tripIdeas";
 import type { Tables } from "@/src/types/supabase";
 
 export const dynamic = "force-dynamic";
@@ -243,6 +249,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     budgetResult,
     budgetLineItemResult,
     expenseResult,
+    ideaResult,
   ] = await Promise.all([
     context.supabase
       .from("itinerary_items")
@@ -301,6 +308,11 @@ export async function GET(request: Request, { params }: RouteContext) {
       .select("amount,amount_in_reporting_currency,reporting_currency,currency")
       .eq("trip_id", trip.id)
       .is("deleted_at", null),
+    context.supabase
+      .from("trip_ideas")
+      .select("id,trip_id,created_by,title,description,category,tags,days_of_week,availability_start_date,availability_end_date,time_of_day,opens_at,closes_at,location,formatted_address,google_place_id,location_city,location_region,location_country,location_country_code,is_24_hours,ticket_policy,age_policy,dress_code,is_private,is_archived,attended,created_at,updated_at")
+      .eq("trip_id", trip.id)
+      .order("created_at", { ascending: true }),
   ]);
 
   const requiredError =
@@ -313,7 +325,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     legResult.error ||
     budgetResult.error ||
     budgetLineItemResult.error ||
-    expenseResult.error;
+    expenseResult.error ||
+    ideaResult.error;
   if (requiredError) {
     console.error("Mobile trip overview request failed:", {
       userId: context.user.id,
@@ -333,12 +346,16 @@ export async function GET(request: Request, { params }: RouteContext) {
   const legIds = (legResult.data || []).map((leg) => leg.id);
   const rawItineraryItems = itineraryResult.data || [];
   const rawTransportationItems = transportationResult.data || [];
+  const rawIdeas = ((ideaResult.data || []) as Record<string, unknown>[]).map(
+    normalizeTripIdea,
+  );
   const itineraryItemIds = rawItineraryItems.map((item) => item.id);
   const transportationItemIds = rawTransportationItems.map((item) => item.id);
   const categoryIds = Array.from(
     new Set(rawItineraryItems.map((item) => item.category_id).filter(Boolean)),
   ) as string[];
   const participantItemIds = [...itineraryItemIds, ...transportationItemIds];
+  const ideaIds = rawIdeas.map((idea) => idea.id).filter(Boolean);
 
   const [
     profileResult,
@@ -347,6 +364,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     signedCoverResult,
     categoryResult,
     participantResult,
+    ideaReactionResult,
   ] = await Promise.all([
     memberUserIds.length
       ? context.supabase
@@ -386,6 +404,13 @@ export async function GET(request: Request, { params }: RouteContext) {
           .eq("trip_id", trip.id)
           .in("item_id", participantItemIds)
       : Promise.resolve({ data: [], error: null }),
+    ideaIds.length
+      ? context.supabase
+          .from("trip_idea_reactions")
+          .select("idea_id,user_id,reaction,score")
+          .eq("trip_id", trip.id)
+          .in("idea_id", ideaIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const secondaryError =
@@ -393,7 +418,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     familyResult.error ||
     viewerLegResult.error ||
     categoryResult.error ||
-    participantResult.error;
+    participantResult.error ||
+    ideaReactionResult.error;
   if (secondaryError) {
     console.error("Mobile trip overview people request failed:", {
       userId: context.user.id,
@@ -425,6 +451,33 @@ export async function GET(request: Request, { params }: RouteContext) {
   }
 
   const profilesById = new Map((profileResult.data || []).map((profile) => [profile.id, profile]));
+  const ideaReactions = (ideaReactionResult.data || []) as TripIdeaReactionRecord[];
+  const missingReactionProfileIds = Array.from(
+    new Set(
+      ideaReactions
+        .map((reaction) => reaction.user_id)
+        .filter((userId) => !profilesById.has(userId)),
+    ),
+  );
+  const additionalReactionProfilesResult = missingReactionProfileIds.length
+    ? await context.supabase
+        .from("connected_public_user_profiles")
+        .select("id,first_name,last_name,username,avatar_url")
+        .in("id", missingReactionProfileIds)
+    : { data: [], error: null };
+  if (additionalReactionProfilesResult.error) {
+    console.error("Mobile trip ideas reaction profiles request failed:", {
+      userId: context.user.id,
+      tripId,
+      message: additionalReactionProfilesResult.error.message,
+      code: additionalReactionProfilesResult.error.code,
+    });
+    return mobileJson(request, { error: "Could not load trip ideas" }, { status: 500 });
+  }
+  const ideaReactionProfiles = [
+    ...(profileResult.data || []),
+    ...(additionalReactionProfilesResult.data || []),
+  ] as IdeaReactionUserProfile[];
   const going = memberUserIds.map((userId) => {
     const profile = profilesById.get(userId);
     const label =
@@ -816,11 +869,26 @@ export async function GET(request: Request, { params }: RouteContext) {
         .filter(Boolean),
     ),
   ) as string[];
+  const ideas = attachIdeaReactions({
+    ideas: rawIdeas,
+    reactions: ideaReactions,
+    profiles: ideaReactionProfiles,
+    currentUserId: context.user.id,
+  }).sort((left, right) => {
+    if (left.attended !== right.attended) return left.attended ? 1 : -1;
+    const scoreSort = (right.reaction_score || 0) - (left.reaction_score || 0);
+    if (scoreSort !== 0) return scoreSort;
+    const createdSort = String(right.created_at || "").localeCompare(
+      String(left.created_at || ""),
+    );
+    return createdSort || left.title.localeCompare(right.title);
+  });
 
   return mobileJson(request, {
     trip: mobileTrip,
     overview,
     itinerary: mobileItinerary,
     itineraryTimezones,
+    ideas,
   });
 }
