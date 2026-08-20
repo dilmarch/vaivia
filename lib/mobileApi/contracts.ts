@@ -2,6 +2,7 @@ import type { Tables } from "@/src/types/supabase";
 
 type TripRow = Tables<"trips">;
 type ItineraryItemRow = Tables<"itinerary_items">;
+type NotificationRow = Tables<"notifications">;
 
 export type MobileTripSummary = Pick<
   TripRow,
@@ -53,6 +54,29 @@ export type MobileTripsResponse = {
 export type MobileTripDetailResponse = {
   trip: MobileTripSummary & Pick<TripRow, "notes">;
   itinerary: MobileItineraryItem[];
+};
+
+export type MobileNotification = Pick<
+  NotificationRow,
+  | "id"
+  | "type"
+  | "title"
+  | "body"
+  | "read_at"
+  | "created_at"
+  | "trip_id"
+  | "invitation_id"
+> & {
+  metadata?: Record<string, unknown> | null;
+};
+
+export type MobileNotificationsResponse = {
+  notifications: MobileNotification[];
+  navigationProfile: {
+    role: string | null;
+    avatar_url: string | null;
+  } | null;
+  pendingImportCount: number;
 };
 
 export type MobileApiErrorResponse = {

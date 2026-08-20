@@ -1,15 +1,18 @@
 import { useMemo, useState } from "react";
 import { AppLoading } from "./components/AppLoading";
+import { MobileAppChrome } from "./components/MobileAppChrome";
 import { useMobileAuth } from "./auth/AuthProvider";
 import { LoginScreen } from "./screens/LoginScreen";
 import { TripDetailScreen } from "./screens/TripDetailScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
+import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
 
 export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
   const environment = useMemo(() => getMobileEnvironment(), []);
   const accessToken = session?.access_token || null;
   const authenticatedUserId = session?.user.id || null;
@@ -37,24 +40,44 @@ export default function App() {
   if (isInitializing) return <AppLoading />;
   if (!session) return <LoginScreen />;
 
-  if (selectedTripId) {
-    return (
+  const authenticatedScreen = selectedTripId ? (
       <TripDetailScreen
         apiClient={apiClient}
         tripId={selectedTripId}
         onBack={() => setSelectedTripId(null)}
       />
-    );
-  }
-
-  return (
+  ) : (
     <TripsScreen
       apiClient={apiClient}
       onSelectTrip={setSelectedTripId}
+      onTripsLoaded={setAvailableTrips}
       onSignOut={async () => {
         setSelectedTripId(null);
         await signOut();
       }}
     />
+  );
+
+  return (
+    <div className="min-h-screen pb-[calc(8.5rem+var(--safe-area-bottom))] pt-[var(--safe-area-top)]">
+      {authenticatedScreen}
+      <MobileAppChrome
+        apiClient={apiClient}
+        trips={availableTrips}
+        activeTripId={selectedTripId}
+        userEmail={session.user.email}
+        userRole={
+          typeof session.user.app_metadata?.role === "string"
+            ? session.user.app_metadata.role
+            : null
+        }
+        onTrips={() => setSelectedTripId(null)}
+        onSelectTrip={setSelectedTripId}
+        onSignOut={async () => {
+          setSelectedTripId(null);
+          await signOut();
+        }}
+      />
+    </div>
   );
 }

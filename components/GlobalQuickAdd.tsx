@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { Minus, Plus } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import FeatureSuggestionModal from "@/components/FeatureSuggestionModal";
 import QuickAddExpenseModal from "@/components/budget/QuickAddExpenseModal";
 import { getTripRouteSegment } from "@/lib/tripRoutes";
+import {
+    MobileQuickAddButtonPresentation,
+    QuickAddMenuPresentation,
+} from "@/components/navigation/MobileAppChromePresentation";
 
 type QuickAddTrip = {
     id: string;
@@ -160,7 +163,7 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                 }`}
             >
                 {isOpen && (
-                    <div className="mb-3 flex flex-col items-center gap-2 md:items-end">
+                    <QuickAddMenuPresentation>
                         {tripPickerAction ? (
                             <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
                                 <button
@@ -258,39 +261,13 @@ export default function GlobalQuickAdd({ trips }: GlobalQuickAddProps) {
                         >
                             Suggest new feature
                         </button>
-                    </div>
+                    </QuickAddMenuPresentation>
                 )}
 
-                <div className="relative grid place-items-center">
-                    <span
-                        className="pointer-events-none absolute -inset-4 z-0 rounded-full bg-slate-500/60 blur-2xl"
-                        aria-hidden="true"
-                    />
-                    <span
-                        className="pointer-events-none absolute -inset-2 z-0 rounded-full bg-slate-700/45 blur-xl"
-                        aria-hidden="true"
-                    />
-                    <button
-                        type="button"
-                        onClick={() => setIsOpen((current) => !current)}
-                        data-vaivia-mobile-tour-target="quick-add"
-                        className="vaivia-mobile-quick-add-button relative z-10 flex h-16 w-16 items-center justify-center rounded-full bg-lime-300 text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.30)] transition hover:-translate-y-0.5 hover:bg-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950 md:h-14 md:w-14 md:shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)]"
-                        aria-label={isOpen ? "Close quick add menu" : "Open quick add menu"}
-                        aria-expanded={isOpen}
-                    >
-                        <span
-                            className={`grid place-items-center transition-transform duration-300 ${
-                                isOpen ? "-rotate-180" : "rotate-0"
-                            }`}
-                        >
-                            {isOpen ? (
-                                <Minus className="h-6 w-6" aria-hidden="true" />
-                            ) : (
-                                <Plus className="h-6 w-6" aria-hidden="true" />
-                            )}
-                        </span>
-                    </button>
-                </div>
+                <MobileQuickAddButtonPresentation
+                    isOpen={isOpen}
+                    onToggle={() => setIsOpen((current) => !current)}
+                />
 
                 {currentTrip ? (
                     <p className="mt-2 hidden max-w-44 truncate rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-xs font-bold text-slate-300 shadow-xl shadow-black/20 backdrop-blur-xl md:block">

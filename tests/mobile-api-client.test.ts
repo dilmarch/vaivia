@@ -4,6 +4,30 @@ import { MobileApiClient, MobileApiError } from "@/mobile/src/lib/apiClient";
 describe("MobileApiClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("preserves the Window receiver for the default fetch implementation", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const receiverSensitiveFetch = vi.fn(function (this: unknown) {
+      if (this !== window) {
+        throw new TypeError("Can only call Window.fetch on instances of Window");
+      }
+      return Promise.resolve(Response.json({ trips: [] }, { status: 200 }));
+    });
+    vi.stubGlobal("fetch", receiverSensitiveFetch);
+
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+    });
+
+    await expect(client.getTrips()).resolves.toEqual({ trips: [] });
+    expect(receiverSensitiveFetch.mock.contexts[0]).toBe(window);
   });
 
   it("uses the configured absolute base URL and Supabase bearer token", async () => {

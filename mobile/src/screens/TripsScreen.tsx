@@ -11,11 +11,13 @@ type TripsScreenProps = {
   apiClient: MobileApiClient;
   onSelectTrip: (tripId: string) => void;
   onSignOut: () => Promise<void>;
+  onTripsLoaded?: (trips: MobileTripSummary[]) => void;
 };
 
 export function TripsScreen({
   apiClient,
   onSelectTrip,
+  onTripsLoaded,
 }: TripsScreenProps) {
   const [trips, setTrips] = useState<MobileTripSummary[]>([]);
   const [filter, setFilter] = useState<TripFilter>("upcoming");
@@ -30,7 +32,10 @@ export function TripsScreen({
 
     void apiClient
       .getTrips(controller.signal)
-      .then(({ trips: loadedTrips }) => setTrips(loadedTrips))
+      .then(({ trips: loadedTrips }) => {
+        setTrips(loadedTrips);
+        onTripsLoaded?.(loadedTrips);
+      })
       .catch((error) => {
         if (controller.signal.aborted) return;
         setErrorMessage(
@@ -42,7 +47,7 @@ export function TripsScreen({
       });
 
     return () => controller.abort();
-  }, [apiClient, reloadKey]);
+  }, [apiClient, onTripsLoaded, reloadKey]);
 
   const contentOverride = isLoading ? (
     <div

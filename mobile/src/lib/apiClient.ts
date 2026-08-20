@@ -1,5 +1,6 @@
 import type {
   MobileApiErrorResponse,
+  MobileNotificationsResponse,
   MobileTripDetailResponse,
   MobileTripsResponse,
 } from "@/lib/mobileApi/contracts";
@@ -26,6 +27,8 @@ type MobileApiClientOptions = {
   fetchImplementation?: typeof fetch;
 };
 
+const defaultFetch: typeof fetch = (...args) => window.fetch(...args);
+
 export class MobileApiClient {
   private readonly baseUrl: string;
   private readonly getAuthState: MobileApiClientOptions["getAuthState"];
@@ -34,7 +37,7 @@ export class MobileApiClient {
   constructor(options: MobileApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.getAuthState = options.getAuthState;
-    this.fetchImplementation = options.fetchImplementation || fetch;
+    this.fetchImplementation = options.fetchImplementation ?? defaultFetch;
   }
 
   private async request<T>(path: string, signal?: AbortSignal): Promise<T> {
@@ -98,6 +101,13 @@ export class MobileApiClient {
 
   getTrips(signal?: AbortSignal) {
     return this.request<MobileTripsResponse>("/api/mobile/v1/trips", signal);
+  }
+
+  getNotifications(signal?: AbortSignal) {
+    return this.request<MobileNotificationsResponse>(
+      "/api/mobile/v1/notifications",
+      signal,
+    );
   }
 
   getTrip(tripId: string, signal?: AbortSignal) {

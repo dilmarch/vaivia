@@ -10,13 +10,11 @@ import {
     Bot,
     CalendarRange,
     CalendarCheck,
-    ChevronsUp,
     Home,
     HeartPulse,
     LayoutDashboard,
     Map,
     Megaphone,
-    MoreHorizontal,
     Newspaper,
     PiggyBank,
     Settings,
@@ -36,6 +34,11 @@ import {
     useRolePreview,
 } from "@/components/admin/useRolePreview";
 import SidebarLogoutButton from "@/components/SidebarLogoutButton";
+import {
+    MobileBottomNavigationPresentation,
+    MobileLogoControlPresentation,
+    MobileNavItemPresentation,
+} from "@/components/navigation/MobileAppChromePresentation";
 
 type AppSidebarNavProps = {
     userId?: string | null;
@@ -331,6 +334,34 @@ function NavItemButton({
     currentView?: string;
 }) {
     const Icon = item.icon;
+    if (mobile) {
+        return (
+            <MobileNavItemPresentation
+                label={item.label}
+                icon={Icon}
+                isActive={isActive}
+                disabled={item.disabled || !item.href}
+                renderAction={(props) =>
+                    item.disabled || !item.href ? (
+                        <button
+                            type="button"
+                            disabled
+                            title={`${item.label} coming soon`}
+                            {...props}
+                        />
+                    ) : (
+                        <Link
+                            href={item.href}
+                            onClick={onNavigate}
+                            prefetch
+                            {...props}
+                        />
+                    )
+                }
+            />
+        );
+    }
+
     const baseClass = mobile
         ? `group/item flex min-w-0 justify-center text-center text-[8px] font-black uppercase leading-[0.88] tracking-[0.02em] transition ${
               isActive
@@ -629,25 +660,32 @@ export default function AppSidebarNav({
                 </div>
             </aside>
 
-            <Link
-                href="/"
-                className="fixed left-[calc(1rem+var(--safe-area-left))] top-[calc(1rem+var(--safe-area-top))] z-50 flex h-12 w-12 items-center justify-center rounded-2xl border border-lime-300/25 bg-slate-950/70 text-2xl font-black text-lime-300 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] backdrop-blur-xl transition hover:border-lime-300/50 hover:bg-white/[0.08] md:hidden"
-                aria-label="VAIVIA home"
-                prefetch
-            >
-                <Image
-                    src="/icons/vaivia-favicon.png"
-                    alt=""
-                    width={44}
-                    height={44}
-                    className="h-11 w-11 rounded-[0.9rem] object-cover"
-                />
-            </Link>
+            <MobileLogoControlPresentation
+                logo={
+                    <Image
+                        src="/icons/vaivia-favicon.png"
+                        alt=""
+                        width={44}
+                        height={44}
+                        className="h-11 w-11 rounded-[0.9rem] object-cover"
+                    />
+                }
+                renderAction={(props) => <Link href="/" prefetch {...props} />}
+            />
 
-            <nav
-                ref={mobileDockRef}
-                className="vaivia-mobile-fixed-dock fixed inset-x-0 bottom-0 z-50 h-[calc(5.5rem+var(--safe-area-bottom))] text-white md:hidden"
-                aria-label="Mobile navigation"
+            <MobileBottomNavigationPresentation
+                containerRef={mobileDockRef}
+                menu={mobileMenu}
+                onToggleView={() =>
+                    setMobileMenu((current) =>
+                        current === "view" ? null : "view"
+                    )
+                }
+                onToggleMore={() =>
+                    setMobileMenu((current) =>
+                        current === "more" ? null : "more"
+                    )
+                }
             >
                 {mobileMenu === "view" ? (
                     <div className="absolute bottom-[calc(5rem+var(--safe-area-bottom))] left-[calc(0.75rem+var(--safe-area-left))] right-[calc(0.75rem+var(--safe-area-right))] grid grid-cols-4 gap-3">
@@ -760,56 +798,7 @@ export default function AppSidebarNav({
                     </div>
                 ) : null}
 
-                <div className="pointer-events-none absolute inset-x-0 bottom-[calc(0.75rem+var(--safe-area-bottom))] flex items-center justify-center gap-24">
-                    <div className="relative grid place-items-center">
-                        <span
-                            className="pointer-events-none absolute -inset-1.5 z-0 rounded-full bg-slate-300/45 blur-md"
-                            aria-hidden="true"
-                        />
-                        <span
-                            className="pointer-events-none absolute -inset-1 z-0 rounded-full bg-slate-500/35 blur-sm"
-                            aria-hidden="true"
-                        />
-                        <button
-                            type="button"
-                            onClick={() =>
-                                setMobileMenu((current) =>
-                                    current === "view" ? null : "view"
-                                )
-                            }
-                            data-vaivia-mobile-tour-target="trip-apps"
-                            className="pointer-events-auto relative z-10 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
-                            aria-label="Open trip views"
-                            aria-expanded={mobileMenu === "view"}
-                        >
-                            <ChevronsUp className="h-6 w-6" aria-hidden="true" />
-                        </button>
-                    </div>
-                    <div className="relative grid place-items-center">
-                        <span
-                            className="pointer-events-none absolute -inset-1.5 z-0 rounded-full bg-slate-300/45 blur-md"
-                            aria-hidden="true"
-                        />
-                        <span
-                            className="pointer-events-none absolute -inset-1 z-0 rounded-full bg-slate-500/35 blur-sm"
-                            aria-hidden="true"
-                        />
-                        <button
-                            type="button"
-                            onClick={() =>
-                                setMobileMenu((current) =>
-                                    current === "more" ? null : "more"
-                                )
-                            }
-                            className="pointer-events-auto relative z-10 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-[#0c0115]/90 text-slate-100 shadow-2xl shadow-black/40 backdrop-blur-xl transition hover:border-lime-300/40 hover:bg-white/[0.08] hover:text-lime-200 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
-                            aria-label="Open more options"
-                            aria-expanded={mobileMenu === "more"}
-                        >
-                            <MoreHorizontal className="h-6 w-6" aria-hidden="true" />
-                        </button>
-                    </div>
-                </div>
-            </nav>
+            </MobileBottomNavigationPresentation>
         </>
     );
 }

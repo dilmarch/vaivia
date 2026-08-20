@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-    Bell,
     Briefcase,
     CalendarDays,
     Check,
@@ -11,7 +10,6 @@ import {
     Inbox,
     ListChecks,
     Plus,
-    Search,
     Stamp,
     type LucideIcon,
 } from "lucide-react";
@@ -24,6 +22,14 @@ import PassportStampShareReviewModal from "@/components/PassportStampShareReview
 import Portal from "@/components/Portal";
 import TripInviteReviewModal from "@/components/TripInviteReviewModal";
 import ViewAsRoleSwitcher from "@/components/admin/ViewAsRoleSwitcher";
+import {
+    MobileTopActionControlsPresentation,
+    NotificationMenuFooterPresentation,
+    NotificationMessagePresentation,
+    NotificationsTopControlPresentation,
+    SearchControlPresentation,
+    TripsTopMenuPresentation,
+} from "@/components/navigation/MobileAppChromePresentation";
 import {
     getRolePreviewLabel,
     setStoredRolePreview,
@@ -1625,11 +1631,7 @@ export default function AppTopActionBar({
                     })()}
                 </Portal>
             ) : null}
-            <div className="pointer-events-none fixed left-0 right-0 top-0 z-[45] px-[calc(1rem+var(--safe-area-right))] pt-[calc(1rem+var(--safe-area-top))] md:left-24 md:px-8 md:pt-6">
-                <div
-                    ref={wrapperRef}
-                    className="pointer-events-auto ml-auto flex w-fit items-start gap-3"
-                >
+            <MobileTopActionControlsPresentation containerRef={wrapperRef}>
                 <Link
                     href="/"
                     className="hidden h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-950/50 text-slate-100 shadow-xl shadow-black/20 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-lime-300/30 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-lime-300/50 md:flex"
@@ -1639,100 +1641,70 @@ export default function AppTopActionBar({
                     <Home className="h-5 w-5" aria-hidden="true" />
                 </Link>
                 <ViewAsRoleSwitcher isSuperAdmin={isSuperAdmin} />
-                <div
-                    className="relative"
+                <TripsTopMenuPresentation
+                    isOpen={openMenu === "trips"}
+                    onToggle={() => toggleMenu("trips")}
                     onMouseLeave={() => {
                         if (openMenu === "trips") {
                             setOpenMenu(null);
                         }
                     }}
+                    renderSeeAll={(props) => (
+                        <Link href="/trips" {...props} />
+                    )}
                 >
-                    <button
-                        type="button"
-                        onClick={() => toggleMenu("trips")}
-                        data-vaivia-mobile-tour-target="trip-switcher"
-                        className="inline-flex h-12 items-center gap-2 rounded-full bg-lime-300 px-5 text-sm font-bold text-slate-950 shadow-[0_16px_34px_rgba(0,0,0,0.36),0_0_28px_rgba(var(--vaivia-neon-rgb),0.26)] transition hover:-translate-y-0.5 hover:bg-lime-200 hover:shadow-[0_18px_40px_rgba(0,0,0,0.42),0_0_34px_rgba(var(--vaivia-neon-rgb),0.34)] focus:outline-none focus:ring-2 focus:ring-lime-200 focus:ring-offset-2 focus:ring-offset-slate-950"
-                        aria-label="Open trips menu"
-                        aria-haspopup="menu"
-                        aria-expanded={openMenu === "trips"}
-                    >
-                        <Briefcase className="h-5 w-5" aria-hidden="true" />
-                        Trips
-                    </button>
+                    {trips.length > 0 ? (
+                        trips.map((trip, index) => (
+                            <Link
+                                key={trip.id}
+                                href={getTripSwitchHref({
+                                    targetTrip: trip,
+                                    pathname,
+                                    searchParams,
+                                    opensOverviewByDefault:
+                                        opensTripOverviewByDefault,
+                                })}
+                                className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
+                                style={{ animationDelay: `${index * 34}ms` }}
+                            >
+                                {tripLabel(trip)}
+                            </Link>
+                        ))
+                    ) : (
+                        <p className="px-3 py-2 text-sm text-slate-400">
+                            No upcoming trips yet.
+                        </p>
+                    )}
+                </TripsTopMenuPresentation>
 
-                    {openMenu === "trips" ? (
-                        <div className="absolute -right-4 top-12 flex w-[22rem] flex-col items-end gap-2 p-4">
-                            <div className="w-72 rounded-[24px] border border-lime-300/20 bg-[#0c0115]/90 p-3 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
-                                <p className="px-3 pb-2 text-xs font-bold uppercase tracking-wide text-lime-200">
-                                    Upcoming trips
-                                </p>
-                                <div className="max-h-64 overflow-y-auto">
-                                    {trips.length > 0 ? (
-                                        trips.map((trip, index) => (
-                                            <Link
-                                                key={trip.id}
-                                                href={getTripSwitchHref({
-                                                    targetTrip: trip,
-                                                    pathname,
-                                                    searchParams,
-                                                    opensOverviewByDefault:
-                                                        opensTripOverviewByDefault,
-                                                })}
-                                                className="animate-vaivia-add-fan-out mb-2 block rounded-full bg-lime-300 px-5 py-2.5 text-right text-sm font-bold text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-                                                style={{
-                                                    animationDelay: `${index * 34}ms`,
-                                                }}
-                                            >
-                                                {tripLabel(trip)}
-                                            </Link>
-                                        ))
-                                    ) : (
-                                        <p className="px-3 py-2 text-sm text-slate-400">
-                                            No upcoming trips yet.
-                                        </p>
-                                    )}
-                                </div>
+                <NotificationsTopControlPresentation
+                    isOpen={openMenu === "notifications"}
+                    count={dropdownNotificationCount}
+                    onToggle={() => toggleMenu("notifications")}
+                    footer={
+                        <NotificationMenuFooterPresentation
+                            pendingImportCount={pendingImportCount}
+                            renderImportsAction={(props) => (
                                 <Link
-                                    href="/trips"
-                                    className="mt-2 block rounded-full border border-lime-300/20 bg-lime-300/10 px-5 py-2.5 text-right text-sm font-bold text-lime-100 transition hover:bg-lime-300/20"
-                                >
-                                    See all trips
-                                </Link>
-                            </div>
-                        </div>
-                    ) : null}
-                </div>
-
-                <div className="relative">
-                    <button
-                        type="button"
-                        onClick={() => toggleMenu("notifications")}
-                        className="relative flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-slate-950/50 text-slate-100 shadow-xl shadow-black/20 backdrop-blur-xl transition hover:-translate-y-0.5 hover:border-lime-300/30 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-lime-300/50"
-                        aria-label="Open notifications"
-                        aria-haspopup="menu"
-                        aria-expanded={openMenu === "notifications"}
-                    >
-                        <Bell className="h-5 w-5" aria-hidden="true" />
-                        {dropdownNotificationCount > 0 ? (
-                            <span className="absolute right-1.5 top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-lime-300 px-1 text-[10px] font-black text-slate-950 shadow-[0_0_14px_rgba(var(--vaivia-neon-rgb),0.9)]">
-                                {dropdownNotificationCount > 99
-                                    ? "99+"
-                                    : dropdownNotificationCount}
-                            </span>
-                        ) : null}
-                    </button>
-
-                    {openMenu === "notifications" ? (
-                        <div className="absolute right-0 top-14 w-[min(360px,calc(100vw-2rem))] overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/85 p-2 text-white shadow-2xl shadow-black/40 backdrop-blur-xl">
-                            <div className="px-3 py-2">
-                                <p className="text-xs font-bold uppercase tracking-wide text-lime-200">
-                                    Notifications
-                                </p>
-                            </div>
+                                    href="/imports"
+                                    onClick={() => setOpenMenu(null)}
+                                    {...props}
+                                />
+                            )}
+                            renderHistoryAction={(props) => (
+                                <Link
+                                    href="/notifications"
+                                    onClick={() => setOpenMenu(null)}
+                                    {...props}
+                                />
+                            )}
+                        />
+                    }
+                >
                             {isLoadingNotifications ? (
-                                <p className="px-3 py-6 text-center text-sm text-slate-400">
+                                <NotificationMessagePresentation>
                                     Loading notifications...
-                                </p>
+                                </NotificationMessagePresentation>
                             ) : dropdownPreviewNotifications.length > 0 ? (
                                 dropdownPreviewNotifications.map((notification) => {
                                     const isPassportStampShare =
@@ -1848,54 +1820,14 @@ export default function AppTopActionBar({
                                     );
                                 })
                             ) : (
-                                <p className="px-3 py-6 text-center text-sm text-slate-400">
+                                <NotificationMessagePresentation>
                                     No notifications yet.
-                                </p>
+                                </NotificationMessagePresentation>
                             )}
-                            <div className="border-t border-white/10 px-3 py-2">
-                                <Link
-                                    href="/imports"
-                                    className="mb-2 flex items-center justify-between rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-slate-100 transition hover:bg-white/[0.08]"
-                                    onClick={() => setOpenMenu(null)}
-                                >
-                                    <span className="inline-flex items-center gap-2">
-                                        <Inbox className="h-4 w-4 text-lime-200" />
-                                        Travel imports
-                                    </span>
-                                    {pendingImportCount > 0 ? (
-                                        <span className="rounded-full bg-lime-300 px-2 py-0.5 text-[10px] text-slate-950">
-                                            {pendingImportCount > 99
-                                                ? "99+"
-                                                : pendingImportCount}
-                                        </span>
-                                    ) : null}
-                                </Link>
-                                <Link
-                                    href="/notifications"
-                                    className="block rounded-full border border-lime-300/20 bg-lime-300/10 px-4 py-2 text-center text-xs font-black uppercase tracking-[0.14em] text-lime-100 transition hover:bg-lime-300/20"
-                                    onClick={() => setOpenMenu(null)}
-                                >
-                                    See previous notifications
-                                </Link>
-                            </div>
-                        </div>
-                    ) : null}
-                </div>
+                </NotificationsTopControlPresentation>
 
-                <div className="group/search relative flex h-12 w-12 items-center rounded-full border border-white/10 bg-slate-950/50 text-slate-100 shadow-xl shadow-black/20 backdrop-blur-xl transition-all duration-300 hover:w-64 focus-within:w-64 hover:border-lime-300/30 hover:bg-white/10">
-                    <Search
-                        className="pointer-events-none absolute left-3.5 h-5 w-5"
-                        aria-hidden="true"
-                    />
-                    <input
-                        aria-label="Search VAIVIA"
-                        placeholder="Search VAIVIA..."
-                        className="h-full w-full rounded-full bg-transparent pl-11 pr-4 text-sm font-medium text-white opacity-0 outline-none placeholder:text-slate-400 transition-opacity duration-200 group-hover/search:opacity-100 group-focus-within/search:opacity-100"
-                        type="search"
-                    />
-                </div>
-                </div>
-            </div>
+                <SearchControlPresentation />
+            </MobileTopActionControlsPresentation>
             <TripInviteReviewModal
                 notification={activeInviteNotification}
                 open={Boolean(activeInviteNotification)}

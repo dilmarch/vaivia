@@ -24,6 +24,13 @@ function sharedTripShapeAssets(): Plugin {
           source: readFileSync(path.resolve(repositoryRoot, "public", fileName)),
         });
       });
+      this.emitFile({
+        type: "asset",
+        fileName: "icons/vaivia-favicon.png",
+        source: readFileSync(
+          path.resolve(repositoryRoot, "public", "icons", "vaivia-favicon.png"),
+        ),
+      });
     },
   };
 }
