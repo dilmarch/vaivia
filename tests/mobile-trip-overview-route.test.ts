@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   authenticateMobileRequest: vi.fn(),
+  fetchGovernmentTravelAdvisories: vi.fn(),
 }));
 
 vi.mock("@/lib/mobileApi/server", () => ({
@@ -9,6 +10,10 @@ vi.mock("@/lib/mobileApi/server", () => ({
   mobileJson: (_request: Request, body: unknown, init?: ResponseInit) =>
     Response.json(body, init),
   mobileOptions: () => new Response(null, { status: 204 }),
+}));
+
+vi.mock("@/lib/governmentTravelAdvisories", () => ({
+  fetchGovernmentTravelAdvisories: mocks.fetchGovernmentTravelAdvisories,
 }));
 
 import { GET, OPTIONS } from "@/app/api/mobile/v1/trips/[tripId]/route";
@@ -33,6 +38,40 @@ function createQuery(result: TableResult, maybeSingleResult = result) {
 
 describe("mobile trip overview route", () => {
   beforeEach(() => {
+    mocks.fetchGovernmentTravelAdvisories.mockResolvedValue({
+      ok: true,
+      dataset: {
+        generatedAt: "2026-08-20T11:00:00.000Z",
+        generatedDescription: "August 20, 2026 at 11:00 UTC",
+        fetchedAt: "2026-08-20T12:00:00.000Z",
+        advisories: [
+          {
+            countryCode: "CA",
+            countryName: "Canada",
+            advisoryLevel: 0,
+            advisoryText: "Take normal security precautions.",
+            hasRegionalAdvisory: false,
+            latestUpdateType: "Editorial change",
+            latestUpdateDescription: "Updated travel information.",
+            publishedAt: "2026-08-20T10:00:00.000Z",
+            publishedDescription: "August 20, 2026",
+            urlSlug: "canada",
+          },
+          {
+            countryCode: "US",
+            countryName: "United States",
+            advisoryLevel: 0,
+            advisoryText: "This unrelated advisory should not be returned.",
+            hasRegionalAdvisory: false,
+            latestUpdateType: null,
+            latestUpdateDescription: "Unrelated update.",
+            publishedAt: "2026-08-20T10:00:00.000Z",
+            publishedDescription: "August 20, 2026",
+            urlSlug: "united-states",
+          },
+        ],
+      },
+    });
     const tableResults: Record<string, TableResult> = {
       trips: {
         data: {
@@ -596,6 +635,26 @@ describe("mobile trip overview route", () => {
             tried_count: 1,
           }),
         ],
+      },
+      healthSafety: {
+        destinations: [
+          expect.objectContaining({
+            id: "leg-1",
+            label: "Montreal",
+            countryCode: "CA",
+          }),
+        ],
+        advisoryResult: {
+          ok: true,
+          dataset: {
+            advisories: [
+              expect.objectContaining({
+                countryCode: "CA",
+                advisoryText: "Take normal security precautions.",
+              }),
+            ],
+          },
+        },
       },
     });
 

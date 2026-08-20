@@ -52,6 +52,7 @@ type MobileAppChromeProps = {
     | "transport"
     | "food"
     | "stays"
+    | "health-safety"
     | null;
   userEmail?: string | null;
   userRole?: string | null;
@@ -64,6 +65,7 @@ type MobileAppChromeProps = {
   onTripTransport: () => void;
   onTripFood: () => void;
   onTripStays: () => void;
+  onTripHealthSafety: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -154,6 +156,7 @@ export function MobileAppChrome({
   onTripTransport,
   onTripFood,
   onTripStays,
+  onTripHealthSafety,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -267,7 +270,8 @@ export function MobileAppChrome({
           (index === 3 && activeTripView === "budget") ||
           (index === 4 && activeTripView === "transport") ||
           (index === 5 && activeTripView === "food") ||
-          (index === 6 && activeTripView === "stays"),
+          (index === 6 && activeTripView === "stays") ||
+          (index === 8 && activeTripView === "health-safety"),
         supported:
           index === 0 ||
           index === 1 ||
@@ -275,7 +279,8 @@ export function MobileAppChrome({
           index === 3 ||
           index === 4 ||
           index === 5 ||
-          index === 6,
+          index === 6 ||
+          index === 8,
         action:
           index === 0
             ? () => {
@@ -311,6 +316,11 @@ export function MobileAppChrome({
                 ? () => {
                     closeMenus();
                     onTripStays();
+                  }
+              : index === 8
+                ? () => {
+                    closeMenus();
+                    onTripHealthSafety();
                   }
                 : undefined,
       }))

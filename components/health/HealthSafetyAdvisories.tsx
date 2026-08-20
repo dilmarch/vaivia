@@ -3,7 +3,7 @@ import { AlertTriangle, DatabaseZap, ShieldCheck } from "lucide-react";
 import {
     matchGovernmentAdvisory,
     type GovernmentTravelAdvisoryResult,
-} from "@/lib/governmentTravelAdvisories";
+} from "@/lib/governmentTravelAdvisoryShared";
 import type { TripDestinationRecord } from "@/lib/tripDestinations";
 import {
     AdvisoryDestinationStatusCard,
@@ -14,6 +14,40 @@ const LICENCE_URL =
     "https://open.canada.ca/en/open-government-licence-canada";
 const DATASET_URL =
     "https://open.canada.ca/data/en/dataset/bef2ebb3-ca9a-485f-aaff-5dc36eb89426";
+
+export function HealthSafetyHeroSummaryPresentation() {
+    return (
+        <div className="flex h-30 w-28 flex-col items-center justify-start gap-2 rounded-[1.25rem] border border-white/10 bg-white/[0.06] px-3 py-3 shadow-xl shadow-black/20 sm:h-32 sm:w-32">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950/70 text-lime-200 ring-1 ring-lime-300/25 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.16)] sm:h-12 sm:w-12">
+                <ShieldCheck className="h-6 w-6" aria-hidden="true" />
+            </div>
+            <div className="text-center text-xs font-black leading-tight text-slate-300">
+                Official guidance
+            </div>
+        </div>
+    );
+}
+
+export function HealthSafetyLoadingPresentation() {
+    return (
+        <div
+            className="mx-auto w-full max-w-6xl px-4 pb-28 pt-8 sm:px-6 md:pb-12 md:pl-24 lg:px-8"
+            role="status"
+            aria-label="Loading Health & Safety"
+        >
+            <div className="h-44 animate-pulse rounded-[2rem] border border-white/10 bg-white/[0.05] motion-reduce:animate-none" />
+            <div className="mt-6 space-y-5">
+                {Array.from({ length: 2 }, (_, index) => (
+                    <div
+                        key={index}
+                        className="h-80 animate-pulse rounded-[1.75rem] border border-white/10 bg-white/[0.06] motion-reduce:animate-none"
+                    />
+                ))}
+            </div>
+            <div className="mt-8 h-40 animate-pulse rounded-[1.75rem] border border-white/10 bg-white/[0.05] motion-reduce:animate-none" />
+        </div>
+    );
+}
 
 export default function HealthSafetyAdvisories({
     destinations,

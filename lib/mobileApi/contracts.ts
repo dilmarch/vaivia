@@ -6,6 +6,8 @@ import type {
 } from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type { TripFoodItem } from "@/lib/tripFood";
+import type { GovernmentTravelAdvisoryResult } from "@/lib/governmentTravelAdvisoryShared";
+import type { TripDestinationRecord } from "@/lib/tripDestinations";
 import type {
   BudgetParticipant,
   TripBudget,
@@ -112,10 +114,16 @@ export type MobileTripDetailResponse = {
   budget: MobileTripBudgetData;
   stays?: MobileTripStaysData;
   food?: MobileTripFoodData;
+  healthSafety?: MobileTripHealthSafetyData;
 };
 
 export type MobileTripFoodData = {
   items: TripFoodItem[];
+};
+
+export type MobileTripHealthSafetyData = {
+  destinations: TripDestinationRecord[];
+  advisoryResult: GovernmentTravelAdvisoryResult;
 };
 
 export type MobileStayAudienceParticipant = {

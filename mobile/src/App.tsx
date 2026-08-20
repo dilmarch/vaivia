@@ -10,6 +10,7 @@ import { TripBudgetScreen } from "./screens/TripBudgetScreen";
 import { TripTransportScreen } from "./screens/TripTransportScreen";
 import { TripStaysScreen } from "./screens/TripStaysScreen";
 import { TripFoodScreen } from "./screens/TripFoodScreen";
+import { TripHealthSafetyScreen } from "./screens/TripHealthSafetyScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
@@ -26,6 +27,7 @@ export default function App() {
     | "transport"
     | "food"
     | "stays"
+    | "health-safety"
   >("overview");
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
   const environment = useMemo(() => getMobileEnvironment(), []);
@@ -78,6 +80,8 @@ export default function App() {
       <TripFoodScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "stays" ? (
       <TripStaysScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : activeTripView === "health-safety" ? (
+      <TripHealthSafetyScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : (
       <TripDetailScreen
         apiClient={apiClient}
@@ -124,6 +128,7 @@ export default function App() {
         onTripTransport={() => setActiveTripView("transport")}
         onTripFood={() => setActiveTripView("food")}
         onTripStays={() => setActiveTripView("stays")}
+        onTripHealthSafety={() => setActiveTripView("health-safety")}
         onSignOut={async () => {
           openTrips();
           await signOut();

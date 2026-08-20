@@ -12,7 +12,7 @@ import {
     GOVERNMENT_ADVISORY_LEVELS,
     type GovernmentAdvisoryLevel,
     type GovernmentTravelAdvisory,
-} from "@/lib/governmentTravelAdvisories";
+} from "@/lib/governmentTravelAdvisoryShared";
 import type { TripDestinationRecord } from "@/lib/tripDestinations";
 
 const LEVEL_STYLES: Record<

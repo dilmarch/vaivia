@@ -61,6 +61,7 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onTripTransport: vi.fn(),
     onTripFood: vi.fn(),
     onTripStays: vi.fn(),
+    onTripHealthSafety: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -133,6 +134,7 @@ describe("mobile navigation chrome parity", () => {
     const onTripTransport = vi.fn();
     const onTripFood = vi.fn();
     const onTripStays = vi.fn();
+    const onTripHealthSafety = vi.fn();
     renderChrome({
       activeTripId: trip.id,
       activeTripView: "overview",
@@ -142,6 +144,7 @@ describe("mobile navigation chrome parity", () => {
       onTripTransport,
       onTripFood,
       onTripStays,
+      onTripHealthSafety,
     });
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
 
@@ -161,7 +164,7 @@ describe("mobile navigation chrome parity", () => {
       "Eat & Drink",
       "Stays",
       "Ask Concierge coming soon",
-      "Health & Safety coming soon",
+      "Health & Safety",
     ]);
     expect(screen.getByRole("button", { name: "Trip overview" })).toHaveAttribute(
       "aria-current",
@@ -190,6 +193,10 @@ describe("mobile navigation chrome parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
     fireEvent.click(screen.getByRole("button", { name: "Stays" }));
     expect(onTripStays).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+    fireEvent.click(screen.getByRole("button", { name: "Health & Safety" }));
+    expect(onTripHealthSafety).toHaveBeenCalledOnce();
   });
 
   it("marks Trip Ideas active in trip navigation", () => {
@@ -255,6 +262,18 @@ describe("mobile navigation chrome parity", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("marks Health & Safety active in trip navigation", () => {
+    renderChrome({
+      activeTripId: trip.id,
+      activeTripView: "health-safety",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+
+    expect(
+      screen.getByRole("button", { name: "Health & Safety" }),
+    ).toHaveAttribute("aria-current", "page");
   });
 
   it("supports trips, account sign-out, search input, and outside-click closing", () => {

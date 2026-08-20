@@ -43,6 +43,8 @@ import {
 } from "@/lib/tripFood";
 import type { IdeaReactionProfile } from "@/lib/tripIdeas";
 import type { TripAudienceOption } from "@/lib/tripAudience";
+import { fetchGovernmentTravelAdvisories } from "@/lib/governmentTravelAdvisories";
+import { loadTripDestinations } from "@/lib/tripDestinations";
 import type { Tables } from "@/src/types/supabase";
 
 export const dynamic = "force-dynamic";
@@ -256,6 +258,15 @@ export async function GET(request: Request, { params }: RouteContext) {
   if (!trip) {
     return mobileJson(request, { error: "Trip not found" }, { status: 404 });
   }
+
+  const healthSafetyPromise = Promise.all([
+    loadTripDestinations({
+      supabase: context.supabase,
+      tripId: trip.id,
+      legacyDestination: trip.destination,
+    }),
+    fetchGovernmentTravelAdvisories(),
+  ]);
 
   const [
     itineraryResult,
@@ -1294,6 +1305,24 @@ export async function GET(request: Request, { params }: RouteContext) {
     profilesById: foodProfilesById,
     currentUserId: context.user.id,
   });
+  const [healthSafetyDestinations, healthSafetyAdvisoryResult] =
+    await healthSafetyPromise;
+  const destinationCountryCodes = new Set(
+    healthSafetyDestinations
+      .map((destination) => destination.countryCode)
+      .filter((countryCode): countryCode is string => Boolean(countryCode)),
+  );
+  const mobileHealthSafetyAdvisoryResult = healthSafetyAdvisoryResult.ok
+    ? {
+        ...healthSafetyAdvisoryResult,
+        dataset: {
+          ...healthSafetyAdvisoryResult.dataset,
+          advisories: healthSafetyAdvisoryResult.dataset.advisories.filter(
+            (advisory) => destinationCountryCodes.has(advisory.countryCode),
+          ),
+        },
+      }
+    : healthSafetyAdvisoryResult;
 
   return mobileJson(request, {
     trip: mobileTrip,
@@ -1320,6 +1349,10 @@ export async function GET(request: Request, { params }: RouteContext) {
     },
     food: {
       items: foodItems,
+    },
+    healthSafety: {
+      destinations: healthSafetyDestinations,
+      advisoryResult: mobileHealthSafetyAdvisoryResult,
     },
   });
 }

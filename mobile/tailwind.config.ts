@@ -10,6 +10,7 @@ export default {
     "./components/accommodations/AccommodationCoverageTimeline.tsx",
     "./components/ideas/**/*.{js,ts,jsx,tsx}",
     "./components/food/**/*.{js,ts,jsx,tsx}",
+    "./components/health/**/*.{js,ts,jsx,tsx}",
     "./components/TripNotepadComposer.tsx",
     "./components/budget/BudgetPresentation.tsx",
     "./components/navigation/MobileAppChromePresentation.tsx",
