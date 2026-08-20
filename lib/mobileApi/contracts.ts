@@ -80,6 +80,7 @@ export type MobileItineraryItem = Pick<
   arrival_timezone?: string | null;
   departure_terminal?: string | null;
   arrival_terminal?: string | null;
+  is_assigned_to_viewer?: boolean;
   accommodation_hold_kind?: "check_in" | "check_out" | null;
   is_flight_departure_buffer?: boolean;
   people: MobileItineraryPerson[];

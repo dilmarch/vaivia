@@ -25,6 +25,7 @@ import { buildItineraryTimezoneHints } from "@/lib/itineraryTimezoneHints";
 import { buildAccommodationItineraryHolds } from "@/lib/accommodationItineraryHolds";
 import { resolveAccommodationTimezones } from "@/lib/accommodationTimezones";
 import { buildFlightDepartureBuffers } from "@/lib/flightDepartureBuffers";
+import { TransportPresentation } from "@/components/transport/TransportPresentation";
 
 type ItineraryTabsProps = {
     tripId: string;
@@ -297,101 +298,47 @@ export default function ItineraryTabs({
                     onEditMemberLocationLeg={setRequestedLegLocationKey}
                 />
             ) : activeTab === "journey" || activeTab === "journey-planning" ? (
-                <div className="space-y-5">
-                    <div className="inline-flex rounded-full border border-white/10 bg-[#03030a] p-1 text-white shadow-2xl shadow-black/20">
-                        <Link
-                            href={`/trips/${tripId}?tab=journey`}
-                            aria-current={
-                                activeTab === "journey" ? "page" : undefined
-                            }
-                            className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
-                                activeTab === "journey"
-                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Transport
-                        </Link>
+                <TransportPresentation
+                    mode={
+                        activeTab === "journey"
+                            ? "transport"
+                            : "compare-flights"
+                    }
+                    showAll={showAllJourneyItems}
+                    onShowAllChange={setShowAllJourneyItems}
+                    renderTransportTab={(props) => (
+                        <Link href={`/trips/${tripId}?tab=journey`} {...props} />
+                    )}
+                    renderCompareFlightsTab={(props) => (
                         <Link
                             href={`/trips/${tripId}?tab=journey-planning`}
-                            aria-current={
-                                activeTab === "journey-planning"
-                                    ? "page"
-                                    : undefined
-                            }
-                            className={`rounded-full px-5 py-2.5 text-sm font-black uppercase tracking-wide transition ${
-                                activeTab === "journey-planning"
-                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Compare Flights
-                        </Link>
-                    </div>
-
+                            {...props}
+                        />
+                    )}
+                >
                     {activeTab === "journey" ? (
-                        <div className="space-y-4">
-                            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-3 text-white shadow-xl shadow-black/20">
-                                <div>
-                                    <p className="text-xs font-black uppercase tracking-[0.22em] text-lime-200">
-                                        Transport view
-                                    </p>
-                                    <p className="mt-1 text-sm font-semibold text-slate-300">
-                                        {showAllJourneyItems
-                                            ? "Showing transportation for everyone on this trip."
-                                            : "Showing transportation assigned to you."}
-                                    </p>
-                                </div>
-                                <div className="inline-flex rounded-full border border-white/10 bg-[#03030a] p-1 shadow-inner shadow-black/30">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAllJourneyItems(false)}
-                                        aria-pressed={!showAllJourneyItems}
-                                        className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide transition ${
-                                            !showAllJourneyItems
-                                                ? "bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]"
-                                                : "text-slate-300 hover:bg-white/10 hover:text-white"
-                                        }`}
-                                    >
-                                        My transport
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAllJourneyItems(true)}
-                                        aria-pressed={showAllJourneyItems}
-                                        className={`rounded-full px-4 py-2 text-xs font-black uppercase tracking-wide transition ${
-                                            showAllJourneyItems
-                                                ? "bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]"
-                                                : "text-slate-300 hover:bg-white/10 hover:text-white"
-                                        }`}
-                                    >
-                                        All members
-                                    </button>
-                                </div>
-                            </div>
-                            <ItineraryCalendar
-                                tripId={tripId}
-                                items={journeyItems}
-                                accommodations={accommodations}
-                                tripStartDate={tripStartDate}
-                                tripEndDate={tripEndDate}
-                                tripDestination={tripDestination}
-                                title="Transport"
-                                listOnly
-                                deleteAction={deleteItineraryAction}
-                                createAction={createItineraryAction}
-                                createTransportationAction={createTransportationAction}
-                                updateTransportationAction={updateTransportationAction}
-                                updateAction={updateItineraryAction}
-                                moveItemAction={moveItemAction}
-                                moveTargetTrips={moveTargetTrips}
-                                travelerOptions={travelerOptions}
-                                audienceOptions={audienceOptions}
-                                currentUserTripMemberId={currentUserTripMemberId}
-                                categories={categories}
-                                onQuickAddDateChange={setQuickAddDate}
-                            />
-                        </div>
+                        <ItineraryCalendar
+                            tripId={tripId}
+                            items={journeyItems}
+                            accommodations={accommodations}
+                            tripStartDate={tripStartDate}
+                            tripEndDate={tripEndDate}
+                            tripDestination={tripDestination}
+                            title="Transport"
+                            listOnly
+                            deleteAction={deleteItineraryAction}
+                            createAction={createItineraryAction}
+                            createTransportationAction={createTransportationAction}
+                            updateTransportationAction={updateTransportationAction}
+                            updateAction={updateItineraryAction}
+                            moveItemAction={moveItemAction}
+                            moveTargetTrips={moveTargetTrips}
+                            travelerOptions={travelerOptions}
+                            audienceOptions={audienceOptions}
+                            currentUserTripMemberId={currentUserTripMemberId}
+                            categories={categories}
+                            onQuickAddDateChange={setQuickAddDate}
+                        />
                     ) : (
                         <JourneyPlanningTab
                             tripId={tripId}
@@ -405,7 +352,7 @@ export default function ItineraryTabs({
                             initialScenarios={initialJourneyPlanningScenarios}
                         />
                     )}
-                </div>
+                </TransportPresentation>
             ) : (
                 <IdeasTab
                     tripId={tripId}

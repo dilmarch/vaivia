@@ -225,6 +225,7 @@ export async function GET(request: Request, { params }: RouteContext) {
   if (context instanceof Response) return context;
 
   const { tripId } = await params;
+  const viewerUserId = context.user.id;
   const { data: trip, error: tripError } = await context.supabase
     .from("trips")
     .select(
@@ -408,6 +409,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     signedCoverResult,
     categoryResult,
     participantResult,
+    transportationTravelerResult,
     ideaReactionResult,
   ] = await Promise.all([
     memberUserIds.length
@@ -448,6 +450,16 @@ export async function GET(request: Request, { params }: RouteContext) {
           .eq("trip_id", trip.id)
           .in("item_id", participantItemIds)
       : Promise.resolve({ data: [], error: null }),
+    transportationItemIds.length
+      ? context.supabase
+          .from("transportation_item_travelers")
+          .select(
+            "id,transportation_item_id,user_id,family_member_id,guest_name,created_at",
+          )
+          .eq("trip_id", trip.id)
+          .in("transportation_item_id", transportationItemIds)
+          .order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
     ideaIds.length
       ? context.supabase
           .from("trip_idea_reactions")
@@ -463,6 +475,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     viewerLegResult.error ||
     categoryResult.error ||
     participantResult.error ||
+    transportationTravelerResult.error ||
     ideaReactionResult.error;
   if (secondaryError) {
     console.error("Mobile trip overview people request failed:", {
@@ -636,6 +649,42 @@ export async function GET(request: Request, { params }: RouteContext) {
   const currentUserPerson = everyonePeople.find(
     (person) => person.id === context.user.id,
   ) || toMobilePerson({ id: context.user.id, name: "You" });
+  const transportationTravelerRows = transportationTravelerResult.data || [];
+  const transportationTravelersByItemId = new Map<
+    string,
+    ReturnType<typeof toMobilePerson>[]
+  >();
+
+  transportationTravelerRows.forEach((traveler) => {
+    const profile = traveler.user_id
+      ? profilesById.get(traveler.user_id)
+      : null;
+    const familyMember = traveler.family_member_id
+      ? familyById.get(traveler.family_member_id)
+      : null;
+    const name = profile
+      ? [profile.first_name, profile.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim() || profile.username || "Trip member"
+      : familyMember?.name || traveler.guest_name || "Traveller";
+    const person = toMobilePerson({
+      id:
+        traveler.user_id ||
+        (traveler.family_member_id
+          ? `family:${traveler.family_member_id}`
+          : `guest:${traveler.id}`),
+      name,
+      avatarUrl: profile?.avatar_url || familyMember?.avatar_url,
+    });
+    const current =
+      transportationTravelersByItemId.get(traveler.transportation_item_id) || [];
+    current.push(person);
+    transportationTravelersByItemId.set(
+      traveler.transportation_item_id,
+      current,
+    );
+  });
 
   function getItemPeople(
     itemType: "itinerary" | "transportation",
@@ -704,8 +753,43 @@ export async function GET(request: Request, { params }: RouteContext) {
     const uniquePeople = Array.from(
       new Map(selectedPeople.map((person) => [person.id, person])).values(),
     );
-    if (audienceMode === "custom") return uniquePeople;
-    return uniquePeople.length > 0 ? uniquePeople : everyonePeople;
+    const legacyTransportationPeople =
+      itemType === "transportation"
+        ? transportationTravelersByItemId.get(itemId) || []
+        : [];
+    const assignedPeople =
+      uniquePeople.length > 0 ? uniquePeople : legacyTransportationPeople;
+    if (audienceMode === "custom") return assignedPeople;
+    if (uniquePeople.length > 0) return uniquePeople;
+    if (everyonePeople.length > 1) return everyonePeople;
+    return legacyTransportationPeople.length > 0
+      ? legacyTransportationPeople
+      : everyonePeople;
+  }
+
+  function isTransportationAssignedToViewer(
+    itemId: string,
+    audienceMode?: string | null,
+    isPrivate?: boolean | null,
+  ) {
+    if (!viewerMembership) return true;
+    if (isPrivate || audienceMode === "just_me") return true;
+    if (audienceMode !== "custom") return true;
+
+    return (
+      participantRows.some(
+        (participant) =>
+          participant.item_type === "transportation" &&
+          participant.item_id === itemId &&
+          (participant.trip_member_id === viewerMembership.id ||
+            participant.user_id === viewerUserId),
+      ) ||
+      transportationTravelerRows.some(
+        (traveler) =>
+          traveler.transportation_item_id === itemId &&
+          traveler.user_id === viewerUserId,
+      )
+    );
   }
 
   const viewerLegIds = new Set((viewerLegResult.data || []).map((leg) => leg.trip_leg_id));
@@ -824,6 +908,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     cover_image_photographer_url: trip.cover_image_photographer_url,
     notes: trip.notes,
     membershipRole: trip.user_id === context.user.id ? "owner" : "member",
+    viewerTripMemberId: viewerMembership?.id || null,
   };
 
   const categoryColorByKey = new Map(
@@ -887,6 +972,11 @@ export async function GET(request: Request, { params }: RouteContext) {
       arrival_timezone: item.arrival_timezone,
       departure_terminal: item.departure_terminal,
       arrival_terminal: item.arrival_terminal,
+      is_assigned_to_viewer: isTransportationAssignedToViewer(
+        item.id,
+        item.audience_mode,
+        item.is_private,
+      ),
       people: getItemPeople(
         "transportation",
         item.id,

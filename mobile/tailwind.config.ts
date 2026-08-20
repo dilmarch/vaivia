@@ -9,6 +9,7 @@ export default {
     "./components/ideas/**/*.{js,ts,jsx,tsx}",
     "./components/budget/BudgetPresentation.tsx",
     "./components/navigation/MobileAppChromePresentation.tsx",
+    "./components/transport/**/*.{js,ts,jsx,tsx}",
     "./components/trips/**/*Presentation.tsx",
     "./components/AirlineIcon.tsx",
     "./components/TripCountdown.tsx",

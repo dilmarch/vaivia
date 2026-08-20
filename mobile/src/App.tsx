@@ -7,6 +7,7 @@ import { TripDetailScreen } from "./screens/TripDetailScreen";
 import { TripItineraryScreen } from "./screens/TripItineraryScreen";
 import { TripIdeasScreen } from "./screens/TripIdeasScreen";
 import { TripBudgetScreen } from "./screens/TripBudgetScreen";
+import { TripTransportScreen } from "./screens/TripTransportScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
@@ -16,7 +17,7 @@ export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [activeTripView, setActiveTripView] = useState<
-    "overview" | "itinerary" | "ideas" | "budget"
+    "overview" | "itinerary" | "ideas" | "budget" | "transport"
   >("overview");
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
   const environment = useMemo(() => getMobileEnvironment(), []);
@@ -63,12 +64,15 @@ export default function App() {
       <TripIdeasScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "budget" ? (
       <TripBudgetScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : activeTripView === "transport" ? (
+      <TripTransportScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : (
       <TripDetailScreen
         apiClient={apiClient}
         tripId={selectedTripId}
         onItinerary={() => setActiveTripView("itinerary")}
         onIdeas={() => setActiveTripView("ideas")}
+        onTransport={() => setActiveTripView("transport")}
       />
     )
   ) : (
@@ -103,6 +107,7 @@ export default function App() {
         onTripItinerary={() => setActiveTripView("itinerary")}
         onTripIdeas={() => setActiveTripView("ideas")}
         onTripBudget={() => setActiveTripView("budget")}
+        onTripTransport={() => setActiveTripView("transport")}
         onSignOut={async () => {
           openTrips();
           await signOut();

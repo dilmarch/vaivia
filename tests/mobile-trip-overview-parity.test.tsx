@@ -154,4 +154,22 @@ describe("mobile trip overview visual parity", () => {
     );
     expect(onIdeas).toHaveBeenCalledOnce();
   });
+
+  it("opens Transport from the shared overview tile", async () => {
+    const onTransport = vi.fn();
+    const apiClient = {
+      getTrip: vi.fn().mockResolvedValue(detail),
+    } as unknown as MobileApiClient;
+    render(
+      <TripDetailScreen
+        apiClient={apiClient}
+        tripId="trip-1"
+        onTransport={onTransport}
+      />,
+    );
+
+    await screen.findByRole("heading", { name: "Trip Overview" });
+    fireEvent.click(screen.getByRole("button", { name: /Visit transport/ }));
+    expect(onTransport).toHaveBeenCalledOnce();
+  });
 });
