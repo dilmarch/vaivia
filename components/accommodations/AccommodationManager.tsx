@@ -4,21 +4,21 @@ import {
     Bed,
     Building2,
     CircleHelp,
-    ExternalLink,
     Hotel,
     House,
-    Lock,
-    MapPin,
-    Pencil,
-    Plus,
-    Trash2,
     Users,
     X,
 } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Script from "next/script";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
+import {
+    getAccommodationAudienceOptions,
+    StaysPresentation,
+    staySecondaryButtonClass,
+    type AccommodationAudienceParticipant,
+} from "@/components/accommodations/StaysPresentation";
 import CostAllocationFields from "@/components/budget/CostAllocationFields";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
 import PlaceAutocompleteInput from "@/components/places/PlaceAutocompleteInput";
@@ -29,26 +29,15 @@ import { TimeInput } from "@/components/ui/time-input";
 import {
     ACCOMMODATION_STATUS_OPTIONS,
     ACCOMMODATION_TYPE_OPTIONS,
-    getAccommodationStatusLabel,
-    getAccommodationTypeLabel,
     type AccommodationActionResult,
     type AccommodationType,
     type TripAccommodation,
 } from "@/lib/accommodations";
-import { COMMON_CURRENCIES, formatCurrency } from "@/lib/budget";
-import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
+import { COMMON_CURRENCIES } from "@/lib/budget";
 import type { MoveTargetTrip } from "@/lib/tripMove";
 import type { TripAudienceOption } from "@/lib/tripAudience";
-import { getInitials } from "@/lib/travelers";
 
-export type AccommodationAudienceParticipant = {
-    item_id: string;
-    participant_kind?: string | null;
-    trip_member_id?: string | null;
-    invitation_id?: string | null;
-    family_member_id?: string | null;
-    guest_name?: string | null;
-};
+export type { AccommodationAudienceParticipant } from "@/components/accommodations/StaysPresentation";
 
 type AccommodationManagerProps = {
     tripId: string;
@@ -161,10 +150,7 @@ const inputClass =
     "w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white outline-none transition placeholder:text-slate-500 focus:border-lime-300/50 focus:bg-white/[0.12] focus:ring-2 focus:ring-lime-300/20 [color-scheme:dark]";
 const labelClass = "text-xs font-black uppercase tracking-[0.22em] text-lime-200/80";
 const modalBodyClass = "space-y-5 bg-[#080511] p-6 text-white";
-const secondaryButtonClass =
-    "inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-black text-slate-100 transition hover:border-lime-300/30 hover:bg-white/[0.14] hover:text-white";
-const EMPTY_AUDIENCE_PARTICIPANTS: AccommodationAudienceParticipant[] = [];
-
+const secondaryButtonClass = staySecondaryButtonClass;
 function GooglePlaceCoverPhoto({
     accommodation,
     isGoogleReady,
@@ -395,157 +381,8 @@ function getInitialPlaceFields(accommodation?: TripAccommodation | null): PlaceF
     };
 }
 
-function formatDisplayDate(value: string) {
-    const date = new Date(`${value}T00:00:00`);
-    if (Number.isNaN(date.getTime())) return value;
-
-    return new Intl.DateTimeFormat("en", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    }).format(date);
-}
-
-function formatDisplayTime(value?: string | null) {
-    if (!value) return "";
-    const [hourText, minuteText] = value.split(":");
-    const date = new Date();
-    date.setHours(Number(hourText), Number(minuteText), 0, 0);
-    return new Intl.DateTimeFormat("en", {
-        hour: "numeric",
-        minute: "2-digit",
-    }).format(date);
-}
-
 function formValue(value: string | number | null | undefined) {
     return value == null ? "" : String(value);
-}
-
-function participantMatchesOption(
-    participant: AccommodationAudienceParticipant,
-    option: TripAudienceOption,
-) {
-    if (option.kind === "member") {
-        return participant.trip_member_id === option.id;
-    }
-    if (option.kind === "invitation") {
-        return participant.invitation_id === option.id;
-    }
-    if (option.kind === "family_member") {
-        return participant.family_member_id === option.id;
-    }
-    return participant.guest_name === option.displayName;
-}
-
-function getAccommodationAudienceOptions({
-    accommodation,
-    options,
-    participants,
-    currentUserTripMemberId,
-}: {
-    accommodation: TripAccommodation;
-    options: TripAudienceOption[];
-    participants: AccommodationAudienceParticipant[];
-    currentUserTripMemberId?: string | null;
-}) {
-    const audienceMode = accommodation.audience_mode || "everyone";
-    if (audienceMode === "everyone") return options;
-
-    const selectedOptions = options.filter((option) =>
-        participants.some((participant) => participantMatchesOption(participant, option)),
-    );
-    if (selectedOptions.length > 0 || audienceMode === "custom") {
-        return selectedOptions;
-    }
-
-    return currentUserTripMemberId
-        ? options.filter(
-              (option) => option.kind === "member" && option.id === currentUserTripMemberId,
-          )
-        : options.filter((option) => option.kind === "member" && option.isCurrentUser);
-}
-
-function AccommodationAudienceAvatars({
-    accommodation,
-    options,
-    participants,
-    currentUserTripMemberId,
-}: {
-    accommodation: TripAccommodation;
-    options: TripAudienceOption[];
-    participants: AccommodationAudienceParticipant[];
-    currentUserTripMemberId?: string | null;
-}) {
-    const selectedOptions = getAccommodationAudienceOptions({
-        accommodation,
-        options,
-        participants,
-        currentUserTripMemberId,
-    });
-    const guestNames = participants
-        .filter(
-            (participant) =>
-                participant.participant_kind === "guest" && Boolean(participant.guest_name),
-        )
-        .map((participant) => participant.guest_name as string);
-    const people = [
-        ...selectedOptions.map((option) => ({
-            key: `${option.kind}:${option.id}`,
-            displayName: option.displayName,
-            avatarUrl: option.avatarUrl || null,
-            isInvited: option.status === "invited",
-        })),
-        ...guestNames.map((displayName) => ({
-            key: `guest:${displayName}`,
-            displayName,
-            avatarUrl: null,
-            isInvited: false,
-        })),
-    ].filter(
-        (person, index, allPeople) =>
-            allPeople.findIndex((candidate) => candidate.key === person.key) === index,
-    );
-
-    if (people.length === 0) return null;
-
-    const visiblePeople = people.slice(0, 5);
-    const extraCount = people.length - visiblePeople.length;
-    const names = people.map((person) => person.displayName).join(", ");
-
-    return (
-        <div
-            className="ml-auto flex shrink-0 items-center -space-x-2"
-            role="group"
-            aria-label={`Booked for ${names}`}
-        >
-            {visiblePeople.map((person) => (
-                <span
-                    key={person.key}
-                    title={person.displayName}
-                    className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border-2 border-[#03030a] text-[10px] font-black uppercase shadow-lg ${
-                        person.isInvited
-                            ? "bg-amber-300 text-slate-950"
-                            : "bg-slate-800 text-lime-200"
-                    }`}
-                >
-                    {person.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={person.avatarUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                        getInitials(person.displayName)
-                    )}
-                </span>
-            ))}
-            {extraCount > 0 ? (
-                <span
-                    className="relative flex h-9 min-w-9 items-center justify-center rounded-full border-2 border-[#03030a] bg-lime-300 px-1.5 text-[10px] font-black text-slate-950 shadow-lg"
-                    title={`${extraCount} more travelers`}
-                >
-                    +{extraCount}
-                </span>
-            ) : null}
-        </div>
-    );
 }
 
 function AccommodationForm({
@@ -1220,182 +1057,6 @@ export function AccommodationEditModal({
     );
 }
 
-function AccommodationCard({
-    accommodation,
-    isGoogleReady,
-    audienceOptions,
-    audienceParticipants,
-    currentUserTripMemberId,
-    onEdit,
-    onDelete,
-}: {
-    accommodation: TripAccommodation;
-    isGoogleReady: boolean;
-    audienceOptions: TripAudienceOption[];
-    audienceParticipants: AccommodationAudienceParticipant[];
-    currentUserTripMemberId?: string | null;
-    onEdit: () => void;
-    onDelete: () => void;
-}) {
-    const isCancelled = accommodation.status === "cancelled";
-    const checkInWindow =
-        accommodation.check_in_time_start || accommodation.check_in_time_end
-            ? ` between ${[
-                  formatDisplayTime(accommodation.check_in_time_start),
-                  formatDisplayTime(accommodation.check_in_time_end),
-              ]
-                  .filter(Boolean)
-                  .join(" and ")}`
-            : "";
-
-    return (
-        <article
-            className={`overflow-hidden rounded-[1.6rem] border border-white/10 bg-[#03030a]/90 text-white shadow-2xl shadow-black/25 transition hover:-translate-y-0.5 hover:border-lime-300/25 ${
-                isCancelled ? "opacity-60" : ""
-            }`}
-        >
-            <GooglePlaceCoverPhoto accommodation={accommodation} isGoogleReady={isGoogleReady} />
-            <div className="p-5">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h3 className="text-2xl font-black tracking-tight">
-                                {accommodation.hotel_name}
-                            </h3>
-                            {accommodation.is_private ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.08] px-2.5 py-1 text-xs font-black uppercase tracking-wide text-lime-200">
-                                    <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-                                    Private
-                                </span>
-                            ) : null}
-                        </div>
-                        <p className="mt-1 text-sm font-bold text-slate-300">
-                            {getAccommodationStatusLabel(accommodation.status)} ·{" "}
-                            {getAccommodationTypeLabel(accommodation.accommodation_type)}
-                        </p>
-                    </div>
-                    <div className="flex gap-2">
-                        <button
-                            type="button"
-                            onClick={onEdit}
-                            className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:border-lime-300/40 hover:text-lime-200"
-                            aria-label={`Edit ${accommodation.hotel_name}`}
-                        >
-                            <Pencil className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={onDelete}
-                            className="flex h-10 w-10 items-center justify-center rounded-full border border-red-300/20 bg-red-500/10 text-red-100 transition hover:border-red-300/50 hover:bg-red-500/20"
-                            aria-label={`Delete ${accommodation.hotel_name}`}
-                        >
-                            <Trash2 className="h-4 w-4" aria-hidden="true" />
-                        </button>
-                    </div>
-                </div>
-
-                {accommodation.address ? (
-                    <p className="mt-4 flex gap-2 text-sm font-semibold text-slate-300">
-                        <MapPin
-                            className="mt-0.5 h-4 w-4 shrink-0 text-lime-200"
-                            aria-hidden="true"
-                        />
-                        <span>{accommodation.address}</span>
-                    </p>
-                ) : null}
-
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200/80">
-                            Check-in
-                        </p>
-                        <p className="mt-1 text-lg font-black">
-                            {formatDisplayDate(accommodation.check_in_date)}
-                        </p>
-                        {checkInWindow ? (
-                            <p className="mt-1 text-sm font-semibold text-slate-400">
-                                {checkInWindow.trim()}
-                            </p>
-                        ) : null}
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200/80">
-                            Check-out
-                        </p>
-                        <p className="mt-1 text-lg font-black">
-                            {formatDisplayDate(accommodation.check_out_date)}
-                        </p>
-                        {accommodation.check_out_time ? (
-                            <p className="mt-1 text-sm font-semibold text-slate-400">
-                                {formatDisplayTime(accommodation.check_out_time)}
-                            </p>
-                        ) : null}
-                    </div>
-                </div>
-
-                {accommodation.free_cancellation_ends_on ? (
-                    <div className="mt-4 rounded-2xl border border-lime-300/25 bg-lime-300/10 px-4 py-3">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-lime-200/80">
-                            Free cancellation ends
-                        </p>
-                        <p className="mt-1 text-sm font-black text-lime-100">
-                            {formatDisplayDate(accommodation.free_cancellation_ends_on)}
-                        </p>
-                    </div>
-                ) : null}
-
-                {accommodation.notes ? (
-                    <p className="mt-4 whitespace-pre-line text-sm font-semibold leading-6 text-slate-300">
-                        {accommodation.notes}
-                    </p>
-                ) : null}
-
-                {accommodation.cost ? (
-                    <p className="mt-4 inline-flex rounded-full border border-lime-300/30 bg-lime-300/15 px-3 py-1 text-sm font-black text-lime-100">
-                        {formatCurrency(
-                            Number(accommodation.cost),
-                            accommodation.currency || "CAD",
-                        )}
-                    </p>
-                ) : null}
-
-                <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
-                    <div className="flex flex-wrap gap-2">
-                        {accommodation.website ? (
-                            <a
-                                href={addVaiviaUtmAttribution(accommodation.website)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={secondaryButtonClass}
-                            >
-                                Website
-                                <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                            </a>
-                        ) : null}
-                        {accommodation.google_maps_url ? (
-                            <a
-                                href={accommodation.google_maps_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={secondaryButtonClass}
-                            >
-                                Open in Google Maps
-                                <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                            </a>
-                        ) : null}
-                    </div>
-                    <AccommodationAudienceAvatars
-                        accommodation={accommodation}
-                        options={audienceOptions}
-                        participants={audienceParticipants}
-                        currentUserTripMemberId={currentUserTripMemberId}
-                    />
-                </div>
-            </div>
-        </article>
-    );
-}
-
 export default function AccommodationManager({
     tripId,
     accommodations,
@@ -1417,24 +1078,6 @@ export default function AccommodationManager({
     const [deleteTarget, setDeleteTarget] = useState<TripAccommodation | null>(null);
     const [isPending, startTransition] = useTransition();
     const handledAddParamRef = useRef<string | null>(null);
-    const sortedAccommodations = useMemo(
-        () =>
-            [...accommodations].sort((a, b) => {
-                const dateSort = a.check_in_date.localeCompare(b.check_in_date);
-                if (dateSort !== 0) return dateSort;
-                return (a.created_at || "").localeCompare(b.created_at || "");
-            }),
-        [accommodations],
-    );
-    const audienceParticipantsByItemId = useMemo(() => {
-        const participantsByItemId = new Map<string, AccommodationAudienceParticipant[]>();
-        audienceParticipants.forEach((participant) => {
-            const current = participantsByItemId.get(participant.item_id) || [];
-            current.push(participant);
-            participantsByItemId.set(participant.item_id, current);
-        });
-        return participantsByItemId;
-    }, [audienceParticipants]);
 
     useEffect(() => {
         if (window.google?.maps?.places) {
@@ -1488,59 +1131,23 @@ export default function AccommodationManager({
                     onReady={() => setIsGoogleReady(true)}
                 />
             ) : null}
-            <section className="rounded-[2rem] border border-white/10 bg-[#03030a]/90 p-5 text-white shadow-2xl shadow-black/30 md:p-7">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-300">
-                            Places to stay
-                        </p>
-                        <h2 className="mt-2 text-3xl font-black tracking-tight md:text-4xl">
-                            Stays
-                        </h2>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setModalMode({ type: "add" })}
-                        className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-3 text-sm font-black text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:-translate-y-0.5 hover:bg-lime-200"
-                    >
-                        <Plus className="h-4 w-4" aria-hidden="true" />
-                        Add stay
-                    </button>
-                </div>
-
-                {sortedAccommodations.length === 0 ? (
-                    <div className="mt-8 rounded-[1.5rem] border border-dashed border-white/15 bg-white/[0.05] p-8 text-center">
-                        <h3 className="text-xl font-black">No stays yet.</h3>
-                        <p className="mx-auto mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-400">
-                            Add hotels, rentals, hostels, or places you’re staying so they’re easy
-                            to find during your trip.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="mt-8 grid gap-4 xl:grid-cols-2">
-                        {sortedAccommodations.map((accommodation) => (
-                            <AccommodationCard
-                                key={accommodation.id}
-                                accommodation={accommodation}
-                                isGoogleReady={isGoogleReady}
-                                audienceOptions={audienceOptions}
-                                audienceParticipants={
-                                    audienceParticipantsByItemId.get(accommodation.id) ||
-                                    EMPTY_AUDIENCE_PARTICIPANTS
-                                }
-                                currentUserTripMemberId={currentUserTripMemberId}
-                                onEdit={() =>
-                                    setModalMode({
-                                        type: "edit",
-                                        accommodation,
-                                    })
-                                }
-                                onDelete={() => setDeleteTarget(accommodation)}
-                            />
-                        ))}
-                    </div>
+            <StaysPresentation
+                accommodations={accommodations}
+                audienceOptions={audienceOptions}
+                audienceParticipants={audienceParticipants}
+                currentUserTripMemberId={currentUserTripMemberId}
+                onAddStay={() => setModalMode({ type: "add" })}
+                onEditStay={(accommodation) =>
+                    setModalMode({ type: "edit", accommodation })
+                }
+                onDeleteStay={setDeleteTarget}
+                renderCover={(accommodation) => (
+                    <GooglePlaceCoverPhoto
+                        accommodation={accommodation}
+                        isGoogleReady={isGoogleReady}
+                    />
                 )}
-            </section>
+            />
 
             {modalMode ? (
                 <AccommodationModal

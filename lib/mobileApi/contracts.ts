@@ -1,4 +1,9 @@
 import type { Tables } from "@/src/types/supabase";
+import type { TripAccommodation } from "@/lib/accommodations";
+import type {
+  TripAudienceOption,
+  TripAudienceParticipantKind,
+} from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
 import type {
   BudgetParticipant,
@@ -104,6 +109,48 @@ export type MobileTripDetailResponse = {
   itineraryTimezones: string[];
   ideas: TripIdea[];
   budget: MobileTripBudgetData;
+  stays?: MobileTripStaysData;
+};
+
+export type MobileStayAudienceParticipant = {
+  item_id: string;
+  participant_kind?: string | null;
+  trip_member_id?: string | null;
+  user_id?: string | null;
+  invitation_id?: string | null;
+  family_member_id?: string | null;
+  guest_name?: string | null;
+};
+
+export type MobileStayCoverageTraveler = {
+  kind: TripAudienceParticipantKind;
+  id: string;
+  requiredLegIds?: string[];
+  userId?: string | null;
+  displayName: string;
+  avatarUrl?: string | null;
+  secondaryLabel?: string | null;
+  isCurrentUser?: boolean;
+};
+
+export type MobileStayCoverageLeg = {
+  id: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  memberIds: string[];
+  memberDatesByMemberId?: Record<
+    string,
+    { startDate?: string | null; endDate?: string | null }
+  >;
+};
+
+export type MobileTripStaysData = {
+  accommodations: TripAccommodation[];
+  audienceOptions: TripAudienceOption[];
+  participants: MobileStayAudienceParticipant[];
+  travelers: MobileStayCoverageTraveler[];
+  legs: MobileStayCoverageLeg[];
+  currentUserTripMemberId: string | null;
 };
 
 export type MobileTripBudgetData = {

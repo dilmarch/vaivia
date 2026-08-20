@@ -37,6 +37,7 @@ type TripDetailScreenProps = {
   onItinerary?: () => void;
   onIdeas?: () => void;
   onTransport?: () => void;
+  onStays?: () => void;
 };
 
 function formatMoney(amount: number, currency: string) {
@@ -89,6 +90,7 @@ export function TripDetailScreen({
   onItinerary,
   onIdeas,
   onTransport,
+  onStays,
 }: TripDetailScreenProps) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -287,6 +289,7 @@ export function TripDetailScreen({
               icon={BedDouble}
               buttonLabel="Visit stays"
               alignTop
+              onAction={onStays}
             >
               <TripOverviewStayTimeline items={overview.stays} />
             </OverviewTile>

@@ -6,6 +6,8 @@ export default {
   content: [
     "./mobile/**/*.{js,ts,jsx,tsx}",
     "./components/itinerary/**/*.{js,ts,jsx,tsx}",
+    "./components/accommodations/**/*Presentation.tsx",
+    "./components/accommodations/AccommodationCoverageTimeline.tsx",
     "./components/ideas/**/*.{js,ts,jsx,tsx}",
     "./components/budget/BudgetPresentation.tsx",
     "./components/navigation/MobileAppChromePresentation.tsx",

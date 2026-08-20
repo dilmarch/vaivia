@@ -1,5 +1,7 @@
 import type {
   MobileItineraryItem,
+  MobileStayCoverageLeg,
+  MobileStayCoverageTraveler,
   MobileTripOverview,
   MobileTripOverviewStay,
   MobileTripOverviewTransportation,
@@ -33,6 +35,7 @@ import {
   normalizeExpenseSplit,
 } from "@/lib/budgetServer";
 import type { BudgetParticipant } from "@/lib/budget";
+import type { TripAudienceOption } from "@/lib/tripAudience";
 import type { Tables } from "@/src/types/supabase";
 
 export const dynamic = "force-dynamic";
@@ -279,7 +282,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       .order("sort_order", { ascending: true, nullsFirst: false }),
     context.supabase
       .from("trip_accommodations")
-      .select("id,trip_id,hotel_name,status,city,region,country,address,google_maps_url,google_place_id,check_in_date,check_out_date,check_in_time_start,check_in_time_end,check_out_time,accommodation_type,is_private,audience_mode")
+      .select("id,trip_id,created_by,hotel_name,status,city,region,country,address,google_maps_url,google_place_id,check_in_date,check_out_date,free_cancellation_ends_on,check_in_time_start,check_in_time_end,check_out_time,accommodation_type,is_private,audience_mode,website,booking_url,cost,currency,notes,trip_leg_id,created_at,updated_at")
       .eq("trip_id", trip.id)
       .eq("is_planning_option", false)
       .order("check_in_date", { ascending: true }),
@@ -290,7 +293,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       .eq("status", "active"),
     context.supabase
       .from("trip_invitations")
-      .select("id,invited_email,invited_username,status,created_at")
+      .select("id,invited_email,invited_username,status,created_at,invitation_scope")
       .eq("trip_id", trip.id)
       .eq("status", "pending")
       .order("created_at", { ascending: true }),
@@ -396,10 +399,15 @@ export async function GET(request: Request, { params }: RouteContext) {
   ).map(normalizeExpenseSettlement);
   const itineraryItemIds = rawItineraryItems.map((item) => item.id);
   const transportationItemIds = rawTransportationItems.map((item) => item.id);
+  const accommodationIds = (accommodationResult.data || []).map((item) => item.id);
   const categoryIds = Array.from(
     new Set(rawItineraryItems.map((item) => item.category_id).filter(Boolean)),
   ) as string[];
-  const participantItemIds = [...itineraryItemIds, ...transportationItemIds];
+  const participantItemIds = [
+    ...itineraryItemIds,
+    ...transportationItemIds,
+    ...accommodationIds,
+  ];
   const ideaIds = rawIdeas.map((idea) => idea.id).filter(Boolean);
 
   const [
@@ -411,6 +419,8 @@ export async function GET(request: Request, { params }: RouteContext) {
     participantResult,
     transportationTravelerResult,
     ideaReactionResult,
+    coverageMemberLegResult,
+    invitationLegResult,
   ] = await Promise.all([
     memberUserIds.length
       ? context.supabase
@@ -421,7 +431,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     familyIds.length
       ? context.supabase
           .from("user_family_members")
-          .select("id,name,avatar_url")
+          .select("id,name,relationship,avatar_url")
           .in("id", familyIds)
       : Promise.resolve({ data: [], error: null }),
     viewerMembership && legIds.length
@@ -467,6 +477,24 @@ export async function GET(request: Request, { params }: RouteContext) {
           .eq("trip_id", trip.id)
           .in("idea_id", ideaIds)
       : Promise.resolve({ data: [], error: null }),
+    legIds.length
+      ? context.supabase
+          .from("trip_member_legs")
+          .select("trip_leg_id,trip_member_id,is_joining,start_date,end_date")
+          .eq("trip_id", trip.id)
+          .in("trip_leg_id", legIds)
+      : Promise.resolve({ data: [], error: null }),
+    invitationResult.data?.length && legIds.length
+      ? context.supabase
+          .from("trip_invitation_legs")
+          .select("invitation_id,trip_leg_id,is_included")
+          .eq("trip_id", trip.id)
+          .eq("is_included", true)
+          .in(
+            "invitation_id",
+            invitationResult.data.map((invitation) => invitation.id),
+          )
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const secondaryError =
@@ -476,7 +504,9 @@ export async function GET(request: Request, { params }: RouteContext) {
     categoryResult.error ||
     participantResult.error ||
     transportationTravelerResult.error ||
-    ideaReactionResult.error;
+    ideaReactionResult.error ||
+    coverageMemberLegResult.error ||
+    invitationLegResult.error;
   if (secondaryError) {
     console.error("Mobile trip overview people request failed:", {
       userId: context.user.id,
@@ -625,6 +655,141 @@ export async function GET(request: Request, { params }: RouteContext) {
   );
   const memberById = new Map(memberRows.map((member) => [member.id, member]));
   const participantRows = participantResult.data || [];
+  const stayAudienceOptions: TripAudienceOption[] = [
+    ...memberRows.map((member) => {
+      const profile = profilesById.get(member.user_id);
+      const displayName =
+        [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim() ||
+        profile?.username ||
+        "Trip member";
+      return {
+        kind: "member" as const,
+        id: member.id,
+        displayName,
+        avatarUrl: profile?.avatar_url || null,
+        status: "accepted" as const,
+        secondaryLabel: profile?.username ? `@${profile.username}` : null,
+        isCurrentUser: member.user_id === context.user.id,
+      };
+    }),
+    ...(invitationResult.data || []).map((invitation) => ({
+      kind: "invitation" as const,
+      id: invitation.id,
+      displayName:
+        invitation.invited_username ||
+        invitation.invited_email ||
+        "Invited guest",
+      avatarUrl: null,
+      status: "invited" as const,
+      secondaryLabel: "Pending invitation",
+      isCurrentUser: false,
+    })),
+    ...(familyMembershipResult.data || [])
+      .filter((membership) => membership.status === "going")
+      .map((membership) => {
+        const familyMember = familyById.get(membership.family_member_id);
+        return {
+          kind: "family_member" as const,
+          id: membership.family_member_id,
+          displayName: familyMember?.name || "Family member",
+          avatarUrl: familyMember?.avatar_url || null,
+          status: "family_member" as const,
+          secondaryLabel: familyMember?.relationship || "Family member",
+          isCurrentUser: false,
+        };
+      }),
+  ];
+  const currentUserTripMemberId =
+    stayAudienceOptions.find(
+      (option) => option.kind === "member" && option.isCurrentUser,
+    )?.id || null;
+  const memberUserIdByMembershipId = new Map(
+    memberRows.map((member) => [member.id, member.user_id]),
+  );
+  const invitationLegIdsByInvitationId = new Map<string, string[]>();
+  (invitationLegResult.data || []).forEach((row) => {
+    if (!row.is_included) return;
+    const current = invitationLegIdsByInvitationId.get(row.invitation_id) || [];
+    current.push(row.trip_leg_id);
+    invitationLegIdsByInvitationId.set(row.invitation_id, current);
+  });
+  const invitationScopeById = new Map(
+    (invitationResult.data || []).map((invitation) => [
+      invitation.id,
+      invitation.invitation_scope,
+    ]),
+  );
+  const stayCoverageTravelers: MobileStayCoverageTraveler[] =
+    stayAudienceOptions.map((option) => ({
+      kind: option.kind,
+      id: option.id,
+      userId:
+        option.kind === "member"
+          ? memberUserIdByMembershipId.get(option.id) || null
+          : null,
+      displayName: option.displayName,
+      avatarUrl: option.avatarUrl || null,
+      secondaryLabel: option.secondaryLabel || null,
+      isCurrentUser: option.isCurrentUser,
+      requiredLegIds:
+        option.kind === "invitation" &&
+        invitationScopeById.get(option.id) === "selected_legs"
+          ? invitationLegIdsByInvitationId.get(option.id) || []
+          : undefined,
+    }));
+  if (!stayCoverageTravelers.some((traveler) => traveler.isCurrentUser)) {
+    const currentProfile = profilesById.get(context.user.id);
+    stayCoverageTravelers.unshift({
+      kind: "member",
+      id: currentUserTripMemberId || `user:${context.user.id}`,
+      userId: context.user.id,
+      displayName:
+        [currentProfile?.first_name, currentProfile?.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim() ||
+        currentProfile?.username ||
+        "You",
+      avatarUrl: currentProfile?.avatar_url || null,
+      secondaryLabel: currentProfile?.username
+        ? `@${currentProfile.username}`
+        : null,
+      isCurrentUser: true,
+    });
+  }
+  const coverageMemberLegRows = (coverageMemberLegResult.data || []).filter(
+    (row) => row.is_joining,
+  );
+  const stayCoverageLegs: MobileStayCoverageLeg[] = (legResult.data || [])
+    .filter((leg) => leg.leg_type !== "accommodation")
+    .map((leg) => {
+      const joinedRows = coverageMemberLegRows.filter(
+        (row) => row.trip_leg_id === leg.id,
+      );
+      return {
+        id: leg.id,
+        startDate: leg.start_date || null,
+        endDate: leg.end_date || null,
+        memberIds: joinedRows.map((row) => row.trip_member_id),
+        memberDatesByMemberId: Object.fromEntries(
+          joinedRows.map((row) => [
+            row.trip_member_id,
+            {
+              startDate: row.start_date || leg.start_date || null,
+              endDate:
+                row.end_date ||
+                row.start_date ||
+                leg.end_date ||
+                leg.start_date ||
+                null,
+            },
+          ]),
+        ),
+      };
+    });
+  const stayParticipants = participantRows.filter(
+    (participant) => participant.item_type === "accommodation",
+  );
   const toMobilePerson = ({
     id,
     name,
@@ -1084,6 +1249,14 @@ export async function GET(request: Request, { params }: RouteContext) {
       settlementPayments: mobileExpenseSettlements,
       participants: budgetParticipants,
       defaultCurrency: financeSettingsResult.data?.home_currency || "CAD",
+    },
+    stays: {
+      accommodations: (accommodationResult.data || []) as AccommodationRow[],
+      audienceOptions: stayAudienceOptions,
+      participants: stayParticipants,
+      travelers: stayCoverageTravelers,
+      legs: stayCoverageLegs,
+      currentUserTripMemberId,
     },
   });
 }

@@ -111,6 +111,7 @@ describe("mobile trip overview route", () => {
         data: [
           {
             id: "stay-1",
+            created_by: "user-123",
             hotel_name: "Hotel Bonaventure",
             status: "booked",
             city: "Montreal",
@@ -121,13 +122,22 @@ describe("mobile trip overview route", () => {
             check_in_time_start: "15:00:00",
             check_in_time_end: "18:00:00",
             check_out_time: "11:00:00",
+            free_cancellation_ends_on: "2026-09-07",
             address: "900 Rue de la Gauchetière O",
             google_maps_url: null,
             google_place_id: null,
             accommodation_type: "hotel",
             is_private: false,
-            audience_mode: "everyone",
+            audience_mode: "custom",
             trip_id: "trip-1",
+            website: "https://hotel.example.com",
+            booking_url: "https://booking.example.com/reservation",
+            cost: 900,
+            currency: "CAD",
+            notes: "Breakfast included.",
+            trip_leg_id: "leg-1",
+            created_at: "2026-08-01T00:00:00Z",
+            updated_at: "2026-08-01T00:00:00Z",
           },
         ],
         error: null,
@@ -152,6 +162,7 @@ describe("mobile trip overview route", () => {
             invited_username: null,
             status: "pending",
             created_at: null,
+            invitation_scope: "selected_legs",
           },
         ],
         error: null,
@@ -241,9 +252,20 @@ describe("mobile trip overview route", () => {
         data: [
           {
             trip_leg_id: "leg-1",
+            trip_member_id: "member-1",
             is_joining: true,
             start_date: "2026-09-10",
             end_date: "2026-09-14",
+          },
+        ],
+        error: null,
+      },
+      trip_invitation_legs: {
+        data: [
+          {
+            invitation_id: "invite-1",
+            trip_leg_id: "leg-1",
+            is_included: true,
           },
         ],
         error: null,
@@ -261,6 +283,16 @@ describe("mobile trip overview route", () => {
           {
             item_type: "itinerary",
             item_id: "itinerary-1",
+            participant_kind: "member",
+            trip_member_id: "member-1",
+            invitation_id: null,
+            family_member_id: null,
+            guest_name: null,
+            user_id: "user-123",
+          },
+          {
+            item_type: "accommodation",
+            item_id: "stay-1",
             participant_kind: "member",
             trip_member_id: "member-1",
             invitation_id: null,
@@ -453,6 +485,51 @@ describe("mobile trip overview route", () => {
           }),
         ]),
         defaultCurrency: "USD",
+      },
+      stays: {
+        accommodations: [
+          expect.objectContaining({
+            id: "stay-1",
+            hotel_name: "Hotel Bonaventure",
+            free_cancellation_ends_on: "2026-09-07",
+            cost: 900,
+            currency: "CAD",
+          }),
+        ],
+        audienceOptions: expect.arrayContaining([
+          expect.objectContaining({
+            id: "member-1",
+            displayName: "Alex Rivera",
+            isCurrentUser: true,
+          }),
+          expect.objectContaining({
+            id: "invite-1",
+            status: "invited",
+          }),
+        ]),
+        participants: [
+          expect.objectContaining({
+            item_id: "stay-1",
+            trip_member_id: "member-1",
+          }),
+        ],
+        travelers: expect.arrayContaining([
+          expect.objectContaining({
+            id: "member-1",
+            displayName: "Alex Rivera",
+          }),
+          expect.objectContaining({
+            id: "invite-1",
+            requiredLegIds: ["leg-1"],
+          }),
+        ]),
+        legs: [
+          expect.objectContaining({
+            id: "leg-1",
+            memberIds: ["member-1"],
+          }),
+        ],
+        currentUserTripMemberId: "member-1",
       },
     });
 

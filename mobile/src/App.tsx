@@ -8,6 +8,7 @@ import { TripItineraryScreen } from "./screens/TripItineraryScreen";
 import { TripIdeasScreen } from "./screens/TripIdeasScreen";
 import { TripBudgetScreen } from "./screens/TripBudgetScreen";
 import { TripTransportScreen } from "./screens/TripTransportScreen";
+import { TripStaysScreen } from "./screens/TripStaysScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
@@ -17,7 +18,7 @@ export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [activeTripView, setActiveTripView] = useState<
-    "overview" | "itinerary" | "ideas" | "budget" | "transport"
+    "overview" | "itinerary" | "ideas" | "budget" | "transport" | "stays"
   >("overview");
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
   const environment = useMemo(() => getMobileEnvironment(), []);
@@ -66,6 +67,8 @@ export default function App() {
       <TripBudgetScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "transport" ? (
       <TripTransportScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : activeTripView === "stays" ? (
+      <TripStaysScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : (
       <TripDetailScreen
         apiClient={apiClient}
@@ -73,6 +76,7 @@ export default function App() {
         onItinerary={() => setActiveTripView("itinerary")}
         onIdeas={() => setActiveTripView("ideas")}
         onTransport={() => setActiveTripView("transport")}
+        onStays={() => setActiveTripView("stays")}
       />
     )
   ) : (
@@ -108,6 +112,7 @@ export default function App() {
         onTripIdeas={() => setActiveTripView("ideas")}
         onTripBudget={() => setActiveTripView("budget")}
         onTripTransport={() => setActiveTripView("transport")}
+        onTripStays={() => setActiveTripView("stays")}
         onSignOut={async () => {
           openTrips();
           await signOut();
