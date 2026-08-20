@@ -21,6 +21,7 @@
 # production
 /build
 browser-extension/dist/
+mobile/dist/
 
 # misc
 .DS_Store

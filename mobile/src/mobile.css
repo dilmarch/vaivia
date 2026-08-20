@@ -1,0 +1,50 @@
+html[data-vaivia-runtime="capacitor"],
+html[data-vaivia-runtime="mobile-browser"] {
+  background: #0c0115;
+  color-scheme: dark;
+}
+
+html[data-vaivia-runtime="capacitor"] body,
+html[data-vaivia-runtime="mobile-browser"] body,
+html[data-vaivia-runtime="capacitor"] #root,
+html[data-vaivia-runtime="mobile-browser"] #root {
+  min-height: 100%;
+  background: #0c0115;
+}
+
+.mobile-screen {
+  min-height: 100dvh;
+  padding-left: var(--safe-area-left);
+  padding-right: var(--safe-area-right);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(var(--vaivia-neon-rgb), 0.12), transparent 28%),
+    radial-gradient(circle at 90% 24%, rgba(255, 54, 190, 0.12), transparent 30%),
+    #0c0115;
+}
+
+.mobile-sticky-header {
+  position: sticky;
+  z-index: 40;
+  top: 0;
+  padding-top: max(0.35rem, var(--safe-area-top));
+}
+
+.mobile-loading-plane {
+  animation: mobile-plane-float 1.5s ease-in-out infinite;
+}
+
+@keyframes mobile-plane-float {
+  0%,
+  100% {
+    transform: translate3d(-3px, 3px, 0) rotate(-12deg);
+  }
+  50% {
+    transform: translate3d(3px, -3px, 0) rotate(-12deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-loading-plane {
+    animation: none;
+  }
+}
