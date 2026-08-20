@@ -2,7 +2,7 @@
 
 import Script from "next/script";
 import { AlertTriangle, Archive, Info, Pencil, Share2, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AnimatedModal from "@/components/AnimatedModal";
 import ShareTripModal from "@/components/ShareTripModal";
 import TripDestinationPicker from "@/components/TripDestinationPicker";
@@ -12,6 +12,10 @@ import {
     TripQuickInfoPanel,
     type DashboardTrip,
 } from "@/components/TripDashboardClient";
+import {
+    TripsIndexPresentation,
+    type TripFilter,
+} from "@/components/trips/TripsIndexPresentation";
 import { sanitizeTripSlugInput, slugifyTripTitle } from "@/lib/tripRoutes";
 
 type TripsIndexClientProps = {
@@ -22,8 +26,6 @@ type TripsIndexClientProps = {
     initialFilter?: TripFilter;
 };
 
-type TripFilter = "upcoming" | "past" | "archive";
-
 function travelInputProps() {
     return {
         autoComplete: "off",
@@ -31,24 +33,6 @@ function travelInputProps() {
         "data-lpignore": "true",
         "data-1p-ignore": "true",
     };
-}
-
-function getLocalDateKey(date: Date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
-}
-
-function isPastTrip(trip: DashboardTrip, todayKey: string) {
-    const endDate =
-        (trip.viewerAssignedLegCount || 0) > 0
-            ? trip.viewerEndDate || trip.viewerStartDate
-            : trip.viewerTripMemberId && (trip.memberProfiles || []).length > 0
-              ? null
-              : trip.end_date || trip.start_date;
-    return Boolean(endDate && endDate < todayKey);
 }
 
 function getTripLabel(trip: DashboardTrip) {
@@ -75,19 +59,6 @@ export default function TripsIndexClient({
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
     const [summaryTripId, setSummaryTripId] = useState<string | null>(null);
-    const todayKey = useMemo(() => getLocalDateKey(new Date()), []);
-    const visibleTrips = useMemo(
-        () =>
-            trips.filter((trip) =>
-                filter === "past"
-                    ? !trip.archived_at && isPastTrip(trip, todayKey)
-                    : filter === "archive"
-                      ? Boolean(trip.archived_at)
-                      : !trip.archived_at && !isPastTrip(trip, todayKey)
-            ),
-        [filter, todayKey, trips]
-    );
-
     useEffect(() => {
         if (!summaryTripId) return;
 
@@ -128,142 +99,75 @@ export default function TripsIndexClient({
                 onReady={() => setIsGoogleReady(true)}
             />
 
-            <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] px-5 py-6 text-white shadow-2xl shadow-black/30 md:px-8 md:py-8">
-                <div className="pointer-events-none absolute inset-0">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_8%,rgba(255,54,190,0.20),transparent_25%),radial-gradient(circle_at_8%_84%,rgba(var(--vaivia-neon-soft-rgb),0.14),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.14),transparent_42%)]" />
-                    <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),transparent_24%,rgba(0,0,0,0.36))]" />
-                </div>
-
-                <div className="relative z-10">
-                    <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-                        <div>
-                            <p className="text-xs font-bold uppercase tracking-[0.55em] text-lime-200/80">
-                                My Trips
-                            </p>
-                            <h1 className="mt-3 text-4xl font-black tracking-tight text-white md:text-6xl">
-                                All trips
-                            </h1>
-                            <p className="mt-3 max-w-2xl text-sm text-slate-300 md:text-base">
-                                Browse every trip in your VAIVIA library, then open the
-                                itinerary or edit the trip details.
-                            </p>
-                        </div>
-
-                        <div className="grid w-full max-w-md grid-cols-3 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
-                            {(["upcoming", "past", "archive"] as const).map((option) => (
-                                <button
-                                    key={option}
-                                    type="button"
-                                    onClick={() => setFilter(option)}
-                                    className={`rounded-full px-4 py-2 text-sm font-black uppercase tracking-wide transition ${
-                                        filter === option
-                                            ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
-                                            : "text-slate-300 hover:bg-white/10 hover:text-white"
-                                    }`}
-                                    aria-pressed={filter === option}
-                                >
-                                    {option === "archive" ? "Archive" : option}
-                                </button>
-                            ))}
-                        </div>
+            <TripsIndexPresentation
+                trips={trips}
+                filter={filter}
+                onFilterChange={setFilter}
+                renderTrip={(trip, index) => (
+                    <DashboardTripCard
+                        trip={trip}
+                        index={index}
+                        isGoogleReady={isGoogleReady}
+                        currentUserId={currentUserId}
+                        disableHoverTransform
+                    />
+                )}
+                renderCardActions={(trip, index) => (
+                    <div
+                        className={`absolute z-30 flex items-center gap-2 ${getTripActionClusterPosition(
+                            index
+                        )}`}
+                    >
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                openEditModal(trip);
+                            }}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                            aria-label={`Edit ${getTripLabel(trip)}`}
+                        >
+                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setSummaryTripId((current) =>
+                                    current === trip.id ? null : trip.id
+                                );
+                            }}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                            aria-label={`Show quick info for ${getTripLabel(trip)}`}
+                            aria-pressed={summaryTripId === trip.id}
+                        >
+                            <Info className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                setShareTrip(trip);
+                            }}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
+                            aria-label={`Share ${getTripLabel(trip)}`}
+                        >
+                            <Share2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
                     </div>
-
-                    {visibleTrips.length > 0 ? (
-                        <div className="mt-10 flex flex-wrap items-start gap-12 pb-8 md:gap-14 xl:gap-20">
-                            {visibleTrips.map((trip, index) => (
-                                <div
-                                    key={trip.id}
-                                    data-trip-card-shell
-                                    className="relative transition-all duration-500 ease-out hover:-translate-y-3 hover:scale-110"
-                                >
-                                    <DashboardTripCard
-                                        trip={trip}
-                                        index={index}
-                                        isGoogleReady={isGoogleReady}
-                                        currentUserId={currentUserId}
-                                        disableHoverTransform
-                                    />
-                                    <div
-                                        className={`absolute z-30 flex items-center gap-2 ${getTripActionClusterPosition(
-                                            index
-                                        )}`}
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                openEditModal(trip);
-                                            }}
-                                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
-                                            aria-label={`Edit ${getTripLabel(trip)}`}
-                                        >
-                                            <Pencil
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                setSummaryTripId((current) =>
-                                                    current === trip.id
-                                                        ? null
-                                                        : trip.id
-                                                );
-                                            }}
-                                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
-                                            aria-label={`Show quick info for ${getTripLabel(trip)}`}
-                                            aria-pressed={summaryTripId === trip.id}
-                                        >
-                                            <Info
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
-                                                setShareTrip(trip);
-                                            }}
-                                            className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950"
-                                            aria-label={`Share ${getTripLabel(trip)}`}
-                                        >
-                                            <Share2
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            />
-                                        </button>
-                                    </div>
-                                    {summaryTripId === trip.id ? (
-                                        <TripQuickInfoPanel
-                                            trip={trip}
-                                            onClose={() => setSummaryTripId(null)}
-                                        />
-                                    ) : null}
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="mt-10 rounded-[2rem] border border-dashed border-white/20 bg-white/[0.04] p-8 text-center">
-                            <h2 className="text-xl font-black text-white">
-                                No {filter} trips
-                            </h2>
-                            <p className="mt-2 text-sm text-slate-400">
-                                {filter === "upcoming"
-                                    ? "Your upcoming trips will appear here."
-                                    : filter === "archive"
-                                      ? "Archived trips will appear here after you archive them."
-                                      : "Past trips will appear here after their return date."}
-                            </p>
-                        </div>
-                    )}
-                </div>
-            </section>
+                )}
+                renderCardSupplement={(trip) =>
+                    summaryTripId === trip.id ? (
+                        <TripQuickInfoPanel
+                            trip={trip}
+                            onClose={() => setSummaryTripId(null)}
+                        />
+                    ) : null
+                }
+            />
 
             <ShareTripModal
                 tripId={shareTrip?.id || ""}

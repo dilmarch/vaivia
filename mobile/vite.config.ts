@@ -1,10 +1,32 @@
 import react from "@vitejs/plugin-react";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 
 const mobileRoot = fileURLToPath(new URL(".", import.meta.url));
 const repositoryRoot = path.resolve(mobileRoot, "..");
+
+function sharedTripShapeAssets(): Plugin {
+  const fileNames = [
+    "trip-shape-a.svg",
+    "trip-shape-b.svg",
+    "trip-shape-c.svg",
+  ];
+
+  return {
+    name: "vaivia-shared-trip-shape-assets",
+    generateBundle() {
+      fileNames.forEach((fileName) => {
+        this.emitFile({
+          type: "asset",
+          fileName,
+          source: readFileSync(path.resolve(repositoryRoot, "public", fileName)),
+        });
+      });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const publicEnvironment = loadEnv(mode, repositoryRoot, [
@@ -47,7 +69,7 @@ export default defineConfig(({ mode }) => {
     base: "./",
     envDir: repositoryRoot,
     publicDir: false,
-    plugins: [react()],
+    plugins: [react(), sharedTripShapeAssets()],
     resolve: {
       alias: {
         "@": repositoryRoot,

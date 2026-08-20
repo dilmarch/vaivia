@@ -37,6 +37,7 @@
     "currency-codes": "^2.2.0",
     "currency-symbol-map": "^5.1.0",
     "date-fns": "^4.4.0",
+    "geist": "^1.7.2",
     "jose": "^6.2.3",
     "jszip": "^3.10.1",
     "lucide-react": "^0.511.0",

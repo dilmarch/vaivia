@@ -1,5 +1,14 @@
+@font-face {
+  font-family: "Geist";
+  src: url("../../node_modules/geist/dist/fonts/geist-sans/Geist-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 html[data-vaivia-runtime="capacitor"],
 html[data-vaivia-runtime="mobile-browser"] {
+  --font-geist-sans: "Geist";
   background: #0c0115;
   color-scheme: dark;
 }
@@ -12,8 +21,15 @@ html[data-vaivia-runtime="mobile-browser"] #root {
   background: #0c0115;
 }
 
+html[data-vaivia-runtime="capacitor"] body,
+html[data-vaivia-runtime="mobile-browser"] body {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
 .mobile-screen {
   min-height: 100dvh;
+  width: 100%;
+  overflow-x: clip;
   padding-left: var(--safe-area-left);
   padding-right: var(--safe-area-right);
   background:

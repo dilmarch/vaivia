@@ -13,7 +13,19 @@ export type MobileTripSummary = Pick<
   | "end_date"
   | "cover_image_url"
 > & {
+  archived_at?: TripRow["archived_at"];
   membershipRole: string | null;
+  viewerTripMemberId?: string | null;
+  viewerAssignedLegCount?: number;
+  viewerStartDate?: string | null;
+  viewerEndDate?: string | null;
+  memberProfiles?: {
+    id: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    username?: string | null;
+    avatar_url?: string | null;
+  }[];
 };
 
 export type MobileItineraryItem = Pick<

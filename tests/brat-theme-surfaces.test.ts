@@ -60,10 +60,10 @@ describe("brat theme surfaces", () => {
     });
 
     it("keeps all dashboard trip-card labels green across image tones", () => {
-        const dashboard = read("components/TripDashboardClient.tsx");
+        const tripCard = read("components/trips/TripCardPresentation.tsx");
         const css = read("app/globals.css");
 
-        expect(dashboard).toContain("vaivia-trip-card-duration");
+        expect(tripCard).toContain("vaivia-trip-card-duration");
         expect(css).toContain(
             '.vaivia-trip-card .vaivia-trip-card-title'
         );
