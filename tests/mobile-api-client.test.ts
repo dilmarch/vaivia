@@ -1,14 +1,23 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MobileApiClient, MobileApiError } from "@/mobile/src/lib/apiClient";
 
 describe("MobileApiClient", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("uses the configured absolute base URL and Supabase bearer token", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetchImplementation = vi.fn(async () =>
       Response.json({ trips: [] }, { status: 200 }),
     );
     const client = new MobileApiClient({
       baseUrl: "https://vaivia.app/",
-      getAccessToken: async () => "test-access-token",
+      getAuthState: async () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
       fetchImplementation: fetchImplementation as typeof fetch,
     });
 
@@ -21,13 +30,23 @@ describe("MobileApiClient", () => {
       Accept: "application/json",
       Authorization: "Bearer test-access-token",
     });
+
+    const diagnostics = JSON.stringify(log.mock.calls);
+    expect(diagnostics).toContain("https://vaivia.app/api/mobile/v1/trips");
+    expect(diagnostics).toContain("user-123");
+    expect(diagnostics).not.toContain("test-access-token");
   });
 
-  it("does not make an unauthenticated API request", async () => {
+  it("does not make a request when a rendered session has no propagated token", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetchImplementation = vi.fn();
     const client = new MobileApiClient({
       baseUrl: "https://vaivia.app",
-      getAccessToken: async () => null,
+      getAuthState: async () => ({
+        sessionExists: true,
+        accessToken: null,
+        authenticatedUserId: "user-123",
+      }),
       fetchImplementation: fetchImplementation as typeof fetch,
     });
 
@@ -38,12 +57,17 @@ describe("MobileApiClient", () => {
   });
 
   it("encodes trip identifiers and surfaces API errors", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetchImplementation = vi.fn(async () =>
       Response.json({ error: "Trip not found" }, { status: 404 }),
     );
     const client = new MobileApiClient({
       baseUrl: "https://vaivia.app",
-      getAccessToken: async () => "test-access-token",
+      getAuthState: async () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
       fetchImplementation: fetchImplementation as typeof fetch,
     });
 
@@ -53,6 +77,13 @@ describe("MobileApiClient", () => {
     });
     expect(fetchImplementation.mock.calls[0][0]).toBe(
       "https://vaivia.app/api/mobile/v1/trips/trip%2Fid",
+    );
+    expect(log).toHaveBeenCalledWith(
+      "[VAIVIA mobile API] response",
+      expect.objectContaining({
+        httpResponseStatus: 404,
+        apiResponseBody: { error: "Trip not found" },
+      }),
     );
   });
 });

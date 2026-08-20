@@ -6,24 +6,32 @@ import { TripDetailScreen } from "./screens/TripDetailScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
-import { getMobileSupabaseClient } from "./lib/supabase";
 
 export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const environment = useMemo(() => getMobileEnvironment(), []);
+  const accessToken = session?.access_token || null;
+  const authenticatedUserId = session?.user.id || null;
+  const sessionExists = Boolean(session);
   const apiClient = useMemo(
     () =>
       new MobileApiClient({
         baseUrl: environment.apiBaseUrl,
-        async getAccessToken() {
-          const {
-            data: { session: currentSession },
-          } = await getMobileSupabaseClient().auth.getSession();
-          return currentSession?.access_token || null;
+        getAuthState() {
+          return {
+            sessionExists,
+            accessToken,
+            authenticatedUserId,
+          };
         },
       }),
-    [environment.apiBaseUrl],
+    [
+      accessToken,
+      authenticatedUserId,
+      environment.apiBaseUrl,
+      sessionExists,
+    ],
   );
 
   if (isInitializing) return <AppLoading />;

@@ -21,6 +21,15 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function logMobileSession(event: string, session: Session | null) {
+  console.info("[VAIVIA mobile auth]", {
+    event,
+    sessionExists: Boolean(session),
+    accessTokenExists: Boolean(session?.access_token),
+    authenticatedUserId: session?.user.id || null,
+  });
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => getMobileSupabaseClient(), []);
   const [session, setSession] = useState<Session | null>(null);
@@ -33,12 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!isMounted) return;
+      logMobileSession(_event, nextSession);
       setSession(nextSession);
       setIsInitializing(false);
     });
 
     void supabase.auth.getSession().then(({ data }) => {
       if (!isMounted) return;
+      logMobileSession("INITIAL_SESSION_READ", data.session);
       setSession(data.session);
       setIsInitializing(false);
     });
@@ -55,11 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       isInitializing,
       async signInWithPassword(email, password) {
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
         });
         if (error) throw error;
+        logMobileSession("PASSWORD_SIGN_IN_COMPLETE", data.session);
+        if (!data.session?.access_token) {
+          throw new Error("VAIVIA could not establish an authenticated session.");
+        }
+        setSession(data.session);
+        setIsInitializing(false);
       },
       async signOut() {
         const { error } = await supabase.auth.signOut();

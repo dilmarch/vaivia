@@ -83,6 +83,10 @@ export async function authenticateMobileRequest(
   }
 
   const accessToken = getBearerToken(request);
+  console.info("[VAIVIA mobile API auth] request", {
+    requestUrl: request.url,
+    accessTokenExists: Boolean(accessToken),
+  });
   if (!accessToken) {
     return mobileJson(request, { error: "Unauthorized" }, { status: 401 });
   }
@@ -111,6 +115,13 @@ export async function authenticateMobileRequest(
     data: { user },
     error,
   } = await supabase.auth.getUser(accessToken);
+
+  console.info("[VAIVIA mobile API auth] validation", {
+    requestUrl: request.url,
+    sessionExists: Boolean(user),
+    accessTokenExists: Boolean(accessToken),
+    authenticatedUserId: user?.id || null,
+  });
 
   if (error || !user) {
     return mobileJson(request, { error: "Unauthorized" }, { status: 401 });
