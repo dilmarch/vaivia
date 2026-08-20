@@ -4,6 +4,7 @@ import { MobileAppChrome } from "./components/MobileAppChrome";
 import { useMobileAuth } from "./auth/AuthProvider";
 import { LoginScreen } from "./screens/LoginScreen";
 import { TripDetailScreen } from "./screens/TripDetailScreen";
+import { TripItineraryScreen } from "./screens/TripItineraryScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
@@ -12,6 +13,9 @@ import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
 export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [activeTripView, setActiveTripView] = useState<
+    "overview" | "itinerary"
+  >("overview");
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
   const environment = useMemo(() => getMobileEnvironment(), []);
   const accessToken = session?.access_token || null;
@@ -40,18 +44,33 @@ export default function App() {
   if (isInitializing) return <AppLoading />;
   if (!session) return <LoginScreen />;
 
+  function selectTrip(tripId: string) {
+    setSelectedTripId(tripId);
+    setActiveTripView("overview");
+  }
+
+  function openTrips() {
+    setSelectedTripId(null);
+    setActiveTripView("overview");
+  }
+
   const authenticatedScreen = selectedTripId ? (
+    activeTripView === "itinerary" ? (
+      <TripItineraryScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : (
       <TripDetailScreen
         apiClient={apiClient}
         tripId={selectedTripId}
+        onItinerary={() => setActiveTripView("itinerary")}
       />
+    )
   ) : (
     <TripsScreen
       apiClient={apiClient}
-      onSelectTrip={setSelectedTripId}
+      onSelectTrip={selectTrip}
       onTripsLoaded={setAvailableTrips}
       onSignOut={async () => {
-        setSelectedTripId(null);
+        openTrips();
         await signOut();
       }}
     />
@@ -64,16 +83,19 @@ export default function App() {
         apiClient={apiClient}
         trips={availableTrips}
         activeTripId={selectedTripId}
+        activeTripView={selectedTripId ? activeTripView : null}
         userEmail={session.user.email}
         userRole={
           typeof session.user.app_metadata?.role === "string"
             ? session.user.app_metadata.role
             : null
         }
-        onTrips={() => setSelectedTripId(null)}
-        onSelectTrip={setSelectedTripId}
+        onTrips={openTrips}
+        onSelectTrip={selectTrip}
+        onTripOverview={() => setActiveTripView("overview")}
+        onTripItinerary={() => setActiveTripView("itinerary")}
         onSignOut={async () => {
-          setSelectedTripId(null);
+          openTrips();
           await signOut();
         }}
       />

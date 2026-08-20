@@ -4,15 +4,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import Script from "next/script";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import {
-    AlertTriangle,
-    CalendarRange,
-    CalendarDays,
     ChevronLeft,
     ChevronRight,
-    Columns3,
     Copy,
     ExternalLink,
-    List,
     Lock,
     Pencil,
     Trash2,
@@ -28,6 +23,22 @@ import { AirlineIcon } from "@/components/AirlineIcon";
 import ItineraryItemForm from "@/components/ItineraryItemForm";
 import JourneyMap from "@/components/JourneyMap";
 import MoveTripItemButton from "@/components/MoveTripItemButton";
+import {
+    FlightDepartureBufferPresentation,
+    ItineraryEventCardPresentation,
+    type ItineraryCardPerson,
+} from "@/components/itinerary/ItineraryEventCardPresentation";
+import {
+    ItineraryCalendarFrame,
+    ItineraryHeaderPresentation,
+    ItineraryListPresentation,
+    ItineraryTimezoneCardPresentation,
+} from "@/components/itinerary/ItineraryListPresentation";
+import { StayCardPresentation } from "@/components/itinerary/StayCardPresentation";
+import {
+    TransportationCardPresentation,
+    type FlightCardPresentationData,
+} from "@/components/itinerary/TransportationCardPresentation";
 import SuggestedIdeasPanel from "@/components/SuggestedIdeasPanel";
 import { TrackFlightButton } from "@/components/TrackFlightButton";
 import TransportationEditForm from "@/components/TransportationEditForm";
@@ -1282,10 +1293,7 @@ function FlightListCard({
     const arrivalWarning =
         arrivalDayDifference > 0 && flight.arrivalDate
             ? {
-                  className:
-                      arrivalDayDifference >= 2
-                          ? "border-red-400/50 bg-red-500/15 text-red-100 shadow-[0_0_24px_rgba(239,68,68,0.14)]"
-                          : "border-amber-300/50 bg-amber-300/15 text-amber-100 shadow-[0_0_24px_rgba(251,191,36,0.14)]",
+                  tone: arrivalDayDifference >= 2 ? "danger" : "warning",
                   text:
                       arrivalDayDifference >= 2
                           ? `Flight arrives two days later on ${formatDateHeader(
@@ -1296,147 +1304,47 @@ function FlightListCard({
                             )}`,
               }
             : null;
-    const airlineTheme = getAirlineBrandTheme(flight.airlineCode);
-    const cardThemeStyle = {
-        "--airline-card-primary": airlineTheme.primary,
-        "--airline-card-accent": airlineTheme.accent,
-        "--airline-card-text": getReadableTextColor(airlineTheme.accent),
-        "--airline-card-primary-text": getReadableTextColor(airlineTheme.primary),
-        "--airline-card-muted": ensureReadableColor({
-            foreground: "#475569",
-            background: airlineTheme.accent,
-        }),
-        ...(isTentativeStatus(item.status)
-            ? getTentativeStripeStyle(airlineTheme.accent)
-            : {}),
-    } as CSSProperties;
+    const presentationFlight: FlightCardPresentationData = {
+        titleLabel: flight.titleLabel,
+        airlineCode: flight.airlineCode,
+        airlineName: flight.airlineName,
+        flightNumber: flight.flightNumber,
+        routeLabel: flight.routeLabel,
+        originName: flight.originName,
+        destinationName: flight.destinationName,
+        departureTimeLabel: formatTimeWithZone(
+            flight.departureTime,
+            flight.departureTimeZone,
+            flight.departureDate
+        ),
+        arrivalTimeLabel: formatTimeWithZone(
+            flight.arrivalTime,
+            flight.arrivalTimeZone,
+            flight.arrivalDate
+        ),
+        duration: flight.duration,
+        departureTerminal: flight.departureTerminal,
+        arrivalTerminal: flight.arrivalTerminal,
+        arrivalDateLabel,
+        arrivalWarning: arrivalWarning as FlightCardPresentationData["arrivalWarning"],
+    };
 
     return (
-        <div
-            data-itinerary-status={item.status.toLowerCase()}
-            style={cardThemeStyle}
-            className="vaivia-airline-branded-card relative rounded-md border border-white/70 border-l-[16px] border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)] shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md"
-        >
-            <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
-                {item.is_private ? <PrivateLockBadge compact iconOnly /> : null}
-                <span
-                    className={`w-fit rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                        item.status
-                    )}`}
-                >
-                    {formatStatusLabel(item.status)}
-                </span>
-            </div>
-            <button
-                type="button"
-                onClick={() => onOpen(item)}
-                className="w-full rounded-md p-4 pr-28 text-left focus:outline-none focus:ring-2 focus:ring-[var(--airline-card-primary)] focus:ring-offset-2"
-            >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex min-w-0 gap-3">
-                        <div className="flex shrink-0 items-center gap-2">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-md border border-white/70 bg-white/90 text-xl shadow-sm">
-                                ✈️
-                            </span>
-                            <AirlineLogo
-                                airlineCode={flight.airlineCode}
-                                airlineName={flight.airlineName}
-                                flightNumber={flight.flightNumber}
-                            />
-                        </div>
-                        <div className="min-w-0">
-                            <h3 className="vaivia-airline-card-text font-semibold text-[var(--airline-card-text)]">
-                                {flight.titleLabel}
-                            </h3>
-                            {flight.routeLabel && (
-                                <p className="vaivia-airline-card-muted mt-1 text-sm text-[var(--airline-card-muted)]">
-                                    {flight.routeLabel}
-                                </p>
-                            )}
-                            {item.reservation_code && (
-                                <div className="mt-2">
-                                    <ReservationCodeCopy
-                                        code={item.reservation_code}
-                                        compact
-                                        light
-                                    />
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 rounded-md border border-white/70 bg-white/85 p-3 text-sm shadow-sm sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                    <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Departure
-                        </p>
-                        <p className="mt-1 font-semibold text-slate-950">
-                            {formatTimeWithZone(
-                                flight.departureTime,
-                                flight.departureTimeZone,
-                                flight.departureDate
-                            )}
-                        </p>
-                        {flight.originName && (
-                            <p className="mt-1 text-xs text-slate-600">
-                                {flight.originName}
-                            </p>
-                        )}
-                        {flight.departureTerminal && (
-                            <p className="mt-1 text-xs font-medium text-slate-500">
-                                {flight.departureTerminal}
-                            </p>
-                        )}
-                    </div>
-
-                    {flight.duration && (
-                        <div className="vaivia-airline-card-primary-chip rounded-full bg-[var(--airline-card-primary)] px-3 py-1 text-center text-xs font-semibold text-[var(--airline-card-primary-text)] shadow-sm">
-                            {flight.duration}
-                        </div>
-                    )}
-
-                    <div className="sm:text-right">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Arrival
-                        </p>
-                        <p className="mt-1 font-semibold text-slate-950">
-                            {formatTimeWithZone(
-                                flight.arrivalTime,
-                                flight.arrivalTimeZone,
-                                flight.arrivalDate
-                            )}
-                        </p>
-                        {flight.destinationName && (
-                            <p className="mt-1 text-xs text-slate-600">
-                                {flight.destinationName}
-                            </p>
-                        )}
-                        {flight.arrivalTerminal && (
-                            <p className="mt-1 text-xs font-medium text-slate-500">
-                                {flight.arrivalTerminal}
-                            </p>
-                        )}
-                    </div>
-                </div>
-
-                {arrivalWarning ? (
-                    <div
-                        className={`mt-3 flex items-center gap-2 rounded-md border px-3 py-2 text-xs font-semibold ${arrivalWarning.className}`}
-                    >
-                        <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-                        <span>{arrivalWarning.text}</span>
-                    </div>
-                ) : (
-                    arrivalDateLabel && (
-                        <p className="vaivia-airline-card-muted mt-3 text-xs font-medium text-[var(--airline-card-muted)]">
-                            Arrives {arrivalDateLabel}
-                        </p>
-                    )
-                )}
-            </button>
-            <AssignedItemAvatars item={item} />
-            <div className="flex flex-wrap justify-start gap-2 px-4 pb-4 pr-20">
+        <TransportationCardPresentation
+            flight={presentationFlight}
+            status={item.status}
+            isPrivate={Boolean(item.is_private)}
+            people={getPresentationPeople(item)}
+            reservationCode={
+                item.reservation_code ? (
+                    <ReservationCodeCopy code={item.reservation_code} compact light />
+                ) : null
+            }
+            renderPrimaryAction={(props) => (
+                <button type="button" onClick={() => onOpen(item)} {...props} />
+            )}
+            actionRow={
+                <>
                 {flight.flightNumber && (
                     <TrackFlightButton
                         flightNumber={flight.flightNumber}
@@ -1453,8 +1361,9 @@ function FlightListCard({
                     className="min-h-8 px-3 py-1.5 text-xs"
                 />
                 <EventCardActions item={item} onOpen={onOpen} />
-            </div>
-        </div>
+                </>
+            }
+        />
     );
 }
 
@@ -1977,31 +1886,15 @@ function EventCard({
 }) {
     if (item.is_flight_departure_buffer) {
         return (
-            <div
-                data-flight-departure-buffer
-                className={`relative w-full overflow-hidden rounded-[1.25rem] border border-sky-300/25 border-l-[16px] border-l-sky-300 bg-sky-300/10 text-left text-white shadow-[0_18px_45px_rgba(0,0,0,0.22)] ${
-                    fillHeight ? "flex h-full flex-col justify-start" : ""
-                }`}
-            >
-                <div className={compact ? "p-3" : "p-4"}>
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-sky-200">
-                        {timeLabel ||
-                            `${formatTime(item.start_time)} - ${formatTime(
-                                item.end_time
-                            )}`}
-                    </p>
-                    <h3
-                        className={`mt-1 font-black ${
-                            compact ? "text-sm" : "text-base"
-                        }`}
-                    >
-                        Depart for airport
-                    </h3>
-                    <p className="mt-1 text-xs font-semibold text-slate-300">
-                        Four-hour flight buffer · {item.departure_location || "Airport"}
-                    </p>
-                </div>
-            </div>
+            <FlightDepartureBufferPresentation
+                timeLabel={
+                    timeLabel ||
+                    `${formatTime(item.start_time)} - ${formatTime(item.end_time)}`
+                }
+                departureLocation={item.departure_location}
+                compact={compact}
+                fillHeight={fillHeight}
+            />
         );
     }
 
@@ -2012,50 +1905,18 @@ function EventCard({
         }`;
 
         return (
-            <div
-                data-accommodation-hold={item.accommodation_hold_kind}
-                className={`relative w-full overflow-hidden rounded-[1.25rem] border border-lime-300/25 border-l-[16px] border-l-lime-300 bg-lime-300/10 text-left text-white shadow-[0_18px_45px_rgba(0,0,0,0.22)] ${
-                    fillHeight ? "flex h-full flex-col justify-start" : ""
-                }`}
-            >
-                <div
-                    className={`flex min-h-0 gap-3 ${
-                        compact ? "p-3" : "p-4"
-                    } ${fillHeight ? "flex-1" : ""}`}
-                >
-                    <span
-                        className={`flex shrink-0 items-center justify-center rounded-md border border-lime-200/25 bg-lime-300/10 ${
-                            compact ? "h-8 w-8 text-base" : "h-10 w-10 text-xl"
-                        }`}
-                        aria-hidden="true"
-                    >
-                        🏨
-                    </span>
-                    <div className="min-w-0 flex-1">
-                        <p className="text-xs font-bold uppercase tracking-wide text-lime-200">
-                            {timeLabel ||
-                                `${formatTime(item.start_time)} - ${formatTime(
-                                    item.end_time
-                                )}`}
-                        </p>
-                        <h3
-                            className={`mt-1 font-semibold text-white ${
-                                compact ? "text-sm" : "text-base"
-                            }`}
-                        >
-                            {item.title}
-                        </h3>
-                        {!compact && item.location ? (
-                            <p className="mt-1 text-xs text-slate-300">
-                                {item.location}
-                            </p>
-                        ) : null}
-                        {!compact ? (
-                            <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-lime-200/75">
-                                Synced from stay details
-                            </p>
-                        ) : null}
-                        <div className={`${compact ? "mt-2" : "mt-3"} flex flex-wrap gap-2`}>
+            <StayCardPresentation
+                kind={item.accommodation_hold_kind}
+                title={item.title}
+                timeLabel={
+                    timeLabel ||
+                    `${formatTime(item.start_time)} - ${formatTime(item.end_time)}`
+                }
+                location={item.location}
+                compact={compact}
+                fillHeight={fillHeight}
+                actionRow={
+                    <>
                             <button
                                 type="button"
                                 onClick={() => onOpen(item)}
@@ -2073,10 +1934,9 @@ function EventCard({
                                     Location
                                 </a>
                             ) : null}
-                        </div>
-                    </div>
-                </div>
-            </div>
+                    </>
+                }
+            />
         );
     }
 
@@ -2234,172 +2094,58 @@ function EventCard({
         );
     }
 
-    return (
-        <div
-            data-itinerary-status={item.status.toLowerCase()}
-            style={
-                flightCardThemeStyle ||
-                ({
-                    borderLeftColor: getItemCategoryColor(item),
-                } as CSSProperties)
-            }
-            className={`w-full border-l-[16px] text-left ${
-                flightDisplay
-                    ? "border-l-[var(--airline-card-primary)] bg-[var(--airline-card-accent)] text-[var(--airline-card-text)]"
-                    : "bg-[#080b16]/95 text-white"
-            } ${
-                fillHeight ? "flex h-full flex-col justify-start overflow-hidden" : ""
-            } relative rounded-[1.25rem] border border-white/10 shadow-[0_18px_45px_rgba(0,0,0,0.28)] transition duration-200 hover:-translate-y-0.5 hover:border-lime-300/20 hover:shadow-[0_24px_60px_rgba(0,0,0,0.38)]`}
+    const leadingVisual = isFlightTransportationItem(item) ? (
+        <AirlineLogo
+            airlineCode={item.airline_code}
+            airlineName={item.airline_name}
+            flightNumber={item.flight_number}
+            compact={compact}
+        />
+    ) : transportationEmoji ? (
+        <span
+            className={`flex shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.08] shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.10)] ${
+                compact ? "h-8 w-8 text-base" : "h-10 w-10 text-xl"
+            }`}
         >
-            <div className="absolute right-3 top-3 z-10 flex shrink-0 flex-wrap justify-end gap-2">
-                {item.is_private ? <PrivateLockBadge compact iconOnly /> : null}
-                <span
-                    className={`rounded-md border px-2 py-1 text-xs font-medium ${getStatusClasses(
-                        item.status
-                    )}`}
-                >
-                    {formatStatusLabel(item.status)}
-                </span>
-            </div>
-            <button
-                type="button"
-                onClick={() => onOpen(item)}
-                className={`w-full p-3 pr-28 text-left focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${
-                    fillHeight
-                        ? "flex min-h-0 flex-1 flex-col justify-start overflow-hidden"
-                        : ""
-                }`}
-            >
-            <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
-                <div className="flex min-w-0 gap-3">
-                    {flightDisplay && compact ? (
-                        <FlightIconStack flight={flightDisplay} />
-                    ) : isFlightTransportationItem(item) ? (
-                        <AirlineLogo
-                            airlineCode={item.airline_code}
-                            airlineName={item.airline_name}
-                            flightNumber={item.flight_number}
-                            compact={compact}
-                        />
-                    ) : (
-                        transportationEmoji && (
-                            <span
-                                className={`flex shrink-0 items-center justify-center rounded-md border ${
-                                    flightDisplay
-                                        ? "border-slate-200 bg-slate-50"
-                                        : "border-white/10 bg-white/[0.08] shadow-[0_0_20px_rgba(var(--vaivia-neon-rgb),0.10)]"
-                                } ${
-                                    compact ? "h-8 w-8 text-base" : "h-10 w-10 text-xl"
-                                }`}
-                            >
-                                {transportationEmoji}
-                            </span>
-                        )
-                    )}
-                    <div className="min-w-0">
-                    <p
-                        className={`text-xs font-medium ${
-                            flightDisplay
-                                ? "text-[var(--airline-card-muted)]"
-                                : "text-lime-200/80"
-                        }`}
-                    >
-                        {actualTransportationTimeLabel ||
-                            timeLabel ||
-                            `${formatTime(item.start_time)}${
-                                item.end_time ? ` - ${formatTime(item.end_time)}` : ""
-                            }`}
-                    </p>
-                    {transportationDepartureLabel && (
-                        <p
-                            className={`mt-1 text-sm font-semibold ${
-                                flightDisplay
-                                    ? "text-[var(--airline-card-text)]"
-                                    : "text-white"
-                            }`}
-                        >
-                            Departs {transportationDepartureLabel}
-                        </p>
-                    )}
-                    <h3
-                        className={`mt-1 font-semibold ${
-                            flightDisplay
-                                ? "text-[var(--airline-card-text)]"
-                                : "text-white"
-                        } ${
-                            compact ? "text-sm" : "text-base"
-                        }`}
-                    >
-                        {item.title}
-                    </h3>
-                    {item.location && (
-                        <p
-                            className={`mt-1 truncate text-xs ${
-                                flightDisplay
-                                    ? "text-[var(--airline-card-muted)]"
-                                    : "text-slate-300"
-                            }`}
-                        >
-                            {item.location}
-                        </p>
-                    )}
-                    {item.category === "transportation" && item.reservation_code && (
-                        <div className="mt-2">
-                            <ReservationCodeCopy
-                                code={item.reservation_code}
-                                compact={compact}
-                                light={Boolean(flightDisplay)}
-                            />
-                        </div>
-                    )}
-                    </div>
-                </div>
-            </div>
+            {transportationEmoji}
+        </span>
+    ) : null;
 
-            {!compact && (
-                <>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-md border border-white/10 bg-white/[0.08] px-2 py-1 text-xs font-bold uppercase tracking-wide text-slate-200">
-                            {getItemCategoryLabel(item)}
-                        </span>
-                    </div>
-
-                    {(!hideTimezone || item.category === "transportation") &&
-                        item.timezone && (
-                        <p className="mt-2 text-xs text-slate-400">{item.timezone}</p>
-                    )}
-
-                    {noteLines && noteLines.length > 0 && (
-                        <div
-                            className={`mt-3 space-y-1 text-sm leading-6 ${
-                                item.category === "transportation"
-                                    ? "rounded-md border border-white/10 bg-white/[0.06] p-3 text-slate-300"
-                                    : "text-slate-300"
-                            }`}
-                        >
-                            {noteLines.map((line, index) => (
-                                <p
-                                    key={`${line}-${index}`}
-                                    className={
-                                        line.endsWith(":")
-                                            ? "pt-1 text-xs font-semibold uppercase tracking-wide text-lime-200/80 first:pt-0"
-                                            : ""
-                                    }
-                                >
-                                    {line}
-                                </p>
-                            ))}
-                        </div>
-                    )}
-
-                </>
+    return (
+        <ItineraryEventCardPresentation
+            title={item.title}
+            status={item.status}
+            timeLabel={
+                actualTransportationTimeLabel ||
+                timeLabel ||
+                `${formatTime(item.start_time)}${
+                    item.end_time ? ` - ${formatTime(item.end_time)}` : ""
+                }`
+            }
+            categoryLabel={getItemCategoryLabel(item)}
+            categoryColor={getItemCategoryColor(item)}
+            location={item.location}
+            timezone={item.timezone}
+            noteLines={noteLines}
+            leadingVisual={leadingVisual}
+            isTransportation={item.category === "transportation"}
+            isPrivate={Boolean(item.is_private)}
+            people={getPresentationPeople(item)}
+            compact={compact}
+            fillHeight={fillHeight}
+            hideTimezone={hideTimezone}
+            reservationCode={
+                item.category === "transportation" && item.reservation_code ? (
+                    <ReservationCodeCopy code={item.reservation_code} compact={compact} />
+                ) : null
+            }
+            renderPrimaryAction={(props) => (
+                <button type="button" onClick={() => onOpen(item)} {...props} />
             )}
-            </button>
-            <AssignedItemAvatars item={item} />
-            <div className={compact ? "px-2 pb-2 pr-16" : "px-3 pb-3 pr-16"}>
+            actionRow={
                 <EventCardActions item={item} compact={compact} onOpen={onOpen} />
-            </div>
-        </div>
+            }
+        />
     );
 }
 
@@ -2517,6 +2263,25 @@ function TransportationAudienceText({
 
 function getAssignedItemPeople(item: ItineraryCalendarItem) {
     return getItemPeople(item);
+}
+
+function getPresentationPeople(
+    item: ItineraryCalendarItem
+): ItineraryCardPerson[] {
+    return getAssignedItemPeople(item).map((person, index) => {
+        const name = person.name || person.guest_name || "Traveller";
+        return {
+            id: `${person.type}:${
+                person.user_id ||
+                person.family_member_id ||
+                person.guest_name ||
+                index
+            }`,
+            name,
+            avatarUrl: person.avatar_url || null,
+            initials: getInitials(name),
+        };
+    });
 }
 
 function AssignedItemAvatars({ item }: { item: ItineraryCalendarItem }) {
@@ -3264,17 +3029,6 @@ function ItineraryItemModal({
     );
 }
 
-function EmptyState() {
-    return (
-        <div className="rounded-md border border-dashed border-slate-300 p-8 text-center">
-            <h3 className="text-lg font-medium text-slate-900">No itinerary items yet</h3>
-            <p className="mt-2 text-sm text-slate-500">
-                Add flights, work obligations, activities, or loose ideas.
-            </p>
-        </div>
-    );
-}
-
 function ListView({
     groupedPastEvents,
     groupedEarlierItems,
@@ -3288,130 +3042,23 @@ function ListView({
     hasFutureItems: boolean;
     onOpenItem: (item: ItineraryCalendarItem) => void;
 }) {
-    const pastDateKeys = Object.keys(groupedPastEvents);
-    const earlierDateKeys = Object.keys(groupedEarlierItems);
-    const upcomingDateKeys = Object.keys(groupedUpcomingItems);
-    const [showPastEvents, setShowPastEvents] = useState(false);
-    const pastEventCount = pastDateKeys.reduce(
-        (count, dateKey) => count + groupedPastEvents[dateKey].length,
-        0
-    );
-
-    if (
-        pastDateKeys.length === 0 &&
-        earlierDateKeys.length === 0 &&
-        upcomingDateKeys.length === 0
-    ) {
-        return <EmptyState />;
-    }
-
     return (
-        <div className="space-y-6">
-            {pastDateKeys.length > 0 && (
-                <div>
-                    <button
-                        type="button"
-                        onClick={() => setShowPastEvents((isVisible) => !isVisible)}
-                        className="inline-flex items-center rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-bold uppercase tracking-wide text-slate-300 shadow-sm transition hover:border-white/20 hover:bg-white/[0.10] hover:text-white focus:outline-none focus:ring-2 focus:ring-slate-400/40"
-                        aria-expanded={showPastEvents}
-                    >
-                        {showPastEvents ? "Hide Past Items" : "Show Past Items"}
-                        {pastEventCount > 0 ? ` (${pastEventCount})` : ""}
-                    </button>
-
-                    <div
-                        className={`grid transition-all duration-300 ease-out ${
-                            showPastEvents
-                                ? "mt-4 grid-rows-[1fr] opacity-100"
-                                : "grid-rows-[0fr] opacity-0"
-                        }`}
-                    >
-                        <div className="min-h-0 overflow-hidden">
-                            <div
-                                className={`space-y-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20 transition-transform duration-300 ease-out ${
-                                    showPastEvents ? "translate-y-0" : "-translate-y-2"
-                                }`}
-                            >
-                                <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
-                                    Past events
-                                </p>
-                                {pastDateKeys.map((dateKey) => (
-                                    <section key={dateKey} className="space-y-3">
-                                        <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
-                                            {formatDateHeader(dateKey)}
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {groupedPastEvents[dateKey].map((entry) => (
-                                                <EventCard
-                                                    key={entry.item.id}
-                                                    item={entry.item}
-                                                    hideTimezone
-                                                    timeLabel={entry.timeLabel}
-                                                    onOpen={onOpenItem}
-                                                />
-                                            ))}
-                                        </div>
-                                    </section>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <ItineraryListPresentation
+            groupedPastEvents={groupedPastEvents}
+            groupedEarlierItems={groupedEarlierItems}
+            groupedUpcomingItems={groupedUpcomingItems}
+            hasFutureItems={hasFutureItems}
+            formatDateHeader={formatDateHeader}
+            renderEntry={(entry) => (
+                <EventCard
+                    key={entry.item.id}
+                    item={entry.item}
+                    hideTimezone
+                    timeLabel={entry.timeLabel}
+                    onOpen={onOpenItem}
+                />
             )}
-
-            <div className="space-y-6">
-                {earlierDateKeys.length > 0 && (
-                    <div className="space-y-4 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4 shadow-2xl shadow-black/20">
-                        <p className="text-xs font-bold uppercase tracking-[0.22em] text-slate-400">
-                            Earlier events
-                        </p>
-                        {earlierDateKeys.map((dateKey) => (
-                            <section key={dateKey} className="space-y-3">
-                                <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
-                                    {formatDateHeader(dateKey)}
-                                </h3>
-                                <div className="space-y-3">
-                                    {groupedEarlierItems[dateKey].map((entry) => (
-                                        <EventCard
-                                            key={entry.item.id}
-                                            item={entry.item}
-                                            hideTimezone
-                                            timeLabel={entry.timeLabel}
-                                            onOpen={onOpenItem}
-                                        />
-                                    ))}
-                                </div>
-                            </section>
-                        ))}
-                    </div>
-                )}
-
-                {upcomingDateKeys.map((dateKey) => (
-                    <section key={dateKey} className="space-y-3">
-                        <h3 className="border-b border-lime-300/20 pb-3 text-2xl font-black tracking-tight text-lime-300">
-                            {formatDateHeader(dateKey)}
-                        </h3>
-                        <div className="space-y-3">
-                            {groupedUpcomingItems[dateKey].map((entry) => (
-                                <EventCard
-                                    key={entry.item.id}
-                                    item={entry.item}
-                                    hideTimezone
-                                    timeLabel={entry.timeLabel}
-                                    onOpen={onOpenItem}
-                                />
-                            ))}
-                        </div>
-                    </section>
-                ))}
-            </div>
-
-            {hasFutureItems && (
-                <div className="rounded-md border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
-                    Loading more as you scroll...
-                </div>
-            )}
-        </div>
+        />
     );
 }
 
@@ -4745,155 +4392,65 @@ export default function ItineraryCalendar({
         const isActive = activeTimezone === option.timezone;
 
         return (
-            <button
+            <ItineraryTimezoneCardPresentation
                 key={option.key}
-                type="button"
                 title={`${option.metadataLabel}: ${option.cityLabel}, ${option.timezone}`}
-                aria-pressed={isActive}
-                data-form-type="other"
-                data-lpignore="true"
-                data-1p-ignore="true"
-                onClick={() => changeActiveTimezone(option.timezone)}
-                className={`min-h-20 rounded-2xl border px-3 py-2 text-left transition hover:bg-white/10 ${
-                    isActive
-                        ? "border-lime-300/40 bg-lime-300 text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)]"
-                        : "border-white/10 bg-white/[0.06] text-slate-300 hover:text-white"
-                }`}
-            >
-                <span className="block truncate text-sm font-semibold">
-                    {option.cityLabel}
-                </span>
-                <span className={`mt-0.5 block truncate text-[11px] ${isActive ? "text-slate-700" : "text-slate-400"}`}>
-                    {getTimezoneGmtOffsetLabel(option.timezone, selectedTimezoneDate)}
-                </span>
-                <span className={`mt-1 block text-[10px] font-bold uppercase leading-tight ${isActive ? "text-slate-700" : "text-slate-500"}`}>
-                    {option.metadataLabel}
-                </span>
-                <span className={`mt-2 inline-flex rounded-full px-2 py-1 text-[11px] font-bold ${isActive ? "bg-slate-950 text-white" : "bg-white/10 text-slate-300"}`}>
-                    {getTimezoneOffsetLabel(
-                        option.timezone,
-                        activeTimezone,
-                        selectedTimezoneDate
-                    )}
-                </span>
-            </button>
+                cityLabel={option.cityLabel}
+                gmtOffsetLabel={getTimezoneGmtOffsetLabel(
+                    option.timezone,
+                    selectedTimezoneDate
+                )}
+                metadataLabel={option.metadataLabel}
+                relativeOffsetLabel={getTimezoneOffsetLabel(
+                    option.timezone,
+                    activeTimezone,
+                    selectedTimezoneDate
+                )}
+                isActive={isActive}
+                onSelect={() => changeActiveTimezone(option.timezone)}
+            />
         );
     }
 
     return (
-        <section className="vaivia-itinerary-calendar overflow-hidden rounded-[2rem] border border-white/10 bg-[#03030a] text-white shadow-2xl shadow-black/30">
-            <Script
+        <ItineraryCalendarFrame
+            beforeHeader={<Script
                 src={`https://maps.googleapis.com/maps/api/js?key=${process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}&libraries=places`}
                 strategy="afterInteractive"
                 onLoad={() => setIsGoogleReady(true)}
                 onReady={() => setIsGoogleReady(true)}
-            />
-
-            <div className="border-b border-white/10 bg-[radial-gradient(circle_at_85%_0%,rgba(255,54,190,0.18),transparent_26%),radial-gradient(circle_at_8%_100%,rgba(var(--vaivia-neon-soft-rgb),0.10),transparent_28%),linear-gradient(120deg,rgba(124,60,255,0.12),transparent_42%)] p-4 sm:p-6">
-                <div className="flex flex-col gap-4">
-                    <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.55em] text-lime-200/80">
-                            Travel plan
-                        </p>
-                        <h2 className="mt-2 text-3xl font-black text-white">
-                            {title}
-                        </h2>
-                    </div>
-
-                    {!listOnly && (
-                        <div className="flex flex-col gap-3">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div className="grid grid-cols-4 rounded-full border border-white/10 bg-white/[0.06] p-1 shadow-inner shadow-black/20">
-                                    {[
-                                        { key: "list", label: "List", icon: List },
-                                        { key: "day", label: "Day", icon: CalendarDays },
-                                        { key: "week", label: "Week", icon: Columns3 },
-                                        {
-                                            key: "month",
-                                            label: "Month",
-                                            icon: CalendarRange,
-                                        },
-                                    ].map(({ key, label, icon: Icon }) => (
-                                        <button
-                                            key={key}
-                                            type="button"
-                                            onClick={() =>
-                                                changeView(key as CalendarView)
-                                            }
-                                            className={`flex min-h-9 items-center justify-center gap-2 rounded-full px-3 text-sm font-black uppercase tracking-wide transition ${
-                                                view === key
-                                                    ? "bg-lime-300 text-slate-950 shadow-[0_0_26px_rgba(var(--vaivia-neon-rgb),0.20)]"
-                                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                                            }`}
-                                        >
-                                            <Icon
-                                                className="h-4 w-4"
-                                                aria-hidden="true"
-                                            />
-                                            {label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <label className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 text-sm font-bold text-slate-200">
-                                    <span>Date</span>
-                                    <DateInput
-                                        id="itineraryViewDate"
-                                        name="itineraryViewDate"
-                                        autoComplete="off"
-                                        data-form-type="other"
-                                        data-lpignore="true"
-                                        data-1p-ignore="true"
-                                        value={
-                                            effectiveView === "list"
-                                                ? getLocalDateKey(listStartDate)
-                                                : getLocalDateKey(anchorDate)
-                                        }
-                                        onChange={(event) =>
-                                            selectDate(event.target.value)
-                                        }
-                                        className="bg-transparent text-sm text-white outline-none [color-scheme:dark]"
-                                    />
-                                </label>
-
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={shiftBackward}
-                                        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/10"
-                                        aria-label="Previous"
-                                    >
-                                        <ChevronLeft
-                                            className="h-4 w-4"
-                                            aria-hidden="true"
-                                        />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={goToToday}
-                                        className="h-9 rounded-full bg-lime-300 px-4 text-xs font-black uppercase tracking-wide text-slate-950 shadow-[0_0_24px_rgba(var(--vaivia-neon-rgb),0.18)] transition hover:bg-lime-200"
-                                    >
-                                        TODAY
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={shiftForward}
-                                        className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.06] text-white transition hover:bg-white/10"
-                                        aria-label="Next"
-                                    >
-                                        <ChevronRight
-                                            className="h-4 w-4"
-                                            aria-hidden="true"
-                                        />
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.05] p-3 shadow-inner shadow-black/20">
-                                <p className="mb-3 text-sm font-black uppercase tracking-wide text-white">
-                                    Viewing time zone
-                                </p>
-                                <div className="grid grid-cols-3 gap-2 lg:grid-cols-[minmax(220px,280px)_1fr] lg:gap-3">
+            />}
+            header={
+                <ItineraryHeaderPresentation
+                    title={title}
+                    activeView={view}
+                    onViewChange={(nextView) => changeView(nextView)}
+                    listOnly={listOnly}
+                    dateControl={
+                        <label className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 text-sm font-bold text-slate-200">
+                            <span>Date</span>
+                            <DateInput
+                                id="itineraryViewDate"
+                                name="itineraryViewDate"
+                                autoComplete="off"
+                                data-form-type="other"
+                                data-lpignore="true"
+                                data-1p-ignore="true"
+                                value={
+                                    effectiveView === "list"
+                                        ? getLocalDateKey(listStartDate)
+                                        : getLocalDateKey(anchorDate)
+                                }
+                                onChange={(event) => selectDate(event.target.value)}
+                                className="bg-transparent text-sm text-white outline-none [color-scheme:dark]"
+                            />
+                        </label>
+                    }
+                    onPrevious={shiftBackward}
+                    onToday={goToToday}
+                    onNext={shiftForward}
+                    timezoneContent={
+                        <div className="grid grid-cols-3 gap-2 lg:grid-cols-[minmax(220px,280px)_1fr] lg:gap-3">
                                     <section className="contents lg:block">
                                         <p className="mb-2 hidden text-[11px] font-bold uppercase tracking-wide text-slate-400 lg:block">
                                             Current location
@@ -4911,12 +4468,11 @@ export default function ItineraryCalendar({
                                             )}
                                         </div>
                                     </section>
-                                </div>
-                            </div>
                         </div>
-                    )}
-                </div>
-            </div>
+                    }
+                />
+            }
+        >
 
             <div
                 key={`${effectiveView}-${motionKey}`}
@@ -5117,6 +4673,6 @@ export default function ItineraryCalendar({
                     currentUserTripMemberId={currentUserTripMemberId}
                 />
             )}
-        </section>
+        </ItineraryCalendarFrame>
     );
 }

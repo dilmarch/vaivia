@@ -44,10 +44,13 @@ type MobileAppChromeProps = {
   apiClient: MobileApiClient;
   trips: MobileTripSummary[];
   activeTripId: string | null;
+  activeTripView: "overview" | "itinerary" | null;
   userEmail?: string | null;
   userRole?: string | null;
   onTrips: () => void;
   onSelectTrip: (tripId: string) => void;
+  onTripOverview: () => void;
+  onTripItinerary: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -126,10 +129,13 @@ export function MobileAppChrome({
   apiClient,
   trips,
   activeTripId,
+  activeTripView,
   userEmail,
   userRole,
   onTrips,
   onSelectTrip,
+  onTripOverview,
+  onTripItinerary,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -236,9 +242,22 @@ export function MobileAppChrome({
   const destinations = activeTripId
     ? TRIP_DESTINATIONS.map((destination, index) => ({
         ...destination,
-        active: index === 0,
-        supported: index === 0,
-        action: index === 0 ? () => selectTrip(activeTripId) : undefined,
+        active:
+          (index === 0 && activeTripView === "overview") ||
+          (index === 1 && activeTripView === "itinerary"),
+        supported: index === 0 || index === 1,
+        action:
+          index === 0
+            ? () => {
+                closeMenus();
+                onTripOverview();
+              }
+            : index === 1
+              ? () => {
+                  closeMenus();
+                  onTripItinerary();
+                }
+              : undefined,
       }))
     : baseDestinations;
   const unreadCount = notifications.filter(

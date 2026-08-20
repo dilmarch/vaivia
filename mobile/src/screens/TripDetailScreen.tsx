@@ -34,6 +34,7 @@ import type { MobileApiClient } from "../lib/apiClient";
 type TripDetailScreenProps = {
   apiClient: MobileApiClient;
   tripId: string;
+  onItinerary?: () => void;
 };
 
 function formatMoney(amount: number, currency: string) {
@@ -51,6 +52,7 @@ function OverviewTile({
   buttonLabel,
   children,
   alignTop = false,
+  onAction,
 }: {
   title: string;
   description: string;
@@ -58,6 +60,7 @@ function OverviewTile({
   buttonLabel: string;
   children?: ReactNode;
   alignTop?: boolean;
+  onAction?: () => void;
 }) {
   return (
     <TripOverviewTilePresentation
@@ -65,15 +68,24 @@ function OverviewTile({
       description={description}
       icon={icon}
       buttonLabel={buttonLabel}
-      disabled
+      disabled={!onAction}
       alignTop={alignTop}
+      renderAction={
+        onAction
+          ? (props) => <button type="button" onClick={onAction} {...props} />
+          : undefined
+      }
     >
       {children}
     </TripOverviewTilePresentation>
   );
 }
 
-export function TripDetailScreen({ apiClient, tripId }: TripDetailScreenProps) {
+export function TripDetailScreen({
+  apiClient,
+  tripId,
+  onItinerary,
+}: TripDetailScreenProps) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -243,6 +255,7 @@ export function TripDetailScreen({ apiClient, tripId }: TripDetailScreenProps) {
               description="Schedule the days, tickets, and timed plans."
               icon={CalendarCheck}
               buttonLabel="Visit itinerary"
+              onAction={onItinerary}
             />
             <OverviewTile
               title="Trip Ideas"

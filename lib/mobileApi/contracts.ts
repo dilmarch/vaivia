@@ -29,6 +29,13 @@ export type MobileTripSummary = Pick<
   }[];
 };
 
+export type MobileItineraryPerson = {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  initials: string;
+};
+
 export type MobileItineraryItem = Pick<
   ItineraryItemRow,
   | "id"
@@ -43,8 +50,30 @@ export type MobileItineraryItem = Pick<
   | "location"
   | "notes"
   | "cover_image_url"
+  | "timezone"
+  | "is_private"
+  | "audience_mode"
 > & {
   source: "itinerary" | "transportation";
+  source_id: string;
+  category_id?: string | null;
+  category_name: string;
+  category_color_hex: string;
+  transportation_mode?: string | null;
+  airline_name?: string | null;
+  airline_code?: string | null;
+  flight_number?: string | null;
+  reservation_code?: string | null;
+  duration?: string | null;
+  departure_location?: string | null;
+  arrival_location?: string | null;
+  departure_timezone?: string | null;
+  arrival_timezone?: string | null;
+  departure_terminal?: string | null;
+  arrival_terminal?: string | null;
+  accommodation_hold_kind?: "check_in" | "check_out" | null;
+  is_flight_departure_buffer?: boolean;
+  people: MobileItineraryPerson[];
 };
 
 export type MobileTripsResponse = {
@@ -62,6 +91,7 @@ export type MobileTripDetailResponse = {
     >;
   overview: MobileTripOverview;
   itinerary: MobileItineraryItem[];
+  itineraryTimezones: string[];
 };
 
 export type MobileTripOverviewLocation = {

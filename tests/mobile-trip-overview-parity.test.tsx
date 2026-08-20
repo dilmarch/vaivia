@@ -64,9 +64,17 @@ const detail: MobileTripDetailResponse = {
       location: "Airport",
       notes: null,
       cover_image_url: null,
+      timezone: null,
+      is_private: false,
+      audience_mode: "everyone",
       source: "transportation",
+      source_id: "item-1",
+      category_name: "Transportation",
+      category_color_hex: "#38bdf8",
+      people: [],
     },
   ],
+  itineraryTimezones: [],
 };
 
 afterEach(() => cleanup());

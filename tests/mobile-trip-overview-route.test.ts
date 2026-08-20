@@ -52,7 +52,30 @@ describe("mobile trip overview route", () => {
         },
         error: null,
       },
-      itinerary_items: { data: [], error: null },
+      itinerary_items: {
+        data: [
+          {
+            id: "itinerary-1",
+            trip_id: "trip-1",
+            title: "Old Montreal walking tour",
+            item_date: "2026-09-11",
+            end_date: null,
+            start_time: "10:00:00",
+            end_time: "12:00:00",
+            category: "activity",
+            category_id: "category-1",
+            status: "confirmed",
+            location: "Old Montreal",
+            notes: "Meet at the square.",
+            cover_image_url: null,
+            timezone: "America/Toronto",
+            is_private: false,
+            audience_mode: "custom",
+            sort_order: 0,
+          },
+        ],
+        error: null,
+      },
       transportation_items: {
         data: [
           {
@@ -70,6 +93,16 @@ describe("mobile trip overview route", () => {
             status: "confirmed",
             notes: null,
             sort_order: 0,
+            departure_timezone: "America/St_Johns",
+            arrival_timezone: "America/Toronto",
+            departure_terminal: "Terminal 1",
+            arrival_terminal: "Terminal A",
+            provider_name: "Air Canada",
+            provider_code: "AC",
+            reservation_code: "ABC123",
+            is_private: false,
+            audience_mode: "everyone",
+            itinerary_item_id: null,
           },
         ],
         error: null,
@@ -85,6 +118,16 @@ describe("mobile trip overview route", () => {
             country: "Canada",
             check_in_date: "2026-09-10",
             check_out_date: "2026-09-14",
+            check_in_time_start: "15:00:00",
+            check_in_time_end: "18:00:00",
+            check_out_time: "11:00:00",
+            address: "900 Rue de la Gauchetière O",
+            google_maps_url: null,
+            google_place_id: null,
+            accommodation_type: "hotel",
+            is_private: false,
+            audience_mode: "everyone",
+            trip_id: "trip-1",
           },
         ],
         error: null,
@@ -174,6 +217,29 @@ describe("mobile trip overview route", () => {
         ],
         error: null,
       },
+      user_categories: {
+        data: [{ id: "category-1", name: "Sightseeing", color_key: "pink" }],
+        error: null,
+      },
+      category_color_options: {
+        data: [{ key: "pink", hex: "#ff3ca6" }],
+        error: null,
+      },
+      trip_item_participants: {
+        data: [
+          {
+            item_type: "itinerary",
+            item_id: "itinerary-1",
+            participant_kind: "member",
+            trip_member_id: "member-1",
+            invitation_id: null,
+            family_member_id: null,
+            guest_name: null,
+            user_id: "user-123",
+          },
+        ],
+        error: null,
+      },
     };
     const from = vi.fn((table: string) => {
       const result = tableResults[table] || { data: [], error: null };
@@ -223,7 +289,34 @@ describe("mobile trip overview route", () => {
         },
       },
       itinerary: expect.any(Array),
+      itineraryTimezones: expect.arrayContaining([
+        "America/St_Johns",
+        "America/Toronto",
+      ]),
     });
+
+    const body = await (await GET(request, {
+      params: Promise.resolve({ tripId: "trip-1" }),
+    })).json();
+    expect(body.itinerary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "itinerary-1",
+          category_name: "Sightseeing",
+          category_color_hex: "#ff3ca6",
+          people: [expect.objectContaining({ name: "Alex Rivera" })],
+        }),
+        expect.objectContaining({
+          id: "transportation:transport-1",
+          airline_name: "Air Canada",
+          airline_code: "AC",
+          reservation_code: "ABC123",
+        }),
+        expect.objectContaining({ is_flight_departure_buffer: true }),
+        expect.objectContaining({ accommodation_hold_kind: "check_in" }),
+        expect.objectContaining({ accommodation_hold_kind: "check_out" }),
+      ]),
+    );
   });
 
   it("preserves bearer authentication and CORS preflight behavior", async () => {

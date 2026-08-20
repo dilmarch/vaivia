@@ -50,9 +50,12 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     apiClient: createApiClient(),
     trips: [trip],
     activeTripId: null,
+    activeTripView: null,
     userEmail: "traveler@example.com",
     onTrips: vi.fn(),
     onSelectTrip: vi.fn(),
+    onTripOverview: vi.fn(),
+    onTripItinerary: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -118,8 +121,13 @@ describe("mobile navigation chrome parity", () => {
     expect(screen.getByRole("button", { name: "Account" })).toBeEnabled();
   });
 
-  it("shows the exact trip-context item order and active overview state", () => {
-    renderChrome({ activeTripId: trip.id });
+  it("shows the exact trip-context item order and enables overview and itinerary", () => {
+    const onTripItinerary = vi.fn();
+    renderChrome({
+      activeTripId: trip.id,
+      activeTripView: "overview",
+      onTripItinerary,
+    });
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
 
     const navigation = screen.getByRole("navigation", {
@@ -131,7 +139,7 @@ describe("mobile navigation chrome parity", () => {
 
     expect(labels.slice(0, 9)).toEqual([
       "Trip overview",
-      "Itinerary coming soon",
+      "Itinerary",
       "Trip Ideas coming soon",
       "Budget coming soon",
       "Transport coming soon",
@@ -144,6 +152,9 @@ describe("mobile navigation chrome parity", () => {
       "aria-current",
       "page",
     );
+    expect(screen.getByRole("button", { name: "Itinerary" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Itinerary" }));
+    expect(onTripItinerary).toHaveBeenCalledOnce();
   });
 
   it("supports trips, account sign-out, search input, and outside-click closing", () => {
