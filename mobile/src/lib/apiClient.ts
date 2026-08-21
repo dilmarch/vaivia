@@ -1,5 +1,6 @@
 import type {
   MobileApiErrorResponse,
+  MobileNotificationHistoryResponse,
   MobileNotificationsResponse,
   MobileTripDetailResponse,
   MobileTripsResponse,
@@ -40,7 +41,10 @@ export class MobileApiClient {
     this.fetchImplementation = options.fetchImplementation ?? defaultFetch;
   }
 
-  private async request<T>(path: string, signal?: AbortSignal): Promise<T> {
+  async requestAuthenticated(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<Response> {
     const requestUrl = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
     const authState = await this.getAuthState();
     const accessToken = authState.accessToken;
@@ -58,13 +62,12 @@ export class MobileApiClient {
 
     let response: Response;
     try {
+      const headers = new Headers(init.headers);
+      if (!headers.has("Accept")) headers.set("Accept", "application/json");
+      headers.set("Authorization", `Bearer ${accessToken}`);
       response = await this.fetchImplementation(requestUrl, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        signal,
+        ...init,
+        headers,
       });
     } catch (error) {
       console.error("[VAIVIA mobile API] response", {
@@ -77,6 +80,20 @@ export class MobileApiClient {
       throw error;
     }
 
+    console.info("[VAIVIA mobile API] response", {
+      requestUrl,
+      httpResponseStatus: response.status,
+    });
+
+    return response;
+  }
+
+  private async request<T>(path: string, signal?: AbortSignal): Promise<T> {
+    const requestUrl = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
+    const response = await this.requestAuthenticated(path, {
+      method: "GET",
+      signal,
+    });
     const body = (await response.json().catch(() => null)) as
       | T
       | MobileApiErrorResponse
@@ -85,7 +102,6 @@ export class MobileApiClient {
     console.info("[VAIVIA mobile API] response", {
       requestUrl,
       httpResponseStatus: response.status,
-      apiResponseBody: body,
     });
 
     if (!response.ok) {
@@ -106,6 +122,13 @@ export class MobileApiClient {
   getNotifications(signal?: AbortSignal) {
     return this.request<MobileNotificationsResponse>(
       "/api/mobile/v1/notifications",
+      signal,
+    );
+  }
+
+  getNotificationHistory(signal?: AbortSignal) {
+    return this.request<MobileNotificationHistoryResponse>(
+      "/api/mobile/v1/notifications?view=history",
       signal,
     );
   }

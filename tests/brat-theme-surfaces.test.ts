@@ -8,7 +8,7 @@ const read = (path: string) => readFileSync(resolve(root, path), "utf8");
 describe("brat theme surfaces", () => {
     it("gives the assistant page and conversation rail semantic green surfaces", () => {
         const page = read("app/trips/[tripId]/assistant/page.tsx");
-        const assistant = read("components/assistant/TripAssistant.tsx");
+        const assistant = read("components/assistant/TripAssistantPresentation.tsx");
         const css = read("app/globals.css");
 
         expect(page).toContain('className="vaivia-page-bg');

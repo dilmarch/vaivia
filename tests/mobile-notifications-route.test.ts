@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   authenticateMobileRequest: vi.fn(),
   loadActiveDropdownNotifications: vi.fn(),
+  loadNotificationHistory: vi.fn(),
 }));
 
 vi.mock("@/lib/mobileApi/server", () => ({
@@ -14,6 +15,7 @@ vi.mock("@/lib/mobileApi/server", () => ({
 
 vi.mock("@/lib/notifications/dropdown", () => ({
   loadActiveDropdownNotifications: mocks.loadActiveDropdownNotifications,
+  loadNotificationHistory: mocks.loadNotificationHistory,
 }));
 
 import { GET, OPTIONS } from "@/app/api/mobile/v1/notifications/route";
@@ -61,6 +63,47 @@ describe("mobile notifications route", () => {
         },
       ],
       error: null,
+    });
+    mocks.loadNotificationHistory.mockResolvedValue({
+      data: [
+        {
+          id: "notification-2",
+          type: "trip_updated",
+          title: "Trip changed",
+          body: "A date was updated.",
+          read_at: "2026-08-19T12:00:00.000Z",
+          created_at: "2026-08-19T11:00:00.000Z",
+          trip_id: "trip-1",
+          invitation_id: null,
+          archived_at: "2026-08-20T10:00:00.000Z",
+          metadata: null,
+        },
+      ],
+      activeActionNotificationIds: [],
+      error: null,
+    });
+  });
+
+  it("returns the authenticated user's complete read-only history", async () => {
+    const request = new Request(
+      "https://vaivia.app/api/mobile/v1/notifications?view=history",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    expect(mocks.loadNotificationHistory).toHaveBeenCalledWith(
+      expect.anything(),
+      "user-123",
+    );
+    expect(mocks.loadActiveDropdownNotifications).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      notifications: [
+        expect.objectContaining({
+          id: "notification-2",
+          archived_at: "2026-08-20T10:00:00.000Z",
+        }),
+      ],
+      activeActionNotificationIds: [],
     });
   });
 

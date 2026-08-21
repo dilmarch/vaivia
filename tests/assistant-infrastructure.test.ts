@@ -57,6 +57,9 @@ describe("assistant credential and dependency isolation", () => {
         const clientFiles = [
             read("components/assistant/TripAssistant.tsx"),
             read("components/assistant/PlaceRecommendationCards.tsx"),
+            read("components/assistant/TripAssistantPresentation.tsx"),
+            read("components/assistant/PlaceRecommendationCardsPresentation.tsx"),
+            read("mobile/src/screens/TripAssistantScreen.tsx"),
         ].join("\n");
 
         expect(places).toContain("process.env.GOOGLE_PLACES_API_KEY");

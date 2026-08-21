@@ -50,10 +50,9 @@ describe("MobileApiClient", () => {
 
     const [url, init] = fetchImplementation.mock.calls[0];
     expect(url).toBe("https://vaivia.app/api/mobile/v1/trips");
-    expect(init?.headers).toMatchObject({
-      Accept: "application/json",
-      Authorization: "Bearer test-access-token",
-    });
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Accept")).toBe("application/json");
+    expect(headers.get("Authorization")).toBe("Bearer test-access-token");
 
     const diagnostics = JSON.stringify(log.mock.calls);
     expect(diagnostics).toContain("https://vaivia.app/api/mobile/v1/trips");
@@ -106,8 +105,71 @@ describe("MobileApiClient", () => {
       "[VAIVIA mobile API] response",
       expect.objectContaining({
         httpResponseStatus: 404,
-        apiResponseBody: { error: "Trip not found" },
       }),
     );
+    expect(JSON.stringify(log.mock.calls)).not.toContain("Trip not found");
+  });
+
+  it("does not log successful authenticated API response bodies", async () => {
+    const log = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const sensitiveBody = {
+      trips: [{ id: "trip-private", notes: "private itinerary notes" }],
+    };
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: vi.fn(async () =>
+        Response.json(sensitiveBody, { status: 200 }),
+      ) as typeof fetch,
+    });
+
+    await expect(client.getTrips()).resolves.toEqual(sensitiveBody);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(
+      "private itinerary notes",
+    );
+  });
+
+  it("preserves Concierge streaming headers and injects bearer auth", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(async () =>
+      new Response('{"type":"delta","delta":"Hello"}\n', {
+        status: 200,
+        headers: { "Content-Type": "application/x-ndjson" },
+      }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+
+    const response = await client.requestAuthenticated(
+      "/api/trips/trip-1/assistant",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/x-ndjson",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "message", message: "Hello" }),
+      },
+    );
+
+    expect(response.headers.get("content-type")).toContain(
+      "application/x-ndjson",
+    );
+    const [url, init] = fetchImplementation.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(url).toBe("https://vaivia.app/api/trips/trip-1/assistant");
+    expect(headers.get("Authorization")).toBe("Bearer test-access-token");
+    expect(headers.get("Accept")).toBe("application/x-ndjson");
   });
 });

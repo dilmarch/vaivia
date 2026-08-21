@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   BedDouble,
   Bot,
@@ -52,6 +58,7 @@ type MobileAppChromeProps = {
     | "transport"
     | "food"
     | "stays"
+    | "assistant"
     | "health-safety"
     | null;
   userEmail?: string | null;
@@ -65,7 +72,9 @@ type MobileAppChromeProps = {
   onTripTransport: () => void;
   onTripFood: () => void;
   onTripStays: () => void;
+  onTripAssistant: () => void;
   onTripHealthSafety: () => void;
+  onNotificationHistory: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -156,7 +165,9 @@ export function MobileAppChrome({
   onTripTransport,
   onTripFood,
   onTripStays,
+  onTripAssistant,
   onTripHealthSafety,
+  onNotificationHistory,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -176,39 +187,52 @@ export function MobileAppChrome({
   const topRef = useRef<HTMLDivElement | null>(null);
   const quickAddRef = useRef<HTMLDivElement | null>(null);
 
+  const loadNotifications = useCallback(async (signal?: AbortSignal) => {
+    setIsLoadingNotifications(true);
+    try {
+      const {
+        notifications: loadedNotifications,
+        navigationProfile,
+        pendingImportCount: loadedPendingImportCount,
+      } = await apiClient.getNotifications(signal);
+      if (signal?.aborted) return;
+      setNotifications(loadedNotifications);
+      setNavigationRole(navigationProfile?.role || userRole || null);
+      setAccountAvatarUrl(navigationProfile?.avatar_url || null);
+      setPendingImportCount(loadedPendingImportCount || 0);
+      setNotificationsError("");
+    } catch (error) {
+      if (signal?.aborted) return;
+      setNotificationsError(
+        error instanceof Error ? error.message : "Could not load notifications.",
+      );
+    } finally {
+      if (!signal?.aborted) setIsLoadingNotifications(false);
+    }
+  }, [apiClient, userRole]);
+
   useEffect(() => {
     const controller = new AbortController();
-    setIsLoadingNotifications(true);
-
-    void apiClient
-      .getNotifications(controller.signal)
-      .then(
-        ({
-          notifications: loadedNotifications,
-          navigationProfile,
-          pendingImportCount: loadedPendingImportCount,
-        }) => {
-          setNotifications(loadedNotifications);
-          setNavigationRole(navigationProfile?.role || userRole || null);
-          setAccountAvatarUrl(navigationProfile?.avatar_url || null);
-          setPendingImportCount(loadedPendingImportCount || 0);
-          setNotificationsError("");
-        },
-      )
-      .catch((error) => {
-        if (controller.signal.aborted) return;
-        setNotificationsError(
-          error instanceof Error
-            ? error.message
-            : "Could not load notifications.",
-        );
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsLoadingNotifications(false);
-      });
+    void loadNotifications(controller.signal);
 
     return () => controller.abort();
-  }, [apiClient, userRole]);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    let controller: AbortController | null = null;
+    const reloadOnResume = () => {
+      if (document.visibilityState !== "visible") return;
+      controller?.abort();
+      controller = new AbortController();
+      void loadNotifications(controller.signal);
+    };
+
+    document.addEventListener("visibilitychange", reloadOnResume);
+    return () => {
+      controller?.abort();
+      document.removeEventListener("visibilitychange", reloadOnResume);
+    };
+  }, [loadNotifications]);
 
   useEffect(() => {
     if (!bottomMenu && !topMenu && !isQuickAddOpen) return;
@@ -271,6 +295,7 @@ export function MobileAppChrome({
           (index === 4 && activeTripView === "transport") ||
           (index === 5 && activeTripView === "food") ||
           (index === 6 && activeTripView === "stays") ||
+          (index === 7 && activeTripView === "assistant") ||
           (index === 8 && activeTripView === "health-safety"),
         supported:
           index === 0 ||
@@ -280,6 +305,7 @@ export function MobileAppChrome({
           index === 4 ||
           index === 5 ||
           index === 6 ||
+          index === 7 ||
           index === 8,
         action:
           index === 0
@@ -317,6 +343,11 @@ export function MobileAppChrome({
                     closeMenus();
                     onTripStays();
                   }
+              : index === 7
+                ? () => {
+                    closeMenus();
+                    onTripAssistant();
+                  }
               : index === 8
                 ? () => {
                     closeMenus();
@@ -340,6 +371,21 @@ export function MobileAppChrome({
       title={`${props["aria-label"]} unavailable`}
       {...props}
       className={`${props.className} cursor-not-allowed opacity-50`}
+    />
+  );
+
+  const notificationHistoryAction = (props: {
+    children: ReactNode;
+    className: string;
+    "aria-label": string;
+  }) => (
+    <button
+      type="button"
+      onClick={() => {
+        closeMenus();
+        onNotificationHistory();
+      }}
+      {...props}
     />
   );
 
@@ -406,7 +452,7 @@ export function MobileAppChrome({
               <NotificationMenuFooterPresentation
                 pendingImportCount={pendingImportCount}
                 renderImportsAction={disabledFooterAction}
-                renderHistoryAction={disabledFooterAction}
+                renderHistoryAction={notificationHistoryAction}
               />
             }
           >

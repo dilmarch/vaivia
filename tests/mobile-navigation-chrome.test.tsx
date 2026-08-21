@@ -61,7 +61,9 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onTripTransport: vi.fn(),
     onTripFood: vi.fn(),
     onTripStays: vi.fn(),
+    onTripAssistant: vi.fn(),
     onTripHealthSafety: vi.fn(),
+    onNotificationHistory: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -134,6 +136,7 @@ describe("mobile navigation chrome parity", () => {
     const onTripTransport = vi.fn();
     const onTripFood = vi.fn();
     const onTripStays = vi.fn();
+    const onTripAssistant = vi.fn();
     const onTripHealthSafety = vi.fn();
     renderChrome({
       activeTripId: trip.id,
@@ -144,6 +147,7 @@ describe("mobile navigation chrome parity", () => {
       onTripTransport,
       onTripFood,
       onTripStays,
+      onTripAssistant,
       onTripHealthSafety,
     });
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
@@ -163,7 +167,7 @@ describe("mobile navigation chrome parity", () => {
       "Transport",
       "Eat & Drink",
       "Stays",
-      "Ask Concierge coming soon",
+      "Ask Concierge",
       "Health & Safety",
     ]);
     expect(screen.getByRole("button", { name: "Trip overview" })).toHaveAttribute(
@@ -193,6 +197,10 @@ describe("mobile navigation chrome parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
     fireEvent.click(screen.getByRole("button", { name: "Stays" }));
     expect(onTripStays).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask Concierge" }));
+    expect(onTripAssistant).toHaveBeenCalledOnce();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
     fireEvent.click(screen.getByRole("button", { name: "Health & Safety" }));
@@ -233,6 +241,19 @@ describe("mobile navigation chrome parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
 
     expect(screen.getByRole("button", { name: "Transport" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("marks Ask Concierge active in trip navigation", () => {
+    renderChrome({
+      activeTripId: trip.id,
+      activeTripView: "assistant",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+
+    expect(screen.getByRole("button", { name: "Ask Concierge" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -307,8 +328,9 @@ describe("mobile navigation chrome parity", () => {
     expect(screen.queryByRole("button", { name: "Events coming soon" })).toBeNull();
   });
 
-  it("opens read-only notifications with a badge and complete disabled footer", async () => {
-    renderChrome();
+  it("opens read-only notifications and routes to complete history", async () => {
+    const onNotificationHistory = vi.fn();
+    renderChrome({ onNotificationHistory });
 
     await waitFor(() => {
       expect(screen.getByText("1")).toBeInTheDocument();
@@ -319,9 +341,28 @@ describe("mobile navigation chrome parity", () => {
     expect(screen.getByText("Rain is expected tomorrow.")).toBeInTheDocument();
     expect(screen.getByText("Review on web")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Travel imports" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "See previous notifications" }),
-    ).toBeDisabled();
+    const historyButton = screen.getByRole("button", {
+      name: "See previous notifications",
+    });
+    expect(historyButton).toBeEnabled();
+    fireEvent.click(historyButton);
+    expect(onNotificationHistory).toHaveBeenCalledOnce();
+  });
+
+  it("refreshes the notification badge when the app resumes", async () => {
+    const client = createApiClient();
+    renderChrome({ apiClient: client });
+
+    await waitFor(() => expect(client.getNotifications).toHaveBeenCalledOnce());
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+
+    await waitFor(() =>
+      expect(client.getNotifications).toHaveBeenCalledTimes(2),
+    );
   });
 
   it("opens the full Quick Add option set without broken actions", () => {

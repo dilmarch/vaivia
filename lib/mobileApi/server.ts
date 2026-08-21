@@ -25,11 +25,14 @@ export function isAllowedMobileOrigin(request: Request) {
   return !origin || getAllowedOrigins().has(origin);
 }
 
-export function getMobileCorsHeaders(request: Request) {
+export function getMobileCorsHeaders(
+  request: Request,
+  allowedMethods = "GET, OPTIONS",
+) {
   const origin = getRequestOrigin(request);
   const headers = new Headers({
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": allowedMethods,
     "Cache-Control": "private, no-store",
     Vary: "Origin",
   });
@@ -52,14 +55,14 @@ export function mobileJson(
   return Response.json(body, { ...init, headers });
 }
 
-export function mobileOptions(request: Request) {
+export function mobileOptions(request: Request, allowedMethods?: string) {
   if (!isAllowedMobileOrigin(request)) {
     return mobileJson(request, { error: "Origin not allowed" }, { status: 403 });
   }
 
   return new Response(null, {
     status: 204,
-    headers: getMobileCorsHeaders(request),
+    headers: getMobileCorsHeaders(request, allowedMethods),
   });
 }
 

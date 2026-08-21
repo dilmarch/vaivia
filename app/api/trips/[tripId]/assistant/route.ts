@@ -47,6 +47,11 @@ import {
 } from "@/lib/ai/assistant-timing";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+    authenticateMobileRequest,
+    getMobileCorsHeaders,
+    mobileOptions,
+} from "@/lib/mobileApi/server";
 import { resolveTripRouteParam } from "@/lib/tripRoutes";
 
 export const runtime = "nodejs";
@@ -71,16 +76,28 @@ type AssistantMessageRow = {
 };
 
 const AI_USAGE_RESERVATION_TTL_MS = 5 * 60 * 1_000;
+const ASSISTANT_MOBILE_METHODS = "GET, POST, DELETE, OPTIONS";
 
 function safeError(message: string, status: number, code: string) {
     return NextResponse.json({ error: message, code }, { status });
 }
 
-async function authenticateTrip(context: RouteContext) {
-    const supabase = await createClient();
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+async function authenticateTrip(request: Request, context: RouteContext) {
+    const authorization = request.headers.get("authorization");
+    const hasBearerAuthorization = /^Bearer\s+\S+/i.test(authorization || "");
+    const mobileContext = hasBearerAuthorization
+        ? await authenticateMobileRequest(request)
+        : null;
+    if (mobileContext instanceof Response) {
+        return { error: mobileContext };
+    }
+
+    const supabase = mobileContext?.supabase || (await createClient());
+    const user = mobileContext
+        ? mobileContext.user
+        : (
+              await supabase.auth.getUser()
+          ).data.user;
 
     if (!user) {
         return { error: safeError("Authentication required", 401, "unauthorized") };
@@ -176,8 +193,8 @@ async function completeUsageEvent({
     }
 }
 
-export async function GET(request: NextRequest, context: RouteContext) {
-    const authenticated = await authenticateTrip(context);
+async function handleAssistantGet(request: NextRequest, context: RouteContext) {
+    const authenticated = await authenticateTrip(request, context);
     if ("error" in authenticated) return authenticated.error!;
 
     const { supabase, user, trip } = authenticated;
@@ -368,7 +385,7 @@ async function handleAssistantPost(
     const authenticated = await measureAssistantStage(
         timing,
         "authentication_and_trip_access",
-        () => authenticateTrip(context)
+        () => authenticateTrip(request, context)
     );
     if ("error" in authenticated) return authenticated.error!;
     const { supabase, user, trip } = authenticated;
@@ -910,7 +927,7 @@ async function handleAssistantPost(
     return NextResponse.json(payload);
 }
 
-export async function POST(request: NextRequest, context: RouteContext) {
+async function handleAssistantRequest(request: NextRequest, context: RouteContext) {
     if (request.headers.get("accept")?.includes("application/x-ndjson")) {
         const encoder = new TextEncoder();
         const stream = new ReadableStream<Uint8Array>({
@@ -959,7 +976,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     const timing = createAssistantTimingRecorder();
     const startedAt = performance.now();
-    let response: NextResponse;
+    let response: Response;
     try {
         response = await handleAssistantPost(request, context, timing);
     } finally {
@@ -969,8 +986,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return response;
 }
 
-export async function DELETE(request: NextRequest, context: RouteContext) {
-    const authenticated = await authenticateTrip(context);
+async function handleAssistantDelete(request: NextRequest, context: RouteContext) {
+    const authenticated = await authenticateTrip(request, context);
     if ("error" in authenticated) return authenticated.error!;
     const { supabase, user, trip } = authenticated;
     const conversationId = request.nextUrl.searchParams.get("conversationId");
@@ -999,4 +1016,38 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
         return safeError("Unable to delete the conversation", 500, "delete_failed");
     }
     return NextResponse.json({ deleted: true });
+}
+
+function withAssistantMobileCors(request: Request, response: Response) {
+    if (!/^Bearer\s+\S+/i.test(request.headers.get("authorization") || "")) {
+        return response;
+    }
+    const corsHeaders = getMobileCorsHeaders(request, ASSISTANT_MOBILE_METHODS);
+    corsHeaders.forEach((value, key) => response.headers.set(key, value));
+    return response;
+}
+
+export function OPTIONS(request: Request) {
+    return mobileOptions(request, ASSISTANT_MOBILE_METHODS);
+}
+
+export async function GET(request: NextRequest, context: RouteContext) {
+    return withAssistantMobileCors(
+        request,
+        await handleAssistantGet(request, context)
+    );
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+    return withAssistantMobileCors(
+        request,
+        await handleAssistantRequest(request, context)
+    );
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext) {
+    return withAssistantMobileCors(
+        request,
+        await handleAssistantDelete(request, context)
+    );
 }

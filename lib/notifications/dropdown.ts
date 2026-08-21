@@ -286,3 +286,51 @@ export async function loadActiveDropdownNotifications(
 
     return { data, error: null };
 }
+
+export async function loadNotificationHistory(
+    supabase: DropdownSupabaseClient,
+    userId: string
+) {
+    const [notificationsResult, preferencesResult] = await Promise.all([
+        supabase
+            .from("notifications")
+            .select(DROPDOWN_NOTIFICATION_SELECT)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false }),
+        supabase
+            .from("user_notification_preferences")
+            .select(
+                "notification_type,master_enabled,in_app_enabled,push_enabled,email_enabled"
+            )
+            .eq("user_id", userId),
+    ]);
+
+    if (notificationsResult.error) {
+        return {
+            data: null,
+            activeActionNotificationIds: [],
+            error: notificationsResult.error,
+        };
+    }
+
+    const notifications = filterInAppNotifications(
+        ((notificationsResult.data || []) as NotificationRow[]).map(
+            normalizeNotification
+        ),
+        (preferencesResult.data || []) as NotificationPreferenceRow[]
+    );
+    const activeActionNotifications = await resolveActiveDropdownNotifications(
+        supabase,
+        notifications.filter((notification) =>
+            isActionRequiredNotification(notification)
+        )
+    );
+
+    return {
+        data: notifications,
+        activeActionNotificationIds: activeActionNotifications.map(
+            (notification) => notification.id
+        ),
+        error: null,
+    };
+}

@@ -11,6 +11,8 @@ import { TripTransportScreen } from "./screens/TripTransportScreen";
 import { TripStaysScreen } from "./screens/TripStaysScreen";
 import { TripFoodScreen } from "./screens/TripFoodScreen";
 import { TripHealthSafetyScreen } from "./screens/TripHealthSafetyScreen";
+import { TripAssistantScreen } from "./screens/TripAssistantScreen";
+import { NotificationHistoryScreen } from "./screens/NotificationHistoryScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
@@ -19,6 +21,9 @@ import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
 export default function App() {
   const { session, isInitializing, signOut } = useMobileAuth();
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [activeGlobalView, setActiveGlobalView] = useState<
+    "trips" | "notifications"
+  >("trips");
   const [activeTripView, setActiveTripView] = useState<
     | "overview"
     | "itinerary"
@@ -27,6 +32,7 @@ export default function App() {
     | "transport"
     | "food"
     | "stays"
+    | "assistant"
     | "health-safety"
   >("overview");
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
@@ -58,16 +64,30 @@ export default function App() {
   if (!session) return <LoginScreen />;
 
   function selectTrip(tripId: string) {
+    setActiveGlobalView("trips");
     setSelectedTripId(tripId);
     setActiveTripView("overview");
   }
 
   function openTrips() {
+    setActiveGlobalView("trips");
     setSelectedTripId(null);
     setActiveTripView("overview");
   }
 
-  const authenticatedScreen = selectedTripId ? (
+  function openNotificationHistory() {
+    setSelectedTripId(null);
+    setActiveGlobalView("notifications");
+  }
+
+  const authenticatedScreen = activeGlobalView === "notifications" ? (
+    <NotificationHistoryScreen
+      apiClient={apiClient}
+      supportedTripIds={availableTrips.map((trip) => trip.id)}
+      onBack={openTrips}
+      onOpenTrip={selectTrip}
+    />
+  ) : selectedTripId ? (
     activeTripView === "itinerary" ? (
       <TripItineraryScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "ideas" ? (
@@ -80,6 +100,15 @@ export default function App() {
       <TripFoodScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "stays" ? (
       <TripStaysScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : activeTripView === "assistant" ? (
+      <TripAssistantScreen
+        apiClient={apiClient}
+        tripId={selectedTripId}
+        tripTitle={
+          availableTrips.find((trip) => trip.id === selectedTripId)?.title ||
+          "your trip"
+        }
+      />
     ) : activeTripView === "health-safety" ? (
       <TripHealthSafetyScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : (
@@ -128,7 +157,9 @@ export default function App() {
         onTripTransport={() => setActiveTripView("transport")}
         onTripFood={() => setActiveTripView("food")}
         onTripStays={() => setActiveTripView("stays")}
+        onTripAssistant={() => setActiveTripView("assistant")}
         onTripHealthSafety={() => setActiveTripView("health-safety")}
+        onNotificationHistory={openNotificationHistory}
         onSignOut={async () => {
           openTrips();
           await signOut();

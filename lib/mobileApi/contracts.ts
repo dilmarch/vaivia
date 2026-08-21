@@ -238,6 +238,7 @@ export type MobileNotification = Pick<
   | "created_at"
   | "trip_id"
   | "invitation_id"
+  | "archived_at"
 > & {
   metadata?: Record<string, unknown> | null;
 };
@@ -249,6 +250,11 @@ export type MobileNotificationsResponse = {
     avatar_url: string | null;
   } | null;
   pendingImportCount: number;
+};
+
+export type MobileNotificationHistoryResponse = {
+  notifications: MobileNotification[];
+  activeActionNotificationIds: string[];
 };
 
 export type MobileApiErrorResponse = {

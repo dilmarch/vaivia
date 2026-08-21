@@ -4,7 +4,10 @@ import {
   mobileJson,
   mobileOptions,
 } from "@/lib/mobileApi/server";
-import { loadActiveDropdownNotifications } from "@/lib/notifications/dropdown";
+import {
+  loadActiveDropdownNotifications,
+  loadNotificationHistory,
+} from "@/lib/notifications/dropdown";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +18,46 @@ export function OPTIONS(request: Request) {
 export async function GET(request: Request) {
   const context = await authenticateMobileRequest(request);
   if (context instanceof Response) return context;
+
+  if (new URL(request.url).searchParams.get("view") === "history") {
+    const history = await loadNotificationHistory(
+      context.supabase,
+      context.user.id,
+    );
+
+    if (history.error) {
+      console.error("Mobile notification history request failed:", {
+        userId: context.user.id,
+        message: history.error.message,
+        code: history.error.code,
+      });
+      return mobileJson(
+        request,
+        { error: "Could not load notification history" },
+        { status: 500 },
+      );
+    }
+
+    const notifications: MobileNotification[] = (history.data || []).map(
+      (notification) => ({
+        id: notification.id,
+        type: notification.type,
+        title: notification.title,
+        body: notification.body,
+        read_at: notification.read_at,
+        created_at: notification.created_at,
+        trip_id: notification.trip_id,
+        invitation_id: notification.invitation_id,
+        archived_at: notification.archived_at,
+        metadata: notification.metadata || null,
+      }),
+    );
+
+    return mobileJson(request, {
+      notifications,
+      activeActionNotificationIds: history.activeActionNotificationIds,
+    });
+  }
 
   const [result, profileResult, pendingImportsResult] = await Promise.all([
     loadActiveDropdownNotifications(context.supabase, context.user.id),
@@ -53,6 +96,7 @@ export async function GET(request: Request) {
       created_at: notification.created_at,
       trip_id: notification.trip_id,
       invitation_id: notification.invitation_id,
+      archived_at: notification.archived_at,
       metadata: notification.metadata || null,
     }),
   );

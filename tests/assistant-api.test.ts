@@ -8,11 +8,37 @@ const mocks = vi.hoisted(() => ({
     generate: vi.fn(),
     loadContext: vi.fn(),
     hydrate: vi.fn(),
+    authenticateMobileRequest: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({ createClient: mocks.createClient }));
 vi.mock("@/lib/supabase/service", () => ({
     createServiceRoleClient: mocks.createServiceClient,
+}));
+vi.mock("@/lib/mobileApi/server", () => ({
+    authenticateMobileRequest: mocks.authenticateMobileRequest,
+    getMobileCorsHeaders: (request: Request, allowedMethods: string) => {
+        const headers = new Headers({
+            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Allow-Methods": allowedMethods,
+            Vary: "Origin",
+        });
+        const origin = request.headers.get("origin");
+        if (origin === "capacitor://localhost") {
+            headers.set("Access-Control-Allow-Origin", origin);
+        }
+        return headers;
+    },
+    mobileOptions: (request: Request, allowedMethods: string) =>
+        new Response(null, {
+            status: 204,
+            headers: {
+                "Access-Control-Allow-Origin":
+                    request.headers.get("origin") || "",
+                "Access-Control-Allow-Headers": "Authorization, Content-Type",
+                "Access-Control-Allow-Methods": allowedMethods,
+            },
+        }),
 }));
 vi.mock("@/lib/ai/gemini-assistant", () => ({
     isGeminiAssistantConfigured: mocks.configured,
@@ -35,7 +61,7 @@ vi.mock("@/lib/ai/system-instruction", () => ({
     buildVaiviaAssistantSystemInstruction: () => "system",
 }));
 
-import { GET, POST } from "@/app/api/trips/[tripId]/assistant/route";
+import { GET, OPTIONS, POST } from "@/app/api/trips/[tripId]/assistant/route";
 
 const USER_A = "10000000-0000-4000-8000-000000000001";
 const USER_B = "10000000-0000-4000-8000-000000000002";
@@ -237,6 +263,7 @@ function generationDiagnostics(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
     vi.clearAllMocks();
+    mocks.authenticateMobileRequest.mockReset();
     mocks.configured.mockReturnValue(true);
     mocks.createServiceClient.mockImplementation(() => fakeSupabase());
     mocks.loadContext.mockResolvedValue({
@@ -263,6 +290,72 @@ beforeEach(() => {
 });
 
 describe("trip assistant API authorization and validation", () => {
+    it("accepts a validated mobile bearer session while retaining scoped RLS queries", async () => {
+        const mobileSupabase = fakeSupabase();
+        mocks.authenticateMobileRequest.mockResolvedValue({
+            accessToken: "not-logged-or-returned",
+            user: { id: USER_A },
+            supabase: mobileSupabase,
+        });
+
+        const response = await GET(
+            new NextRequest("https://vaivia.app/api/trips/trip-a/assistant", {
+                headers: {
+                    Authorization: "Bearer test-token",
+                    Origin: "capacitor://localhost",
+                },
+            }),
+            routeContext()
+        );
+
+        expect(response.status).toBe(200);
+        expect(mocks.authenticateMobileRequest).toHaveBeenCalledOnce();
+        expect(mocks.createClient).not.toHaveBeenCalled();
+        expect(response.headers.get("access-control-allow-origin")).toBe(
+            "capacitor://localhost"
+        );
+        expect(response.headers.get("access-control-allow-methods")).toBe(
+            "GET, POST, DELETE, OPTIONS"
+        );
+    });
+
+    it("returns a mobile preflight without exposing credentials", async () => {
+        const response = OPTIONS(
+            new NextRequest("https://vaivia.app/api/trips/trip-a/assistant", {
+                method: "OPTIONS",
+                headers: { Origin: "capacitor://localhost" },
+            })
+        );
+
+        expect(response.status).toBe(204);
+        expect(response.headers.get("access-control-allow-methods")).toBe(
+            "GET, POST, DELETE, OPTIONS"
+        );
+        expect(response.headers.get("access-control-allow-headers")).toBe(
+            "Authorization, Content-Type"
+        );
+    });
+
+    it("propagates an expired mobile bearer session as 401 with CORS", async () => {
+        mocks.authenticateMobileRequest.mockResolvedValue(
+            Response.json({ error: "Unauthorized" }, { status: 401 })
+        );
+        const response = await GET(
+            new NextRequest("https://vaivia.app/api/trips/trip-a/assistant", {
+                headers: {
+                    Authorization: "Bearer expired-token",
+                    Origin: "capacitor://localhost",
+                },
+            }),
+            routeContext()
+        );
+
+        expect(response.status).toBe(401);
+        expect(response.headers.get("access-control-allow-origin")).toBe(
+            "capacitor://localhost"
+        );
+    });
+
     it("rejects unauthenticated requests", async () => {
         mocks.createClient.mockResolvedValue(fakeSupabase({ user: null }));
         const response = await GET(
@@ -548,6 +641,53 @@ describe("trip assistant persistence and quota", () => {
                 assistantMessage: { content: "Your trip starts on Monday." },
             },
         });
+    });
+
+    it("streams the same NDJSON protocol for a validated mobile bearer request", async () => {
+        const mobileSupabase = fakeSupabase({ conversation: conversation() });
+        mocks.authenticateMobileRequest.mockResolvedValue({
+            accessToken: "not-logged-or-returned",
+            user: { id: USER_A },
+            supabase: mobileSupabase,
+        });
+        const request = new NextRequest(
+            "https://vaivia.app/api/trips/trip-a/assistant",
+            {
+                method: "POST",
+                headers: {
+                    Authorization: "Bearer test-token",
+                    Origin: "capacitor://localhost",
+                    "Content-Type": "application/json",
+                    Accept: "application/x-ndjson",
+                },
+                body: JSON.stringify({
+                    action: "message",
+                    conversationId: CONVERSATION_A,
+                    message: "Summarize this trip",
+                }),
+            }
+        );
+
+        const response = await POST(request, routeContext());
+        const events = (await response.text())
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get("access-control-allow-origin")).toBe(
+            "capacitor://localhost"
+        );
+        expect(response.headers.get("content-type")).toContain(
+            "application/x-ndjson"
+        );
+        expect(events.find((event) => event.type === "result")).toMatchObject({
+            status: 200,
+            payload: {
+                assistantMessage: { content: "Your trip starts on Monday." },
+            },
+        });
+        expect(mocks.createClient).not.toHaveBeenCalled();
     });
 
     it("persists only typed place references while returning hydrated cards and usage counts", async () => {
