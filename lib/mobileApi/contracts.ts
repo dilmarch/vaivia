@@ -257,6 +257,23 @@ export type MobileNotificationHistoryResponse = {
   activeActionNotificationIds: string[];
 };
 
+export type MobileApiFieldErrors = Record<string, string[]>;
+
+export type MobileApiErrorPayload = {
+  code: string;
+  message: string;
+  fieldErrors?: MobileApiFieldErrors;
+  retryable?: boolean;
+};
+
 export type MobileApiErrorResponse = {
-  error: string;
+  error: string | MobileApiErrorPayload;
+  code?: string;
+  message?: string;
+  fieldErrors?: MobileApiFieldErrors;
+  retryable?: boolean;
+};
+
+export type MobileApiSuccessResponse<T> = {
+  data: T;
 };

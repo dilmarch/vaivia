@@ -18,7 +18,7 @@ export function TripAssistantScreen({
       if (typeof input !== "string") {
         return Promise.reject(new TypeError("Mobile Concierge requires a path"));
       }
-      return apiClient.requestAuthenticated(input, init);
+      return apiClient.requestAuthenticated(input, init, { timeoutMs: null });
     },
     [apiClient],
   );

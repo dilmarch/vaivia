@@ -1,4 +1,9 @@
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import type {
+  MobileApiErrorResponse,
+  MobileApiFieldErrors,
+  MobileApiSuccessResponse,
+} from "@/lib/mobileApi/contracts";
 import type { Database } from "@/src/types/supabase";
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -31,7 +36,8 @@ export function getMobileCorsHeaders(
 ) {
   const origin = getRequestOrigin(request);
   const headers = new Headers({
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Allow-Headers":
+      "Authorization, Content-Type, Idempotency-Key",
     "Access-Control-Allow-Methods": allowedMethods,
     "Cache-Control": "private, no-store",
     Vary: "Origin",
@@ -57,13 +63,55 @@ export function mobileJson(
 
 export function mobileOptions(request: Request, allowedMethods?: string) {
   if (!isAllowedMobileOrigin(request)) {
-    return mobileJson(request, { error: "Origin not allowed" }, { status: 403 });
+    return mobileError(request, {
+      status: 403,
+      code: "origin_not_allowed",
+      message: "Origin not allowed",
+    });
   }
 
   return new Response(null, {
     status: 204,
     headers: getMobileCorsHeaders(request, allowedMethods),
   });
+}
+
+export function mobileSuccess<T>(
+  request: Request,
+  data: T,
+  init: ResponseInit = {},
+) {
+  return mobileJson(
+    request,
+    { data } satisfies MobileApiSuccessResponse<T>,
+    init,
+  );
+}
+
+export function mobileError(
+  request: Request,
+  options: {
+    status: number;
+    code: string;
+    message: string;
+    fieldErrors?: MobileApiFieldErrors;
+    retryable?: boolean;
+  },
+) {
+  const payload: MobileApiErrorResponse = {
+    error: options.message,
+    code: options.code,
+    message: options.message,
+    ...(options.fieldErrors ? { fieldErrors: options.fieldErrors } : {}),
+    ...(options.retryable === undefined
+      ? {}
+      : { retryable: options.retryable }),
+  };
+  return mobileJson(
+    request,
+    payload,
+    { status: options.status },
+  );
 }
 
 function getBearerToken(request: Request) {
@@ -82,7 +130,11 @@ export async function authenticateMobileRequest(
   request: Request,
 ): Promise<MobileRequestContext | Response> {
   if (!isAllowedMobileOrigin(request)) {
-    return mobileJson(request, { error: "Origin not allowed" }, { status: 403 });
+    return mobileError(request, {
+      status: 403,
+      code: "origin_not_allowed",
+      message: "Origin not allowed",
+    });
   }
 
   const accessToken = getBearerToken(request);
@@ -91,14 +143,23 @@ export async function authenticateMobileRequest(
     accessTokenExists: Boolean(accessToken),
   });
   if (!accessToken) {
-    return mobileJson(request, { error: "Unauthorized" }, { status: 401 });
+    return mobileError(request, {
+      status: 401,
+      code: "unauthorized",
+      message: "Unauthorized",
+    });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!supabaseUrl || !publishableKey) {
     console.error("Mobile API is missing browser-safe Supabase configuration.");
-    return mobileJson(request, { error: "Service unavailable" }, { status: 503 });
+    return mobileError(request, {
+      status: 503,
+      code: "service_unavailable",
+      message: "Service unavailable",
+      retryable: true,
+    });
   }
 
   const supabase = createClient<Database>(supabaseUrl, publishableKey, {
@@ -127,7 +188,11 @@ export async function authenticateMobileRequest(
   });
 
   if (error || !user) {
-    return mobileJson(request, { error: "Unauthorized" }, { status: 401 });
+    return mobileError(request, {
+      status: 401,
+      code: "unauthorized",
+      message: "Unauthorized",
+    });
   }
 
   return { accessToken, user, supabase };

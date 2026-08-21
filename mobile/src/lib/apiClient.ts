@@ -1,4 +1,5 @@
 import type {
+  MobileApiFieldErrors,
   MobileApiErrorResponse,
   MobileNotificationHistoryResponse,
   MobileNotificationsResponse,
@@ -10,6 +11,10 @@ export class MobileApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code = "request_failed",
+    readonly fieldErrors?: MobileApiFieldErrors,
+    readonly retryable =
+      status === 0 || status === 408 || status === 429 || status >= 500,
   ) {
     super(message);
     this.name = "MobileApiError";
@@ -26,25 +31,146 @@ type MobileApiClientOptions = {
   baseUrl: string;
   getAuthState: () => MobileApiAuthState | Promise<MobileApiAuthState>;
   fetchImplementation?: typeof fetch;
+  onUnauthorized?: () => void | Promise<void>;
 };
 
+export type MobileApiRequestPolicy = {
+  timeoutMs?: number | null;
+  idempotencyKey?: string;
+};
+
+export type MobileApiJsonRequestOptions = MobileApiRequestPolicy & {
+  signal?: AbortSignal;
+  headers?: HeadersInit;
+};
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 const defaultFetch: typeof fetch = (...args) => window.fetch(...args);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function parseFieldErrors(value: unknown): MobileApiFieldErrors | undefined {
+  if (!isRecord(value)) return undefined;
+  const fieldErrors: MobileApiFieldErrors = {};
+  for (const [field, messages] of Object.entries(value)) {
+    if (!Array.isArray(messages)) continue;
+    const safeMessages = messages.filter(
+      (message): message is string => typeof message === "string",
+    );
+    if (safeMessages.length) fieldErrors[field] = safeMessages;
+  }
+  return Object.keys(fieldErrors).length ? fieldErrors : undefined;
+}
+
+function defaultErrorCode(status: number) {
+  if (status === 400 || status === 422) return "validation_error";
+  if (status === 401) return "unauthorized";
+  if (status === 403) return "forbidden";
+  if (status === 404) return "not_found";
+  if (status === 409) return "conflict";
+  if (status === 429) return "rate_limited";
+  if (status >= 500) return "server_error";
+  return "request_failed";
+}
+
+function parseErrorResponse(body: unknown, status: number) {
+  const response = isRecord(body) ? body : null;
+  const nestedError = isRecord(response?.error) ? response.error : null;
+  const legacyMessage =
+    typeof response?.error === "string" ? response.error : null;
+  const message =
+    (typeof nestedError?.message === "string" && nestedError.message) ||
+    (typeof response?.message === "string" && response.message) ||
+    legacyMessage ||
+    `VAIVIA request failed (${status}).`;
+  const code =
+    (typeof nestedError?.code === "string" && nestedError.code) ||
+    (typeof response?.code === "string" && response.code) ||
+    defaultErrorCode(status);
+  const fieldErrors = parseFieldErrors(
+    nestedError?.fieldErrors ?? response?.fieldErrors,
+  );
+  const explicitRetryable =
+    typeof nestedError?.retryable === "boolean"
+      ? nestedError.retryable
+      : typeof response?.retryable === "boolean"
+        ? response.retryable
+        : undefined;
+  return { message, code, fieldErrors, explicitRetryable };
+}
+
+function unwrapSuccessEnvelope<T>(body: unknown): T {
+  if (isRecord(body) && Object.hasOwn(body, "data")) return body.data as T;
+  return body as T;
+}
+
+function createRequestAbortState(
+  sourceSignal: AbortSignal | null | undefined,
+  timeoutMs: number | null,
+) {
+  const controller = new AbortController();
+  let timedOut = false;
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+
+  const abortFromSource = () => controller.abort();
+  if (sourceSignal?.aborted) {
+    abortFromSource();
+  } else {
+    sourceSignal?.addEventListener("abort", abortFromSource, { once: true });
+  }
+
+  if (timeoutMs !== null && timeoutMs > 0) {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+  }
+
+  return {
+    signal: controller.signal,
+    didTimeOut: () => timedOut,
+    dispose() {
+      if (timeout) clearTimeout(timeout);
+      sourceSignal?.removeEventListener("abort", abortFromSource);
+    },
+  };
+}
 
 export class MobileApiClient {
   private readonly baseUrl: string;
   private readonly getAuthState: MobileApiClientOptions["getAuthState"];
   private readonly fetchImplementation: typeof fetch;
+  private readonly onUnauthorized?: MobileApiClientOptions["onUnauthorized"];
+  private unauthorizedHandling: Promise<void> | null = null;
+  private readonly inFlightMutations = new Map<string, Promise<unknown>>();
 
   constructor(options: MobileApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.getAuthState = options.getAuthState;
     this.fetchImplementation = options.fetchImplementation ?? defaultFetch;
+    this.onUnauthorized = options.onUnauthorized;
   }
 
-  async requestAuthenticated(
+  private async handleUnauthorized() {
+    if (!this.onUnauthorized) return;
+    if (!this.unauthorizedHandling) {
+      this.unauthorizedHandling = Promise.resolve(this.onUnauthorized())
+        .catch(() => undefined)
+        .finally(() => {
+          this.unauthorizedHandling = null;
+        });
+    }
+    await this.unauthorizedHandling;
+  }
+
+  private async executeAuthenticatedRequest<T>(
     path: string,
-    init: RequestInit = {},
-  ): Promise<Response> {
+    init: RequestInit,
+    policy: MobileApiRequestPolicy,
+    consume: (response: Response) => Promise<T>,
+  ): Promise<T> {
     const requestUrl = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
     const authState = await this.getAuthState();
     const accessToken = authState.accessToken;
@@ -57,86 +183,223 @@ export class MobileApiClient {
     });
 
     if (!accessToken) {
-      throw new MobileApiError("Your session has expired. Please sign in again.", 401);
+      await this.handleUnauthorized();
+      throw new MobileApiError(
+        "Your session has expired. Please sign in again.",
+        401,
+        "missing_access_token",
+      );
     }
 
-    let response: Response;
+    const timeoutMs =
+      policy.timeoutMs === undefined
+        ? DEFAULT_REQUEST_TIMEOUT_MS
+        : policy.timeoutMs;
+    const abortState = createRequestAbortState(init.signal, timeoutMs);
+    let response: Response | null = null;
     try {
       const headers = new Headers(init.headers);
       if (!headers.has("Accept")) headers.set("Accept", "application/json");
       headers.set("Authorization", `Bearer ${accessToken}`);
+      if (policy.idempotencyKey && !headers.has("Idempotency-Key")) {
+        headers.set("Idempotency-Key", policy.idempotencyKey);
+      }
       response = await this.fetchImplementation(requestUrl, {
         ...init,
         headers,
+        signal: abortState.signal,
       });
-    } catch (error) {
-      console.error("[VAIVIA mobile API] response", {
+
+      console.info("[VAIVIA mobile API] response", {
         requestUrl,
-        httpResponseStatus: null,
-        apiResponseBody: {
-          error: error instanceof Error ? error.message : "Network request failed",
-        },
+        httpResponseStatus: response.status,
       });
-      throw error;
+
+      if (response.status === 401) await this.handleUnauthorized();
+      return await consume(response);
+    } catch (error) {
+      if (!response) {
+        console.error("[VAIVIA mobile API] response", {
+          requestUrl,
+          httpResponseStatus: null,
+          failureKind: abortState.didTimeOut()
+            ? "timeout"
+            : init.signal?.aborted
+              ? "cancelled"
+              : "network",
+        });
+      }
+      if (abortState.didTimeOut()) {
+        throw new MobileApiError(
+          "VAIVIA took too long to respond. Please try again.",
+          408,
+          "timeout",
+        );
+      }
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw error;
+      }
+      if (error instanceof MobileApiError) throw error;
+      throw new MobileApiError(
+        "VAIVIA could not connect. Check your connection and try again.",
+        0,
+        "network_error",
+        undefined,
+        true,
+      );
+    } finally {
+      abortState.dispose();
     }
-
-    console.info("[VAIVIA mobile API] response", {
-      requestUrl,
-      httpResponseStatus: response.status,
-    });
-
-    return response;
   }
 
-  private async request<T>(path: string, signal?: AbortSignal): Promise<T> {
-    const requestUrl = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
-    const response = await this.requestAuthenticated(path, {
-      method: "GET",
-      signal,
-    });
-    const body = (await response.json().catch(() => null)) as
-      | T
-      | MobileApiErrorResponse
-      | null;
+  async requestAuthenticated(
+    path: string,
+    init: RequestInit = {},
+    policy: MobileApiRequestPolicy = {},
+  ): Promise<Response> {
+    return this.executeAuthenticatedRequest(
+      path,
+      init,
+      policy,
+      async (response) => response,
+    );
+  }
 
-    console.info("[VAIVIA mobile API] response", {
-      requestUrl,
-      httpResponseStatus: response.status,
-    });
+  async requestJson<T>(
+    path: string,
+    init: RequestInit = {},
+    policy: MobileApiRequestPolicy = {},
+  ): Promise<T> {
+    return this.executeAuthenticatedRequest(
+      path,
+      init,
+      policy,
+      async (response) => {
+        const responseText = await response.text();
+        let body: T | MobileApiErrorResponse | null = null;
+        if (responseText) {
+          try {
+            body = JSON.parse(responseText) as T | MobileApiErrorResponse;
+          } catch {
+            if (response.ok) {
+              throw new MobileApiError(
+                "VAIVIA returned an invalid response. Please try again.",
+                502,
+                "invalid_json",
+              );
+            }
+          }
+        }
 
-    if (!response.ok) {
-      const errorBody = body as MobileApiErrorResponse | null;
-      throw new MobileApiError(
-        errorBody?.error || `VAIVIA request failed (${response.status}).`,
-        response.status,
-      );
+        if (!response.ok) {
+          const parsedError = parseErrorResponse(body, response.status);
+          throw new MobileApiError(
+            parsedError.message,
+            response.status,
+            parsedError.code,
+            parsedError.fieldErrors,
+            parsedError.explicitRetryable,
+          );
+        }
+
+        return unwrapSuccessEnvelope<T>(body);
+      },
+    );
+  }
+
+  getJson<T>(path: string, options: MobileApiJsonRequestOptions = {}) {
+    const { signal, headers, ...policy } = options;
+    return this.requestJson<T>(path, { method: "GET", headers, signal }, policy);
+  }
+
+  postJson<T>(
+    path: string,
+    body: unknown,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.mutateJson<T>("POST", path, body, options);
+  }
+
+  patchJson<T>(
+    path: string,
+    body: unknown,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.mutateJson<T>("PATCH", path, body, options);
+  }
+
+  putJson<T>(
+    path: string,
+    body: unknown,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.mutateJson<T>("PUT", path, body, options);
+  }
+
+  deleteJson<T>(
+    path: string,
+    body?: unknown,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.mutateJson<T>("DELETE", path, body, options);
+  }
+
+  private mutateJson<T>(
+    method: "POST" | "PATCH" | "PUT" | "DELETE",
+    path: string,
+    body: unknown,
+    options: MobileApiJsonRequestOptions,
+  ) {
+    const { signal, headers: initialHeaders, ...policy } = options;
+    const headers = new Headers(initialHeaders);
+    let requestBody: string | undefined;
+    if (body !== undefined) {
+      headers.set("Content-Type", "application/json");
+      requestBody = JSON.stringify(body);
     }
+    const execute = () =>
+      this.requestJson<T>(
+        path,
+        { method, headers, body: requestBody, signal },
+        policy,
+      );
+    if (!policy.idempotencyKey) return execute();
 
-    return body as T;
+    const mutationKey = `${method}:${path}:${policy.idempotencyKey}`;
+    const existing = this.inFlightMutations.get(mutationKey);
+    if (existing) return existing as Promise<T>;
+
+    const request = execute().finally(() => {
+      if (this.inFlightMutations.get(mutationKey) === request) {
+        this.inFlightMutations.delete(mutationKey);
+      }
+    });
+    this.inFlightMutations.set(mutationKey, request);
+    return request;
   }
 
   getTrips(signal?: AbortSignal) {
-    return this.request<MobileTripsResponse>("/api/mobile/v1/trips", signal);
+    return this.getJson<MobileTripsResponse>("/api/mobile/v1/trips", { signal });
   }
 
   getNotifications(signal?: AbortSignal) {
-    return this.request<MobileNotificationsResponse>(
+    return this.getJson<MobileNotificationsResponse>(
       "/api/mobile/v1/notifications",
-      signal,
+      { signal },
     );
   }
 
   getNotificationHistory(signal?: AbortSignal) {
-    return this.request<MobileNotificationHistoryResponse>(
+    return this.getJson<MobileNotificationHistoryResponse>(
       "/api/mobile/v1/notifications?view=history",
-      signal,
+      { signal },
     );
   }
 
   getTrip(tripId: string, signal?: AbortSignal) {
-    return this.request<MobileTripDetailResponse>(
+    return this.getJson<MobileTripDetailResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
-      signal,
+      { signal },
     );
   }
 }

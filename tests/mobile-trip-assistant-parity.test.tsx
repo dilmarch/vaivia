@@ -167,6 +167,7 @@ describe("mobile Ask Concierge strict visual and functional parity", () => {
           Accept: "application/x-ndjson",
         }),
       }),
+      { timeoutMs: null },
     );
   });
 

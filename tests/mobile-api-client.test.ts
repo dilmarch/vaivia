@@ -3,6 +3,7 @@ import { MobileApiClient, MobileApiError } from "@/mobile/src/lib/apiClient";
 
 describe("MobileApiClient", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -63,6 +64,7 @@ describe("MobileApiClient", () => {
   it("does not make a request when a rendered session has no propagated token", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetchImplementation = vi.fn();
+    const onUnauthorized = vi.fn();
     const client = new MobileApiClient({
       baseUrl: "https://vaivia.app",
       getAuthState: async () => ({
@@ -70,6 +72,7 @@ describe("MobileApiClient", () => {
         accessToken: null,
         authenticatedUserId: "user-123",
       }),
+      onUnauthorized,
       fetchImplementation: fetchImplementation as typeof fetch,
     });
 
@@ -77,6 +80,7 @@ describe("MobileApiClient", () => {
       status: 401,
     });
     expect(fetchImplementation).not.toHaveBeenCalled();
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
   it("encodes trip identifiers and surfaces API errors", async () => {
@@ -171,5 +175,294 @@ describe("MobileApiClient", () => {
     expect(url).toBe("https://vaivia.app/api/trips/trip-1/assistant");
     expect(headers.get("Authorization")).toBe("Bearer test-access-token");
     expect(headers.get("Accept")).toBe("application/x-ndjson");
+  });
+
+  it("serializes mutation bodies and preserves idempotency metadata", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(async () =>
+      Response.json({ created: true }, { status: 201 }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+
+    await expect(
+      client.postJson(
+        "/api/mobile/v1/example",
+        { title: "Read only foundation" },
+        { idempotencyKey: "request-123" },
+      ),
+    ).resolves.toEqual({ created: true });
+
+    const [, init] = fetchImplementation.mock.calls[0];
+    const headers = new Headers(init?.headers);
+    expect(init?.method).toBe("POST");
+    expect(init?.body).toBe(JSON.stringify({ title: "Read only foundation" }));
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get("Idempotency-Key")).toBe("request-123");
+  });
+
+  it("times out stalled requests without logging credentials", async () => {
+    vi.useFakeTimers();
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+
+    try {
+      const request = client.getJson("/api/mobile/v1/slow", { timeoutMs: 50 });
+      const rejection = expect(request).rejects.toMatchObject({
+        status: 408,
+        code: "timeout",
+      });
+      await vi.advanceTimersByTimeAsync(50);
+
+      await rejection;
+      expect(errorLog).toHaveBeenCalledWith(
+        "[VAIVIA mobile API] response",
+        expect.objectContaining({ failureKind: "timeout" }),
+      );
+      expect(JSON.stringify(errorLog.mock.calls)).not.toContain(
+        "test-access-token",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("propagates caller cancellation to the in-flight request", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+    const controller = new AbortController();
+
+    const request = client.getTrips(controller.signal);
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(request).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("returns to authentication after a validated 401 response", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const onUnauthorized = vi.fn();
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "expired-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      onUnauthorized,
+      fetchImplementation: vi.fn(async () =>
+        Response.json({ error: "Unauthorized" }, { status: 401 }),
+      ) as typeof fetch,
+    });
+
+    await expect(client.getTrips()).rejects.toMatchObject({
+      status: 401,
+      message: "Unauthorized",
+    });
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it("normalizes malformed successful JSON into a safe API error", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: vi.fn(async () =>
+        new Response("not-json", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ) as typeof fetch,
+    });
+
+    await expect(client.getTrips()).rejects.toMatchObject({
+      status: 502,
+      code: "invalid_json",
+    });
+  });
+
+  it.each([
+    [403, "forbidden"],
+    [409, "conflict"],
+  ])("normalizes %s responses as %s errors", async (status, code) => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: vi.fn(async () =>
+        Response.json(
+          { error: { code, message: `Safe ${code} message` } },
+          { status },
+        ),
+      ) as typeof fetch,
+    });
+
+    await expect(client.getTrips()).rejects.toMatchObject({
+      status,
+      code,
+      message: `Safe ${code} message`,
+      retryable: false,
+    });
+  });
+
+  it("preserves safe validation field errors", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: vi.fn(async () =>
+        Response.json(
+          {
+            error: {
+              code: "validation_error",
+              message: "Please correct the form.",
+              fieldErrors: { title: ["Title is required."], unsafe: [12] },
+            },
+          },
+          { status: 422 },
+        ),
+      ) as typeof fetch,
+    });
+
+    await expect(
+      client.postJson("/api/mobile/v1/example", { title: "" }),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: "validation_error",
+      fieldErrors: { title: ["Title is required."] },
+    });
+  });
+
+  it("supports PUT and unwraps the standard success envelope", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(async () =>
+      Response.json({ data: { updated: true } }, { status: 200 }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+
+    await expect(
+      client.putJson("/api/mobile/v1/example", { version: 2 }),
+    ).resolves.toEqual({ updated: true });
+    expect(fetchImplementation.mock.calls[0][1]?.method).toBe("PUT");
+  });
+
+  it("deduplicates concurrent idempotent mutations without retrying", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    let resolveRequest!: (response: Response) => void;
+    const fetchImplementation = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+    const options = { idempotencyKey: "same-submit" };
+
+    const first = client.postJson("/api/mobile/v1/example", { value: 1 }, options);
+    const duplicate = client.postJson(
+      "/api/mobile/v1/example",
+      { value: 1 },
+      options,
+    );
+    await Promise.resolve();
+    resolveRequest(Response.json({ data: { created: true } }));
+
+    await expect(Promise.all([first, duplicate])).resolves.toEqual([
+      { created: true },
+      { created: true },
+    ]);
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+  });
+
+  it("converts network failures into retryable safe errors", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: vi.fn(async () => {
+        throw new TypeError("network internals must not escape");
+      }) as typeof fetch,
+    });
+
+    await expect(client.getTrips()).rejects.toMatchObject({
+      status: 0,
+      code: "network_error",
+      retryable: true,
+      message: "VAIVIA could not connect. Check your connection and try again.",
+    });
   });
 });
