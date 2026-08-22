@@ -67,6 +67,7 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onNotificationHistory: vi.fn(),
     onProfile: vi.fn(),
     onSettings: vi.fn(),
+    onCreateTrip: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -76,6 +77,15 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
 afterEach(() => cleanup());
 
 describe("mobile navigation chrome parity", () => {
+  it("enables only Quick Add trip creation in this phase", async () => {
+    const { props } = renderChrome();
+    fireEvent.click(screen.getByRole("button", { name: "Open quick add menu" }));
+    const addTrip = screen.getByRole("button", { name: "Add trip" });
+    expect(addTrip).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Add transportation" })).toBeDisabled();
+    fireEvent.click(addTrip);
+    expect(props.onCreateTrip).toHaveBeenCalledTimes(1);
+  });
   it.each([320, 375, 390, 430])(
     "keeps every responsive web control and safe-area geometry at %ipx",
     (width) => {
@@ -379,8 +389,10 @@ describe("mobile navigation chrome parity", () => {
     renderChrome();
     fireEvent.click(screen.getByRole("button", { name: "Open quick add menu" }));
 
-    QUICK_ADD_EXPECTED.forEach((label) => {
-      expect(screen.getByRole("button", { name: label })).toBeDisabled();
+    QUICK_ADD_EXPECTED.forEach((label, index) => {
+      const action = screen.getByRole("button", { name: label });
+      if (index === 0) expect(action).toBeEnabled();
+      else expect(action).toBeDisabled();
     });
     expect(
       screen.getByRole("button", { name: "Close quick add menu" }),

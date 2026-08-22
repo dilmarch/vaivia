@@ -61,6 +61,69 @@ describe("MobileApiClient", () => {
     expect(diagnostics).not.toContain("test-access-token");
   });
 
+  it("sends typed trip lifecycle mutations with bearer auth and idempotency", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(async () =>
+      Response.json({ data: { trip: { id: "trip-1", title: "Portugal" } } }, { status: 201 }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({
+        sessionExists: true,
+        accessToken: "test-access-token",
+        authenticatedUserId: "user-123",
+      }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+
+    await expect(
+      client.createTrip(
+        {
+          title: "Portugal",
+          destination: "Lisbon, Porto",
+          legs: [
+            { name: "Lisbon", startDate: "2026-10-01", endDate: "2026-10-04" },
+            { name: "Porto", startDate: "2026-10-04", endDate: "2026-10-07" },
+          ],
+        },
+        { idempotencyKey: "create-trip-1" },
+      ),
+    ).resolves.toEqual({ trip: { id: "trip-1", title: "Portugal" } });
+
+    const [url, init] = fetchImplementation.mock.calls[0];
+    expect(url).toBe("https://vaivia.app/api/mobile/v1/trips");
+    expect(init?.method).toBe("POST");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer test-access-token");
+    expect(headers.get("Idempotency-Key")).toBe("create-trip-1");
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      title: "Portugal",
+      legs: [{ name: "Lisbon" }, { name: "Porto" }],
+    });
+  });
+
+  it("does not duplicate the same in-flight destructive trip request", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    let resolveResponse!: (response: Response) => void;
+    const fetchImplementation = vi.fn(
+      () => new Promise<Response>((resolve) => { resolveResponse = resolve; }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({ sessionExists: true, accessToken: "token", authenticatedUserId: "user-1" }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+    const first = client.deleteTrip("trip-1", "DELETE", { idempotencyKey: "delete-trip-1" });
+    const second = client.deleteTrip("trip-1", "DELETE", { idempotencyKey: "delete-trip-1" });
+    await Promise.resolve();
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+    resolveResponse(Response.json({ data: { deleted: true, tripId: "trip-1" } }));
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      { deleted: true, tripId: "trip-1" },
+      { deleted: true, tripId: "trip-1" },
+    ]);
+  });
+
   it("does not make a request when a rendered session has no propagated token", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const fetchImplementation = vi.fn();

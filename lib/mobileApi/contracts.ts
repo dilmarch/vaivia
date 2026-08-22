@@ -99,6 +99,111 @@ export type MobileTripsResponse = {
   trips: MobileTripSummary[];
 };
 
+export type MobileTripLegMutationInput = {
+  id?: string;
+  name: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  countryCode?: string | null;
+  placeId?: string | null;
+};
+
+export type MobileTripMutationInput = {
+  title: string;
+  slug?: string;
+  destination?: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  notes?: string;
+  legs?: MobileTripLegMutationInput[];
+  initialInviteIdentifiers?: string[];
+  initialFamilyMemberIds?: string[];
+  countdownTargetType?: "itinerary_item" | "transportation_item" | null;
+  countdownTargetId?: string | null;
+};
+
+export type MobileTripMutationResponse = {
+  trip: {
+    id: string;
+    slug?: string | null;
+    title?: string | null;
+    destination?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    notes?: string | null;
+    archived_at?: string | null;
+  };
+};
+
+export type MobileTripCollaborationResponse = {
+  trip: { id: string; user_id: string; title: string };
+  permissions: { isOwner: boolean; canEdit: boolean; canInvite: boolean };
+  members: Array<{
+    id: string;
+    user_id: string;
+    role: string;
+    status: string;
+    joined_at: string | null;
+    personal_start_date: string | null;
+    personal_end_date: string | null;
+    profile: {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      username: string | null;
+      email: string | null;
+      avatar_url: string | null;
+    } | null;
+  }>;
+  invitations: Array<{
+    id: string;
+    invited_user_id: string | null;
+    invited_email: string | null;
+    invited_username: string | null;
+    status: string;
+    created_at: string | null;
+    invited_start_date: string | null;
+    invited_end_date: string | null;
+  }>;
+  familyMembers: Array<{
+    id: string;
+    family_member_id: string;
+    status: string;
+    created_at: string;
+    profile: {
+      id: string;
+      name: string;
+      relationship: string | null;
+      avatar_url: string | null;
+      notes: string | null;
+    };
+  }>;
+  availableFamilyMembers: Array<{
+    id: string;
+    name: string;
+    relationship: string | null;
+    avatar_url: string | null;
+    notes: string | null;
+  }>;
+  legs: Array<{
+    id: string;
+    name: string;
+    start_date: string | null;
+    end_date: string | null;
+    country_code: string | null;
+    google_place_id: string | null;
+    sort_order: number;
+  }>;
+  memberLegAssignments: Array<{
+    id: string;
+    trip_member_id: string;
+    trip_leg_id: string;
+    is_joining: boolean;
+    start_date: string | null;
+    end_date: string | null;
+  }>;
+};
+
 export type MobileHomeResponse = DashboardData;
 
 export type MobileTripDetailResponse = {
@@ -109,6 +214,8 @@ export type MobileTripDetailResponse = {
       | "cover_image_source"
       | "cover_image_photographer_name"
       | "cover_image_photographer_url"
+      | "countdown_target_type"
+      | "countdown_target_id"
     >;
   overview: MobileTripOverview;
   itinerary: MobileItineraryItem[];

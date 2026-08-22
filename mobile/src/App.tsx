@@ -17,6 +17,8 @@ import { TripAssistantScreen } from "./screens/TripAssistantScreen";
 import { NotificationHistoryScreen } from "./screens/NotificationHistoryScreen";
 import { TripsScreen } from "./screens/TripsScreen";
 import { HomeScreen } from "./screens/HomeScreen";
+import { TripCreateScreen } from "./screens/TripCreateScreen";
+import { TripManageScreen } from "./screens/TripManageScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
 import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
@@ -38,7 +40,7 @@ export default function App() {
   const accessToken = session?.access_token || null;
   const authenticatedUserId = session?.user.id || null;
   const sessionExists = Boolean(session);
-  const selectedTripId = route.name === "trip" ? route.tripId : null;
+  const selectedTripId = route.name === "trip" || route.name === "trip-manage" ? route.tripId : null;
   const activeTripView = route.name === "trip" ? route.view : null;
 
   const returnToLogin = useCallback(async () => {
@@ -199,6 +201,21 @@ export default function App() {
       onBack={() => back(DEFAULT_MOBILE_ROUTE)}
       onOpenTrip={selectTrip}
     />
+  ) : route.name === "trip-create" ? (
+    <TripCreateScreen
+      apiClient={apiClient}
+      onCreated={(tripId) => {
+        setAvailableTrips((current) => current.some((trip) => trip.id === tripId) ? current : [...current, { id: tripId, title: "New trip" }]);
+        replace({ name: "trip", tripId, view: "overview" });
+      }}
+    />
+  ) : route.name === "trip-manage" ? (
+    <TripManageScreen
+      apiClient={apiClient}
+      tripId={route.tripId}
+      onDeleted={() => reset({ name: "trips" })}
+      onUpdated={() => replace({ name: "trip", tripId: route.tripId, view: "overview" })}
+    />
   ) : selectedTripId ? (
     activeTripView === "itinerary" ? (
       <TripItineraryScreen apiClient={apiClient} tripId={selectedTripId} />
@@ -232,6 +249,7 @@ export default function App() {
         onTransport={() => openTripView("transport")}
         onFood={() => openTripView("food")}
         onStays={() => openTripView("stays")}
+        onManage={() => push({ name: "trip-manage", tripId: selectedTripId })}
       />
     )
   ) : (
@@ -280,6 +298,7 @@ export default function App() {
         onNotificationHistory={openNotificationHistory}
         onProfile={() => push({ name: "profile" })}
         onSettings={() => push({ name: "settings" })}
+        onCreateTrip={() => push({ name: "trip-create" })}
         onSignOut={async () => {
           await returnToLogin();
         }}

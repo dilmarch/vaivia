@@ -5,14 +5,41 @@ import {
 import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
 import {
   authenticateMobileRequest,
+  mobileError,
   mobileJson,
   mobileOptions,
+  mobileSuccess,
 } from "@/lib/mobileApi/server";
+import { createTripForUser, parseTripLifecycleInput } from "@/lib/trips/lifecycle";
+import { readJsonObject, tripMutationErrorResponse } from "@/lib/trips/mobileResponse";
 
 export const dynamic = "force-dynamic";
 
 export function OPTIONS(request: Request) {
-  return mobileOptions(request);
+  return mobileOptions(request, "GET, POST, OPTIONS");
+}
+
+export async function POST(request: Request) {
+  const context = await authenticateMobileRequest(request);
+  if (context instanceof Response) return context;
+  const body = await readJsonObject(request);
+  if (!body) {
+    return mobileError(request, {
+      status: 400,
+      code: "validation_error",
+      message: "Trip details are required.",
+    });
+  }
+  try {
+    const trip = await createTripForUser({
+      supabase: context.supabase,
+      userId: context.user.id,
+      input: parseTripLifecycleInput(body),
+    });
+    return mobileSuccess(request, { trip }, { status: 201 });
+  } catch (error) {
+    return tripMutationErrorResponse(request, error);
+  }
 }
 
 export async function GET(request: Request) {

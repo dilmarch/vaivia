@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { processExternalInviteEmailOutbox } from "@/lib/externalInviteEmails";
 import { createClient } from "@/lib/supabase/server";
+import {
+    createTripInvitation,
+    updateInvitationLegs,
+} from "@/lib/trips/collaboration";
+import { TripLifecycleError } from "@/lib/trips/lifecycle";
 
 export const runtime = "nodejs";
 
@@ -88,38 +93,34 @@ export async function POST(
         );
     }
 
-    const { data: invitationId, error } = await supabase.rpc(
-        "create_trip_invitation_with_assignments",
-        {
-            target_trip_id: tripId,
-            invitee_identifier: inviteeIdentifier,
-            consent_confirmed: body.consent_confirmed === true,
-            target_leg_ids: getStringArray(body.target_leg_ids),
-            target_transportation_item_ids: getStringArray(
-                body.target_transportation_item_ids
-            ),
-            target_accommodation_item_ids: getStringArray(
-                body.target_accommodation_item_ids
-            ),
-        }
-    );
-
-    if (error) {
-        console.error("Could not create trip invitation:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-        });
-
-        return NextResponse.json(
-            {
-                error: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint,
+    let invitationId: string;
+    try {
+        ({ invitationId } = await createTripInvitation({
+            supabase,
+            userId: user.id,
+            tripId,
+            input: {
+                inviteeIdentifier,
+                consentConfirmed: body.consent_confirmed === true,
+                legIds: getStringArray(body.target_leg_ids),
+                transportationItemIds: getStringArray(
+                    body.target_transportation_item_ids
+                ),
+                accommodationItemIds: getStringArray(
+                    body.target_accommodation_item_ids
+                ),
             },
-            { status: getInviteErrorStatus(error.message) }
+        }));
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not send invitation.";
+        return NextResponse.json(
+            { error: message },
+            {
+                status:
+                    error instanceof TripLifecycleError
+                        ? error.status
+                        : getInviteErrorStatus(message),
+            }
         );
     }
 
@@ -175,35 +176,25 @@ export async function PATCH(
         );
     }
 
-    const { data: selectedLegCount, error } = await supabase.rpc(
-        "update_trip_invitation_leg_assignments",
-        {
-            target_trip_id: tripId,
-            target_invitation_id: invitationId,
-            target_leg_ids: getStringArray(body.target_leg_ids),
-        }
-    );
-
-    if (error) {
-        console.error("Could not update trip invitation legs:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
+    try {
+        const { selectedLegCount } = await updateInvitationLegs({
+            supabase,
+            userId: user.id,
             tripId,
             invitationId,
+            legIds: getStringArray(body.target_leg_ids),
         });
-
+        return NextResponse.json({ selectedLegCount });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not update invitation.";
         return NextResponse.json(
+            { error: message },
             {
-                error: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint,
-            },
-            { status: getInviteErrorStatus(error.message) }
+                status:
+                    error instanceof TripLifecycleError
+                        ? error.status
+                        : getInviteErrorStatus(message),
+            }
         );
     }
-
-    return NextResponse.json({ selectedLegCount });
 }

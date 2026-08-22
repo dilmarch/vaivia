@@ -23,6 +23,8 @@ export type MobileRoute =
     }
   | { name: "home" }
   | { name: "trips" }
+  | { name: "trip-create" }
+  | { name: "trip-manage"; tripId: string }
   | { name: "notifications" }
   | { name: "profile" }
   | { name: "settings"; section?: string }
@@ -81,6 +83,10 @@ export function parseMobileRoute(value: unknown): MobileRoute | null {
   }
   if (value.name === "home") return { name: "home" };
   if (value.name === "trips") return { name: "trips" };
+  if (value.name === "trip-create") return { name: "trip-create" };
+  if (value.name === "trip-manage" && isNonEmptyString(value.tripId)) {
+    return { name: "trip-manage", tripId: value.tripId };
+  }
   if (value.name === "notifications") return { name: "notifications" };
   if (value.name === "profile") return { name: "profile" };
   if (value.name === "events") return { name: "events" };
@@ -114,6 +120,8 @@ export function isImplementedMobileRoute(route: MobileRoute) {
     route.name === "auth" ||
     route.name === "home" ||
     route.name === "trips" ||
+    route.name === "trip-create" ||
+    route.name === "trip-manage" ||
     route.name === "notifications" ||
     route.name === "profile" ||
     route.name === "settings" ||
@@ -131,6 +139,10 @@ export function mobileRouteToPath(route: MobileRoute) {
       return "/";
     case "trips":
       return "/trips";
+    case "trip-create":
+      return "/trips/new";
+    case "trip-manage":
+      return `/trips/${encodeURIComponent(route.tripId)}/manage`;
     case "notifications":
       return "/notifications";
     case "profile":
@@ -174,12 +186,18 @@ export function resolveMobilePath(pathname: string): MobileRoute | null {
     return parseMobileRoute({ name: "event", eventId: parts[1] });
   }
   if (parts[0] === "trips" && (parts.length === 3 || parts.length === 4)) {
+    if (parts.length === 3 && parts[2] === "manage") {
+      return parseMobileRoute({ name: "trip-manage", tripId: parts[1] });
+    }
     return parseMobileRoute({
       name: "trip",
       tripId: parts[1],
       view: parts[2],
       itemId: parts[3],
     });
+  }
+  if (parts[0] === "trips" && parts.length === 2 && parts[1] === "new") {
+    return { name: "trip-create" };
   }
   return null;
 }

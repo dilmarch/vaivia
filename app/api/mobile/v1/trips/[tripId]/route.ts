@@ -9,9 +9,18 @@ import type {
 } from "@/lib/mobileApi/contracts";
 import {
   authenticateMobileRequest,
+  mobileError,
   mobileJson,
   mobileOptions,
+  mobileSuccess,
 } from "@/lib/mobileApi/server";
+import {
+  parseTripLifecycleInput,
+  permanentlyDeleteTripForOwner,
+  setTripArchivedForOwner,
+  updateTripForUser,
+} from "@/lib/trips/lifecycle";
+import { readJsonObject, tripMutationErrorResponse } from "@/lib/trips/mobileResponse";
 import { buildAccommodationItineraryHolds } from "@/lib/accommodationItineraryHolds";
 import { buildFlightDepartureBuffers } from "@/lib/flightDepartureBuffers";
 import { getIataAirportCode } from "@/lib/airportCodes";
@@ -57,7 +66,59 @@ type TransportationRow = Tables<"transportation_items">;
 type AccommodationRow = Tables<"trip_accommodations">;
 
 export function OPTIONS(request: Request) {
-  return mobileOptions(request);
+  return mobileOptions(request, "GET, PATCH, DELETE, OPTIONS");
+}
+
+export async function PATCH(request: Request, { params }: RouteContext) {
+  const context = await authenticateMobileRequest(request);
+  if (context instanceof Response) return context;
+  const { tripId } = await params;
+  const body = await readJsonObject(request);
+  if (!body) {
+    return mobileError(request, {
+      status: 400,
+      code: "validation_error",
+      message: "Trip details are required.",
+    });
+  }
+  try {
+    if (body.operation === "archive" || body.operation === "restore") {
+      const trip = await setTripArchivedForOwner({
+        supabase: context.supabase,
+        userId: context.user.id,
+        tripId,
+        archived: body.operation === "archive",
+      });
+      return mobileSuccess(request, { trip });
+    }
+    const trip = await updateTripForUser({
+      supabase: context.supabase,
+      userId: context.user.id,
+      tripId,
+      input: parseTripLifecycleInput(body),
+    });
+    return mobileSuccess(request, { trip });
+  } catch (error) {
+    return tripMutationErrorResponse(request, error);
+  }
+}
+
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const context = await authenticateMobileRequest(request);
+  if (context instanceof Response) return context;
+  const { tripId } = await params;
+  const body = await readJsonObject(request);
+  try {
+    const result = await permanentlyDeleteTripForOwner({
+      supabase: context.supabase,
+      userId: context.user.id,
+      tripId,
+      confirmation: typeof body?.confirmation === "string" ? body.confirmation : "",
+    });
+    return mobileSuccess(request, result);
+  } catch (error) {
+    return tripMutationErrorResponse(request, error);
+  }
 }
 
 function getInitials(label: string) {
@@ -241,7 +302,7 @@ export async function GET(request: Request, { params }: RouteContext) {
   const { data: trip, error: tripError } = await context.supabase
     .from("trips")
     .select(
-      "id,slug,title,destination,start_date,end_date,cover_image_url,cover_image_source,cover_image_storage_path,cover_image_photographer_name,cover_image_photographer_url,notes,user_id",
+      "id,slug,title,destination,start_date,end_date,cover_image_url,cover_image_source,cover_image_storage_path,cover_image_photographer_name,cover_image_photographer_url,notes,user_id,archived_at,countdown_target_type,countdown_target_id",
     )
     .eq("id", tripId)
     .maybeSingle();

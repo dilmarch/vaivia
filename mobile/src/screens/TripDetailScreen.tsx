@@ -39,6 +39,7 @@ type TripDetailScreenProps = {
   onTransport?: () => void;
   onFood?: () => void;
   onStays?: () => void;
+  onManage?: () => void;
 };
 
 function formatMoney(amount: number, currency: string) {
@@ -93,6 +94,7 @@ export function TripDetailScreen({
   onTransport,
   onFood,
   onStays,
+  onManage,
 }: TripDetailScreenProps) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -215,6 +217,15 @@ export function TripDetailScreen({
       </header>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        {onManage ? (
+          <button
+            type="button"
+            onClick={onManage}
+            className="mb-4 min-h-11 rounded-full border border-lime-300/25 bg-lime-300/10 px-5 text-sm font-black text-lime-100"
+          >
+            Manage trip
+          </button>
+        ) : null}
         <TripOverviewPresentation>
           <TripOverviewLocationDatesPresentation
             locations={overview.locations}

@@ -78,6 +78,7 @@ type MobileAppChromeProps = {
   onNotificationHistory: () => void;
   onProfile?: () => void;
   onSettings?: () => void;
+  onCreateTrip?: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -174,6 +175,7 @@ export function MobileAppChrome({
   onNotificationHistory,
   onProfile = () => undefined,
   onSettings = () => undefined,
+  onCreateTrip,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -622,7 +624,11 @@ export function MobileAppChrome({
                   <QuickAddMenuItemPresentation
                     key={label}
                     label={label}
-                    disabled
+                    disabled={index !== 0 || !onCreateTrip}
+                    onPress={index === 0 && onCreateTrip ? () => {
+                      closeMenus();
+                      onCreateTrip();
+                    } : undefined}
                     animationDelay={`${index * 34}ms`}
                   />
                 ))}

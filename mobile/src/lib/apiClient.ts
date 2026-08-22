@@ -6,7 +6,10 @@ import type {
   MobileHomeResponse,
   MobileNotificationHistoryResponse,
   MobileNotificationsResponse,
+  MobileTripCollaborationResponse,
   MobileTripDetailResponse,
+  MobileTripMutationInput,
+  MobileTripMutationResponse,
   MobileTripsResponse,
   MobileSettingsResponse,
 } from "@/lib/mobileApi/contracts";
@@ -408,6 +411,112 @@ export class MobileApiClient {
     return this.getJson<MobileTripDetailResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { signal },
+    );
+  }
+
+  createTrip(input: MobileTripMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<MobileTripMutationResponse>("/api/mobile/v1/trips", input, options);
+  }
+
+  updateTrip(tripId: string, input: MobileTripMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<MobileTripMutationResponse>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
+      input,
+      options,
+    );
+  }
+
+  setTripArchived(tripId: string, archived: boolean, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<MobileTripMutationResponse>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
+      { operation: archived ? "archive" : "restore" },
+      options,
+    );
+  }
+
+  deleteTrip(tripId: string, confirmation: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ deleted: true; tripId: string }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
+      { confirmation },
+      options,
+    );
+  }
+
+  getTripCollaboration(tripId: string, signal?: AbortSignal) {
+    return this.getJson<MobileTripCollaborationResponse>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/collaboration`,
+      { signal },
+    );
+  }
+
+  inviteTripCollaborator(
+    tripId: string,
+    input: { inviteeIdentifier: string; consentConfirmed: boolean; legIds: string[] },
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{ invitationId: string }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/invitations`,
+      input,
+      options,
+    );
+  }
+
+  cancelTripInvitation(tripId: string, invitationId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ cancelled: true }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/invitations`,
+      { invitationId },
+      options,
+    );
+  }
+
+  removeTripMember(tripId: string, memberUserId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ removed: true }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/members`,
+      { memberUserId },
+      options,
+    );
+  }
+
+  setTripFamilyMember(
+    tripId: string,
+    familyMemberId: string,
+    included: boolean,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    const path = `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/family-members`;
+    return included
+      ? this.postJson<{ included: boolean }>(path, { familyMemberId }, options)
+      : this.deleteJson<{ included: boolean }>(path, { familyMemberId }, options);
+  }
+
+  updateTripMemberScope(
+    tripId: string,
+    input: { tripMemberId: string; startDate: string; endDate: string; legIds: string[] },
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ updated: true }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/members`,
+      input,
+      options,
+    );
+  }
+
+  uploadTripCover(tripId: string, file: File, options: MobileApiJsonRequestOptions = {}) {
+    const { signal, headers, ...policy } = options;
+    const formData = new FormData();
+    formData.set("cover_upload_file", file);
+    return this.requestJson<MobileTripMutationResponse>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/cover`,
+      { method: "POST", headers, body: formData, signal },
+      policy,
+    );
+  }
+
+  removeTripCover(tripId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<MobileTripMutationResponse>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/cover`,
+      undefined,
+      options,
     );
   }
 

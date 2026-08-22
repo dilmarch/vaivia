@@ -26,6 +26,12 @@ describe("mobile route model", () => {
 
   it("accepts only supported, complete routes", () => {
     expect(parseMobileRoute({ name: "trips" })).toEqual({ name: "trips" });
+    expect(parseMobileRoute({ name: "trip-create" })).toEqual({ name: "trip-create" });
+    expect(parseMobileRoute({ name: "trip-manage", tripId: "trip-1" })).toEqual({
+      name: "trip-manage",
+      tripId: "trip-1",
+    });
+    expect(parseMobileRoute({ name: "trip-manage", tripId: "" })).toBe(null);
     expect(
       parseMobileRoute({ name: "trip", tripId: "trip-1", view: "budget" }),
     ).toEqual({ name: "trip", tripId: "trip-1", view: "budget" });
@@ -62,6 +68,11 @@ describe("mobile route model", () => {
     expect(resolveMobilePath("/events/event%2Fone")).toEqual({
       name: "event",
       eventId: "event/one",
+    });
+    expect(resolveMobilePath("/trips/new")).toEqual({ name: "trip-create" });
+    expect(resolveMobilePath("/trips/trip%2Fone/manage")).toEqual({
+      name: "trip-manage",
+      tripId: "trip/one",
     });
     expect(resolveMobilePath("/unsupported/path")).toBe(null);
     expect(resolveMobilePath("/trips/%/overview")).toBe(null);
