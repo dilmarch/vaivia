@@ -19,6 +19,7 @@ import type {
 } from "@/lib/mobileApi/contracts";
 import { getLocalTimezone } from "@/lib/sessionTimezone";
 import { MobileItineraryCard } from "../components/MobileItineraryCard";
+import { MobileTransportEditor } from "../components/MobileTravelEditors";
 import { ScreenMessage } from "../components/ScreenMessage";
 import type { MobileApiClient } from "../lib/apiClient";
 
@@ -159,9 +160,15 @@ function getLocalDateKey(date: Date) {
 export function TripTransportScreen({
   apiClient,
   tripId,
+  editorAction,
+  onEditorAction,
+  onEditorClose,
 }: {
   apiClient: MobileApiClient;
   tripId: string;
+  editorAction?: string;
+  onEditorAction?: (itemId: string) => void;
+  onEditorClose?: () => void;
 }) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -169,6 +176,7 @@ export function TripTransportScreen({
   const [isLoading, setIsLoading] = useState(true);
   const [reloadKey, setReloadKey] = useState(0);
   const [coverLoadError, setCoverLoadError] = useState("");
+  const [mode, setMode] = useState<"transport" | "compare-flights">("transport");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -225,6 +233,20 @@ export function TripTransportScreen({
     [displayTimezone, visibleItems],
   );
 
+  const editor = editorAction && data ? (
+    <MobileTransportEditor
+      apiClient={apiClient}
+      tripId={tripId}
+      itemId={editorAction === "new" ? undefined : editorAction}
+      stays={data.stays}
+      onCancel={() => onEditorClose?.()}
+      onSaved={() => {
+        setReloadKey((key) => key + 1);
+        onEditorClose?.();
+      }}
+    />
+  ) : null;
+
   if (isLoading) {
     return (
       <main className="min-h-screen overflow-x-clip bg-[#0c0115] pb-10 pt-0 text-white">
@@ -270,16 +292,19 @@ export function TripTransportScreen({
       </header>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        {editor ? editor : (
         <TransportPresentation
-          mode="transport"
+          mode={mode}
           showAll={showAll}
           onShowAllChange={setShowAll}
-          compareFlightsDisabled
+          renderTransportTab={(props) => <button type="button" onClick={() => setMode("transport")} {...props} />}
+          renderCompareFlightsTab={(props) => <button type="button" onClick={() => setMode("compare-flights")} {...props} />}
         >
-          <ItineraryCalendarFrame
+          {mode === "transport" ? <ItineraryCalendarFrame
             header={<ItineraryHeaderPresentation title="Transport" listOnly />}
           >
             <div className="animate-in fade-in slide-in-from-bottom-2 p-4 duration-300 sm:p-6">
+              <div className="mb-5 flex justify-end"><button type="button" onClick={() => onEditorAction?.("new")} className="rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950">Add transportation</button></div>
               <ItineraryListPresentation
                 groupedPastEvents={{}}
                 groupedEarlierItems={{}}
@@ -291,12 +316,18 @@ export function TripTransportScreen({
                     key={entry.item.id}
                     item={entry.item}
                     timeLabel={entry.timeLabel}
+                    onEdit={() => onEditorAction?.(entry.item.source_id)}
                   />
                 )}
               />
             </div>
-          </ItineraryCalendarFrame>
+          </ItineraryCalendarFrame> : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {visibleItems.filter((item) => item.transportation_mode === "flight").length ? visibleItems.filter((item) => item.transportation_mode === "flight").map((item) => <MobileItineraryCard key={item.id} item={item} onEdit={() => onEditorAction?.(item.source_id)} />) : <p className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-8 text-center font-bold text-slate-300 md:col-span-2">Add flight options to compare routes, schedules, carriers and costs.</p>}
+            </div>
+          )}
         </TransportPresentation>
+        )}
       </div>
     </main>
   );

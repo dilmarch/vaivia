@@ -30,11 +30,14 @@ import TripMembersPanel, {
     type TripHeaderMember,
 } from "@/components/TripMembersPanel";
 import {
-    buildAccommodationPayload,
-    getAccommodationErrorMessage,
-    validateAccommodationPayload,
     type TripAccommodation,
 } from "@/lib/accommodations";
+import {
+    deleteStayForUser,
+    StayMutationError,
+    stayMutationInputFromFormData,
+    updateStayForUser,
+} from "@/lib/accommodations/mutations";
 import { syncAutoBudgetExpense } from "@/lib/budgetAutoSync";
 import { createClient } from "@/lib/supabase/server";
 import { loadActiveMemberTrips } from "@/lib/sharedTrips";
@@ -572,91 +575,22 @@ async function updateAccommodation(formData: FormData) {
 
     const tripId = String(formData.get("trip_id") || "");
     const accommodationId = String(formData.get("accommodation_id") || "");
-    const payload = buildAccommodationPayload(formData, tripId);
-    const validationErrors = validateAccommodationPayload(payload);
-
-    if (validationErrors.length > 0) {
-        return { ok: false as const, error: validationErrors.join(" ") };
-    }
-
-    const { trip_id: _tripId, ...updatePayload } = payload;
-    void _tripId;
-
-    const { error } = await supabase
-        .from("trip_accommodations")
-        .update(updatePayload)
-        .eq("id", accommodationId)
-        .eq("trip_id", tripId);
-
-    if (error) {
-        console.error("Error updating stay:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            payload: updatePayload,
-            accommodationId,
+    try {
+        await updateStayForUser({
+            supabase,
             userId: user.id,
+            tripId,
+            stayId: accommodationId,
+            input: stayMutationInputFromFormData(formData),
         });
+    } catch (error) {
         return {
             ok: false as const,
-            error: `Could not update stay: ${getAccommodationErrorMessage(
-                error.message
-            )}`,
+            error:
+                error instanceof StayMutationError
+                    ? error.message
+                    : "Could not update stay.",
         };
-    }
-
-    if (!payload.is_planning_option) {
-        try {
-            await syncAutoBudgetExpense({
-                supabase,
-                userId: user.id,
-                tripId,
-                sourceType: "accommodation",
-                sourceId: accommodationId,
-                amount: payload.cost,
-                currency: payload.currency,
-                expenseDate: payload.check_in_date,
-                description: payload.hotel_name,
-                formData,
-            });
-        } catch (budgetError) {
-            console.error("Stay updated without budget sync:", {
-                message:
-                    budgetError instanceof Error
-                        ? budgetError.message
-                        : String(budgetError),
-                tripId,
-                accommodationId,
-                userId: user.id,
-            });
-            return {
-                ok: false as const,
-                error: "Stay saved, but its budget entry could not be updated.",
-            };
-        }
-
-        const participantsError = await replaceTripItemParticipantsFromForm({
-            tripId,
-            itemType: "accommodation",
-            itemId: accommodationId,
-            formData,
-        });
-
-        if (participantsError) {
-            console.error("Error updating stay participants:", {
-                message: participantsError.message,
-                code: participantsError.code,
-                details: participantsError.details,
-                hint: participantsError.hint,
-                tripId,
-                accommodationId,
-            });
-            return {
-                ok: false as const,
-                error: "Stay saved, but its traveler selection could not be updated.",
-            };
-        }
     }
 
     revalidatePath(`/trips/${tripId}/accommodations`);
@@ -676,27 +610,12 @@ async function deleteAccommodation(formData: FormData) {
     const tripId = String(formData.get("trip_id") || "");
     const accommodationId = String(formData.get("accommodation_id") || "");
 
-    const { error } = await supabase
-        .from("trip_accommodations")
-        .delete()
-        .eq("id", accommodationId)
-        .eq("trip_id", tripId);
-
-    if (error) {
-        console.error("Error deleting stay:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            accommodationId,
-            userId: user.id,
-        });
-        throw new Error(
-            `Could not delete stay: ${getAccommodationErrorMessage(
-                error.message
-            )}`
-        );
-    }
+    await deleteStayForUser({
+        supabase,
+        userId: user.id,
+        tripId,
+        stayId: accommodationId,
+    });
 
     revalidatePath(`/trips/${tripId}/accommodations`);
 }

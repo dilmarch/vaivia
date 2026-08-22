@@ -6,6 +6,8 @@ import type { AssistantTimingRecorder } from "@/lib/ai/assistant-timing";
 const GOOGLE_PLACES_TEXT_SEARCH_URL =
     "https://places.googleapis.com/v1/places:searchText";
 const GOOGLE_PLACES_DETAILS_URL = "https://places.googleapis.com/v1/places";
+const GOOGLE_PLACES_AUTOCOMPLETE_URL =
+    "https://places.googleapis.com/v1/places:autocomplete";
 const GOOGLE_PLACES_TIMEOUT_MS = 8_000;
 const MIN_RADIUS_METERS = 250;
 const MAX_RADIUS_METERS = 10_000;
@@ -61,6 +63,13 @@ export type GooglePlacesFailureCode =
 export type GooglePlacesResult<T> =
     | { status: "success"; data: T }
     | { status: "failure"; code: GooglePlacesFailureCode };
+
+export type SanitizedPlaceSuggestion = {
+    placeId: string;
+    name: string;
+    address: string | null;
+    category: string;
+};
 
 type GooglePlacePayload = {
     id?: unknown;
@@ -339,6 +348,76 @@ async function placesFetch(
     }
 }
 
+export async function autocompleteGooglePlaces({
+    input,
+    sessionToken,
+    signal,
+}: {
+    input: string;
+    sessionToken?: string | null;
+    signal?: AbortSignal;
+}): Promise<GooglePlacesResult<SanitizedPlaceSuggestion[]>> {
+    const safeInput = cleanString(input, 160);
+    const safeSessionToken = cleanString(sessionToken, 120);
+    if (safeInput.length < 2) return { status: "failure", code: "no_results" };
+    const result = await placesFetch(
+        GOOGLE_PLACES_AUTOCOMPLETE_URL,
+        {
+            method: "POST",
+            body: JSON.stringify({
+                input: safeInput,
+                ...(safeSessionToken ? { sessionToken: safeSessionToken } : {}),
+            }),
+        },
+        signal,
+    );
+    if (result.status === "failure") return result;
+    const payload = result.data as { suggestions?: unknown };
+    const suggestions = Array.isArray(payload.suggestions)
+        ? payload.suggestions.flatMap((suggestion) => {
+              if (!suggestion || typeof suggestion !== "object") return [];
+              const prediction = (suggestion as { placePrediction?: unknown })
+                  .placePrediction;
+              if (!prediction || typeof prediction !== "object") return [];
+              const record = prediction as Record<string, unknown>;
+              const placeId = cleanString(record.placeId, 255);
+              const text = cleanString(
+                  (record.text as { text?: unknown } | undefined)?.text,
+                  320,
+              );
+              const structured = record.structuredFormat as
+                  | {
+                        mainText?: { text?: unknown };
+                        secondaryText?: { text?: unknown };
+                    }
+                  | undefined;
+              const name =
+                  cleanString(structured?.mainText?.text, 160) ||
+                  text.split(",")[0] ||
+                  text;
+              if (!placeId || !name) return [];
+              return [
+                  {
+                      placeId,
+                      name,
+                      address:
+                          cleanString(structured?.secondaryText?.text, 240) ||
+                          text ||
+                          null,
+                      category:
+                          cleanString(
+                              Array.isArray(record.types) ? record.types[0] : "",
+                              80,
+                          ) || "place",
+                  } satisfies SanitizedPlaceSuggestion,
+              ];
+          }).slice(0, 8)
+        : [];
+    return suggestions.length
+        ? { status: "success", data: suggestions }
+        : { status: "failure", code: "no_results" };
+}
+
 export async function searchGooglePlaces({
     query,
     origin,
@@ -445,18 +524,25 @@ export async function findGooglePlaceByText({
 export async function getGooglePlaceDetails({
     placeId,
     origin,
+    sessionToken,
     signal,
     timing,
 }: {
     placeId: string;
     origin?: TrustedPlaceLocation;
+    sessionToken?: string | null;
     signal?: AbortSignal;
     timing?: AssistantTimingRecorder;
 }): Promise<GooglePlacesResult<SanitizedGooglePlace>> {
     const safePlaceId = cleanString(placeId, 255);
     if (!safePlaceId) return { status: "failure", code: "provider_failure" };
+    const safeSessionToken = cleanString(sessionToken, 120);
+    const detailsUrl = new URL(
+        `${GOOGLE_PLACES_DETAILS_URL}/${encodeURIComponent(safePlaceId)}`
+    );
+    if (safeSessionToken) detailsUrl.searchParams.set("sessionToken", safeSessionToken);
     const result = await placesFetch(
-        `${GOOGLE_PLACES_DETAILS_URL}/${encodeURIComponent(safePlaceId)}`,
+        detailsUrl.toString(),
         {
             method: "GET",
             headers: { "X-Goog-FieldMask": DETAILS_FIELD_MASK },

@@ -252,11 +252,23 @@ export default function App() {
         onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "budget" })}
       />
     ) : activeTripView === "transport" ? (
-      <TripTransportScreen apiClient={apiClient} tripId={selectedTripId} />
+      <TripTransportScreen
+        apiClient={apiClient}
+        tripId={selectedTripId}
+        editorAction={route.name === "trip" ? route.itemId : undefined}
+        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "transport", itemId })}
+        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "transport" })}
+      />
     ) : activeTripView === "food" ? (
       <TripFoodScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "stays" ? (
-      <TripStaysScreen apiClient={apiClient} tripId={selectedTripId} />
+      <TripStaysScreen
+        apiClient={apiClient}
+        tripId={selectedTripId}
+        editorAction={route.name === "trip" ? route.itemId : undefined}
+        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "stays", itemId })}
+        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "stays" })}
+      />
     ) : activeTripView === "assistant" ? (
       <TripAssistantScreen
         apiClient={apiClient}
@@ -329,6 +341,8 @@ export default function App() {
         onCreateTrip={() => push({ name: "trip-create" })}
         onCreateIdea={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "ideas", itemId: "new" }) : undefined}
         onCreateExpense={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "budget", itemId: "add-expense" }) : undefined}
+        onCreateTransportation={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "transport", itemId: "new" }) : undefined}
+        onCreateStay={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "stays", itemId: "new" }) : undefined}
         onSignOut={async () => {
           await returnToLogin();
         }}

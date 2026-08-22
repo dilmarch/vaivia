@@ -166,7 +166,7 @@ describe("mobile Trip Stays strict visual parity", () => {
         screen.getByRole("button", {
           name: "Compare Stays: Compare stays with your plans",
         }),
-      ).toBeDisabled();
+      ).toBeEnabled();
       expect(screen.getByText("Who has a place to stay?")).toHaveClass(
         "text-3xl",
         "font-black",
@@ -195,15 +195,16 @@ describe("mobile Trip Stays strict visual parity", () => {
       );
       expect(screen.getByText("CA$900.00")).toBeInTheDocument();
       expect(screen.getByTitle("Alex Rivera")).toHaveTextContent("AR");
-      expect(screen.getByRole("button", { name: "Add stay unavailable" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Add stay" })).toBeEnabled();
       expect(
         screen.getByRole("button", {
-          name: "Edit Hotel Bonaventure unavailable",
+          name: "Edit Hotel Bonaventure",
         }),
-      ).toBeDisabled();
-      expect(
-        screen.getByRole("button", { name: "Open in Google Maps unavailable" }),
-      ).toBeDisabled();
+      ).toBeEnabled();
+      expect(screen.getByRole("link", { name: "Open in Google Maps" })).toHaveAttribute(
+        "href",
+        "https://maps.google.com/example",
+      );
       expect(document.querySelector("main")).toHaveClass("overflow-x-clip");
     },
   );

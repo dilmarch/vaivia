@@ -19,6 +19,10 @@ import type {
   MobileExpenseMutationInput,
   MobileSettlementMutationInput,
   MobileIdeaMutationInput,
+  MobilePlaceDetails,
+  MobilePlaceSuggestion,
+  MobileStayMutationInput,
+  MobileTransportationMutationInput,
 } from "@/lib/mobileApi/contracts";
 
 export class MobileApiError extends Error {
@@ -419,6 +423,57 @@ export class MobileApiClient {
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { signal },
     );
+  }
+
+  createTransportation(tripId: string, input: MobileTransportationMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ item: unknown }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/transport`, input, options);
+  }
+
+  getTransportation(tripId: string, itemId: string, signal?: AbortSignal) {
+    return this.getJson<{ item: Record<string, unknown>; participants: Array<Record<string, unknown>> }>(`/api/mobile/v1/transport/${encodeURIComponent(itemId)}?tripId=${encodeURIComponent(tripId)}`, { signal });
+  }
+
+  updateTransportation(tripId: string, itemId: string, input: MobileTransportationMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<{ item: unknown }>(`/api/mobile/v1/transport/${encodeURIComponent(itemId)}`, { ...input, tripId }, options);
+  }
+
+  deleteTransportation(tripId: string, itemId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ deleted: true; itemId: string }>(`/api/mobile/v1/transport/${encodeURIComponent(itemId)}`, { tripId }, options);
+  }
+
+  createStay(tripId: string, input: MobileStayMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ stay: unknown }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/stays`, input, options);
+  }
+
+  getStay(tripId: string, stayId: string, signal?: AbortSignal) {
+    return this.getJson<{ stay: Record<string, unknown>; participants: Array<Record<string, unknown>> }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}?tripId=${encodeURIComponent(tripId)}`, { signal });
+  }
+
+  updateStay(tripId: string, stayId: string, input: MobileStayMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<{ stay: unknown }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}`, { ...input, tripId }, options);
+  }
+
+  promoteStay(tripId: string, stayId: string, input: MobileStayMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<{ stay: unknown }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}`, { ...input, tripId, operation: "promote" }, options);
+  }
+
+  deleteStay(tripId: string, stayId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ deleted: true; stayId: string }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}`, { tripId }, options);
+  }
+
+  searchPlaces(query: string, sessionToken: string, signal?: AbortSignal) {
+    const search = new URLSearchParams({ query, sessionToken });
+    return this.getJson<{ places: MobilePlaceSuggestion[] }>(`/api/mobile/v1/places?${search.toString()}`, { signal });
+  }
+
+  searchNearbyPlaces(query: string, latitude: number, longitude: number, signal?: AbortSignal) {
+    const search = new URLSearchParams({ query, lat: String(latitude), lng: String(longitude) });
+    return this.getJson<{ places: MobilePlaceDetails[] }>(`/api/mobile/v1/places?${search.toString()}`, { signal });
+  }
+
+  getPlaceDetails(placeId: string, sessionToken: string, signal?: AbortSignal) {
+    const search = new URLSearchParams({ sessionToken });
+    return this.getJson<{ place: MobilePlaceDetails }>(`/api/mobile/v1/places/${encodeURIComponent(placeId)}?${search.toString()}`, { signal });
   }
 
   createIdea(tripId: string, input: MobileIdeaMutationInput, options: MobileApiJsonRequestOptions = {}) {

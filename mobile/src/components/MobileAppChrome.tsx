@@ -81,6 +81,8 @@ type MobileAppChromeProps = {
   onCreateTrip?: () => void;
   onCreateIdea?: () => void;
   onCreateExpense?: () => void;
+  onCreateTransportation?: () => void;
+  onCreateStay?: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -180,6 +182,8 @@ export function MobileAppChrome({
   onCreateTrip,
   onCreateIdea,
   onCreateExpense,
+  onCreateTransportation,
+  onCreateStay,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -630,9 +634,11 @@ export function MobileAppChrome({
                     label={label}
                     disabled={
                       (label === "Add trip" && !onCreateTrip) ||
+                      (label === "Add transportation" && !onCreateTransportation) ||
+                      (label === "Add stay" && !onCreateStay) ||
                       (label === "Add things to do" && !onCreateIdea) ||
                       (label === "Add expense" && !onCreateExpense) ||
-                      (label !== "Add trip" && label !== "Add things to do" && label !== "Add expense")
+                      (label !== "Add trip" && label !== "Add transportation" && label !== "Add stay" && label !== "Add things to do" && label !== "Add expense")
                     }
                     onPress={label === "Add trip" && onCreateTrip ? () => {
                       closeMenus(); onCreateTrip();
@@ -640,6 +646,10 @@ export function MobileAppChrome({
                       closeMenus(); onCreateIdea();
                     } : label === "Add expense" && onCreateExpense ? () => {
                       closeMenus(); onCreateExpense();
+                    } : label === "Add transportation" && onCreateTransportation ? () => {
+                      closeMenus(); onCreateTransportation();
+                    } : label === "Add stay" && onCreateStay ? () => {
+                      closeMenus(); onCreateStay();
                     } : undefined}
                     animationDelay={`${index * 34}ms`}
                   />

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+    autocompleteGooglePlaces,
     findGooglePlaceByText,
     getGooglePlaceDetails,
     refreshGooglePlaceId,
@@ -23,6 +24,32 @@ function response(body: unknown, status = 200) {
 }
 
 describe("server-only Google Places client", () => {
+    it("uses Places Autocomplete New with a session token and sanitizes suggestions", async () => {
+        vi.stubEnv("GOOGLE_PLACES_API_KEY", "server-only-test-key");
+        const fetchMock = vi.fn(async () => response({
+            suggestions: [{
+                placePrediction: {
+                    placeId: "ChIJStay123",
+                    text: { text: "VAIVIA Hotel, 1 Water Street" },
+                    structuredFormat: {
+                        mainText: { text: "VAIVIA Hotel" },
+                        secondaryText: { text: "1 Water Street" },
+                    },
+                    types: ["lodging"],
+                },
+            }],
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        await expect(autocompleteGooglePlaces({ input: "VAIVIA", sessionToken: "safe-session" })).resolves.toEqual({
+            status: "success",
+            data: [{ placeId: "ChIJStay123", name: "VAIVIA Hotel", address: "1 Water Street", category: "lodging" }],
+        });
+        const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        expect(url).toBe("https://places.googleapis.com/v1/places:autocomplete");
+        expect(JSON.parse(String(init.body))).toEqual({ input: "VAIVIA", sessionToken: "safe-session" });
+        expect((init.headers as Record<string, string>)["X-Goog-Api-Key"]).toBe("server-only-test-key");
+    });
     it("fails safely without the dedicated key and never falls back to browser keys", async () => {
         vi.stubEnv("GOOGLE_PLACES_API_KEY", "");
         vi.stubEnv("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY", "browser-key-must-not-be-used");

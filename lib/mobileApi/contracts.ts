@@ -371,11 +371,116 @@ export type MobileStayCoverageLeg = {
 
 export type MobileTripStaysData = {
   accommodations: TripAccommodation[];
+  planningOptions?: TripAccommodation[];
   audienceOptions: TripAudienceOption[];
   participants: MobileStayAudienceParticipant[];
   travelers: MobileStayCoverageTraveler[];
   legs: MobileStayCoverageLeg[];
   currentUserTripMemberId: string | null;
+};
+
+export type MobileMutationParticipants = {
+  memberIds?: string[];
+  invitationIds?: string[];
+  familyMemberIds?: string[];
+  guestNames?: string[];
+};
+
+export type MobileTransportationMutationInput = {
+  title?: string | null;
+  transportType: string;
+  status?: string | null;
+  transportNumber?: string | null;
+  providerName?: string | null;
+  providerCode?: string | null;
+  providerUrl?: string | null;
+  reservationCode?: string | null;
+  bookingUrl?: string | null;
+  departureDate: string;
+  arrivalDate?: string | null;
+  departureTime?: string | null;
+  arrivalTime?: string | null;
+  departureLocation: string;
+  arrivalLocation: string;
+  departureFormattedAddress?: string | null;
+  arrivalFormattedAddress?: string | null;
+  departureGooglePlaceId?: string | null;
+  arrivalGooglePlaceId?: string | null;
+  departureLat?: number | null;
+  departureLng?: number | null;
+  arrivalLat?: number | null;
+  arrivalLng?: number | null;
+  departureTimezone?: string | null;
+  arrivalTimezone?: string | null;
+  departureTerminal?: string | null;
+  arrivalTerminal?: string | null;
+  departureGate?: string | null;
+  arrivalGate?: string | null;
+  departurePlatform?: string | null;
+  arrivalPlatform?: string | null;
+  seatNumber?: string | null;
+  cabinClass?: string | null;
+  fareClass?: string | null;
+  baggageInfo?: string | null;
+  preferredRideProvider?: string | null;
+  cost?: number | string | null;
+  currency?: string | null;
+  paidStatus?: string | null;
+  notes?: string | null;
+  isPrivate?: boolean;
+  audienceMode?: "everyone" | "custom" | "just_me";
+  participants?: MobileMutationParticipants;
+  tripLegId?: string | null;
+  routeStops?: Array<{ order?: number; label: string; placeId?: string | null }>;
+};
+
+export type MobileStayMutationInput = {
+  hotelName: string;
+  accommodationType?: string | null;
+  status?: string | null;
+  googlePlaceId?: string | null;
+  googleMapsUrl?: string | null;
+  address?: string | null;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  checkInDate: string;
+  checkOutDate: string;
+  freeCancellationEndsOn?: string | null;
+  checkInTimeStart?: string | null;
+  checkInTimeEnd?: string | null;
+  checkOutTime?: string | null;
+  website?: string | null;
+  bookingUrl?: string | null;
+  isPlanningOption?: boolean;
+  cost?: number | string | null;
+  currency?: string | null;
+  isPrivate?: boolean;
+  audienceMode?: "everyone" | "custom" | "just_me";
+  participants?: MobileMutationParticipants;
+  notes?: string | null;
+  tripLegId?: string | null;
+};
+
+export type MobilePlaceSuggestion = {
+  placeId: string;
+  name: string;
+  address: string | null;
+  category: string;
+};
+
+export type MobilePlaceDetails = MobilePlaceSuggestion & {
+  latitude: number;
+  longitude: number;
+  mapsUrl: string;
+  types: string[];
+  rating: number | null;
+  userRatingCount: number | null;
 };
 
 export type MobileTripBudgetData = {

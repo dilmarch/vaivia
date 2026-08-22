@@ -129,6 +129,10 @@ import {
     resolveTransportationMode,
 } from "@/lib/transportationModes";
 import {
+    insertTransportationPayloadWithFallback as persistTransportationPayloadWithFallback,
+    updateTransportationPayloadWithFallback as persistTransportationUpdateWithFallback,
+} from "@/lib/transport/mutations";
+import {
     getTripHref,
     getTripItineraryHref,
     resolveTripRouteParam,
@@ -464,12 +468,6 @@ const REMOVABLE_LEGACY_ITINERARY_COLUMNS = new Set([
     "airline_code",
     "flight_number",
 ]);
-
-const PROTECTED_VISIBILITY_COLUMNS = new Set(["is_private", "audience_mode"]);
-
-function isProtectedVisibilityColumn(column: string) {
-    return PROTECTED_VISIBILITY_COLUMNS.has(column);
-}
 
 function isMissingOptionalColumnError(error: {
     code?: string;
@@ -817,42 +815,7 @@ async function insertTransportationPayloadWithFallback(
     payload: TransportationItemPayload
 ) {
     const supabase = await createClient();
-    let attempt = { ...payload };
-    let lastError: {
-        code?: string;
-        message?: string;
-        details?: string;
-        hint?: string;
-    } | null = null;
-
-    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
-        const { data, error } = await supabase
-            .from("transportation_items")
-            .insert(attempt)
-            .select("id")
-            .single();
-
-        if (!error) return { data: data as Record<string, unknown>, error: null };
-
-        lastError = error;
-
-        if (error.code !== "42703" && error.code !== "PGRST204") break;
-
-        const missingColumn = getMissingColumnName(error);
-        if (!missingColumn || !(missingColumn in attempt)) break;
-        if (isProtectedVisibilityColumn(missingColumn)) break;
-
-        console.warn(
-            `Transportation items table is missing optional column "${missingColumn}". Retrying without it.`,
-            error
-        );
-
-        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
-        void _removedColumn;
-        attempt = nextAttempt;
-    }
-
-    return { data: null, error: lastError };
+    return persistTransportationPayloadWithFallback({ supabase, payload });
 }
 
 async function replaceTripItemParticipants({
@@ -880,37 +843,12 @@ async function updateTransportationPayloadWithFallback(
     tripId: string
 ) {
     const supabase = await createClient();
-    let attempt = { ...payload };
-    let lastError: { code?: string; message?: string; details?: string } | null = null;
-
-    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
-        const { error } = await supabase
-            .from("transportation_items")
-            .update(attempt)
-            .eq("id", itemId)
-            .eq("trip_id", tripId);
-
-        if (!error) return null;
-
-        lastError = error;
-
-        if (error.code !== "42703" && error.code !== "PGRST204") break;
-
-        const missingColumn = getMissingColumnName(error);
-        if (!missingColumn || !(missingColumn in attempt)) break;
-        if (isProtectedVisibilityColumn(missingColumn)) break;
-
-        console.warn(
-            `Transportation items table is missing optional column "${missingColumn}". Retrying update without it.`,
-            error
-        );
-
-        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
-        void _removedColumn;
-        attempt = nextAttempt;
-    }
-
-    return lastError;
+    return persistTransportationUpdateWithFallback({
+        supabase,
+        payload,
+        itemId,
+        tripId,
+    });
 }
 
 function getStringValue(

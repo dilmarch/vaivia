@@ -215,7 +215,9 @@ export function MobileItineraryCard({ item, timeLabel, onEdit }: MobileItinerary
         actionRow={
           <>
             {item.flight_number ? <DisabledAction>Track flight</DisabledAction> : null}
-            <DisabledAction>Details</DisabledAction>
+            {onEdit ? (
+              <button type="button" onClick={onEdit} className="inline-flex min-h-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-slate-100">Edit</button>
+            ) : <DisabledAction>Details</DisabledAction>}
           </>
         }
       />
@@ -287,7 +289,7 @@ export function MobileItineraryCard({ item, timeLabel, onEdit }: MobileItinerary
       reservationCode={
         item.reservation_code ? <ReservationCode code={item.reservation_code} /> : null
       }
-      actionRow={onEdit && item.source === "itinerary" ? <button type="button" onClick={onEdit} className="inline-flex min-h-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-slate-100">Edit</button> : <DisabledAction>Details</DisabledAction>}
+      actionRow={onEdit ? <button type="button" onClick={onEdit} className="inline-flex min-h-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-slate-100">Edit</button> : <DisabledAction>Details</DisabledAction>}
     />
   );
 }

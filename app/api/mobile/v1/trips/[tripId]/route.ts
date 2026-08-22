@@ -1384,6 +1384,12 @@ export async function GET(request: Request, { params }: RouteContext) {
         },
       }
     : healthSafetyAdvisoryResult;
+  const planningAccommodationResult = await context.supabase
+    .from("trip_accommodations")
+    .select("id,trip_id,created_by,hotel_name,status,city,region,country,address,google_maps_url,google_place_id,latitude,longitude,check_in_date,check_out_date,free_cancellation_ends_on,check_in_time_start,check_in_time_end,check_out_time,accommodation_type,is_private,audience_mode,website,booking_url,cost,currency,notes,trip_leg_id,created_at,updated_at,is_planning_option")
+    .eq("trip_id", trip.id)
+    .eq("is_planning_option", true)
+    .order("check_in_date", { ascending: true });
 
   return mobileJson(request, {
     trip: mobileTrip,
@@ -1411,6 +1417,7 @@ export async function GET(request: Request, { params }: RouteContext) {
     },
     stays: {
       accommodations: (accommodationResult.data || []) as AccommodationRow[],
+      planningOptions: (planningAccommodationResult.data || []) as AccommodationRow[],
       audienceOptions: stayAudienceOptions,
       participants: stayParticipants,
       travelers: stayCoverageTravelers,

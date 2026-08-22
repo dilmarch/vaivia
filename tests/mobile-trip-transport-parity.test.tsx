@@ -154,7 +154,7 @@ describe("mobile Trip Transport strict visual parity", () => {
       );
       expect(
         screen.getByRole("button", { name: "Compare Flights" }),
-      ).toBeDisabled();
+      ).toBeEnabled();
       expect(screen.getByText("Transport view")).toHaveClass(
         "tracking-[0.22em]",
       );
