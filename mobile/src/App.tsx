@@ -16,6 +16,7 @@ import { TripHealthSafetyScreen } from "./screens/TripHealthSafetyScreen";
 import { TripAssistantScreen } from "./screens/TripAssistantScreen";
 import { NotificationHistoryScreen } from "./screens/NotificationHistoryScreen";
 import { TripsScreen } from "./screens/TripsScreen";
+import { HomeScreen } from "./screens/HomeScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
 import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
@@ -30,7 +31,7 @@ import { useMobileNavigation } from "./navigation/MobileNavigationProvider";
 export default function App() {
   const { session, isInitializing, signOut, authCallback, clearAuthCallback } = useMobileAuth();
   const { route, push, replace, reset, back } = useMobileNavigation();
-  const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
+  const [availableTrips, setAvailableTrips] = useState<Array<Pick<MobileTripSummary, "id" | "title">>>([]);
   const [accountSetupError, setAccountSetupError] = useState("");
   const handledConfirmationRef = useRef(false);
   const environment = useMemo(() => getMobileEnvironment(), []);
@@ -87,6 +88,13 @@ export default function App() {
       returnToLogin,
       sessionExists,
     ],
+  );
+
+  const handleHomeTripsLoaded = useCallback(
+    (trips: Array<{ id: string; title: string }>) => {
+      setAvailableTrips(trips.map(({ id, title }) => ({ id, title })));
+    },
+    [],
   );
 
   useEffect(() => {
@@ -146,7 +154,11 @@ export default function App() {
   }
 
   function openTrips() {
-    push(DEFAULT_MOBILE_ROUTE);
+    push({ name: "trips" });
+  }
+
+  function openHome() {
+    push({ name: "home" });
   }
 
   function openNotificationHistory() {
@@ -158,7 +170,15 @@ export default function App() {
     push({ name: "trip", tripId: selectedTripId, view });
   }
 
-  const authenticatedScreen = route.name === "profile" ? (
+  const authenticatedScreen = route.name === "home" ? (
+    <HomeScreen
+      apiClient={apiClient}
+      onTripsLoaded={handleHomeTripsLoaded}
+      onTrips={openTrips}
+      onTrip={(tripId, view) => push({ name: "trip", tripId, view })}
+      onProfile={() => push({ name: "profile" })}
+    />
+  ) : route.name === "profile" ? (
     <ProfileScreen
       apiClient={apiClient}
       onSettings={() => push({ name: "settings" })}
@@ -245,6 +265,7 @@ export default function App() {
             ? session.user.app_metadata.role
             : null
         }
+        onHome={openHome}
         onTrips={openTrips}
         onSelectTrip={selectTrip}
         onTripOverview={() => openTripView("overview")}

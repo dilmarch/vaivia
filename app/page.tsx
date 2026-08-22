@@ -34,6 +34,7 @@ import {
 import { getUserProfileDefaults } from "@/lib/userProfileDefaults";
 import { assertDateRangeOrdered } from "@/lib/dateRange";
 import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
+import { loadHomeDashboard } from "@/lib/dashboard/loadHomeDashboard";
 
 export const metadata: Metadata = {
   title: "VAIVIA – Plan travel together",
@@ -544,7 +545,7 @@ async function archiveTrip(formData: FormData) {
   redirect("/");
 }
 
-async function TripsDashboard({ user }: { user: User }) {
+export async function LegacyTripsDashboard({ user }: { user: User }) {
   const supabase = await createClient();
 
   const { trips, error } = await loadActiveMemberTrips(supabase, user.id);
@@ -719,6 +720,9 @@ async function TripsDashboard({ user }: { user: User }) {
 
         <div className="mx-4 md:mx-8">
           <TripDashboardClient
+            name={dashboardName}
+            countdownTarget={dashboardCountdownTarget}
+            countdownUnit={countdownUnit}
             trips={dashboardTrips}
             passportStamps={dashboardPassportStamps}
             profile={dashboardProfile}
@@ -732,6 +736,34 @@ async function TripsDashboard({ user }: { user: User }) {
         </div>
       </div>
     </main>
+  );
+}
+
+async function TripsDashboard({ user }: { user: User }) {
+  const supabase = await createClient();
+  const result = await loadHomeDashboard(supabase, user, {
+    eventClient: createServiceRoleClient(),
+  });
+
+  if (result.tripLoadError) {
+    console.error("Error loading trips:", result.tripLoadError);
+  }
+
+  return (
+    <TripDashboardClient
+      name={result.data.name}
+      countdownTarget={result.data.countdownTarget}
+      countdownUnit={result.data.countdownUnit}
+      trips={result.data.trips}
+      passportStamps={result.data.passportStamps}
+      profile={result.data.profile}
+      wishlistItems={result.data.wishlistItems}
+      currentUserId={result.data.currentUserId}
+      events={result.data.events}
+      canManageEvents={result.data.canManageEvents}
+      updateTripAction={updateTrip}
+      deleteTripAction={archiveTrip}
+    />
   );
 }
 

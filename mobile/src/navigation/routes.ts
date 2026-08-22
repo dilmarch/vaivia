@@ -41,7 +41,7 @@ export type MobileHistoryEntry = {
   route: MobileRoute;
 };
 
-export const DEFAULT_MOBILE_ROUTE = { name: "trips" } as const satisfies MobileRoute;
+export const DEFAULT_MOBILE_ROUTE = { name: "home" } as const satisfies MobileRoute;
 export const MOBILE_AUTH_LOGIN_ROUTE = { name: "auth", view: "login" } as const satisfies MobileRoute;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -80,7 +80,7 @@ export function parseMobileRoute(value: unknown): MobileRoute | null {
     return { name: "auth", view: value.view, email: optionalString(value.email) };
   }
   if (value.name === "home") return { name: "home" };
-  if (value.name === "trips") return DEFAULT_MOBILE_ROUTE;
+  if (value.name === "trips") return { name: "trips" };
   if (value.name === "notifications") return { name: "notifications" };
   if (value.name === "profile") return { name: "profile" };
   if (value.name === "events") return { name: "events" };
@@ -112,6 +112,7 @@ export function routesMatch(left: MobileRoute, right: MobileRoute) {
 export function isImplementedMobileRoute(route: MobileRoute) {
   return (
     route.name === "auth" ||
+    route.name === "home" ||
     route.name === "trips" ||
     route.name === "notifications" ||
     route.name === "profile" ||

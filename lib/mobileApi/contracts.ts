@@ -16,6 +16,7 @@ import type {
   TripExpenseSettlement,
   TripExpenseSplit,
 } from "@/lib/budget";
+import type { DashboardData } from "@/lib/dashboard/contracts";
 
 type TripRow = Tables<"trips">;
 type ItineraryItemRow = Tables<"itinerary_items">;
@@ -97,6 +98,8 @@ export type MobileItineraryItem = Pick<
 export type MobileTripsResponse = {
   trips: MobileTripSummary[];
 };
+
+export type MobileHomeResponse = DashboardData;
 
 export type MobileTripDetailResponse = {
   trip: MobileTripSummary &

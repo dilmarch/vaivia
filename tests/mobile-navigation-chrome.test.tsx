@@ -52,6 +52,7 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     activeTripId: null,
     activeTripView: null,
     userEmail: "traveler@example.com",
+    onHome: vi.fn(),
     onTrips: vi.fn(),
     onSelectTrip: vi.fn(),
     onTripOverview: vi.fn(),
@@ -129,6 +130,13 @@ describe("mobile navigation chrome parity", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open more options" }));
     expect(screen.getByRole("button", { name: "Settings" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Account" })).toBeEnabled();
+  });
+
+  it("opens authenticated Home from the VAIVIA control", () => {
+    const onHome = vi.fn();
+    renderChrome({ onHome });
+    fireEvent.click(screen.getByRole("button", { name: "VAIVIA home" }));
+    expect(onHome).toHaveBeenCalledOnce();
   });
 
   it("shows the exact trip-context item order and enables implemented trip views", () => {

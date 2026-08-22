@@ -42,6 +42,11 @@ import {
 } from "@/lib/tripRoutes";
 import { isTripVisibleOnDashboard } from "@/lib/tripDashboardVisibility";
 import { getTripAccentColor } from "@/lib/tripPresentation";
+import {
+    DashboardPresentation,
+    type DashboardActionRenderProps,
+} from "@/components/dashboard/DashboardPresentation";
+import type { CountdownUnit } from "@/lib/countdownDisplay";
 
 export type DashboardTrip = TripCardPresentationTrip & {
     slug?: string | null;
@@ -122,6 +127,13 @@ export type DashboardEvent = {
 };
 
 type TripDashboardClientProps = {
+    name: string;
+    countdownTarget: {
+        tripTitle: string;
+        targetTitle: string;
+        targetDateIso: string;
+    } | null;
+    countdownUnit: CountdownUnit;
     trips: DashboardTrip[];
     passportStamps: DashboardPassportStamp[];
     profile: DashboardProfileSummary;
@@ -133,7 +145,7 @@ type TripDashboardClientProps = {
     deleteTripAction: (formData: FormData) => Promise<void>;
 };
 
-function DashboardEventsWidget({ events, canManageEvents }: { events: DashboardEvent[]; canManageEvents: boolean }) {
+export function DashboardEventsWidget({ events, canManageEvents }: { events: DashboardEvent[]; canManageEvents: boolean }) {
     return (
         <section className="rounded-[2rem] border border-white/10 bg-[#080511]/90 p-5 shadow-2xl shadow-black/25 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
@@ -486,7 +498,7 @@ function getTripAccommodationSummary(trip: DashboardTrip) {
         .join(" • ");
 }
 
-function TripsGrid({
+export function TripsGrid({
     trips,
     isGoogleReady,
     currentUserId,
@@ -500,6 +512,18 @@ function TripsGrid({
     onShareTrip: (trip: DashboardTrip) => void;
 }) {
     const [summaryTripId, setSummaryTripId] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!summaryTripId) return;
+        function closeOnOutsideClick(event: MouseEvent) {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (target.closest("[data-trip-card-shell]")) return;
+            setSummaryTripId(null);
+        }
+        document.addEventListener("mousedown", closeOnOutsideClick);
+        return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+    }, [summaryTripId]);
 
     useEffect(() => {
         if (!summaryTripId) return;
@@ -632,7 +656,7 @@ function TripsGrid({
     );
 }
 
-function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
+export function DashboardMonthCalendar({ trips }: { trips: DashboardTrip[] }) {
     const [anchorDate, setAnchorDate] = useState(
         () => new Date(new Date().getFullYear(), new Date().getMonth(), 1)
     );
@@ -1010,7 +1034,7 @@ function getDashboardTasks(trips: DashboardTrip[]) {
     return tasks.slice(0, 8);
 }
 
-function DashboardTaskList({ trips }: { trips: DashboardTrip[] }) {
+export function DashboardTaskList({ trips }: { trips: DashboardTrip[] }) {
     const tasks = useMemo(() => getDashboardTasks(trips), [trips]);
 
     return (
@@ -1086,7 +1110,7 @@ function DashboardTaskList({ trips }: { trips: DashboardTrip[] }) {
     );
 }
 
-function DashboardPassportStampsWidget({
+export function DashboardPassportStampsWidget({
     passportStamps,
 }: {
     passportStamps: DashboardPassportStamp[];
@@ -1168,7 +1192,7 @@ function DashboardPassportStampsWidget({
     );
 }
 
-function DashboardProfileWidget({
+export function DashboardProfileWidget({
     profile,
     passportCount,
     wishlistCount,
@@ -1242,7 +1266,7 @@ function DashboardProfileWidget({
     );
 }
 
-function DashboardWishlistWidget({
+export function DashboardWishlistWidget({
     wishlistItems,
 }: {
     wishlistItems: DashboardWishlistItem[];
@@ -1324,6 +1348,9 @@ function DashboardWishlistWidget({
 }
 
 export default function TripDashboardClient({
+    name,
+    countdownTarget,
+    countdownUnit,
     trips,
     passportStamps,
     profile,
@@ -1341,7 +1368,7 @@ export default function TripDashboardClient({
     const [showCloseWarning, setShowCloseWarning] = useState(false);
     const [showDeleteWarning, setShowDeleteWarning] = useState(false);
     const [isGoogleReady, setIsGoogleReady] = useState(false);
-    const upcomingTrips = useMemo(() => getUpcomingTrips(trips), [trips]);
+    const [summaryTripId, setSummaryTripId] = useState<string | null>(null);
 
     function closeModal() {
         setSelectedTrip(null);
@@ -1370,29 +1397,50 @@ export default function TripDashboardClient({
                 onReady={() => setIsGoogleReady(true)}
             />
 
-            <div className="space-y-8">
-                <TripsGrid
-                    trips={upcomingTrips}
-                    isGoogleReady={isGoogleReady}
-                    currentUserId={currentUserId}
-                    onEditTrip={openEditModal}
-                    onShareTrip={setShareTrip}
-                />
-                <DashboardEventsWidget events={events} canManageEvents={canManageEvents} />
-                <div className="grid gap-6 lg:grid-cols-3">
-                    <DashboardMonthCalendar trips={upcomingTrips} />
-                    <DashboardTaskList trips={upcomingTrips} />
-                    <DashboardPassportStampsWidget passportStamps={passportStamps} />
-                </div>
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <DashboardProfileWidget
-                        profile={profile}
-                        passportCount={passportStamps.length}
-                        wishlistCount={wishlistItems.length}
+            <DashboardPresentation
+                data={{
+                    name,
+                    countdownTarget,
+                    countdownUnit,
+                    trips,
+                    passportStamps,
+                    profile,
+                    wishlistItems,
+                    currentUserId: currentUserId || "",
+                    events,
+                    canManageEvents,
+                }}
+                renderAction={({
+                    href,
+                    className,
+                    children,
+                    ariaLabel,
+                    style,
+                }: DashboardActionRenderProps) => (
+                    <Link href={href} className={className} aria-label={ariaLabel} style={style}>
+                        {children}
+                    </Link>
+                )}
+                renderTrip={(trip, index) => (
+                    <DashboardTripCard
+                        trip={trip}
+                        index={index}
+                        isGoogleReady={isGoogleReady}
+                        currentUserId={currentUserId}
+                        disableHoverTransform
                     />
-                    <DashboardWishlistWidget wishlistItems={wishlistItems} />
-                </div>
-            </div>
+                )}
+                renderTripControls={(trip, index) => (
+                    <>
+                        <div className={`absolute z-30 flex items-center gap-2 ${getTripActionClusterPosition(index)}`}>
+                            <button type="button" onClick={() => openEditModal(trip)} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950" aria-label={`Edit ${trip.title || "trip"}`}><Pencil className="h-4 w-4" aria-hidden="true" /></button>
+                            <button type="button" onClick={() => setSummaryTripId((current) => current === trip.id ? null : trip.id)} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950" aria-label={`Show quick info for ${trip.title || "trip"}`} aria-pressed={summaryTripId === trip.id}><Info className="h-4 w-4" aria-hidden="true" /></button>
+                            <button type="button" onClick={() => setShareTrip(trip)} className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-slate-950/65 text-white shadow-xl shadow-black/30 backdrop-blur transition hover:-translate-y-0.5 hover:border-lime-300/50 hover:bg-lime-300 hover:text-slate-950" aria-label={`Share ${trip.title || "trip"}`}><Share2 className="h-4 w-4" aria-hidden="true" /></button>
+                        </div>
+                        {summaryTripId === trip.id ? <TripQuickInfoPanel trip={trip} onClose={() => setSummaryTripId(null)} /> : null}
+                    </>
+                )}
+            />
 
             <ShareTripModal
                 tripId={shareTrip?.id || ""}

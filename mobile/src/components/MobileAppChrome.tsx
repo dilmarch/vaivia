@@ -48,7 +48,7 @@ import type { MobileApiClient } from "../lib/apiClient";
 
 type MobileAppChromeProps = {
   apiClient: MobileApiClient;
-  trips: MobileTripSummary[];
+  trips: Array<Pick<MobileTripSummary, "id" | "title">>;
   activeTripId: string | null;
   activeTripView:
     | "overview"
@@ -63,6 +63,7 @@ type MobileAppChromeProps = {
     | null;
   userEmail?: string | null;
   userRole?: string | null;
+  onHome?: () => void;
   onTrips: () => void;
   onSelectTrip: (tripId: string) => void;
   onTripOverview: () => void;
@@ -158,6 +159,7 @@ export function MobileAppChrome({
   activeTripView,
   userEmail,
   userRole,
+  onHome,
   onTrips,
   onSelectTrip,
   onTripOverview,
@@ -267,6 +269,12 @@ export function MobileAppChrome({
   function openTrips() {
     closeMenus();
     onTrips();
+  }
+
+  function openHome() {
+    closeMenus();
+    if (onHome) onHome();
+    else onTrips();
   }
 
   function selectTrip(tripId: string) {
@@ -407,7 +415,7 @@ export function MobileAppChrome({
         />
       }
       renderLogoAction={(props) => (
-        <button type="button" onClick={openTrips} {...props} />
+        <button type="button" onClick={openHome} {...props} />
       )}
       topRef={topRef}
       topControls={

@@ -3,6 +3,7 @@ import type {
   MobileApiErrorResponse,
   MobileAccountResponse,
   MobileDataExportsResponse,
+  MobileHomeResponse,
   MobileNotificationHistoryResponse,
   MobileNotificationsResponse,
   MobileTripDetailResponse,
@@ -383,6 +384,10 @@ export class MobileApiClient {
 
   getTrips(signal?: AbortSignal) {
     return this.getJson<MobileTripsResponse>("/api/mobile/v1/trips", { signal });
+  }
+
+  getHome(signal?: AbortSignal) {
+    return this.getJson<MobileHomeResponse>("/api/mobile/v1/home", { signal });
   }
 
   getNotifications(signal?: AbortSignal) {

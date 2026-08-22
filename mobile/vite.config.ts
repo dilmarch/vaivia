@@ -12,6 +12,7 @@ function sharedTripShapeAssets(): Plugin {
     "trip-shape-a.svg",
     "trip-shape-b.svg",
     "trip-shape-c.svg",
+    "dashboard-bg.png",
   ];
 
   return {
