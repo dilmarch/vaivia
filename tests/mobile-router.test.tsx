@@ -43,6 +43,9 @@ describe("mobile route model", () => {
     ).toBe(null);
     expect(parseMobileRoute({ name: "admin" })).toBe(null);
     expect(parseMobileRoute({ name: "profile" })).toEqual({ name: "profile" });
+    expect(parseMobileRoute({ name: "travel-imports" })).toEqual({ name: "travel-imports" });
+    expect(parseMobileRoute({ name: "travel-import", importId: "import-1" })).toEqual({ name: "travel-import", importId: "import-1" });
+    expect(parseMobileRoute({ name: "friend-profile", userId: "friend-1" })).toEqual({ name: "friend-profile", userId: "friend-1" });
     expect(parseMobileRoute({ name: "auth", view: "forgot-password" })).toEqual({
       name: "auth",
       view: "forgot-password",
@@ -74,6 +77,8 @@ describe("mobile route model", () => {
       name: "trip-manage",
       tripId: "trip/one",
     });
+    expect(resolveMobilePath("/imports/import%2Fone")).toEqual({ name: "travel-import", importId: "import/one" });
+    expect(resolveMobilePath("/profile/friends/friend%2Fone")).toEqual({ name: "friend-profile", userId: "friend/one" });
     expect(resolveMobilePath("/unsupported/path")).toBe(null);
     expect(resolveMobilePath("/trips/%/overview")).toBe(null);
   });

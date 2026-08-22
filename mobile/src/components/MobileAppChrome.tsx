@@ -76,6 +76,7 @@ type MobileAppChromeProps = {
   onTripAssistant: () => void;
   onTripHealthSafety: () => void;
   onNotificationHistory: () => void;
+  onTravelImports?: () => void;
   onProfile?: () => void;
   onSettings?: () => void;
   onCreateTrip?: () => void;
@@ -177,6 +178,7 @@ export function MobileAppChrome({
   onTripAssistant,
   onTripHealthSafety,
   onNotificationHistory,
+  onTravelImports,
   onProfile = () => undefined,
   onSettings = () => undefined,
   onCreateTrip,
@@ -203,29 +205,34 @@ export function MobileAppChrome({
   const topRef = useRef<HTMLDivElement | null>(null);
   const quickAddRef = useRef<HTMLDivElement | null>(null);
 
-  const loadNotifications = useCallback(async (signal?: AbortSignal) => {
-    setIsLoadingNotifications(true);
-    try {
-      const {
-        notifications: loadedNotifications,
-        navigationProfile,
-        pendingImportCount: loadedPendingImportCount,
-      } = await apiClient.getNotifications(signal);
-      if (signal?.aborted) return;
-      setNotifications(loadedNotifications);
-      setNavigationRole(navigationProfile?.role || userRole || null);
-      setAccountAvatarUrl(navigationProfile?.avatar_url || null);
-      setPendingImportCount(loadedPendingImportCount || 0);
-      setNotificationsError("");
-    } catch (error) {
-      if (signal?.aborted) return;
-      setNotificationsError(
-        error instanceof Error ? error.message : "Could not load notifications.",
-      );
-    } finally {
-      if (!signal?.aborted) setIsLoadingNotifications(false);
-    }
-  }, [apiClient, userRole]);
+  const loadNotifications = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoadingNotifications(true);
+      try {
+        const {
+          notifications: loadedNotifications,
+          navigationProfile,
+          pendingImportCount: loadedPendingImportCount,
+        } = await apiClient.getNotifications(signal);
+        if (signal?.aborted) return;
+        setNotifications(loadedNotifications);
+        setNavigationRole(navigationProfile?.role || userRole || null);
+        setAccountAvatarUrl(navigationProfile?.avatar_url || null);
+        setPendingImportCount(loadedPendingImportCount || 0);
+        setNotificationsError("");
+      } catch (error) {
+        if (signal?.aborted) return;
+        setNotificationsError(
+          error instanceof Error
+            ? error.message
+            : "Could not load notifications.",
+        );
+      } finally {
+        if (!signal?.aborted) setIsLoadingNotifications(false);
+      }
+    },
+    [apiClient, userRole],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -293,8 +300,7 @@ export function MobileAppChrome({
   }
 
   const isSuperAdmin = navigationRole === "super_admin";
-  const isEventOrganizer =
-    isSuperAdmin || navigationRole === "event_organizer";
+  const isEventOrganizer = isSuperAdmin || navigationRole === "event_organizer";
   const baseDestinations = [
     ...(isSuperAdmin
       ? [{ label: "News Feed", icon: Newspaper } satisfies MenuDestination]
@@ -345,37 +351,37 @@ export function MobileAppChrome({
                     closeMenus();
                     onTripIdeas();
                   }
-              : index === 3
-                ? () => {
-                    closeMenus();
-                    onTripBudget();
-                  }
-              : index === 4
-                ? () => {
-                    closeMenus();
-                    onTripTransport();
-                  }
-              : index === 5
-                ? () => {
-                    closeMenus();
-                    onTripFood();
-                  }
-              : index === 6
-                ? () => {
-                    closeMenus();
-                    onTripStays();
-                  }
-              : index === 7
-                ? () => {
-                    closeMenus();
-                    onTripAssistant();
-                  }
-              : index === 8
-                ? () => {
-                    closeMenus();
-                    onTripHealthSafety();
-                  }
-                : undefined,
+                : index === 3
+                  ? () => {
+                      closeMenus();
+                      onTripBudget();
+                    }
+                  : index === 4
+                    ? () => {
+                        closeMenus();
+                        onTripTransport();
+                      }
+                    : index === 5
+                      ? () => {
+                          closeMenus();
+                          onTripFood();
+                        }
+                      : index === 6
+                        ? () => {
+                            closeMenus();
+                            onTripStays();
+                          }
+                        : index === 7
+                          ? () => {
+                              closeMenus();
+                              onTripAssistant();
+                            }
+                          : index === 8
+                            ? () => {
+                                closeMenus();
+                                onTripHealthSafety();
+                              }
+                            : undefined,
       }))
     : baseDestinations;
   const unreadCount = notifications.filter(
@@ -433,9 +439,7 @@ export function MobileAppChrome({
           <TripsTopMenuPresentation
             isOpen={topMenu === "trips"}
             onToggle={() => {
-              setTopMenu((current) =>
-                current === "trips" ? null : "trips",
-              );
+              setTopMenu((current) => (current === "trips" ? null : "trips"));
               setBottomMenu(null);
               setIsQuickAddOpen(false);
             }}
@@ -473,7 +477,20 @@ export function MobileAppChrome({
             footer={
               <NotificationMenuFooterPresentation
                 pendingImportCount={pendingImportCount}
-                renderImportsAction={disabledFooterAction}
+                renderImportsAction={
+                  onTravelImports
+                    ? (props) => (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            closeMenus();
+                            onTravelImports();
+                          }}
+                          {...props}
+                        />
+                      )
+                    : disabledFooterAction
+                }
                 renderHistoryAction={notificationHistoryAction}
               />
             }
@@ -494,6 +511,10 @@ export function MobileAppChrome({
                   body={notification.body}
                   read={Boolean(notification.read_at)}
                   actionRequired={isActionRequiredNotification(notification)}
+                  onPress={() => {
+                    closeMenus();
+                    onNotificationHistory();
+                  }}
                 />
               ))
             ) : (
@@ -634,23 +655,46 @@ export function MobileAppChrome({
                     label={label}
                     disabled={
                       (label === "Add trip" && !onCreateTrip) ||
-                      (label === "Add transportation" && !onCreateTransportation) ||
+                      (label === "Add transportation" &&
+                        !onCreateTransportation) ||
                       (label === "Add stay" && !onCreateStay) ||
                       (label === "Add things to do" && !onCreateIdea) ||
                       (label === "Add expense" && !onCreateExpense) ||
-                      (label !== "Add trip" && label !== "Add transportation" && label !== "Add stay" && label !== "Add things to do" && label !== "Add expense")
+                      (label !== "Add trip" &&
+                        label !== "Add transportation" &&
+                        label !== "Add stay" &&
+                        label !== "Add things to do" &&
+                        label !== "Add expense")
                     }
-                    onPress={label === "Add trip" && onCreateTrip ? () => {
-                      closeMenus(); onCreateTrip();
-                    } : label === "Add things to do" && onCreateIdea ? () => {
-                      closeMenus(); onCreateIdea();
-                    } : label === "Add expense" && onCreateExpense ? () => {
-                      closeMenus(); onCreateExpense();
-                    } : label === "Add transportation" && onCreateTransportation ? () => {
-                      closeMenus(); onCreateTransportation();
-                    } : label === "Add stay" && onCreateStay ? () => {
-                      closeMenus(); onCreateStay();
-                    } : undefined}
+                    onPress={
+                      label === "Add trip" && onCreateTrip
+                        ? () => {
+                            closeMenus();
+                            onCreateTrip();
+                          }
+                        : label === "Add things to do" && onCreateIdea
+                          ? () => {
+                              closeMenus();
+                              onCreateIdea();
+                            }
+                          : label === "Add expense" && onCreateExpense
+                            ? () => {
+                                closeMenus();
+                                onCreateExpense();
+                              }
+                            : label === "Add transportation" &&
+                                onCreateTransportation
+                              ? () => {
+                                  closeMenus();
+                                  onCreateTransportation();
+                                }
+                              : label === "Add stay" && onCreateStay
+                                ? () => {
+                                    closeMenus();
+                                    onCreateStay();
+                                  }
+                                : undefined
+                    }
                     animationDelay={`${index * 34}ms`}
                   />
                 ))}

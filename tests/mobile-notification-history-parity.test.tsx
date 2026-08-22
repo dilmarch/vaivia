@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   MobileNotification,
+  MobileNotificationDestination,
   MobileNotificationHistoryResponse,
 } from "@/lib/mobileApi/contracts";
 import { NotificationHistoryScreen } from "@/mobile/src/screens/NotificationHistoryScreen";
@@ -42,6 +43,8 @@ function apiClient(
 ) {
   return {
     getNotificationHistory: vi.fn(() => Promise.resolve(response)),
+    updateNotification: vi.fn().mockResolvedValue({ notification: {} }),
+    reviewNotification: vi.fn().mockResolvedValue({ handled: true, destination: { name: "trip", tripId: "trip-1", view: "overview" } }),
   } as unknown as MobileApiClient;
 }
 
@@ -50,27 +53,24 @@ function renderHistory({
     notifications: [notification()],
     activeActionNotificationIds: ["notification-1"],
   }),
-  supportedTripIds = ["trip-1"],
   onBack = vi.fn(),
-  onOpenTrip = vi.fn(),
+  onNavigate = vi.fn(),
 }: {
   client?: MobileApiClient;
-  supportedTripIds?: string[];
   onBack?: () => void;
-  onOpenTrip?: (tripId: string) => void;
+  onNavigate?: (destination: MobileNotificationDestination | null) => void;
 } = {}) {
   return {
     ...render(
       <NotificationHistoryScreen
         apiClient={client}
-        supportedTripIds={supportedTripIds}
         onBack={onBack}
-        onOpenTrip={onOpenTrip}
+        onNavigate={onNavigate}
       />,
     ),
     client,
     onBack,
-    onOpenTrip,
+    onNavigate,
   };
 }
 
@@ -175,27 +175,22 @@ describe("mobile notification history parity", () => {
     await waitFor(() => expect(getNotificationHistory).toHaveBeenCalledTimes(2));
   });
 
-  it("opens supported trip alerts and disables every notification mutation", async () => {
-    const onOpenTrip = vi.fn();
-    renderHistory({ onOpenTrip });
+  it("opens trip alerts and enables notification mutations", async () => {
+    const onNavigate = vi.fn();
+    const client = apiClient({ notifications: [notification()], activeActionNotificationIds: ["notification-1"] });
+    renderHistory({ client, onNavigate });
 
     fireEvent.click(await screen.findByRole("button", { name: "Review plans" }));
-    expect(onOpenTrip).toHaveBeenCalledWith("trip-1");
-    expect(
-      screen.getByRole("button", { name: "Mark notification read" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Dismiss notification" }),
-    ).toBeDisabled();
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith({ name: "trip", tripId: "trip-1", view: "overview" }));
+    expect(client.reviewNotification).toHaveBeenCalledWith("notification-1", "open", undefined, expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: "Mark notification read" }));
+    await waitFor(() => expect(client.updateNotification).toHaveBeenCalledWith("notification-1", "read", expect.anything()));
   });
 
-  it("does not open a notification whose destination is unavailable", async () => {
-    const onOpenTrip = vi.fn();
-    renderHistory({ supportedTripIds: [], onOpenTrip });
-
-    expect(
-      await screen.findByRole("button", { name: "Review plans" }),
-    ).toBeDisabled();
-    expect(onOpenTrip).not.toHaveBeenCalled();
+  it("opens review UI for invitation workflows", async () => {
+    renderHistory({ client: apiClient({ notifications: [notification({ type: "friend_request_received" })], activeActionNotificationIds: ["notification-1"] }) });
+    fireEvent.click(await screen.findByRole("button", { name: "Review" }));
+    expect(screen.getByRole("dialog", { name: "Weather update" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeEnabled();
   });
 });

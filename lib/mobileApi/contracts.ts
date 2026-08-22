@@ -1,4 +1,4 @@
-import type { Tables } from "@/src/types/supabase";
+import type { Json, Tables } from "@/src/types/supabase";
 import type { TripAccommodation } from "@/lib/accommodations";
 import type {
   TripAudienceOption,
@@ -431,7 +431,11 @@ export type MobileTransportationMutationInput = {
   audienceMode?: "everyone" | "custom" | "just_me";
   participants?: MobileMutationParticipants;
   tripLegId?: string | null;
-  routeStops?: Array<{ order?: number; label: string; placeId?: string | null }>;
+  routeStops?: Array<{
+    order?: number;
+    label: string;
+    placeId?: string | null;
+  }>;
 };
 
 export type MobileStayMutationInput = {
@@ -606,6 +610,7 @@ export type MobileNotification = Pick<
   | "archived_at"
 > & {
   metadata?: Record<string, unknown> | null;
+  actor_user_id?: string | null;
 };
 
 export type MobileNotificationsResponse = {
@@ -620,6 +625,137 @@ export type MobileNotificationsResponse = {
 export type MobileNotificationHistoryResponse = {
   notifications: MobileNotification[];
   activeActionNotificationIds: string[];
+};
+
+export type MobileNotificationDestination =
+  | { name: "trip"; tripId: string; view: "overview" }
+  | { name: "travel-import"; importId: string }
+  | { name: "profile"; section?: string }
+  | { name: "friend-profile"; userId: string }
+  | { name: "settings" };
+
+export type MobileTravelImportSummary = {
+  id: string;
+  created_at: string;
+  extraction_confidence?: number | null;
+  extraction_error?: string | null;
+  import_type?: string | null;
+  imported_at?: string | null;
+  matched_trip_id?: string | null;
+  sender_email?: string | null;
+  status: string;
+  subject?: string | null;
+  processed_at?: string | null;
+  itemCount: number;
+};
+
+export type MobileTravelImportsResponse = {
+  imports: MobileTravelImportSummary[];
+};
+
+export type MobileTravelImportReviewResponse = {
+  import: Record<string, unknown> & { id: string; status: string };
+  items: Array<{
+    id: string;
+    confidence: number | null;
+    extracted_data: Json;
+    item_order: number;
+    item_type: string;
+    reviewed_data?: Json | null;
+    imported_record_id?: string | null;
+    imported_at?: string | null;
+    is_excluded?: boolean | null;
+    matched_trip_id?: string | null;
+  }>;
+  trips: Array<{
+    id: string;
+    slug: string | null;
+    title: string;
+    destination: string | null;
+    start_date: string | null;
+    end_date: string | null;
+  }>;
+  familyMembers: Array<{
+    id: string;
+    name: string;
+    relationship: string | null;
+  }>;
+};
+
+export type MobileSocialFriend = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+  avatarUrl: string | null;
+  role: string | null;
+  joinedAt: string | null;
+};
+
+export type MobilePassportStamp = {
+  id: string;
+  countryCode: string;
+  countryName: string;
+  flagEmoji: string | null;
+  firstVisitedOn: string | null;
+  visitCity: string | null;
+  visitRegion: string | null;
+  visitMonth: number | null;
+  visitStatus: string;
+  portOfEntryName: string | null;
+  welcomeLabel: string | null;
+};
+
+export type MobileWishlistItem = {
+  id: string;
+  placeLabel: string;
+  city: string | null;
+  region: string | null;
+  countryCode: string;
+  countryName: string | null;
+  flagEmoji: string | null;
+  googlePlaceId: string | null;
+  googleFormattedAddress: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  status: string;
+  completedAt: string | null;
+  passportStampId: string | null;
+};
+
+export type MobileFriendInvitation = {
+  id: string;
+  identifier: string;
+  requesterUserId: string;
+  addresseeUserId: string | null;
+  status: string;
+  createdAt: string | null;
+};
+
+export type MobileSocialProfileResponse = {
+  stats: {
+    tripsPlanned: number;
+    friendsCount: number;
+    points: number;
+    level: number;
+    levelName: string;
+  };
+  friends: MobileSocialFriend[];
+  sentInvitations: MobileFriendInvitation[];
+  incomingInvitations: MobileFriendInvitation[];
+  stamps: MobilePassportStamp[];
+  wishlist: MobileWishlistItem[];
+  scratchMapCountryCodes: string[];
+};
+
+export type MobileFriendProfileResponse = {
+  friend: MobileSocialFriend;
+  points: number;
+  level: number;
+  levelName: string;
+  stamps: MobilePassportStamp[];
+  wishlist: MobileWishlistItem[];
+  scratchMapCountryCodes: string[];
 };
 
 export type MobileApiFieldErrors = Record<string, string[]>;

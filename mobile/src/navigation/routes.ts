@@ -18,7 +18,12 @@ export type MobileTripView = (typeof MOBILE_TRIP_VIEWS)[number];
 export type MobileRoute =
   | {
       name: "auth";
-      view: "login" | "signup" | "confirm-email" | "forgot-password" | "update-password";
+      view:
+        | "login"
+        | "signup"
+        | "confirm-email"
+        | "forgot-password"
+        | "update-password";
       email?: string;
     }
   | { name: "home" }
@@ -27,6 +32,9 @@ export type MobileRoute =
   | { name: "trip-manage"; tripId: string }
   | { name: "notifications" }
   | { name: "profile" }
+  | { name: "friend-profile"; userId: string }
+  | { name: "travel-imports" }
+  | { name: "travel-import"; importId: string }
   | { name: "settings"; section?: string }
   | { name: "events" }
   | { name: "event"; eventId: string }
@@ -43,8 +51,13 @@ export type MobileHistoryEntry = {
   route: MobileRoute;
 };
 
-export const DEFAULT_MOBILE_ROUTE = { name: "home" } as const satisfies MobileRoute;
-export const MOBILE_AUTH_LOGIN_ROUTE = { name: "auth", view: "login" } as const satisfies MobileRoute;
+export const DEFAULT_MOBILE_ROUTE = {
+  name: "home",
+} as const satisfies MobileRoute;
+export const MOBILE_AUTH_LOGIN_ROUTE = {
+  name: "auth",
+  view: "login",
+} as const satisfies MobileRoute;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -79,7 +92,11 @@ export function parseMobileRoute(value: unknown): MobileRoute | null {
       value.view === "forgot-password" ||
       value.view === "update-password")
   ) {
-    return { name: "auth", view: value.view, email: optionalString(value.email) };
+    return {
+      name: "auth",
+      view: value.view,
+      email: optionalString(value.email),
+    };
   }
   if (value.name === "home") return { name: "home" };
   if (value.name === "trips") return { name: "trips" };
@@ -89,6 +106,13 @@ export function parseMobileRoute(value: unknown): MobileRoute | null {
   }
   if (value.name === "notifications") return { name: "notifications" };
   if (value.name === "profile") return { name: "profile" };
+  if (value.name === "friend-profile" && isNonEmptyString(value.userId)) {
+    return { name: "friend-profile", userId: value.userId };
+  }
+  if (value.name === "travel-imports") return { name: "travel-imports" };
+  if (value.name === "travel-import" && isNonEmptyString(value.importId)) {
+    return { name: "travel-import", importId: value.importId };
+  }
   if (value.name === "events") return { name: "events" };
   if (value.name === "settings") {
     return { name: "settings", section: optionalString(value.section) };
@@ -124,6 +148,9 @@ export function isImplementedMobileRoute(route: MobileRoute) {
     route.name === "trip-manage" ||
     route.name === "notifications" ||
     route.name === "profile" ||
+    route.name === "friend-profile" ||
+    route.name === "travel-imports" ||
+    route.name === "travel-import" ||
     route.name === "settings" ||
     route.name === "trip"
   );
@@ -147,6 +174,12 @@ export function mobileRouteToPath(route: MobileRoute) {
       return "/notifications";
     case "profile":
       return "/profile";
+    case "friend-profile":
+      return `/profile/friends/${encodeURIComponent(route.userId)}`;
+    case "travel-imports":
+      return "/imports";
+    case "travel-import":
+      return `/imports/${encodeURIComponent(route.importId)}`;
     case "settings":
       return route.section
         ? `/settings/${encodeURIComponent(route.section)}`
@@ -157,7 +190,9 @@ export function mobileRouteToPath(route: MobileRoute) {
       return `/events/${encodeURIComponent(route.eventId)}`;
     case "trip": {
       const base = `/trips/${encodeURIComponent(route.tripId)}/${route.view}`;
-      return route.itemId ? `${base}/${encodeURIComponent(route.itemId)}` : base;
+      return route.itemId
+        ? `${base}/${encodeURIComponent(route.itemId)}`
+        : base;
     }
   }
 }
@@ -184,6 +219,12 @@ export function resolveMobilePath(pathname: string): MobileRoute | null {
   }
   if (parts[0] === "events" && parts.length === 2) {
     return parseMobileRoute({ name: "event", eventId: parts[1] });
+  }
+  if (parts[0] === "imports" && parts.length === 2) {
+    return parseMobileRoute({ name: "travel-import", importId: parts[1] });
+  }
+  if (parts[0] === "profile" && parts[1] === "friends" && parts.length === 3) {
+    return parseMobileRoute({ name: "friend-profile", userId: parts[2] });
   }
   if (parts[0] === "trips" && (parts.length === 3 || parts.length === 4)) {
     if (parts.length === 3 && parts[2] === "manage") {

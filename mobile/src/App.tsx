@@ -20,9 +20,15 @@ import { HomeScreen } from "./screens/HomeScreen";
 import { TripCreateScreen } from "./screens/TripCreateScreen";
 import { TripManageScreen } from "./screens/TripManageScreen";
 import { ItineraryItemEditorScreen } from "./screens/ItineraryItemEditorScreen";
+import { TravelImportsScreen } from "./screens/TravelImportsScreen";
+import { TravelImportReviewScreen } from "./screens/TravelImportReviewScreen";
+import { FriendProfileScreen } from "./screens/FriendProfileScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
-import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
+import type {
+  MobileNotificationDestination,
+  MobileTripSummary,
+} from "@/lib/mobileApi/contracts";
 import {
   DEFAULT_MOBILE_ROUTE,
   MOBILE_AUTH_LOGIN_ROUTE,
@@ -32,16 +38,20 @@ import {
 import { useMobileNavigation } from "./navigation/MobileNavigationProvider";
 
 export default function App() {
-  const { session, isInitializing, signOut, authCallback, clearAuthCallback } = useMobileAuth();
+  const { session, isInitializing, signOut, authCallback, clearAuthCallback } =
+    useMobileAuth();
   const { route, push, replace, reset, back } = useMobileNavigation();
-  const [availableTrips, setAvailableTrips] = useState<Array<Pick<MobileTripSummary, "id" | "title">>>([]);
+  const [availableTrips, setAvailableTrips] = useState<
+    Array<Pick<MobileTripSummary, "id" | "title">>
+  >([]);
   const [accountSetupError, setAccountSetupError] = useState("");
   const handledConfirmationRef = useRef(false);
   const environment = useMemo(() => getMobileEnvironment(), []);
   const accessToken = session?.access_token || null;
   const authenticatedUserId = session?.user.id || null;
   const sessionExists = Boolean(session);
-  const selectedTripId = route.name === "trip" || route.name === "trip-manage" ? route.tripId : null;
+  const selectedTripId =
+    route.name === "trip" || route.name === "trip-manage" ? route.tripId : null;
   const activeTripView = route.name === "trip" ? route.view : null;
 
   const returnToLogin = useCallback(async () => {
@@ -102,7 +112,10 @@ export default function App() {
 
   useEffect(() => {
     if (!session || !authCallback) return;
-    if (authCallback.kind === "recovery" && authCallback.status === "complete") {
+    if (
+      authCallback.kind === "recovery" &&
+      authCallback.status === "complete"
+    ) {
       replace({ name: "auth", view: "update-password" });
       return;
     }
@@ -110,9 +123,11 @@ export default function App() {
       authCallback.kind !== "confirmation" ||
       authCallback.status !== "complete" ||
       handledConfirmationRef.current
-    ) return;
+    )
+      return;
     handledConfirmationRef.current = true;
-    void apiClient.confirmAccount({ idempotencyKey: `confirmation:${session.user.id}` })
+    void apiClient
+      .confirmAccount({ idempotencyKey: `confirmation:${session.user.id}` })
       .then(() => {
         clearAuthCallback();
         setAccountSetupError("");
@@ -120,7 +135,11 @@ export default function App() {
       })
       .catch((error: unknown) => {
         handledConfirmationRef.current = false;
-        setAccountSetupError(error instanceof Error ? error.message : "VAIVIA could not finish account setup.");
+        setAccountSetupError(
+          error instanceof Error
+            ? error.message
+            : "VAIVIA could not finish account setup.",
+        );
       });
   }, [apiClient, authCallback, clearAuthCallback, replace, reset, session]);
 
@@ -168,147 +187,254 @@ export default function App() {
     push({ name: "notifications" });
   }
 
+  function openNotificationDestination(
+    destination: MobileNotificationDestination,
+  ) {
+    if (destination.name === "trip")
+      push({
+        name: "trip",
+        tripId: destination.tripId,
+        view: destination.view,
+      });
+    else if (destination.name === "travel-import")
+      push({ name: "travel-import", importId: destination.importId });
+    else if (destination.name === "friend-profile")
+      push({ name: "friend-profile", userId: destination.userId });
+    else if (destination.name === "settings") push({ name: "settings" });
+    else push({ name: "profile" });
+  }
+
   function openTripView(view: MobileTripView) {
     if (!selectedTripId) return;
     push({ name: "trip", tripId: selectedTripId, view });
   }
 
-  const authenticatedScreen = route.name === "home" ? (
-    <HomeScreen
-      apiClient={apiClient}
-      onTripsLoaded={handleHomeTripsLoaded}
-      onTrips={openTrips}
-      onTrip={(tripId, view) => push({ name: "trip", tripId, view })}
-      onProfile={() => push({ name: "profile" })}
-    />
-  ) : route.name === "profile" ? (
-    <ProfileScreen
-      apiClient={apiClient}
-      onSettings={() => push({ name: "settings" })}
-      onSignOut={returnToLogin}
-    />
-  ) : route.name === "settings" ? (
-    <SettingsScreen
-      apiClient={apiClient}
-      section={route.section}
-      onSection={(section) => replace({ name: "settings", section })}
-      onProfile={() => push({ name: "profile" })}
-      onAccountClosed={returnToLogin}
-    />
-  ) : route.name === "notifications" ? (
-    <NotificationHistoryScreen
-      apiClient={apiClient}
-      supportedTripIds={availableTrips.map((trip) => trip.id)}
-      onBack={() => back(DEFAULT_MOBILE_ROUTE)}
-      onOpenTrip={selectTrip}
-    />
-  ) : route.name === "trip-create" ? (
-    <TripCreateScreen
-      apiClient={apiClient}
-      onCreated={(tripId) => {
-        setAvailableTrips((current) => current.some((trip) => trip.id === tripId) ? current : [...current, { id: tripId, title: "New trip" }]);
-        replace({ name: "trip", tripId, view: "overview" });
-      }}
-    />
-  ) : route.name === "trip-manage" ? (
-    <TripManageScreen
-      apiClient={apiClient}
-      tripId={route.tripId}
-      onDeleted={() => reset({ name: "trips" })}
-      onUpdated={() => replace({ name: "trip", tripId: route.tripId, view: "overview" })}
-    />
-  ) : selectedTripId ? (
-    activeTripView === "itinerary" ? (
-      route.name === "trip" && route.itemId ? (
-        <ItineraryItemEditorScreen
-          apiClient={apiClient}
-          tripId={selectedTripId}
-          itemId={route.itemId === "new" ? undefined : route.itemId}
-          onSaved={() => replace({ name: "trip", tripId: selectedTripId, view: "itinerary" })}
-          onCancel={() => back({ name: "trip", tripId: selectedTripId, view: "itinerary" })}
-        />
-      ) : (
-        <TripItineraryScreen
-          apiClient={apiClient}
-          tripId={selectedTripId}
-          onAdd={() => push({ name: "trip", tripId: selectedTripId, view: "itinerary", itemId: "new" })}
-          onEdit={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "itinerary", itemId })}
-        />
-      )
-    ) : activeTripView === "ideas" ? (
-      <TripIdeasScreen
+  const authenticatedScreen =
+    route.name === "home" ? (
+      <HomeScreen
         apiClient={apiClient}
-        tripId={selectedTripId}
-        editorAction={route.name === "trip" ? route.itemId : undefined}
-        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "ideas", itemId })}
-        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "ideas" })}
+        onTripsLoaded={handleHomeTripsLoaded}
+        onTrips={openTrips}
+        onTrip={(tripId, view) => push({ name: "trip", tripId, view })}
+        onProfile={() => push({ name: "profile" })}
       />
-    ) : activeTripView === "budget" ? (
-      <TripBudgetScreen
+    ) : route.name === "profile" ? (
+      <ProfileScreen
         apiClient={apiClient}
-        tripId={selectedTripId}
-        editorAction={route.name === "trip" ? route.itemId : undefined}
-        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "budget", itemId })}
-        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "budget" })}
+        onSettings={() => push({ name: "settings" })}
+        onSignOut={returnToLogin}
+        onFriend={(userId) => push({ name: "friend-profile", userId })}
       />
-    ) : activeTripView === "transport" ? (
-      <TripTransportScreen
+    ) : route.name === "friend-profile" ? (
+      <FriendProfileScreen
         apiClient={apiClient}
-        tripId={selectedTripId}
-        editorAction={route.name === "trip" ? route.itemId : undefined}
-        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "transport", itemId })}
-        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "transport" })}
+        userId={route.userId}
+        onBack={() => back({ name: "profile" })}
       />
-    ) : activeTripView === "food" ? (
-      <TripFoodScreen apiClient={apiClient} tripId={selectedTripId} />
-    ) : activeTripView === "stays" ? (
-      <TripStaysScreen
+    ) : route.name === "travel-imports" ? (
+      <TravelImportsScreen
         apiClient={apiClient}
-        tripId={selectedTripId}
-        editorAction={route.name === "trip" ? route.itemId : undefined}
-        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "stays", itemId })}
-        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "stays" })}
+        onOpen={(importId) => push({ name: "travel-import", importId })}
+        onSettings={() => push({ name: "settings", section: "communications" })}
       />
-    ) : activeTripView === "assistant" ? (
-      <TripAssistantScreen
+    ) : route.name === "travel-import" ? (
+      <TravelImportReviewScreen
         apiClient={apiClient}
-        tripId={selectedTripId}
-        tripTitle={
-          availableTrips.find((trip) => trip.id === selectedTripId)?.title ||
-          "your trip"
+        importId={route.importId}
+        currentUserId={session.user.id}
+        onTrip={(tripId) =>
+          replace({ name: "trip", tripId, view: "transport" })
+        }
+        onBack={() => back({ name: "travel-imports" })}
+      />
+    ) : route.name === "settings" ? (
+      <SettingsScreen
+        apiClient={apiClient}
+        section={route.section}
+        onSection={(section) => replace({ name: "settings", section })}
+        onProfile={() => push({ name: "profile" })}
+        onAccountClosed={returnToLogin}
+      />
+    ) : route.name === "notifications" ? (
+      <NotificationHistoryScreen
+        apiClient={apiClient}
+        onBack={() => back(DEFAULT_MOBILE_ROUTE)}
+        onNavigate={openNotificationDestination}
+      />
+    ) : route.name === "trip-create" ? (
+      <TripCreateScreen
+        apiClient={apiClient}
+        onCreated={(tripId) => {
+          setAvailableTrips((current) =>
+            current.some((trip) => trip.id === tripId)
+              ? current
+              : [...current, { id: tripId, title: "New trip" }],
+          );
+          replace({ name: "trip", tripId, view: "overview" });
+        }}
+      />
+    ) : route.name === "trip-manage" ? (
+      <TripManageScreen
+        apiClient={apiClient}
+        tripId={route.tripId}
+        onDeleted={() => reset({ name: "trips" })}
+        onUpdated={() =>
+          replace({ name: "trip", tripId: route.tripId, view: "overview" })
         }
       />
-    ) : activeTripView === "health-safety" ? (
-      <TripHealthSafetyScreen apiClient={apiClient} tripId={selectedTripId} />
+    ) : selectedTripId ? (
+      activeTripView === "itinerary" ? (
+        route.name === "trip" && route.itemId ? (
+          <ItineraryItemEditorScreen
+            apiClient={apiClient}
+            tripId={selectedTripId}
+            itemId={route.itemId === "new" ? undefined : route.itemId}
+            onSaved={() =>
+              replace({
+                name: "trip",
+                tripId: selectedTripId,
+                view: "itinerary",
+              })
+            }
+            onCancel={() =>
+              back({ name: "trip", tripId: selectedTripId, view: "itinerary" })
+            }
+          />
+        ) : (
+          <TripItineraryScreen
+            apiClient={apiClient}
+            tripId={selectedTripId}
+            onAdd={() =>
+              push({
+                name: "trip",
+                tripId: selectedTripId,
+                view: "itinerary",
+                itemId: "new",
+              })
+            }
+            onEdit={(itemId) =>
+              push({
+                name: "trip",
+                tripId: selectedTripId,
+                view: "itinerary",
+                itemId,
+              })
+            }
+          />
+        )
+      ) : activeTripView === "ideas" ? (
+        <TripIdeasScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          editorAction={route.name === "trip" ? route.itemId : undefined}
+          onEditorAction={(itemId) =>
+            push({
+              name: "trip",
+              tripId: selectedTripId,
+              view: "ideas",
+              itemId,
+            })
+          }
+          onEditorClose={() =>
+            back({ name: "trip", tripId: selectedTripId, view: "ideas" })
+          }
+        />
+      ) : activeTripView === "budget" ? (
+        <TripBudgetScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          editorAction={route.name === "trip" ? route.itemId : undefined}
+          onEditorAction={(itemId) =>
+            push({
+              name: "trip",
+              tripId: selectedTripId,
+              view: "budget",
+              itemId,
+            })
+          }
+          onEditorClose={() =>
+            back({ name: "trip", tripId: selectedTripId, view: "budget" })
+          }
+        />
+      ) : activeTripView === "transport" ? (
+        <TripTransportScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          editorAction={route.name === "trip" ? route.itemId : undefined}
+          onEditorAction={(itemId) =>
+            push({
+              name: "trip",
+              tripId: selectedTripId,
+              view: "transport",
+              itemId,
+            })
+          }
+          onEditorClose={() =>
+            back({ name: "trip", tripId: selectedTripId, view: "transport" })
+          }
+        />
+      ) : activeTripView === "food" ? (
+        <TripFoodScreen apiClient={apiClient} tripId={selectedTripId} />
+      ) : activeTripView === "stays" ? (
+        <TripStaysScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          editorAction={route.name === "trip" ? route.itemId : undefined}
+          onEditorAction={(itemId) =>
+            push({
+              name: "trip",
+              tripId: selectedTripId,
+              view: "stays",
+              itemId,
+            })
+          }
+          onEditorClose={() =>
+            back({ name: "trip", tripId: selectedTripId, view: "stays" })
+          }
+        />
+      ) : activeTripView === "assistant" ? (
+        <TripAssistantScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          tripTitle={
+            availableTrips.find((trip) => trip.id === selectedTripId)?.title ||
+            "your trip"
+          }
+        />
+      ) : activeTripView === "health-safety" ? (
+        <TripHealthSafetyScreen apiClient={apiClient} tripId={selectedTripId} />
+      ) : (
+        <TripDetailScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          onItinerary={() => openTripView("itinerary")}
+          onIdeas={() => openTripView("ideas")}
+          onTransport={() => openTripView("transport")}
+          onFood={() => openTripView("food")}
+          onStays={() => openTripView("stays")}
+          onManage={() => push({ name: "trip-manage", tripId: selectedTripId })}
+        />
+      )
     ) : (
-      <TripDetailScreen
+      <TripsScreen
         apiClient={apiClient}
-        tripId={selectedTripId}
-        onItinerary={() => openTripView("itinerary")}
-        onIdeas={() => openTripView("ideas")}
-        onTransport={() => openTripView("transport")}
-        onFood={() => openTripView("food")}
-        onStays={() => openTripView("stays")}
-        onManage={() => push({ name: "trip-manage", tripId: selectedTripId })}
+        onSelectTrip={selectTrip}
+        onTripsLoaded={setAvailableTrips}
+        onSignOut={async () => {
+          reset(DEFAULT_MOBILE_ROUTE);
+          await signOut();
+        }}
       />
-    )
-  ) : (
-    <TripsScreen
-      apiClient={apiClient}
-      onSelectTrip={selectTrip}
-      onTripsLoaded={setAvailableTrips}
-      onSignOut={async () => {
-        reset(DEFAULT_MOBILE_ROUTE);
-        await signOut();
-      }}
-    />
-  );
+    );
 
   return (
     <div className="min-h-screen pb-[calc(8.5rem+var(--safe-area-bottom))] pt-[var(--safe-area-top)]">
       {authenticatedScreen}
       {accountSetupError ? (
-        <p className="fixed left-4 right-4 top-[calc(1rem+var(--safe-area-top))] z-[100] rounded-2xl border border-red-300/25 bg-red-950/95 p-4 text-sm font-bold text-red-100" role="alert">
+        <p
+          className="fixed left-4 right-4 top-[calc(1rem+var(--safe-area-top))] z-[100] rounded-2xl border border-red-300/25 bg-red-950/95 p-4 text-sm font-bold text-red-100"
+          role="alert"
+        >
           {accountSetupError}
         </p>
       ) : null}
@@ -336,13 +462,54 @@ export default function App() {
         onTripAssistant={() => openTripView("assistant")}
         onTripHealthSafety={() => openTripView("health-safety")}
         onNotificationHistory={openNotificationHistory}
+        onTravelImports={() => push({ name: "travel-imports" })}
         onProfile={() => push({ name: "profile" })}
         onSettings={() => push({ name: "settings" })}
         onCreateTrip={() => push({ name: "trip-create" })}
-        onCreateIdea={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "ideas", itemId: "new" }) : undefined}
-        onCreateExpense={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "budget", itemId: "add-expense" }) : undefined}
-        onCreateTransportation={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "transport", itemId: "new" }) : undefined}
-        onCreateStay={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "stays", itemId: "new" }) : undefined}
+        onCreateIdea={
+          selectedTripId
+            ? () =>
+                push({
+                  name: "trip",
+                  tripId: selectedTripId,
+                  view: "ideas",
+                  itemId: "new",
+                })
+            : undefined
+        }
+        onCreateExpense={
+          selectedTripId
+            ? () =>
+                push({
+                  name: "trip",
+                  tripId: selectedTripId,
+                  view: "budget",
+                  itemId: "add-expense",
+                })
+            : undefined
+        }
+        onCreateTransportation={
+          selectedTripId
+            ? () =>
+                push({
+                  name: "trip",
+                  tripId: selectedTripId,
+                  view: "transport",
+                  itemId: "new",
+                })
+            : undefined
+        }
+        onCreateStay={
+          selectedTripId
+            ? () =>
+                push({
+                  name: "trip",
+                  tripId: selectedTripId,
+                  view: "stays",
+                  itemId: "new",
+                })
+            : undefined
+        }
         onSignOut={async () => {
           await returnToLogin();
         }}

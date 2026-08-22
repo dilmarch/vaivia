@@ -49,6 +49,7 @@ export async function GET(request: Request) {
         trip_id: notification.trip_id,
         invitation_id: notification.invitation_id,
         archived_at: notification.archived_at,
+        actor_user_id: notification.actor_user_id || null,
         metadata: notification.metadata || null,
       }),
     );
@@ -97,6 +98,7 @@ export async function GET(request: Request) {
       trip_id: notification.trip_id,
       invitation_id: notification.invitation_id,
       archived_at: notification.archived_at,
+      actor_user_id: notification.actor_user_id || null,
       metadata: notification.metadata || null,
     }),
   );

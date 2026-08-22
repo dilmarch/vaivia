@@ -359,7 +359,7 @@ describe("mobile navigation chrome parity", () => {
 
     expect(screen.getByText("Weather update")).toBeInTheDocument();
     expect(screen.getByText("Rain is expected tomorrow.")).toBeInTheDocument();
-    expect(screen.getByText("Review on web")).toBeInTheDocument();
+    expect(screen.getByText("Review")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Travel imports" })).toBeDisabled();
     const historyButton = screen.getByRole("button", {
       name: "See previous notifications",

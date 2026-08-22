@@ -5,7 +5,12 @@ import { notFound, redirect } from "next/navigation";
 import type { Json } from "@/src/types/supabase";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceRoleClient } from "@/lib/supabase/service";
-import { processTravelEmailImport } from "@/lib/travelEmailImportProcessor";
+import {
+    ignoreTravelImport as ignoreTravelImportDomain,
+    retryTravelImport as retryTravelImportDomain,
+    saveImportedFlightTravelers as saveImportedFlightTravelersDomain,
+    validateImportTravelerSelection as validateImportTravelerSelectionDomain,
+} from "@/lib/travel-imports/domain";
 import { DateInput } from "@/components/ui/date-input";
 import { TimeInput } from "@/components/ui/time-input";
 import ImportAirportFields from "@/components/ImportAirportFields";
@@ -650,32 +655,12 @@ async function retryTravelEmailImport(formData: FormData) {
 
     if (!user) redirect("/auth/login");
 
-    const { data: importRow, error } = await supabase
-        .from("travel_email_imports")
-        .select("id,status,processed_at")
-        .eq("id", importId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-    if (error) {
-        console.error("Could not verify travel email retry ownership:", {
-            importId,
-            userId: user.id,
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-        });
-        throw new Error("Could not retry travel email import");
-    }
-
-    if (!importRow) notFound();
-    if (!canRetryImport(importRow.status, importRow.processed_at)) {
-        redirect(`/imports/${importId}`);
-    }
-
     try {
-        await processTravelEmailImport(importId);
+        await retryTravelImportDomain({
+            supabase,
+            userId: user.id,
+            importId,
+        });
     } catch (error) {
         console.error("Could not retry travel email import:", {
             importId,
@@ -701,83 +686,11 @@ async function ignoreTravelEmailImport(formData: FormData) {
 
     if (!user) redirect("/auth/login");
 
-    const { data: importRow, error: importLookupError } = await supabase
-        .from("travel_email_imports")
-        .select("id,status,user_id")
-        .eq("id", importId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-    if (importLookupError || !importRow) {
-        console.error("travel_email_import_ignore_failed", {
-            importId,
-            userId: user.id,
-            code: importLookupError?.code,
-            message: importLookupError?.message,
-            details: importLookupError?.details,
-            hint: importLookupError?.hint,
-        });
-        throw new Error("Could not ignore this import. Please try again.");
-    }
-
-    if (importRow.status !== "imported") {
-        const serviceSupabase = createServiceRoleClient();
-        const ignoredItemUpdate = {
-            is_excluded: true,
-        } as never;
-        const { error: itemUpdateError } = await serviceSupabase
-            .from("travel_email_import_items")
-            .update(ignoredItemUpdate)
-            .eq("import_id", importId);
-
-        if (
-            itemUpdateError &&
-            !isTravelImportReviewSchemaMissingError(itemUpdateError)
-        ) {
-            console.warn("travel_email_import_ignore_item_update_failed", {
-                importId,
-                userId: user.id,
-                code: itemUpdateError.code,
-            });
-        }
-
-        const { error: importUpdateError } = await serviceSupabase
-            .from("travel_email_imports")
-            .update({ status: "rejected" })
-            .eq("id", importId)
-            .eq("user_id", user.id);
-
-        if (importUpdateError) {
-            console.error("travel_email_import_ignore_status_update_failed", {
-                importId,
-                userId: user.id,
-                code: importUpdateError.code,
-                message: importUpdateError.message,
-                details: importUpdateError.details,
-                hint: importUpdateError.hint,
-            });
-            throw new Error("Could not ignore this import. Please try again.");
-        }
-
-        const { error: notificationUpdateError } = await serviceSupabase
-            .from("notifications")
-            .update({ read_at: new Date().toISOString() })
-            .eq("user_id", user.id)
-            .in("type", [
-                "travel_email_ready",
-                "travel_email_needs_review",
-                "travel_email_failed",
-            ])
-            .eq("metadata->>importId", importId);
-
-        if (notificationUpdateError) {
-            console.warn("travel_email_import_ignore_notification_update_failed", {
-                importId,
-                userId: user.id,
-                code: notificationUpdateError.code,
-            });
-        }
-    }
+    await ignoreTravelImportDomain({
+        supabase,
+        userId: user.id,
+        importId,
+    });
 
     revalidatePath(`/imports/${importId}`);
     revalidatePath("/imports");
@@ -855,6 +768,14 @@ async function validateImportTravelerSelection({
     tripId: string;
     selection: ImportTravelerSelection;
 }) {
+    return validateImportTravelerSelectionDomain({
+        supabase,
+        userId,
+        tripId,
+        selection,
+    });
+
+    /* Retained temporarily as schema-compatibility reference.
     const selectedCount =
         selection.userIds.length +
         selection.familyMemberIds.length +
@@ -919,6 +840,7 @@ async function validateImportTravelerSelection({
             "One or more selected travelers are not available for this trip. Review the traveler selection and try again."
         );
     }
+    */
 }
 
 async function saveImportedFlightTravelers({
@@ -932,6 +854,14 @@ async function saveImportedFlightTravelers({
     transportationItemIds: string[];
     selection: ImportTravelerSelection;
 }) {
+    return saveImportedFlightTravelersDomain({
+        userId,
+        tripId,
+        transportationItemIds,
+        selection,
+    });
+
+    /* Retained temporarily as schema-compatibility reference.
     const itemIds = Array.from(new Set(transportationItemIds.filter(Boolean)));
     if (itemIds.length === 0) {
         throw new Error("VAIVIA could not confirm the imported flights.");
@@ -1045,6 +975,7 @@ async function saveImportedFlightTravelers({
     if (audienceError) {
         throw new Error("VAIVIA could not save who this import is for.");
     }
+    */
 }
 
 function parseMoneyValue(value?: string | null) {

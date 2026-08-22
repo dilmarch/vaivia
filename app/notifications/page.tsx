@@ -9,6 +9,7 @@ import {
 } from "@/components/notifications/NotificationHistoryPresentation";
 import { loadNotificationHistory } from "@/lib/notifications/dropdown";
 import { createClient } from "@/lib/supabase/server";
+import { updateNotificationState } from "@/lib/notifications/actions";
 
 async function markNotificationRead(formData: FormData) {
     "use server";
@@ -21,22 +22,12 @@ async function markNotificationRead(formData: FormData) {
     if (!user) redirect("/auth/login");
 
     const notificationId = String(formData.get("notification_id") || "");
-    const { error } = await supabase
-        .from("notifications")
-        .update({ read_at: new Date().toISOString() })
-        .eq("id", notificationId)
-        .eq("user_id", user.id);
-
-    if (error) {
-        console.error("Error marking notification read:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            notificationId,
-        });
-        throw new Error("Could not update notification");
-    }
+    await updateNotificationState({
+        supabase,
+        userId: user.id,
+        notificationId,
+        action: "read",
+    });
 
     revalidatePath("/notifications");
 }
@@ -52,25 +43,12 @@ async function archiveNotification(formData: FormData) {
     if (!user) redirect("/auth/login");
 
     const notificationId = String(formData.get("notification_id") || "");
-    const { error } = await supabase
-        .from("notifications")
-        .update({
-            archived_at: new Date().toISOString(),
-            read_at: new Date().toISOString(),
-        })
-        .eq("id", notificationId)
-        .eq("user_id", user.id);
-
-    if (error) {
-        console.error("Error archiving notification:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            notificationId,
-        });
-        throw new Error("Could not archive notification");
-    }
+    await updateNotificationState({
+        supabase,
+        userId: user.id,
+        notificationId,
+        action: "archive",
+    });
 
     revalidatePath("/notifications");
 }
@@ -86,22 +64,12 @@ async function restoreNotification(formData: FormData) {
     if (!user) redirect("/auth/login");
 
     const notificationId = String(formData.get("notification_id") || "");
-    const { error } = await supabase
-        .from("notifications")
-        .update({ archived_at: null })
-        .eq("id", notificationId)
-        .eq("user_id", user.id);
-
-    if (error) {
-        console.error("Error restoring notification:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            notificationId,
-        });
-        throw new Error("Could not restore notification");
-    }
+    await updateNotificationState({
+        supabase,
+        userId: user.id,
+        notificationId,
+        action: "restore",
+    });
 
     revalidatePath("/notifications");
 }

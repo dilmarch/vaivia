@@ -23,6 +23,11 @@ import type {
   MobilePlaceSuggestion,
   MobileStayMutationInput,
   MobileTransportationMutationInput,
+  MobileFriendProfileResponse,
+  MobileNotificationDestination,
+  MobileSocialProfileResponse,
+  MobileTravelImportReviewResponse,
+  MobileTravelImportsResponse,
 } from "@/lib/mobileApi/contracts";
 
 export class MobileApiError extends Error {
@@ -31,8 +36,10 @@ export class MobileApiError extends Error {
     readonly status: number,
     readonly code = "request_failed",
     readonly fieldErrors?: MobileApiFieldErrors,
-    readonly retryable =
-      status === 0 || status === 408 || status === 429 || status >= 500,
+    readonly retryable = status === 0 ||
+      status === 408 ||
+      status === 429 ||
+      status >= 500,
   ) {
     super(message);
     this.name = "MobileApiError";
@@ -327,7 +334,11 @@ export class MobileApiClient {
 
   getJson<T>(path: string, options: MobileApiJsonRequestOptions = {}) {
     const { signal, headers, ...policy } = options;
-    return this.requestJson<T>(path, { method: "GET", headers, signal }, policy);
+    return this.requestJson<T>(
+      path,
+      { method: "GET", headers, signal },
+      policy,
+    );
   }
 
   postJson<T>(
@@ -397,7 +408,9 @@ export class MobileApiClient {
   }
 
   getTrips(signal?: AbortSignal) {
-    return this.getJson<MobileTripsResponse>("/api/mobile/v1/trips", { signal });
+    return this.getJson<MobileTripsResponse>("/api/mobile/v1/trips", {
+      signal,
+    });
   }
 
   getHome(signal?: AbortSignal) {
@@ -418,6 +431,60 @@ export class MobileApiClient {
     );
   }
 
+  updateNotification(
+    notificationId: string,
+    action: "read" | "archive" | "restore",
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ notification: unknown }>(
+      `/api/mobile/v1/notifications/${encodeURIComponent(notificationId)}`,
+      { action },
+      options,
+    );
+  }
+
+  reviewNotification(
+    notificationId: string,
+    action: "accept" | "decline" | "open",
+    stampPatch?: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{
+      handled: true;
+      destination: MobileNotificationDestination | null;
+    }>(
+      `/api/mobile/v1/notifications/${encodeURIComponent(notificationId)}`,
+      { action, stampPatch },
+      options,
+    );
+  }
+
+  getTravelImports(signal?: AbortSignal) {
+    return this.getJson<MobileTravelImportsResponse>(
+      "/api/mobile/v1/travel-imports",
+      { signal },
+    );
+  }
+
+  getTravelImport(importId: string, signal?: AbortSignal) {
+    return this.getJson<MobileTravelImportReviewResponse>(
+      `/api/mobile/v1/travel-imports/${encodeURIComponent(importId)}`,
+      { signal },
+    );
+  }
+
+  mutateTravelImport(
+    importId: string,
+    input: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<Record<string, unknown>>(
+      `/api/mobile/v1/travel-imports/${encodeURIComponent(importId)}`,
+      input,
+      options,
+    );
+  }
+
   getTrip(tripId: string, signal?: AbortSignal) {
     return this.getJson<MobileTripDetailResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
@@ -425,110 +492,320 @@ export class MobileApiClient {
     );
   }
 
-  createTransportation(tripId: string, input: MobileTransportationMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<{ item: unknown }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/transport`, input, options);
+  createTransportation(
+    tripId: string,
+    input: MobileTransportationMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{ item: unknown }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/transport`,
+      input,
+      options,
+    );
   }
 
   getTransportation(tripId: string, itemId: string, signal?: AbortSignal) {
-    return this.getJson<{ item: Record<string, unknown>; participants: Array<Record<string, unknown>> }>(`/api/mobile/v1/transport/${encodeURIComponent(itemId)}?tripId=${encodeURIComponent(tripId)}`, { signal });
+    return this.getJson<{
+      item: Record<string, unknown>;
+      participants: Array<Record<string, unknown>>;
+    }>(
+      `/api/mobile/v1/transport/${encodeURIComponent(itemId)}?tripId=${encodeURIComponent(tripId)}`,
+      { signal },
+    );
   }
 
-  updateTransportation(tripId: string, itemId: string, input: MobileTransportationMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson<{ item: unknown }>(`/api/mobile/v1/transport/${encodeURIComponent(itemId)}`, { ...input, tripId }, options);
+  updateTransportation(
+    tripId: string,
+    itemId: string,
+    input: MobileTransportationMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ item: unknown }>(
+      `/api/mobile/v1/transport/${encodeURIComponent(itemId)}`,
+      { ...input, tripId },
+      options,
+    );
   }
 
-  deleteTransportation(tripId: string, itemId: string, options: MobileApiJsonRequestOptions = {}) {
-    return this.deleteJson<{ deleted: true; itemId: string }>(`/api/mobile/v1/transport/${encodeURIComponent(itemId)}`, { tripId }, options);
+  deleteTransportation(
+    tripId: string,
+    itemId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.deleteJson<{ deleted: true; itemId: string }>(
+      `/api/mobile/v1/transport/${encodeURIComponent(itemId)}`,
+      { tripId },
+      options,
+    );
   }
 
-  createStay(tripId: string, input: MobileStayMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<{ stay: unknown }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/stays`, input, options);
+  createStay(
+    tripId: string,
+    input: MobileStayMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{ stay: unknown }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/stays`,
+      input,
+      options,
+    );
   }
 
   getStay(tripId: string, stayId: string, signal?: AbortSignal) {
-    return this.getJson<{ stay: Record<string, unknown>; participants: Array<Record<string, unknown>> }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}?tripId=${encodeURIComponent(tripId)}`, { signal });
+    return this.getJson<{
+      stay: Record<string, unknown>;
+      participants: Array<Record<string, unknown>>;
+    }>(
+      `/api/mobile/v1/stays/${encodeURIComponent(stayId)}?tripId=${encodeURIComponent(tripId)}`,
+      { signal },
+    );
   }
 
-  updateStay(tripId: string, stayId: string, input: MobileStayMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson<{ stay: unknown }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}`, { ...input, tripId }, options);
+  updateStay(
+    tripId: string,
+    stayId: string,
+    input: MobileStayMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ stay: unknown }>(
+      `/api/mobile/v1/stays/${encodeURIComponent(stayId)}`,
+      { ...input, tripId },
+      options,
+    );
   }
 
-  promoteStay(tripId: string, stayId: string, input: MobileStayMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson<{ stay: unknown }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}`, { ...input, tripId, operation: "promote" }, options);
+  promoteStay(
+    tripId: string,
+    stayId: string,
+    input: MobileStayMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ stay: unknown }>(
+      `/api/mobile/v1/stays/${encodeURIComponent(stayId)}`,
+      { ...input, tripId, operation: "promote" },
+      options,
+    );
   }
 
-  deleteStay(tripId: string, stayId: string, options: MobileApiJsonRequestOptions = {}) {
-    return this.deleteJson<{ deleted: true; stayId: string }>(`/api/mobile/v1/stays/${encodeURIComponent(stayId)}`, { tripId }, options);
+  deleteStay(
+    tripId: string,
+    stayId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.deleteJson<{ deleted: true; stayId: string }>(
+      `/api/mobile/v1/stays/${encodeURIComponent(stayId)}`,
+      { tripId },
+      options,
+    );
   }
 
   searchPlaces(query: string, sessionToken: string, signal?: AbortSignal) {
     const search = new URLSearchParams({ query, sessionToken });
-    return this.getJson<{ places: MobilePlaceSuggestion[] }>(`/api/mobile/v1/places?${search.toString()}`, { signal });
+    return this.getJson<{ places: MobilePlaceSuggestion[] }>(
+      `/api/mobile/v1/places?${search.toString()}`,
+      { signal },
+    );
   }
 
-  searchNearbyPlaces(query: string, latitude: number, longitude: number, signal?: AbortSignal) {
-    const search = new URLSearchParams({ query, lat: String(latitude), lng: String(longitude) });
-    return this.getJson<{ places: MobilePlaceDetails[] }>(`/api/mobile/v1/places?${search.toString()}`, { signal });
+  searchNearbyPlaces(
+    query: string,
+    latitude: number,
+    longitude: number,
+    signal?: AbortSignal,
+  ) {
+    const search = new URLSearchParams({
+      query,
+      lat: String(latitude),
+      lng: String(longitude),
+    });
+    return this.getJson<{ places: MobilePlaceDetails[] }>(
+      `/api/mobile/v1/places?${search.toString()}`,
+      { signal },
+    );
   }
 
   getPlaceDetails(placeId: string, sessionToken: string, signal?: AbortSignal) {
     const search = new URLSearchParams({ sessionToken });
-    return this.getJson<{ place: MobilePlaceDetails }>(`/api/mobile/v1/places/${encodeURIComponent(placeId)}?${search.toString()}`, { signal });
+    return this.getJson<{ place: MobilePlaceDetails }>(
+      `/api/mobile/v1/places/${encodeURIComponent(placeId)}?${search.toString()}`,
+      { signal },
+    );
   }
 
-  createIdea(tripId: string, input: MobileIdeaMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<{ idea: unknown }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/ideas`, input, options);
+  createIdea(
+    tripId: string,
+    input: MobileIdeaMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{ idea: unknown }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/ideas`,
+      input,
+      options,
+    );
   }
 
-  createIdeasFromNotepad(tripId: string, entries: string[], locations: Array<Record<string, unknown>>, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<{ ideas: unknown[] }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/ideas`, { operation: "bulk", entries, locations }, options);
+  createIdeasFromNotepad(
+    tripId: string,
+    entries: string[],
+    locations: Array<Record<string, unknown>>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{ ideas: unknown[] }>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/ideas`,
+      { operation: "bulk", entries, locations },
+      options,
+    );
   }
 
-  updateIdea(tripId: string, ideaId: string, input: MobileIdeaMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson<{ idea: unknown }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`, { ...input, tripId }, options);
+  updateIdea(
+    tripId: string,
+    ideaId: string,
+    input: MobileIdeaMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ idea: unknown }>(
+      `/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`,
+      { ...input, tripId },
+      options,
+    );
   }
 
-  deleteIdea(tripId: string, ideaId: string, options: MobileApiJsonRequestOptions = {}) {
-    return this.deleteJson<{ deleted: true; ideaId: string }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`, { tripId }, options);
+  deleteIdea(
+    tripId: string,
+    ideaId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.deleteJson<{ deleted: true; ideaId: string }>(
+      `/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`,
+      { tripId },
+      options,
+    );
   }
 
-  setIdeaAttended(tripId: string, ideaId: string, attended: boolean, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson<{ idea: unknown }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`, { tripId, operation: "attended", attended }, options);
+  setIdeaAttended(
+    tripId: string,
+    ideaId: string,
+    attended: boolean,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ idea: unknown }>(
+      `/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`,
+      { tripId, operation: "attended", attended },
+      options,
+    );
   }
 
-  toggleIdeaReaction(tripId: string, ideaId: string, reaction: "heart" | "thumbs_up" | "thumbs_down", options: MobileApiJsonRequestOptions = {}) {
-    return this.putJson<{ reaction: "heart" | "thumbs_up" | "thumbs_down" | null }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}/reaction`, { tripId, reaction }, options);
+  toggleIdeaReaction(
+    tripId: string,
+    ideaId: string,
+    reaction: "heart" | "thumbs_up" | "thumbs_down",
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.putJson<{
+      reaction: "heart" | "thumbs_up" | "thumbs_down" | null;
+    }>(
+      `/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}/reaction`,
+      { tripId, reaction },
+      options,
+    );
   }
 
-  addIdeaToItinerary(tripId: string, ideaId: string, input: { itemDate: string; startTime?: string | null; endTime?: string | null; timezone?: string | null; timezoneSource?: string | null }, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<MobileItineraryMutationResponse>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}/itinerary`, { ...input, tripId }, options);
+  addIdeaToItinerary(
+    tripId: string,
+    ideaId: string,
+    input: {
+      itemDate: string;
+      startTime?: string | null;
+      endTime?: string | null;
+      timezone?: string | null;
+      timezoneSource?: string | null;
+    },
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<MobileItineraryMutationResponse>(
+      `/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}/itinerary`,
+      { ...input, tripId },
+      options,
+    );
   }
 
-  createBudget(tripId: string, input: MobileBudgetMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/budget`, input, options);
+  createBudget(
+    tripId: string,
+    input: MobileBudgetMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/budget`,
+      input,
+      options,
+    );
   }
 
-  updateBudget(tripId: string, input: MobileBudgetMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/budget`, input, options);
+  updateBudget(
+    tripId: string,
+    input: MobileBudgetMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/budget`,
+      input,
+      options,
+    );
   }
 
-  createExpense(tripId: string, input: MobileExpenseMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/expenses`, input, options);
+  createExpense(
+    tripId: string,
+    input: MobileExpenseMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/expenses`,
+      input,
+      options,
+    );
   }
 
-  updateExpense(tripId: string, expenseId: string, input: MobileExpenseMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.patchJson(`/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`, { ...input, tripId }, options);
+  updateExpense(
+    tripId: string,
+    expenseId: string,
+    input: MobileExpenseMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson(
+      `/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`,
+      { ...input, tripId },
+      options,
+    );
   }
 
-  duplicateExpense(tripId: string, expenseId: string, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson(`/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`, { tripId, operation: "duplicate" }, options);
+  duplicateExpense(
+    tripId: string,
+    expenseId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson(
+      `/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`,
+      { tripId, operation: "duplicate" },
+      options,
+    );
   }
 
-  deleteExpense(tripId: string, expenseId: string, options: MobileApiJsonRequestOptions = {}) {
-    return this.deleteJson<{ deleted: true; expenseId: string }>(`/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`, { tripId }, options);
+  deleteExpense(
+    tripId: string,
+    expenseId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.deleteJson<{ deleted: true; expenseId: string }>(
+      `/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`,
+      { tripId },
+      options,
+    );
   }
 
-  createSettlement(input: MobileSettlementMutationInput, options: MobileApiJsonRequestOptions = {}) {
+  createSettlement(
+    input: MobileSettlementMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.postJson("/api/mobile/v1/settlements", input, options);
   }
 
@@ -595,11 +872,22 @@ export class MobileApiClient {
     );
   }
 
-  createTrip(input: MobileTripMutationInput, options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<MobileTripMutationResponse>("/api/mobile/v1/trips", input, options);
+  createTrip(
+    input: MobileTripMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<MobileTripMutationResponse>(
+      "/api/mobile/v1/trips",
+      input,
+      options,
+    );
   }
 
-  updateTrip(tripId: string, input: MobileTripMutationInput, options: MobileApiJsonRequestOptions = {}) {
+  updateTrip(
+    tripId: string,
+    input: MobileTripMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.patchJson<MobileTripMutationResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       input,
@@ -607,7 +895,11 @@ export class MobileApiClient {
     );
   }
 
-  setTripArchived(tripId: string, archived: boolean, options: MobileApiJsonRequestOptions = {}) {
+  setTripArchived(
+    tripId: string,
+    archived: boolean,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.patchJson<MobileTripMutationResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { operation: archived ? "archive" : "restore" },
@@ -615,7 +907,11 @@ export class MobileApiClient {
     );
   }
 
-  deleteTrip(tripId: string, confirmation: string, options: MobileApiJsonRequestOptions = {}) {
+  deleteTrip(
+    tripId: string,
+    confirmation: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.deleteJson<{ deleted: true; tripId: string }>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { confirmation },
@@ -632,7 +928,11 @@ export class MobileApiClient {
 
   inviteTripCollaborator(
     tripId: string,
-    input: { inviteeIdentifier: string; consentConfirmed: boolean; legIds: string[] },
+    input: {
+      inviteeIdentifier: string;
+      consentConfirmed: boolean;
+      legIds: string[];
+    },
     options: MobileApiJsonRequestOptions = {},
   ) {
     return this.postJson<{ invitationId: string }>(
@@ -642,7 +942,11 @@ export class MobileApiClient {
     );
   }
 
-  cancelTripInvitation(tripId: string, invitationId: string, options: MobileApiJsonRequestOptions = {}) {
+  cancelTripInvitation(
+    tripId: string,
+    invitationId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.deleteJson<{ cancelled: true }>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/invitations`,
       { invitationId },
@@ -650,7 +954,11 @@ export class MobileApiClient {
     );
   }
 
-  removeTripMember(tripId: string, memberUserId: string, options: MobileApiJsonRequestOptions = {}) {
+  removeTripMember(
+    tripId: string,
+    memberUserId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.deleteJson<{ removed: true }>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/members`,
       { memberUserId },
@@ -667,12 +975,21 @@ export class MobileApiClient {
     const path = `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/family-members`;
     return included
       ? this.postJson<{ included: boolean }>(path, { familyMemberId }, options)
-      : this.deleteJson<{ included: boolean }>(path, { familyMemberId }, options);
+      : this.deleteJson<{ included: boolean }>(
+          path,
+          { familyMemberId },
+          options,
+        );
   }
 
   updateTripMemberScope(
     tripId: string,
-    input: { tripMemberId: string; startDate: string; endDate: string; legIds: string[] },
+    input: {
+      tripMemberId: string;
+      startDate: string;
+      endDate: string;
+      legIds: string[];
+    },
     options: MobileApiJsonRequestOptions = {},
   ) {
     return this.patchJson<{ updated: true }>(
@@ -682,7 +999,11 @@ export class MobileApiClient {
     );
   }
 
-  uploadTripCover(tripId: string, file: File, options: MobileApiJsonRequestOptions = {}) {
+  uploadTripCover(
+    tripId: string,
+    file: File,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     const { signal, headers, ...policy } = options;
     const formData = new FormData();
     formData.set("cover_upload_file", file);
@@ -706,10 +1027,125 @@ export class MobileApiClient {
   }
 
   updateAccount(
-    input: { firstName: string; lastName: string; username: string; email: string },
+    input: {
+      firstName: string;
+      lastName: string;
+      username: string;
+      email: string;
+    },
     options: MobileApiJsonRequestOptions = {},
   ) {
-    return this.patchJson<MobileAccountResponse>("/api/mobile/v1/me", input, options);
+    return this.patchJson<MobileAccountResponse>(
+      "/api/mobile/v1/me",
+      input,
+      options,
+    );
+  }
+
+  uploadAvatar(file: File, options: MobileApiJsonRequestOptions = {}) {
+    const { signal, headers, ...policy } = options;
+    const formData = new FormData();
+    formData.set("avatar", file);
+    return this.requestJson<{ avatarUrl: string }>(
+      "/api/mobile/v1/me/avatar",
+      { method: "POST", headers, body: formData, signal },
+      policy,
+    );
+  }
+
+  getSocialProfile(signal?: AbortSignal) {
+    return this.getJson<MobileSocialProfileResponse>(
+      "/api/mobile/v1/me/social",
+      { signal },
+    );
+  }
+
+  mutateFriend(
+    input: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<Record<string, unknown>>(
+      "/api/mobile/v1/friends",
+      input,
+      options,
+    );
+  }
+
+  getFriendProfile(userId: string, signal?: AbortSignal) {
+    return this.getJson<MobileFriendProfileResponse>(
+      `/api/mobile/v1/friends/${encodeURIComponent(userId)}`,
+      { signal },
+    );
+  }
+
+  mutateFriendProfile(
+    userId: string,
+    input: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<Record<string, unknown>>(
+      `/api/mobile/v1/friends/${encodeURIComponent(userId)}`,
+      input,
+      options,
+    );
+  }
+
+  mutateWishlist(
+    input: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    if (input.operation === "delete")
+      return this.deleteJson<Record<string, unknown>>(
+        "/api/mobile/v1/me/wishlist",
+        input,
+        options,
+      );
+    if (input.id)
+      return this.patchJson<Record<string, unknown>>(
+        "/api/mobile/v1/me/wishlist",
+        input,
+        options,
+      );
+    return this.postJson<Record<string, unknown>>(
+      "/api/mobile/v1/me/wishlist",
+      input,
+      options,
+    );
+  }
+
+  updateScratchMap(
+    countryCode: string,
+    scratched: boolean,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<{ countryCode: string; scratched: boolean }>(
+      "/api/mobile/v1/me/scratch-map",
+      { countryCode, scratched },
+      options,
+    );
+  }
+
+  mutatePassportStamp(
+    input: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    if (input.operation === "delete")
+      return this.deleteJson<Record<string, unknown>>(
+        "/api/mobile/v1/me/passport-stamps",
+        input,
+        options,
+      );
+    if (input.id)
+      return this.patchJson<Record<string, unknown>>(
+        "/api/mobile/v1/me/passport-stamps",
+        input,
+        options,
+      );
+    return this.postJson<Record<string, unknown>>(
+      "/api/mobile/v1/me/passport-stamps",
+      input,
+      options,
+    );
   }
 
   confirmAccount(options: MobileApiJsonRequestOptions = {}) {
@@ -721,10 +1157,15 @@ export class MobileApiClient {
   }
 
   getSettings(signal?: AbortSignal) {
-    return this.getJson<MobileSettingsResponse>("/api/mobile/v1/settings", { signal });
+    return this.getJson<MobileSettingsResponse>("/api/mobile/v1/settings", {
+      signal,
+    });
   }
 
-  updateSettings(input: Record<string, unknown>, options: MobileApiJsonRequestOptions = {}) {
+  updateSettings(
+    input: Record<string, unknown>,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.patchJson<MobileSettingsResponse>(
       "/api/mobile/v1/settings",
       input,
@@ -740,14 +1181,17 @@ export class MobileApiClient {
   }
 
   requestDataExport(options: MobileApiJsonRequestOptions = {}) {
-    return this.postJson<{ exportId: string; status: string; expiresAt?: string }>(
-      "/api/mobile/v1/data-exports",
-      {},
-      options,
-    );
+    return this.postJson<{
+      exportId: string;
+      status: string;
+      expiresAt?: string;
+    }>("/api/mobile/v1/data-exports", {}, options);
   }
 
-  getDataExportDownload(exportId: string, options: MobileApiJsonRequestOptions = {}) {
+  getDataExportDownload(
+    exportId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
     return this.postJson<{ url: string; expiresInSeconds: number }>(
       `/api/mobile/v1/data-exports/${encodeURIComponent(exportId)}/download`,
       {},

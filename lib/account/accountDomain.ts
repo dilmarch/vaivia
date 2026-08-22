@@ -295,7 +295,7 @@ export async function loadSettings(
     capabilities: {
       profileEditing: true,
       passwordChange: canChangeEmail(user),
-      avatarUpload: false,
+      avatarUpload: true,
       notificationMutation: false,
       categoryMutation: false,
       familyMutation: false,
