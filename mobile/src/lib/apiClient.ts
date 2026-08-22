@@ -1,10 +1,13 @@
 import type {
   MobileApiFieldErrors,
   MobileApiErrorResponse,
+  MobileAccountResponse,
+  MobileDataExportsResponse,
   MobileNotificationHistoryResponse,
   MobileNotificationsResponse,
   MobileTripDetailResponse,
   MobileTripsResponse,
+  MobileSettingsResponse,
 } from "@/lib/mobileApi/contracts";
 
 export class MobileApiError extends Error {
@@ -400,6 +403,71 @@ export class MobileApiClient {
     return this.getJson<MobileTripDetailResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { signal },
+    );
+  }
+
+  getAccount(signal?: AbortSignal) {
+    return this.getJson<MobileAccountResponse>("/api/mobile/v1/me", { signal });
+  }
+
+  updateAccount(
+    input: { firstName: string; lastName: string; username: string; email: string },
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<MobileAccountResponse>("/api/mobile/v1/me", input, options);
+  }
+
+  confirmAccount(options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ confirmed: boolean }>(
+      "/api/mobile/v1/me/confirmation",
+      {},
+      options,
+    );
+  }
+
+  getSettings(signal?: AbortSignal) {
+    return this.getJson<MobileSettingsResponse>("/api/mobile/v1/settings", { signal });
+  }
+
+  updateSettings(input: Record<string, unknown>, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<MobileSettingsResponse>(
+      "/api/mobile/v1/settings",
+      input,
+      options,
+    );
+  }
+
+  getDataExports(signal?: AbortSignal) {
+    return this.getJson<MobileDataExportsResponse>(
+      "/api/mobile/v1/data-exports",
+      { signal },
+    );
+  }
+
+  requestDataExport(options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ exportId: string; status: string; expiresAt?: string }>(
+      "/api/mobile/v1/data-exports",
+      {},
+      options,
+    );
+  }
+
+  getDataExportDownload(exportId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ url: string; expiresInSeconds: number }>(
+      `/api/mobile/v1/data-exports/${encodeURIComponent(exportId)}/download`,
+      {},
+      options,
+    );
+  }
+
+  requestAccountDeletion(
+    confirmation: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<{ requestedAt: string }>(
+      "/api/mobile/v1/account/deletion",
+      { confirmation },
+      options,
     );
   }
 }

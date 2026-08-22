@@ -37,6 +37,11 @@ describe("mobile route model", () => {
     ).toBe(null);
     expect(parseMobileRoute({ name: "admin" })).toBe(null);
     expect(parseMobileRoute({ name: "profile" })).toEqual({ name: "profile" });
+    expect(parseMobileRoute({ name: "auth", view: "forgot-password" })).toEqual({
+      name: "auth",
+      view: "forgot-password",
+      email: undefined,
+    });
     expect(parseMobileRoute({ name: "settings", section: "security" })).toEqual(
       { name: "settings", section: "security" },
     );

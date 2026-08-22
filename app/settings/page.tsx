@@ -29,11 +29,18 @@ import {
     type FamilyMember,
 } from "@/lib/travelers";
 import {
-    getUsernameValidationError,
     isUsernameConflictError,
     normalizeUsername,
     RESERVED_USERNAMES,
 } from "@/lib/usernames";
+import {
+    AccountDomainError,
+    updateAccountProfile,
+} from "@/lib/account/accountDomain";
+import {
+    SettingsNavigationPresentation,
+    type VaiviaSettingsSection,
+} from "@/components/account/SettingsNavigationPresentation";
 
 type SettingsPageProps = {
     searchParams?: Promise<{
@@ -121,10 +128,6 @@ function normalizeNewsFeedMode(value: unknown): "integrated" | "widget" {
     return value === "widget" ? "widget" : "integrated";
 }
 
-function isValidEmail(value: string) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
 function getCurrentAuthProviders(user: {
     identities?: Array<{ provider?: string | null }> | null;
     app_metadata?: { provider?: unknown } | null;
@@ -156,62 +159,41 @@ async function updateProfileDetails(formData: FormData) {
 
     if (!user) redirect("/auth/login");
 
-    const firstName = String(formData.get("first_name") || "").trim();
-    const lastName = String(formData.get("last_name") || "").trim();
-    const username = normalizeUsername(String(formData.get("username") || ""));
-    const usernameError = getUsernameValidationError(username);
-
-    if (usernameError) {
-        redirect(
-            `/settings?section=profile&message=${
-                !username
-                    ? "username-required"
-                    : RESERVED_USERNAMES.has(username)
-                      ? "username-reserved"
-                      : "username-invalid"
-            }`
-        );
-    }
-
-    const authProviders = getCurrentAuthProviders(user);
-    const canChangeEmail = !hasSocialAuthProvider(authProviders);
-    const rawEmail = String(formData.get("email") || "").trim();
-    const nextEmail = canChangeEmail ? rawEmail : user.email || "";
-
-    if (canChangeEmail && nextEmail && !isValidEmail(nextEmail)) {
-        redirect("/settings?section=profile&message=email-invalid");
-    }
-
-    if (!canChangeEmail && rawEmail && rawEmail !== (user.email || "")) {
-        redirect("/settings?section=profile&message=email-unavailable");
-    }
-
     try {
-        if (canChangeEmail && nextEmail && nextEmail !== user.email) {
-            const { error: authError } = await supabase.auth.updateUser({
-                email: nextEmail,
-            });
-
-            if (authError) throw authError;
-        }
-
-        const now = new Date().toISOString();
-        const payload = {
-            id: user.id,
-            first_name: firstName || null,
-            last_name: lastName || null,
-            username,
-            email: nextEmail || user.email || null,
-            join_date: user.created_at || now,
-            updated_at: now,
-        };
-
-        const { error } = await supabase
-            .from("user_profiles")
-            .upsert(payload, { onConflict: "id" });
-
-        if (error) throw error;
+        await updateAccountProfile(supabase, user, {
+            firstName: formData.get("first_name"),
+            lastName: formData.get("last_name"),
+            username: formData.get("username"),
+            email: formData.get("email"),
+        });
     } catch (error) {
+        if (error instanceof AccountDomainError) {
+            const usernameMessage = error.fieldErrors?.username?.[0] || "";
+            if (error.code === "username_taken") {
+                redirect("/settings?section=profile&message=username-taken");
+            }
+            if (usernameMessage) {
+                const username = normalizeUsername(String(formData.get("username") || ""));
+                redirect(
+                    `/settings?section=profile&message=${
+                        !username
+                            ? "username-required"
+                            : RESERVED_USERNAMES.has(username)
+                              ? "username-reserved"
+                              : "username-invalid"
+                    }`
+                );
+            }
+            if (error.fieldErrors?.email) {
+                redirect(
+                    `/settings?section=profile&message=${
+                        error.code === "email_unavailable"
+                            ? "email-unavailable"
+                            : "email-invalid"
+                    }`
+                );
+            }
+        }
         console.error("Error updating profile details:", {
             error,
             userId: user.id,
@@ -861,113 +843,18 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     return (
         <main className="min-h-screen bg-[#0c0115] px-4 pb-8 pt-[calc(6.25rem+var(--safe-area-top))] text-white md:py-8 md:pl-28">
             <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[220px_1fr]">
-                <aside className="rounded-[1.5rem] border border-white/10 bg-[#080511]/90 p-3 shadow-2xl shadow-black/30">
-                    <p className="px-3 py-2 text-xs font-black uppercase tracking-[0.28em] text-lime-200/80">
-                        Settings
-                    </p>
-                    <nav className="mt-2 space-y-2" aria-label="Settings">
+                <SettingsNavigationPresentation
+                    activeSection={activeSection as VaiviaSettingsSection}
+                    renderItem={({ id, label, className }) => (
                         <Link
-                            href="/settings"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "general"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
+                            key={id}
+                            href={id === "general" ? "/settings" : `/settings?section=${id}`}
+                            className={className}
                         >
-                            General
+                            {label}
                         </Link>
-                        <Link
-                            href="/settings?section=profile"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "profile"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Profile Details
-                        </Link>
-                        <Link
-                            href="/settings?section=time-date"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "time-date"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Time/date
-                        </Link>
-                        <Link
-                            href="/settings?section=language"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "language"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Language
-                        </Link>
-                        <Link
-                            href="/settings?section=security"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "security"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Password & Security
-                        </Link>
-                        <Link
-                            href="/settings?section=communications"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "communications"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Communications
-                        </Link>
-                        <Link
-                            href="/settings?section=data"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "data"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Data
-                        </Link>
-                        <Link
-                            href="/settings?section=categories"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "categories"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Categories
-                        </Link>
-                        <Link
-                            href="/settings?section=family"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "family"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Family Members
-                        </Link>
-                        <Link
-                            href="/settings?section=financial"
-                            className={`block rounded-full px-4 py-2 text-sm font-bold transition ${
-                                activeSection === "financial"
-                                    ? "bg-lime-300 text-slate-950"
-                                    : "text-slate-300 hover:bg-white/10 hover:text-white"
-                            }`}
-                        >
-                            Financial
-                        </Link>
-                    </nav>
-                </aside>
+                    )}
+                />
 
                 <section className="rounded-[2rem] border border-white/10 bg-[#03030a]/90 p-6 shadow-2xl shadow-black/30">
                     {activeSection === "general" ? (

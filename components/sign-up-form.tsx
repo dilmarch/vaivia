@@ -25,6 +25,10 @@ import {
   normalizeUsername,
 } from "@/lib/usernames";
 import { getBrowserAbsoluteAppUrl } from "@/lib/appOrigins";
+import {
+  getSignupPasswordCriteria,
+  getSignupPasswordValidationError,
+} from "@/lib/account/authValidation";
 
 type SignupStep = "account" | "photo" | "confirm" | "invites" | "start";
 
@@ -85,40 +89,6 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Something went wrong.";
 }
 
-function getPasswordValidationError({
-  password,
-  email,
-  username,
-}: {
-  password: string;
-  email: string;
-  username: string;
-}) {
-  if (password.length < 8) return "Password must be at least 8 characters.";
-  if (!/[A-Z]/.test(password)) {
-    return "Password must include at least one capital letter.";
-  }
-  if (!/[a-z]/.test(password)) {
-    return "Password must include at least one lowercase letter.";
-  }
-  if (!/[0-9]/.test(password)) return "Password must include at least one number.";
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    return "Password must include at least one special character.";
-  }
-  if (/\s/.test(password)) return "Password cannot contain spaces.";
-
-  const normalizedPassword = password.toLowerCase();
-  if (username && normalizedPassword.includes(username.toLowerCase())) {
-    return "Password cannot contain your username.";
-  }
-  const emailName = email.split("@")[0]?.toLowerCase() || "";
-  if (emailName && normalizedPassword.includes(emailName)) {
-    return "Password cannot contain the first part of your email address.";
-  }
-
-  return "";
-}
-
 export function SignUpForm({
   className,
   initialEmail = "",
@@ -163,44 +133,7 @@ export function SignUpForm({
     return name || username || "Traveller";
   }, [firstName, lastName, username]);
   const passwordCriteria = useMemo(
-    () => [
-      {
-        label: "At least 8 characters",
-        met: password.length >= 8,
-      },
-      {
-        label: "1 capital letter",
-        met: /[A-Z]/.test(password),
-      },
-      {
-        label: "1 lowercase letter",
-        met: /[a-z]/.test(password),
-      },
-      {
-        label: "1 number",
-        met: /[0-9]/.test(password),
-      },
-      {
-        label: "1 special character",
-        met: /[^A-Za-z0-9]/.test(password),
-      },
-      {
-        label: "No spaces or obvious account details",
-        met:
-          password.length > 0 &&
-          !/\s/.test(password) &&
-          !(
-            username.trim() &&
-            password.toLowerCase().includes(username.trim().toLowerCase())
-          ) &&
-          !(
-            email.trim().split("@")[0] &&
-            password
-              .toLowerCase()
-              .includes(email.trim().split("@")[0].toLowerCase())
-          ),
-      },
-    ],
+    () => getSignupPasswordCriteria({ password, email, username }),
     [email, password, username]
   );
 
@@ -257,7 +190,7 @@ export function SignUpForm({
 
     const cleanEmail = email.trim();
     const cleanUsername = normalizeUsername(username);
-    const passwordError = getPasswordValidationError({
+    const passwordError = getSignupPasswordValidationError({
       password,
       email: cleanEmail,
       username: cleanUsername,

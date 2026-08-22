@@ -38,6 +38,7 @@ import {
     normalizeCountryCode,
 } from "@/lib/countries/country-codes";
 import { createClient } from "@/lib/supabase/client";
+import { ProfileHeaderPresentation } from "@/components/account/ProfileHeaderPresentation";
 
 export type UserProfile = {
     id: string;
@@ -585,10 +586,6 @@ function parseDestinationList(destination?: string | null) {
 
 function getLeadingFlag(destination: string) {
     return destination.match(/^[\u{1F1E6}-\u{1F1FF}]{2}/u)?.[0] || "";
-}
-
-function getInitialFromName(value: string) {
-    return value.trim().charAt(0).toUpperCase() || "V";
 }
 
 function mergePassportStamps(stamps: PassportStamp[]) {
@@ -4083,87 +4080,18 @@ export default function AccountMenu({
 
         return (
             <div className="bg-[#050712] text-white">
-                <div className="relative overflow-hidden border-b border-white/10 p-6 sm:p-8">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,rgba(var(--vaivia-neon-rgb),0.22),transparent_34%),radial-gradient(circle_at_80%_20%,rgba(217,70,239,0.18),transparent_34%)]" />
-                    <div className="relative flex items-start justify-between gap-4">
-                        <div className="flex min-w-0 flex-col gap-5 sm:flex-row sm:items-end">
-                            <span className="flex h-28 w-28 shrink-0 items-center justify-center overflow-hidden rounded-[2rem] border border-lime-300/30 bg-slate-950 text-4xl font-black text-lime-200 shadow-[0_0_44px_rgba(var(--vaivia-neon-rgb),0.22)]">
-                                {avatarUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                        src={avatarUrl}
-                                        alt=""
-                                        className="h-full w-full object-cover"
-                                    />
-                                ) : (
-                                    getInitialFromName(displayName)
-                                )}
-                            </span>
-                            <div className="min-w-0">
-                                <p className="text-xs font-black uppercase tracking-[0.28em] text-lime-200">
-                                    VAIVIA profile
-                                </p>
-                                <h2
-                                    id="accountPreferencesTitle"
-                                    className="mt-2 truncate text-4xl font-black tracking-tight text-white sm:text-5xl"
-                                >
-                                    {displayName}
-                                </h2>
-                                <p className="mt-2 text-sm font-semibold text-slate-300">
-                                    {profileSubtitle}
-                                </p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    <span className="inline-flex rounded-full border border-lime-300/35 bg-lime-300/[0.12] px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-lime-100 shadow-xl shadow-black/20">
-                                        {userRoleLabel}
-                                    </span>
-                                    <span className="inline-flex rounded-full border border-fuchsia-300/30 bg-fuchsia-300/[0.12] px-3 py-1 text-xs font-black uppercase tracking-[0.16em] text-fuchsia-100 shadow-xl shadow-black/20">
-                                        {profileLevelLabel}
-                                    </span>
-                                    <span
-                                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.16em] shadow-xl shadow-black/20 ${currentThemeBadgeClass}`}
-                                    >
-                                        {currentThemeLabel}
-                                    </span>
-                                </div>
-                                <p className="mt-1 text-xs font-bold uppercase tracking-[0.16em] text-slate-500">
-                                    Joined {joinDateLabel}
-                                </p>
-                            </div>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-3">
-                            <div className="rounded-[1.15rem] border border-lime-300/35 bg-lime-300 px-4 py-2 text-right text-slate-950 shadow-[0_0_34px_rgba(var(--vaivia-neon-rgb),0.24)]">
-                                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-950/65">
-                                    Points
-                                </p>
-                                <p className="mt-0.5 text-xl font-black leading-none">
-                                    {profilePointsLabel}
-                                </p>
-                                {nextLevelProgress ? (
-                                    <p className="mt-1 max-w-32 text-[10px] font-black uppercase leading-tight tracking-[0.12em] text-lime-950/65">
-                                        {nextLevelProgress.pointsRemaining.toLocaleString()}{" "}
-                                        point
-                                        {nextLevelProgress.pointsRemaining === 1
-                                            ? ""
-                                            : "s"}{" "}
-                                        until Level {nextLevelProgress.level}
-                                    </p>
-                                ) : null}
-                            </div>
-                            {!isProfilePage ? (
-                                <button
-                                    type="button"
-                                    onClick={requestClose}
-                                    className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
-                                    aria-label="Close account profile"
-                                >
-                                    <X className="h-5 w-5" aria-hidden="true" />
-                                </button>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    <div className="relative mt-6 flex flex-wrap gap-3">
-                        {isProfilePage ? (
+                <ProfileHeaderPresentation
+                    displayName={displayName}
+                    subtitle={profileSubtitle}
+                    avatarUrl={avatarUrl}
+                    roleLabel={userRoleLabel}
+                    levelLabel={profileLevelLabel}
+                    themeLabel={currentThemeLabel}
+                    themeBadgeClass={currentThemeBadgeClass}
+                    joinedLabel={joinDateLabel}
+                    pointsLabel={profilePointsLabel}
+                    nextLevel={nextLevelProgress}
+                    editAction={isProfilePage ? (
                             <Link
                                 href="/settings?section=profile"
                                 className="inline-flex items-center gap-2 rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950 shadow-[0_0_28px_rgba(var(--vaivia-neon-rgb),0.22)] transition hover:bg-lime-200"
@@ -4181,7 +4109,7 @@ export default function AccountMenu({
                                 Edit profile
                             </button>
                         )}
-                        <Button
+                    signOutAction={<Button
                             type="button"
                             variant="outline"
                             onClick={handleSignOut}
@@ -4189,9 +4117,18 @@ export default function AccountMenu({
                         >
                             <LogOut className="h-4 w-4" aria-hidden="true" />
                             Sign out
-                        </Button>
-                    </div>
-                </div>
+                        </Button>}
+                    closeAction={!isProfilePage ? (
+                        <button
+                            type="button"
+                            onClick={requestClose}
+                            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-slate-100 transition hover:bg-white/[0.14]"
+                            aria-label="Close account profile"
+                        >
+                            <X className="h-5 w-5" aria-hidden="true" />
+                        </button>
+                    ) : null}
+                />
 
                 <div className="space-y-5 p-5 sm:p-6">
                     <section

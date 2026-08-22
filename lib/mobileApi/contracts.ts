@@ -277,3 +277,75 @@ export type MobileApiErrorResponse = {
 export type MobileApiSuccessResponse<T> = {
   data: T;
 };
+
+export type MobileAccountProfile = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+  email: string | null;
+  avatarUrl: string | null;
+  joinedAt: string | null;
+  role: string;
+  termsAcceptedAt: string | null;
+  marketingEmailsConsent: boolean;
+  accountDeletionRequestedAt: string | null;
+  points: number;
+  level: number;
+  levelName: string;
+  canChangeEmail: boolean;
+};
+
+export type MobileAccountResponse = {
+  profile: MobileAccountProfile;
+};
+
+export type MobileSettingsResponse = {
+  preferences: {
+    themeMode: string;
+    countdownDisplayMode: string;
+    clockFormat: string;
+    defaultTimeZone: string | null;
+    itineraryDefaultView: string;
+    newsFeedMode: string;
+    homeCurrency: string;
+    marketingEmailsConsent: boolean;
+  };
+  notificationPreferences: Array<{
+    notificationType: string;
+    masterEnabled: boolean;
+    inAppEnabled: boolean;
+    pushEnabled: boolean;
+    emailEnabled: boolean;
+  }>;
+  categories: Array<{ id: string; name: string; colorKey: string | null }>;
+  familyMembers: Array<{
+    id: string;
+    name: string;
+    relationship: string | null;
+  }>;
+  capabilities: {
+    profileEditing: boolean;
+    passwordChange: boolean;
+    avatarUpload: boolean;
+    notificationMutation: boolean;
+    categoryMutation: boolean;
+    familyMutation: boolean;
+  };
+};
+
+export type MobileDataExportRecord = {
+  id: string;
+  status: "requested" | "preparing" | "ready" | "expired" | "failed";
+  requestedAt: string;
+  processingStartedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+  schemaVersion: string | null;
+  failureCode: string | null;
+  downloadedAt: string | null;
+};
+
+export type MobileDataExportsResponse = {
+  exports: MobileDataExportRecord[];
+};

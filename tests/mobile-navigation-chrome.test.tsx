@@ -64,6 +64,8 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onTripAssistant: vi.fn(),
     onTripHealthSafety: vi.fn(),
     onNotificationHistory: vi.fn(),
+    onProfile: vi.fn(),
+    onSettings: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -125,7 +127,7 @@ describe("mobile navigation chrome parity", () => {
     ).toBeDisabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Open more options" }));
-    expect(screen.getByRole("button", { name: "Settings coming soon" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Account" })).toBeEnabled();
   });
 

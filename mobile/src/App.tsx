@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppLoading } from "./components/AppLoading";
 import { MobileAppChrome } from "./components/MobileAppChrome";
 import { useMobileAuth } from "./auth/AuthProvider";
-import { LoginScreen } from "./screens/LoginScreen";
+import { AuthScreen } from "./screens/AuthScreens";
+import { ProfileScreen } from "./screens/ProfileScreen";
+import { SettingsScreen } from "./screens/SettingsScreen";
 import { TripDetailScreen } from "./screens/TripDetailScreen";
 import { TripItineraryScreen } from "./screens/TripItineraryScreen";
 import { TripIdeasScreen } from "./screens/TripIdeasScreen";
@@ -19,15 +21,18 @@ import { getMobileEnvironment } from "./lib/environment";
 import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
 import {
   DEFAULT_MOBILE_ROUTE,
+  MOBILE_AUTH_LOGIN_ROUTE,
   isImplementedMobileRoute,
   type MobileTripView,
 } from "./navigation/routes";
 import { useMobileNavigation } from "./navigation/MobileNavigationProvider";
 
 export default function App() {
-  const { session, isInitializing, signOut } = useMobileAuth();
-  const { route, push, reset, back } = useMobileNavigation();
+  const { session, isInitializing, signOut, authCallback, clearAuthCallback } = useMobileAuth();
+  const { route, push, replace, reset, back } = useMobileNavigation();
   const [availableTrips, setAvailableTrips] = useState<MobileTripSummary[]>([]);
+  const [accountSetupError, setAccountSetupError] = useState("");
+  const handledConfirmationRef = useRef(false);
   const environment = useMemo(() => getMobileEnvironment(), []);
   const accessToken = session?.access_token || null;
   const authenticatedUserId = session?.user.id || null;
@@ -36,7 +41,7 @@ export default function App() {
   const activeTripView = route.name === "trip" ? route.view : null;
 
   const returnToLogin = useCallback(async () => {
-    reset(DEFAULT_MOBILE_ROUTE);
+    reset(MOBILE_AUTH_LOGIN_ROUTE);
     try {
       await signOut();
     } catch {
@@ -45,11 +50,19 @@ export default function App() {
   }, [reset, signOut]);
 
   useEffect(() => {
-    if (!isInitializing && !session) reset(DEFAULT_MOBILE_ROUTE);
-  }, [isInitializing, reset, session]);
+    if (!isInitializing && !session && route.name !== "auth") {
+      reset(MOBILE_AUTH_LOGIN_ROUTE);
+    }
+  }, [isInitializing, reset, route.name, session]);
 
   useEffect(() => {
     if (session && !isImplementedMobileRoute(route)) {
+      reset(DEFAULT_MOBILE_ROUTE);
+    }
+  }, [reset, route, session]);
+
+  useEffect(() => {
+    if (session && route.name === "auth" && route.view !== "update-password") {
       reset(DEFAULT_MOBILE_ROUTE);
     }
   }, [reset, route, session]);
@@ -76,8 +89,57 @@ export default function App() {
     ],
   );
 
+  useEffect(() => {
+    if (!session || !authCallback) return;
+    if (authCallback.kind === "recovery" && authCallback.status === "complete") {
+      replace({ name: "auth", view: "update-password" });
+      return;
+    }
+    if (
+      authCallback.kind !== "confirmation" ||
+      authCallback.status !== "complete" ||
+      handledConfirmationRef.current
+    ) return;
+    handledConfirmationRef.current = true;
+    void apiClient.confirmAccount({ idempotencyKey: `confirmation:${session.user.id}` })
+      .then(() => {
+        clearAuthCallback();
+        setAccountSetupError("");
+        reset(DEFAULT_MOBILE_ROUTE);
+      })
+      .catch((error: unknown) => {
+        handledConfirmationRef.current = false;
+        setAccountSetupError(error instanceof Error ? error.message : "VAIVIA could not finish account setup.");
+      });
+  }, [apiClient, authCallback, clearAuthCallback, replace, reset, session]);
+
   if (isInitializing) return <AppLoading />;
-  if (!session) return <LoginScreen />;
+  if (!session) {
+    const authRoute = route.name === "auth" ? route : MOBILE_AUTH_LOGIN_ROUTE;
+    return (
+      <AuthScreen
+        view={authRoute.view}
+        initialEmail={"email" in authRoute ? authRoute.email : undefined}
+        callbackError={
+          authCallback?.status === "error" ? authCallback.message : undefined
+        }
+        onNavigate={(view, email) => push({ name: "auth", view, email })}
+        onAuthenticated={() => reset(DEFAULT_MOBILE_ROUTE)}
+      />
+    );
+  }
+  if (route.name === "auth") {
+    if (route.view !== "update-password") {
+      return <AppLoading />;
+    }
+    return (
+      <AuthScreen
+        view="update-password"
+        onNavigate={() => reset(DEFAULT_MOBILE_ROUTE)}
+        onAuthenticated={() => reset(DEFAULT_MOBILE_ROUTE)}
+      />
+    );
+  }
 
   function selectTrip(tripId: string) {
     push({ name: "trip", tripId, view: "overview" });
@@ -96,7 +158,21 @@ export default function App() {
     push({ name: "trip", tripId: selectedTripId, view });
   }
 
-  const authenticatedScreen = route.name === "notifications" ? (
+  const authenticatedScreen = route.name === "profile" ? (
+    <ProfileScreen
+      apiClient={apiClient}
+      onSettings={() => push({ name: "settings" })}
+      onSignOut={returnToLogin}
+    />
+  ) : route.name === "settings" ? (
+    <SettingsScreen
+      apiClient={apiClient}
+      section={route.section}
+      onSection={(section) => replace({ name: "settings", section })}
+      onProfile={() => push({ name: "profile" })}
+      onAccountClosed={returnToLogin}
+    />
+  ) : route.name === "notifications" ? (
     <NotificationHistoryScreen
       apiClient={apiClient}
       supportedTripIds={availableTrips.map((trip) => trip.id)}
@@ -153,6 +229,11 @@ export default function App() {
   return (
     <div className="min-h-screen pb-[calc(8.5rem+var(--safe-area-bottom))] pt-[var(--safe-area-top)]">
       {authenticatedScreen}
+      {accountSetupError ? (
+        <p className="fixed left-4 right-4 top-[calc(1rem+var(--safe-area-top))] z-[100] rounded-2xl border border-red-300/25 bg-red-950/95 p-4 text-sm font-bold text-red-100" role="alert">
+          {accountSetupError}
+        </p>
+      ) : null}
       <MobileAppChrome
         apiClient={apiClient}
         trips={availableTrips}
@@ -176,9 +257,10 @@ export default function App() {
         onTripAssistant={() => openTripView("assistant")}
         onTripHealthSafety={() => openTripView("health-safety")}
         onNotificationHistory={openNotificationHistory}
+        onProfile={() => push({ name: "profile" })}
+        onSettings={() => push({ name: "settings" })}
         onSignOut={async () => {
-          reset(DEFAULT_MOBILE_ROUTE);
-          await signOut();
+          await returnToLogin();
         }}
       />
     </div>

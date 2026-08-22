@@ -16,6 +16,11 @@ export const MOBILE_TRIP_VIEWS = [
 export type MobileTripView = (typeof MOBILE_TRIP_VIEWS)[number];
 
 export type MobileRoute =
+  | {
+      name: "auth";
+      view: "login" | "signup" | "confirm-email" | "forgot-password" | "update-password";
+      email?: string;
+    }
   | { name: "home" }
   | { name: "trips" }
   | { name: "notifications" }
@@ -36,7 +41,8 @@ export type MobileHistoryEntry = {
   route: MobileRoute;
 };
 
-export const DEFAULT_MOBILE_ROUTE: MobileRoute = { name: "trips" };
+export const DEFAULT_MOBILE_ROUTE = { name: "trips" } as const satisfies MobileRoute;
+export const MOBILE_AUTH_LOGIN_ROUTE = { name: "auth", view: "login" } as const satisfies MobileRoute;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
@@ -63,6 +69,16 @@ export function isMobileTripView(value: unknown): value is MobileTripView {
 
 export function parseMobileRoute(value: unknown): MobileRoute | null {
   if (!isRecord(value)) return null;
+  if (
+    value.name === "auth" &&
+    (value.view === "login" ||
+      value.view === "signup" ||
+      value.view === "confirm-email" ||
+      value.view === "forgot-password" ||
+      value.view === "update-password")
+  ) {
+    return { name: "auth", view: value.view, email: optionalString(value.email) };
+  }
   if (value.name === "home") return { name: "home" };
   if (value.name === "trips") return DEFAULT_MOBILE_ROUTE;
   if (value.name === "notifications") return { name: "notifications" };
@@ -95,14 +111,21 @@ export function routesMatch(left: MobileRoute, right: MobileRoute) {
 
 export function isImplementedMobileRoute(route: MobileRoute) {
   return (
+    route.name === "auth" ||
     route.name === "trips" ||
     route.name === "notifications" ||
+    route.name === "profile" ||
+    route.name === "settings" ||
     route.name === "trip"
   );
 }
 
 export function mobileRouteToPath(route: MobileRoute) {
   switch (route.name) {
+    case "auth":
+      return route.email
+        ? `/auth/${route.view}?email=${encodeURIComponent(route.email)}`
+        : `/auth/${route.view}`;
     case "home":
       return "/";
     case "trips":
@@ -139,6 +162,9 @@ export function resolveMobilePath(pathname: string): MobileRoute | null {
   if (parts.length === 0) return { name: "home" };
   if (parts.length === 1) {
     return parseMobileRoute({ name: parts[0] });
+  }
+  if (parts[0] === "auth" && parts.length === 2) {
+    return parseMobileRoute({ name: "auth", view: parts[1] });
   }
   if (parts[0] === "settings" && parts.length === 2) {
     return parseMobileRoute({ name: "settings", section: parts[1] });

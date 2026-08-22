@@ -75,6 +75,8 @@ type MobileAppChromeProps = {
   onTripAssistant: () => void;
   onTripHealthSafety: () => void;
   onNotificationHistory: () => void;
+  onProfile?: () => void;
+  onSettings?: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -168,6 +170,8 @@ export function MobileAppChrome({
   onTripAssistant,
   onTripHealthSafety,
   onNotificationHistory,
+  onProfile = () => undefined,
+  onSettings = () => undefined,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -525,8 +529,30 @@ export function MobileAppChrome({
             </p>
             <button
               type="button"
+              onClick={() => {
+                setIsAccountOpen(false);
+                setBottomMenu(null);
+                onProfile();
+              }}
+              className="mt-4 w-full rounded-full border border-white/10 bg-white/[0.08] px-5 py-2.5 text-sm font-black text-white"
+            >
+              Profile
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsAccountOpen(false);
+                setBottomMenu(null);
+                onSettings();
+              }}
+              className="mt-2 w-full rounded-full border border-white/10 bg-white/[0.08] px-5 py-2.5 text-sm font-black text-white"
+            >
+              Settings
+            </button>
+            <button
+              type="button"
               onClick={() => void onSignOut()}
-              className="mt-4 w-full rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950"
+              className="mt-2 w-full rounded-full bg-lime-300 px-5 py-2.5 text-sm font-black text-slate-950"
             >
               Sign out
             </button>
@@ -540,7 +566,15 @@ export function MobileAppChrome({
               />
             ) : null}
             <DestinationItem
-              destination={{ label: "Settings", icon: Settings }}
+              destination={{
+                label: "Settings",
+                icon: Settings,
+                supported: true,
+                action: () => {
+                  closeMenus();
+                  onSettings();
+                },
+              }}
               index={isSuperAdmin ? 1 : 0}
             />
             <DestinationItem

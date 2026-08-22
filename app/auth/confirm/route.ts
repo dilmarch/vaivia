@@ -1,8 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import {
-  getUserProfileDefaults,
-  mergeProfileWithAuthDefaults,
-} from "@/lib/userProfileDefaults";
+import { ensureConfirmedAccountProfile } from "@/lib/account/accountDomain";
 import {
   getAlreadyConfirmedAuthRedirect,
   getMissingTokenAuthenticatedRedirect,
@@ -44,81 +41,14 @@ export async function GET(request: NextRequest) {
       }
 
       if (user) {
-        const defaults = getUserProfileDefaults(user);
-        const metadata = user.user_metadata || {};
-        const now = new Date().toISOString();
-        const termsAcceptedAt =
-          typeof metadata.terms_accepted_at === "string"
-            ? metadata.terms_accepted_at
-            : now;
-        const marketingConsent =
-          metadata.marketing_emails_consent === true ||
-          metadata.marketing_emails_consent === "true";
-        const marketingConsentedAt =
-          typeof metadata.marketing_emails_consented_at === "string"
-            ? metadata.marketing_emails_consented_at
-            : marketingConsent
-              ? termsAcceptedAt
-              : null;
-        const marketingConsentDecidedAt =
-          typeof metadata.marketing_emails_consent_decided_at === "string"
-            ? metadata.marketing_emails_consent_decided_at
-            : termsAcceptedAt;
-
-        const { data: existingProfile, error: profileReadError } = await supabase
-          .from("user_profiles")
-          .select(
-            "id,first_name,last_name,username,email,avatar_url,join_date,terms_accepted_at,marketing_emails_consent,marketing_emails_consented_at,marketing_emails_consent_decided_at,onboarding_completed_at"
-          )
-          .eq("id", user.id)
-          .maybeSingle();
-
-        if (profileReadError) {
-          console.warn("Could not load user profile after email confirmation:", {
-            message: profileReadError.message,
-            code: profileReadError.code,
-            details: profileReadError.details,
-            userId: user.id,
-          });
-        }
-
-        const profilePayload = {
-          ...mergeProfileWithAuthDefaults(existingProfile, defaults),
-          terms_accepted_at:
-            existingProfile?.terms_accepted_at ?? termsAcceptedAt,
-          marketing_emails_consent:
-            existingProfile?.marketing_emails_consent ?? marketingConsent,
-          marketing_emails_consented_at:
-            existingProfile?.marketing_emails_consented_at ??
-            marketingConsentedAt,
-          marketing_emails_consent_decided_at:
-            existingProfile?.marketing_emails_consent_decided_at ??
-            marketingConsentDecidedAt,
-          onboarding_completed_at:
-            existingProfile?.onboarding_completed_at ?? now,
-          updated_at: now,
-        };
-
-        const { error: profileUpsertError } = await supabase
-          .from("user_profiles")
-          .upsert(profilePayload, { onConflict: "id" });
-
-        if (profileUpsertError) {
-          console.warn("Could not seed user profile after email confirmation:", {
-            message: profileUpsertError.message,
-            code: profileUpsertError.code,
-            details: profileUpsertError.details,
-            userId: user.id,
-          });
-        }
-
-        const { error: termsError } = await supabase.rpc("accept_current_terms");
-
-        if (termsError) {
-          console.warn("Could not record terms acceptance after email confirmation:", {
-            message: termsError.message,
-            code: termsError.code,
-            details: termsError.details,
+        try {
+          await ensureConfirmedAccountProfile(supabase, user);
+        } catch (profileError) {
+          console.warn("Could not finish account setup after email confirmation:", {
+            message:
+              profileError instanceof Error
+                ? profileError.message
+                : "unknown_error",
             userId: user.id,
           });
         }
