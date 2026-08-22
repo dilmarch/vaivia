@@ -80,6 +80,7 @@ type MobileAppChromeProps = {
   onSettings?: () => void;
   onCreateTrip?: () => void;
   onCreateItineraryItem?: () => void;
+  onCreateExpense?: () => void;
   onSignOut: () => Promise<void>;
 };
 
@@ -178,6 +179,7 @@ export function MobileAppChrome({
   onSettings = () => undefined,
   onCreateTrip,
   onCreateItineraryItem,
+  onCreateExpense,
   onSignOut,
 }: MobileAppChromeProps) {
   const [bottomMenu, setBottomMenu] = useState<MobileChromeMenu>(null);
@@ -629,12 +631,15 @@ export function MobileAppChrome({
                     disabled={
                       (label === "Add trip" && !onCreateTrip) ||
                       (label === "Add things to do" && !onCreateItineraryItem) ||
-                      (label !== "Add trip" && label !== "Add things to do")
+                      (label === "Add expense" && !onCreateExpense) ||
+                      (label !== "Add trip" && label !== "Add things to do" && label !== "Add expense")
                     }
                     onPress={label === "Add trip" && onCreateTrip ? () => {
                       closeMenus(); onCreateTrip();
                     } : label === "Add things to do" && onCreateItineraryItem ? () => {
                       closeMenus(); onCreateItineraryItem();
+                    } : label === "Add expense" && onCreateExpense ? () => {
+                      closeMenus(); onCreateExpense();
                     } : undefined}
                     animationDelay={`${index * 34}ms`}
                   />

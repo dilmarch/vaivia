@@ -15,6 +15,9 @@ import type {
   MobileTripMutationResponse,
   MobileTripsResponse,
   MobileSettingsResponse,
+  MobileBudgetMutationInput,
+  MobileExpenseMutationInput,
+  MobileSettlementMutationInput,
 } from "@/lib/mobileApi/contracts";
 
 export class MobileApiError extends Error {
@@ -415,6 +418,34 @@ export class MobileApiClient {
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { signal },
     );
+  }
+
+  createBudget(tripId: string, input: MobileBudgetMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/budget`, input, options);
+  }
+
+  updateBudget(tripId: string, input: MobileBudgetMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/budget`, input, options);
+  }
+
+  createExpense(tripId: string, input: MobileExpenseMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/expenses`, input, options);
+  }
+
+  updateExpense(tripId: string, expenseId: string, input: MobileExpenseMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson(`/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`, { ...input, tripId }, options);
+  }
+
+  duplicateExpense(tripId: string, expenseId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson(`/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`, { tripId, operation: "duplicate" }, options);
+  }
+
+  deleteExpense(tripId: string, expenseId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ deleted: true; expenseId: string }>(`/api/mobile/v1/expenses/${encodeURIComponent(expenseId)}`, { tripId }, options);
+  }
+
+  createSettlement(input: MobileSettlementMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson("/api/mobile/v1/settlements", input, options);
   }
 
   getItineraryEditor(tripId: string, itemId?: string, signal?: AbortSignal) {

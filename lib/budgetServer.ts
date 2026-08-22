@@ -314,6 +314,14 @@ export async function loadTripExpenseData(tripId: string) {
 
 export async function loadBudgetParticipants(tripId: string, userId: string) {
     const supabase = await createUntypedSupabaseClient();
+    return loadBudgetParticipantsWithClient(supabase, tripId, userId);
+}
+
+export async function loadBudgetParticipantsWithClient(
+    supabase: UntypedSupabaseClient,
+    tripId: string,
+    userId: string
+) {
     const [{ data: tripRows }, { data: memberRows }, { data: invitationRows }, { data: familyRows }] =
         await Promise.all([
             supabase
@@ -449,6 +457,32 @@ export async function getExchangeRate({
     baseCurrency?: string;
     targetCurrency?: string;
 }) {
+    const supabase = await createUntypedSupabaseClient();
+    return getExchangeRateWithClient(supabase, {
+        date,
+        fromCurrency,
+        toCurrency,
+        baseCurrency,
+        targetCurrency,
+    });
+}
+
+export async function getExchangeRateWithClient(
+    supabase: UntypedSupabaseClient,
+    {
+        date,
+        fromCurrency,
+        toCurrency,
+        baseCurrency,
+        targetCurrency,
+    }: {
+        date?: string | null;
+        fromCurrency?: string;
+        toCurrency?: string;
+        baseCurrency?: string;
+        targetCurrency?: string;
+    }
+) {
     const rateDate = date || getLocalDateKey();
     const base = normalizeCurrency(fromCurrency || baseCurrency);
     const target = normalizeCurrency(toCurrency || targetCurrency);
@@ -457,7 +491,6 @@ export async function getExchangeRate({
 
     if (base === target) return { rate: 1, provider: "identity" };
 
-    const supabase = await createUntypedSupabaseClient();
     const { data: cached } = await supabase
         .from("currency_exchange_rates")
         .select("*")

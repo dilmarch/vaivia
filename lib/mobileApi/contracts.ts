@@ -15,6 +15,8 @@ import type {
   TripExpense,
   TripExpenseSettlement,
   TripExpenseSplit,
+  ExpenseCategory,
+  SplitMethod,
 } from "@/lib/budget";
 import type { DashboardData } from "@/lib/dashboard/contracts";
 
@@ -348,6 +350,55 @@ export type MobileTripBudgetData = {
   settlementPayments: TripExpenseSettlement[];
   participants: BudgetParticipant[];
   defaultCurrency: string;
+};
+
+export type MobileBudgetLineMutationInput = {
+  id?: string | null;
+  categoryId?: string | null;
+  name: string;
+  plannedAmount: number | string | null;
+  linkedExpenseCategory?: ExpenseCategory | null;
+  remove?: boolean;
+  remapCategoryId?: string | null;
+};
+
+export type MobileBudgetMutationInput = {
+  budgetId?: string;
+  tripTitle?: string;
+  name?: string | null;
+  reportingCurrency?: string | null;
+  totalBudgetAmount?: number | string | null;
+  lines?: MobileBudgetLineMutationInput[];
+};
+
+export type MobileExpenseMutationInput = {
+  tripId?: string;
+  operation?: "duplicate";
+  description: string;
+  expenseDate?: string | null;
+  category?: ExpenseCategory | null;
+  budgetCategoryId?: string | null;
+  amount: number | string;
+  currency?: string | null;
+  reportingCurrency?: string | null;
+  manualExchangeRate?: number | string | null;
+  splitMethod?: SplitMethod | null;
+  paidBy?: string | null;
+  splits?: Array<{
+    participantValue: string;
+    amount?: number | string | null;
+    percentage?: number | string | null;
+  }>;
+  notes?: string | null;
+};
+
+export type MobileSettlementMutationInput = {
+  tripId: string;
+  paidByParticipantValue: string;
+  receivedByParticipantValue: string;
+  amount: number | string;
+  reportingCurrency?: string | null;
+  settledOn?: string | null;
 };
 
 export type MobileTripOverviewLocation = {

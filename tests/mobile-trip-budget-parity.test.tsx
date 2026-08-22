@@ -156,8 +156,8 @@ describe("mobile Trip Budget strict visual parity", () => {
       );
       expect(screen.getByText("Category budgets")).toHaveClass("font-black");
       expect(screen.getByRole("table")).toHaveClass("min-w-[720px]");
-      expect(screen.getByRole("button", { name: "Edit budget" })).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Add expense" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Edit budget" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Add expense" })).toBeEnabled();
       expect(document.querySelector("main")).toHaveClass("overflow-x-clip");
     },
   );
@@ -178,7 +178,7 @@ describe("mobile Trip Budget strict visual parity", () => {
     expect(within(table).getByText("Museum tickets")).toBeInTheDocument();
     expect(
       within(table).getByRole("button", { name: "Edit expense Museum tickets" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     expect(screen.getByText("Blair Chen owes Me")).toBeInTheDocument();
   });
 
