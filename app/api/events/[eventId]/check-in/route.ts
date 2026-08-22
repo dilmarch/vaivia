@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hashEventSecret } from "@/lib/events/tickets";
 import { requireEventManager } from "@/lib/events/auth";
-import { createServiceRoleClient } from "@/lib/supabase/service";
+import {
+  checkInEventTicket,
+  EventOperationsError,
+} from "@/lib/events/operations";
 
 export async function POST(
   request: NextRequest,
@@ -12,27 +14,20 @@ export async function POST(
   const body = (await request.json().catch(() => ({}))) as { value?: string };
   const value = String(body.value || "").trim();
   if (!value) return NextResponse.json({ result: "invalid" }, { status: 400 });
-  let redemptionHash = "";
-  if (value.startsWith("vaivia:event-ticket:"))
-    redemptionHash = hashEventSecret(
-      value.slice("vaivia:event-ticket:".length),
+  try {
+    const result = await checkInEventTicket(
+      auth.supabase,
+      auth.user.id,
+      eventId,
+      value,
     );
-  else {
-    const service = createServiceRoleClient();
-    const { data: ticket } = await service
-      .from("event_tickets")
-      .select("redemption_hash")
-      .eq("event_id", eventId)
-      .ilike("ticket_number", value)
-      .maybeSingle();
-    redemptionHash = ticket?.redemption_hash || "";
+    return NextResponse.json(result, {
+      status: result.result === "invalid" ? 404 : 200,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      { result: "error" },
+      { status: error instanceof EventOperationsError ? error.status : 400 },
+    );
   }
-  if (!redemptionHash)
-    return NextResponse.json({ result: "invalid" }, { status: 404 });
-  const { data, error } = await auth.supabase.rpc("check_in_event_ticket", {
-    target_event_id: eventId,
-    target_redemption_hash: redemptionHash,
-  });
-  if (error) return NextResponse.json({ result: "error" }, { status: 400 });
-  return NextResponse.json(data);
 }

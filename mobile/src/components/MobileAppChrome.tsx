@@ -82,6 +82,7 @@ type MobileAppChromeProps = {
   onSettings?: () => void;
   onEvents: () => void;
   onMyEvents: () => void;
+  onManageEvents?: () => void;
   onCreateTrip?: () => void;
   onCreateIdea?: () => void;
   onCreateExpense?: () => void;
@@ -187,6 +188,7 @@ export function MobileAppChrome({
   onSettings = () => undefined,
   onEvents,
   onMyEvents,
+  onManageEvents,
   onCreateTrip,
   onCreateIdea,
   onCreateExpense,
@@ -327,7 +329,23 @@ export function MobileAppChrome({
       action: () => { closeMenus(); onMyEvents(); },
     },
     ...(isEventOrganizer
-      ? [{ label: "Manage Events", icon: UsersRound } satisfies MenuDestination]
+      ? [
+          {
+            label: "Manage Events",
+            icon: UsersRound,
+            supported: Boolean(onManageEvents),
+            active:
+              activeRootRoute === "manage-events" ||
+              activeRootRoute === "event-operations" ||
+              activeRootRoute === "event-check-in",
+            action: onManageEvents
+              ? () => {
+                  closeMenus();
+                  onManageEvents();
+                }
+              : undefined,
+          } satisfies MenuDestination,
+        ]
       : []),
     BASE_DESTINATIONS[2],
   ];

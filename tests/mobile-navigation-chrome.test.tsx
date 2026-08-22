@@ -154,6 +154,16 @@ describe("mobile navigation chrome parity", () => {
     expect(screen.getByRole("button", { name: "Account" })).toBeEnabled();
   });
 
+  it("enables event operations only for an organizer role with a working route", () => {
+    const onManageEvents = vi.fn();
+    renderChrome({ userRole: "event_organizer", onManageEvents });
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+    const manageEvents = screen.getByRole("button", { name: "Manage Events" });
+    expect(manageEvents).toBeEnabled();
+    fireEvent.click(manageEvents);
+    expect(onManageEvents).toHaveBeenCalledOnce();
+  });
+
   it("opens authenticated Home from the VAIVIA control", () => {
     const onHome = vi.fn();
     renderChrome({ onHome });

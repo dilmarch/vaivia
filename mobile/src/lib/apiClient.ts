@@ -35,6 +35,12 @@ import type {
   MobileEventTicketResponse,
   MobileMyEventsResponse,
 } from "@/lib/mobileApi/contracts";
+import type {
+  EventCheckInResult,
+  EventOperationsDetail,
+  EventOperationsListItem,
+  EventOperationsRole,
+} from "@/lib/events/operationsContracts";
 
 export class MobileApiError extends Error {
   constructor(
@@ -475,6 +481,44 @@ export class MobileApiClient {
 
   getMyEvents(signal?: AbortSignal) {
     return this.getJson<MobileMyEventsResponse>("/api/mobile/v1/my-events", { signal });
+  }
+
+  getManagedEvents(signal?: AbortSignal) {
+    return this.getJson<{
+      role: EventOperationsRole;
+      events: EventOperationsListItem[];
+    }>("/api/mobile/v1/organizer/events", { signal });
+  }
+
+  getManagedEvent(eventId: string, signal?: AbortSignal) {
+    return this.getJson<EventOperationsDetail>(
+      `/api/mobile/v1/organizer/events/${encodeURIComponent(eventId)}`,
+      { signal },
+    );
+  }
+
+  checkInEvent(
+    eventId: string,
+    value: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<EventCheckInResult>(
+      `/api/mobile/v1/organizer/events/${encodeURIComponent(eventId)}/check-in`,
+      { value },
+      options,
+    );
+  }
+
+  undoEventCheckIn(
+    eventId: string,
+    ticketId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.deleteJson<{ ticketId: string; status: "active" }>(
+      `/api/mobile/v1/organizer/events/${encodeURIComponent(eventId)}/check-in`,
+      { ticketId },
+      options,
+    );
   }
 
   getEventTicket(ticketId: string, signal?: AbortSignal) {

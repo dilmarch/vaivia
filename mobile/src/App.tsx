@@ -28,6 +28,11 @@ import { EventDetailScreen } from "./screens/EventDetailScreen";
 import { MyEventsScreen } from "./screens/MyEventsScreen";
 import { EventTicketScreen } from "./screens/EventTicketScreen";
 import { EventCheckoutScreen } from "./screens/EventCheckoutScreen";
+import {
+  EventOperationsDetailScreen,
+  EventOperationsListScreen,
+} from "./screens/EventOperationsScreen";
+import { EventCheckInScreen } from "./screens/EventCheckInScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
 import type {
@@ -295,6 +300,27 @@ export default function App() {
         resultHint={route.result}
         onMyEvents={() => replace({ name: "my-events" })}
       />
+    ) : route.name === "manage-events" ? (
+      <EventOperationsListScreen
+        apiClient={apiClient}
+        onEvent={(eventId) => push({ name: "event-operations", eventId })}
+        onPublicEvent={(eventId) => push({ name: "event", eventId })}
+      />
+    ) : route.name === "event-operations" ? (
+      <EventOperationsDetailScreen
+        apiClient={apiClient}
+        eventId={route.eventId}
+        onBack={() => back({ name: "manage-events" })}
+        onCheckIn={() =>
+          push({ name: "event-check-in", eventId: route.eventId })
+        }
+      />
+    ) : route.name === "event-check-in" ? (
+      <EventCheckInScreen
+        apiClient={apiClient}
+        eventId={route.eventId}
+        onBack={() => back({ name: "event-operations", eventId: route.eventId })}
+      />
     ) : route.name === "notifications" ? (
       <NotificationHistoryScreen
         apiClient={apiClient}
@@ -508,6 +534,7 @@ export default function App() {
         onSettings={() => push({ name: "settings" })}
         onEvents={() => push({ name: "events" })}
         onMyEvents={() => push({ name: "my-events" })}
+        onManageEvents={() => push({ name: "manage-events" })}
         onCreateTrip={() => push({ name: "trip-create" })}
         onCreateIdea={
           selectedTripId

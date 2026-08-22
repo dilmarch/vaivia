@@ -39,6 +39,9 @@ export type MobileRoute =
   | { name: "events" }
   | { name: "event"; eventId: string }
   | { name: "my-events" }
+  | { name: "manage-events" }
+  | { name: "event-operations"; eventId: string }
+  | { name: "event-check-in"; eventId: string }
   | { name: "event-ticket"; ticketId: string }
   | {
       name: "event-checkout";
@@ -122,6 +125,13 @@ export function parseMobileRoute(value: unknown): MobileRoute | null {
   }
   if (value.name === "events") return { name: "events" };
   if (value.name === "my-events") return { name: "my-events" };
+  if (value.name === "manage-events") return { name: "manage-events" };
+  if (value.name === "event-operations" && isNonEmptyString(value.eventId)) {
+    return { name: "event-operations", eventId: value.eventId };
+  }
+  if (value.name === "event-check-in" && isNonEmptyString(value.eventId)) {
+    return { name: "event-check-in", eventId: value.eventId };
+  }
   if (value.name === "settings") {
     return { name: "settings", section: optionalString(value.section) };
   }
@@ -176,6 +186,9 @@ export function isImplementedMobileRoute(route: MobileRoute) {
     route.name === "events" ||
     route.name === "event" ||
     route.name === "my-events" ||
+    route.name === "manage-events" ||
+    route.name === "event-operations" ||
+    route.name === "event-check-in" ||
     route.name === "event-ticket" ||
     route.name === "event-checkout" ||
     route.name === "trip"
@@ -216,6 +229,12 @@ export function mobileRouteToPath(route: MobileRoute) {
       return `/events/${encodeURIComponent(route.eventId)}`;
     case "my-events":
       return "/my-events";
+    case "manage-events":
+      return "/organizer/events";
+    case "event-operations":
+      return `/organizer/events/${encodeURIComponent(route.eventId)}`;
+    case "event-check-in":
+      return `/organizer/events/${encodeURIComponent(route.eventId)}/check-in`;
     case "event-ticket":
       return `/my-events/tickets/${encodeURIComponent(route.ticketId)}`;
     case "event-checkout": {
@@ -255,6 +274,20 @@ export function resolveMobilePath(pathname: string): MobileRoute | null {
     return parseMobileRoute({ name: "event", eventId: parts[1] });
   }
   if (parts[0] === "my-events" && parts.length === 1) return { name: "my-events" };
+  if (parts[0] === "organizer" && parts[1] === "events" && parts.length === 2) {
+    return { name: "manage-events" };
+  }
+  if (parts[0] === "organizer" && parts[1] === "events" && parts.length === 3) {
+    return parseMobileRoute({ name: "event-operations", eventId: parts[2] });
+  }
+  if (
+    parts[0] === "organizer" &&
+    parts[1] === "events" &&
+    parts[3] === "check-in" &&
+    parts.length === 4
+  ) {
+    return parseMobileRoute({ name: "event-check-in", eventId: parts[2] });
+  }
   if (parts[0] === "my-events" && parts[1] === "tickets" && parts.length === 3) {
     return parseMobileRoute({ name: "event-ticket", ticketId: parts[2] });
   }

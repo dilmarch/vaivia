@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Edit3, Mail, QrCode, Ticket, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import ConfirmSubmitButton from "@/components/events/ConfirmSubmitButton";
+import { EventOperationsStatsPresentation } from "@/components/events/EventOperationsPresentation";
 import {
   addEventTeamMember,
   removeEventTeamMember,
@@ -151,11 +152,11 @@ export default async function OrganizerEventPage({
             ) : null}
           </div>
         </header>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Stat label="Tickets issued" value={tickets || 0} />
-          <Stat label="Confirmed RSVPs" value={rsvps || 0} />
-          <Stat label="Completed orders" value={orders || 0} />
-        </div>
+        <EventOperationsStatsPresentation
+          tickets={tickets || 0}
+          confirmedRsvps={rsvps || 0}
+          completedOrders={orders || 0}
+        />
         <nav className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {links.map(({ label, href, icon: Icon }) => (
             <Link
@@ -233,16 +234,5 @@ export default async function OrganizerEventPage({
         </section>
       </div>
     </main>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5">
-      <p className="text-3xl font-black text-lime-300">{value}</p>
-      <p className="mt-1 text-xs font-black uppercase tracking-[0.14em] text-slate-400">
-        {label}
-      </p>
-    </div>
   );
 }
