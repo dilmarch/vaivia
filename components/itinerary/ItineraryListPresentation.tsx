@@ -52,6 +52,31 @@ export function ItineraryCalendarFrame({
   );
 }
 
+export function ItineraryGridPresentation<T>({
+  dates,
+  entriesByDate,
+  renderEntry,
+  compact = false,
+}: {
+  dates: string[];
+  entriesByDate: Record<string, ItineraryListEntry<T>[]>;
+  renderEntry: (entry: ItineraryListEntry<T>) => ReactNode;
+  compact?: boolean;
+}) {
+  return (
+    <div className={`grid gap-px overflow-hidden rounded-2xl border border-white/10 bg-white/10 ${compact ? "grid-cols-7" : "grid-cols-1 sm:grid-cols-7"}`}>
+      {dates.map((date) => (
+        <section key={date} className="min-h-28 min-w-0 bg-[#080511] p-2 sm:min-h-40">
+          <h3 className="truncate text-xs font-black uppercase tracking-wide text-lime-200">
+            {new Date(`${date}T00:00:00`).toLocaleDateString("en-CA", { weekday: "short", day: "numeric" })}
+          </h3>
+          <div className="mt-2 space-y-2">{(entriesByDate[date] || []).map(renderEntry)}</div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function ItineraryHeaderPresentation({
   title,
   activeView = "list",

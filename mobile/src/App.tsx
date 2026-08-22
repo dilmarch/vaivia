@@ -19,6 +19,7 @@ import { TripsScreen } from "./screens/TripsScreen";
 import { HomeScreen } from "./screens/HomeScreen";
 import { TripCreateScreen } from "./screens/TripCreateScreen";
 import { TripManageScreen } from "./screens/TripManageScreen";
+import { ItineraryItemEditorScreen } from "./screens/ItineraryItemEditorScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
 import type { MobileTripSummary } from "@/lib/mobileApi/contracts";
@@ -218,7 +219,22 @@ export default function App() {
     />
   ) : selectedTripId ? (
     activeTripView === "itinerary" ? (
-      <TripItineraryScreen apiClient={apiClient} tripId={selectedTripId} />
+      route.name === "trip" && route.itemId ? (
+        <ItineraryItemEditorScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          itemId={route.itemId === "new" ? undefined : route.itemId}
+          onSaved={() => replace({ name: "trip", tripId: selectedTripId, view: "itinerary" })}
+          onCancel={() => back({ name: "trip", tripId: selectedTripId, view: "itinerary" })}
+        />
+      ) : (
+        <TripItineraryScreen
+          apiClient={apiClient}
+          tripId={selectedTripId}
+          onAdd={() => push({ name: "trip", tripId: selectedTripId, view: "itinerary", itemId: "new" })}
+          onEdit={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "itinerary", itemId })}
+        />
+      )
     ) : activeTripView === "ideas" ? (
       <TripIdeasScreen apiClient={apiClient} tripId={selectedTripId} />
     ) : activeTripView === "budget" ? (
@@ -299,6 +315,7 @@ export default function App() {
         onProfile={() => push({ name: "profile" })}
         onSettings={() => push({ name: "settings" })}
         onCreateTrip={() => push({ name: "trip-create" })}
+        onCreateItineraryItem={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "itinerary", itemId: "new" }) : undefined}
         onSignOut={async () => {
           await returnToLogin();
         }}

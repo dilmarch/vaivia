@@ -102,6 +102,47 @@ describe("MobileApiClient", () => {
     });
   });
 
+  it("sends itinerary mutations through the authenticated mobile API", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const fetchImplementation = vi.fn(async () =>
+      Response.json({ data: { item: { id: "item-1", title: "Museum" } } }, { status: 201 }),
+    );
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({ sessionExists: true, accessToken: "token", authenticatedUserId: "user-1" }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+
+    await client.createItineraryItem(
+      "trip/one",
+      { title: "Museum", itemDate: "2026-09-12", audienceMode: "everyone" },
+      { idempotencyKey: "itinerary-create-1" },
+    );
+
+    const [url, init] = fetchImplementation.mock.calls[0];
+    expect(url).toBe("https://vaivia.app/api/mobile/v1/trips/trip%2Fone/itinerary");
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).get("Idempotency-Key")).toBe("itinerary-create-1");
+    expect(JSON.parse(String(init?.body))).toMatchObject({ title: "Museum", itemDate: "2026-09-12" });
+  });
+
+  it("deduplicates an in-flight itinerary deletion", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    let resolveResponse!: (response: Response) => void;
+    const fetchImplementation = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; }));
+    const client = new MobileApiClient({
+      baseUrl: "https://vaivia.app",
+      getAuthState: () => ({ sessionExists: true, accessToken: "token", authenticatedUserId: "user-1" }),
+      fetchImplementation: fetchImplementation as typeof fetch,
+    });
+    const first = client.deleteItineraryItem("trip-1", "item-1", { idempotencyKey: "delete-item-1" });
+    const second = client.deleteItineraryItem("trip-1", "item-1", { idempotencyKey: "delete-item-1" });
+    await Promise.resolve();
+    expect(fetchImplementation).toHaveBeenCalledTimes(1);
+    resolveResponse(Response.json({ data: { deleted: true, itemId: "item-1" } }));
+    await expect(Promise.all([first, second])).resolves.toHaveLength(2);
+  });
+
   it("does not duplicate the same in-flight destructive trip request", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     let resolveResponse!: (response: Response) => void;

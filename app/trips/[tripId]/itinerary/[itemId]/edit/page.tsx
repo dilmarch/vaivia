@@ -23,6 +23,10 @@ import {
     cleanupReplacedItineraryCover,
     deleteItineraryCoverObject,
 } from "@/lib/itineraryCovers";
+import {
+    parseItineraryFormData,
+    updateItineraryItemForUser,
+} from "@/lib/itinerary/mutations";
 
 type PageProps = {
     params: Promise<{
@@ -210,6 +214,21 @@ async function updateItineraryItem(formData: FormData) {
 
     if (!user) {
         redirect("/auth/login");
+    }
+
+    const sharedTripId = String(formData.get("trip_id") || "");
+    const sharedItemId = String(formData.get("item_id") || "");
+    if (sharedTripId && sharedItemId) {
+        await updateItineraryItemForUser({
+            supabase,
+            userId: user.id,
+            tripId: sharedTripId,
+            itemId: sharedItemId,
+            input: parseItineraryFormData(formData),
+            coverFormData: formData,
+            sourceFormData: formData,
+        });
+        redirect(`/trips/${sharedTripId}/itinerary`);
     }
 
     const tripId = formData.get("trip_id") as string;

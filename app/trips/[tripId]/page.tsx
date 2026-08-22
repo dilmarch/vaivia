@@ -94,6 +94,12 @@ import {
     type TripItemParticipantDisplay,
 } from "@/lib/tripAudience";
 import { replaceTripItemParticipantsFromForm } from "@/lib/tripAudienceServer";
+import {
+    createItineraryItemForUser,
+    deleteItineraryItemForUser,
+    parseItineraryFormData,
+    updateItineraryItemForUser,
+} from "@/lib/itinerary/mutations";
 import { moveTripItem } from "@/app/actions/moveTripItem";
 import { deleteTripLeg, upsertTripLeg } from "@/app/actions/tripLegs";
 import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
@@ -2109,6 +2115,23 @@ async function createItineraryItem(formData: FormData) {
         redirect("/auth/login");
     }
 
+    const sharedTripId = String(formData.get("trip_id") || "");
+    if (sharedTripId) {
+        await createItineraryItemForUser({
+            supabase,
+            userId: user.id,
+            tripId: sharedTripId,
+            input: parseItineraryFormData(formData),
+            coverFormData: formData,
+            sourceFormData: formData,
+        });
+        if (shouldPreserveItineraryView(formData)) {
+            revalidateItineraryPaths(sharedTripId);
+            return;
+        }
+        redirect(getTransportationReturnPath(formData, sharedTripId, `/trips/${sharedTripId}/itinerary`));
+    }
+
     const tripId = formData.get("trip_id") as string;
     const title = formData.get("title") as string;
     const categorySelection = await getCategorySelectionForPayload({
@@ -2287,6 +2310,25 @@ async function updateItineraryItem(formData: FormData) {
 
     if (!user) {
         redirect("/auth/login");
+    }
+
+    const sharedTripId = String(formData.get("trip_id") || "");
+    const sharedItemId = String(formData.get("item_id") || "");
+    if (sharedTripId && sharedItemId) {
+        await updateItineraryItemForUser({
+            supabase,
+            userId: user.id,
+            tripId: sharedTripId,
+            itemId: sharedItemId,
+            input: parseItineraryFormData(formData),
+            coverFormData: formData,
+            sourceFormData: formData,
+        });
+        if (shouldPreserveItineraryView(formData)) {
+            revalidateItineraryPaths(sharedTripId);
+            return;
+        }
+        redirect(getTransportationReturnPath(formData, sharedTripId, `/trips/${sharedTripId}/itinerary`));
     }
 
     const tripId = formData.get("trip_id") as string;
@@ -3270,6 +3312,19 @@ async function deleteItineraryItem(formData: FormData) {
     const tripId = formData.get("trip_id") as string;
     const itemId = formData.get("item_id") as string;
     const isTransportationItem = itemId.startsWith("transportation:");
+    if (!isTransportationItem) {
+        await deleteItineraryItemForUser({
+            supabase,
+            userId: user.id,
+            tripId,
+            itemId,
+        });
+        if (shouldPreserveItineraryView(formData)) {
+            revalidateItineraryPaths(tripId);
+            return;
+        }
+        redirect(getTransportationReturnPath(formData, tripId, `/trips/${tripId}/itinerary`));
+    }
     const tableName = isTransportationItem
         ? "transportation_items"
         : "itinerary_items";

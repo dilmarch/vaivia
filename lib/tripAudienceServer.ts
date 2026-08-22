@@ -1,6 +1,7 @@
 import {
     buildTripItemParticipantRows,
     parseTripAudienceFormData,
+    type ParsedTripAudience,
     type TripAudienceItemType,
 } from "@/lib/tripAudience";
 import { createClient } from "@/lib/supabase/server";
@@ -40,7 +41,31 @@ export async function replaceTripItemParticipantsFromForm({
     const audience = parseTripAudienceFormData(formData);
     const supabase = (await createClient()) as unknown as UntypedSupabaseClient;
 
-    const deleteResult = (await supabase
+    return replaceTripItemParticipants({
+        supabase,
+        tripId,
+        itemType,
+        itemId,
+        audience,
+    });
+}
+
+export async function replaceTripItemParticipants({
+    supabase,
+    tripId,
+    itemType,
+    itemId,
+    audience,
+}: {
+    supabase: unknown;
+    tripId: string;
+    itemType: TripAudienceItemType;
+    itemId: string;
+    audience: ParsedTripAudience;
+}) {
+    const client = supabase as UntypedSupabaseClient;
+
+    const deleteResult = (await client
         .from("trip_item_participants")
         .delete()
         .eq("trip_id", tripId)
@@ -60,7 +85,7 @@ export async function replaceTripItemParticipantsFromForm({
 
     if (rows.length === 0) return null;
 
-    const { error } = await supabase
+    const { error } = await client
         .from("trip_item_participants")
         .insert(rows);
 

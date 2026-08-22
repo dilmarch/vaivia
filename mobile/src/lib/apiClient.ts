@@ -4,6 +4,9 @@ import type {
   MobileAccountResponse,
   MobileDataExportsResponse,
   MobileHomeResponse,
+  MobileItineraryEditorResponse,
+  MobileItineraryMutationInput,
+  MobileItineraryMutationResponse,
   MobileNotificationHistoryResponse,
   MobileNotificationsResponse,
   MobileTripCollaborationResponse,
@@ -411,6 +414,69 @@ export class MobileApiClient {
     return this.getJson<MobileTripDetailResponse>(
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { signal },
+    );
+  }
+
+  getItineraryEditor(tripId: string, itemId?: string, signal?: AbortSignal) {
+    const path = itemId
+      ? `/api/mobile/v1/itinerary/${encodeURIComponent(itemId)}?tripId=${encodeURIComponent(tripId)}`
+      : `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/itinerary`;
+    return this.getJson<MobileItineraryEditorResponse>(path, { signal });
+  }
+
+  createItineraryItem(
+    tripId: string,
+    input: MobileItineraryMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<MobileItineraryMutationResponse>(
+      `/api/mobile/v1/trips/${encodeURIComponent(tripId)}/itinerary`,
+      input,
+      options,
+    );
+  }
+
+  updateItineraryItem(
+    tripId: string,
+    itemId: string,
+    input: MobileItineraryMutationInput,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.patchJson<MobileItineraryMutationResponse>(
+      `/api/mobile/v1/itinerary/${encodeURIComponent(itemId)}`,
+      { ...input, tripId },
+      options,
+    );
+  }
+
+  deleteItineraryItem(
+    tripId: string,
+    itemId: string,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.deleteJson<{ deleted: true; itemId: string }>(
+      `/api/mobile/v1/itinerary/${encodeURIComponent(itemId)}`,
+      { tripId },
+      options,
+    );
+  }
+
+  uploadItineraryCover(
+    tripId: string,
+    itemId: string,
+    input: MobileItineraryMutationInput,
+    file: File,
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    const { signal, headers, ...policy } = options;
+    const formData = new FormData();
+    formData.set("tripId", tripId);
+    formData.set("input", JSON.stringify(input));
+    formData.set("cover_upload_file", file);
+    return this.requestJson<MobileItineraryMutationResponse>(
+      `/api/mobile/v1/itinerary/${encodeURIComponent(itemId)}/cover`,
+      { method: "POST", headers, body: formData, signal },
+      policy,
     );
   }
 

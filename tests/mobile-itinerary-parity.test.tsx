@@ -144,10 +144,10 @@ describe("mobile itinerary strict visual parity", () => {
         getTrip: vi.fn().mockResolvedValue(detail),
       } as unknown as MobileApiClient;
 
-      render(<TripItineraryScreen apiClient={apiClient} tripId="trip-1" />);
+      render(<TripItineraryScreen apiClient={apiClient} tripId="trip-1" onAdd={vi.fn()} onEdit={vi.fn()} />);
 
       await waitFor(() => {
-        expect(screen.getAllByRole("heading", { name: "Itinerary" })).toHaveLength(2);
+        expect(screen.getAllByRole("heading", { name: /^Itinerary/ })).toHaveLength(2);
       });
       expect(document.querySelector(".vaivia-itinerary-calendar")).toHaveClass(
         "rounded-[2rem]",
@@ -158,7 +158,7 @@ describe("mobile itinerary strict visual parity", () => {
         "aria-current",
         "page",
       );
-      expect(screen.getByRole("button", { name: "Day" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Day" })).toBeEnabled();
       expect(screen.getByText("Air Canada AC 123")).toBeInTheDocument();
       expect(document.querySelector(".vaivia-airline-branded-card")).toHaveClass(
         "border-l-[16px]",
@@ -178,7 +178,7 @@ describe("mobile itinerary strict visual parity", () => {
     const apiClient = {
       getTrip: vi.fn().mockResolvedValue(detail),
     } as unknown as MobileApiClient;
-    render(<TripItineraryScreen apiClient={apiClient} tripId="trip-1" />);
+    render(<TripItineraryScreen apiClient={apiClient} tripId="trip-1" onAdd={vi.fn()} onEdit={vi.fn()} />);
 
     await screen.findByText("Air Canada AC 123");
     fireEvent.click(screen.getByRole("button", { name: "Next" }));

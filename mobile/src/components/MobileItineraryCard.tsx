@@ -21,6 +21,7 @@ import type { MobileItineraryItem } from "@/lib/mobileApi/contracts";
 type MobileItineraryCardProps = {
   item: MobileItineraryItem;
   timeLabel?: string;
+  onEdit?: () => void;
 };
 
 function formatTime(time?: string | null) {
@@ -173,7 +174,7 @@ function getFlightPresentation(item: MobileItineraryItem): FlightCardPresentatio
   };
 }
 
-export function MobileItineraryCard({ item, timeLabel }: MobileItineraryCardProps) {
+export function MobileItineraryCard({ item, timeLabel, onEdit }: MobileItineraryCardProps) {
   const resolvedTimeLabel =
     timeLabel ||
     `${formatTime(item.start_time)}${
@@ -286,7 +287,7 @@ export function MobileItineraryCard({ item, timeLabel }: MobileItineraryCardProp
       reservationCode={
         item.reservation_code ? <ReservationCode code={item.reservation_code} /> : null
       }
-      actionRow={<DisabledAction>Details</DisabledAction>}
+      actionRow={onEdit && item.source === "itinerary" ? <button type="button" onClick={onEdit} className="inline-flex min-h-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-slate-100">Edit</button> : <DisabledAction>Details</DisabledAction>}
     />
   );
 }

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ItineraryCalendarFrame,
   ItineraryHeaderPresentation,
+  ItineraryGridPresentation,
   ItineraryListPresentation,
   ItineraryTimezoneCardPresentation,
+  type ItineraryCalendarView,
   type ItineraryListEntry,
 } from "@/components/itinerary/ItineraryListPresentation";
 import {
@@ -28,6 +30,8 @@ import type { MobileApiClient } from "../lib/apiClient";
 type TripItineraryScreenProps = {
   apiClient: MobileApiClient;
   tripId: string;
+  onAdd: () => void;
+  onEdit: (itemId: string) => void;
 };
 
 const INITIAL_LIST_DAYS = 7;
@@ -209,6 +213,8 @@ function groupEntries(entries: ItineraryListEntry<MobileItineraryItem>[]) {
 export function TripItineraryScreen({
   apiClient,
   tripId,
+  onAdd,
+  onEdit,
 }: TripItineraryScreenProps) {
   const [data, setData] = useState<MobileTripDetailResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -220,6 +226,7 @@ export function TripItineraryScreen({
   const [activeTimezone, setActiveTimezone] = useState(() =>
     readSessionTimezone() || getLocalTimezone(),
   );
+  const [activeView, setActiveView] = useState<ItineraryCalendarView>("list");
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -330,6 +337,17 @@ export function TripItineraryScreen({
     setListDayCount(INITIAL_LIST_DAYS);
   }
 
+  const gridDates = useMemo(() => {
+    const date = parseDateKey(listStartDate);
+    if (activeView === "week") date.setDate(date.getDate() - date.getDay());
+    if (activeView === "month") {
+      date.setDate(1);
+      date.setDate(date.getDate() - date.getDay());
+    }
+    const count = activeView === "month" ? 42 : activeView === "week" ? 7 : 1;
+    return Array.from({ length: count }, (_, index) => addDays(getLocalDateKey(date), index));
+  }, [activeView, listStartDate]);
+
   if (isLoading) {
     return (
       <main className="min-h-screen overflow-x-clip bg-[#0c0115] pb-10 pt-0 text-white">
@@ -381,9 +399,9 @@ export function TripItineraryScreen({
         <ItineraryCalendarFrame
           header={
             <ItineraryHeaderPresentation
-              title="Itinerary"
-              activeView="list"
-              disabledViews={["day", "week", "month"]}
+              title={<span className="flex flex-wrap items-center gap-3">Itinerary <button type="button" onClick={onAdd} className="rounded-full bg-lime-300 px-4 py-2 text-xs font-black uppercase tracking-wide text-slate-950">Add item</button></span>}
+              activeView={activeView}
+              onViewChange={setActiveView}
               dateControl={
                 <label className="flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-3 text-sm font-bold text-slate-200">
                   <span>Date</span>
@@ -436,20 +454,34 @@ export function TripItineraryScreen({
           }
         >
           <div className="animate-in fade-in slide-in-from-bottom-2 p-4 duration-300 sm:p-6">
-            <ItineraryListPresentation
-              groupedPastEvents={groupedEntries.past}
-              groupedEarlierItems={groupedEntries.earlier}
-              groupedUpcomingItems={groupedEntries.upcoming}
-              hasFutureItems={groupedEntries.hasFuture}
-              formatDateHeader={formatDateHeader}
-              renderEntry={(entry) => (
-                <MobileItineraryCard
-                  key={entry.item.id}
-                  item={entry.item}
-                  timeLabel={entry.timeLabel}
-                />
-              )}
-            />
+            {activeView === "list" ? (
+              <ItineraryListPresentation
+                groupedPastEvents={groupedEntries.past}
+                groupedEarlierItems={groupedEntries.earlier}
+                groupedUpcomingItems={groupedEntries.upcoming}
+                hasFutureItems={groupedEntries.hasFuture}
+                formatDateHeader={formatDateHeader}
+                renderEntry={(entry) => (
+                  <MobileItineraryCard key={entry.item.id} item={entry.item} timeLabel={entry.timeLabel} onEdit={entry.item.source === "itinerary" ? () => onEdit(entry.item.id) : undefined} />
+                )}
+              />
+            ) : activeView === "day" ? (
+              <div className="space-y-4">
+                <h3 className="text-2xl font-black text-lime-300">{formatDateHeader(gridDates[0])}</h3>
+                {(groupedEntries.upcoming[gridDates[0]] || []).map((entry) => <MobileItineraryCard key={entry.item.id} item={entry.item} timeLabel={entry.timeLabel} onEdit={entry.item.source === "itinerary" ? () => onEdit(entry.item.id) : undefined} />)}
+              </div>
+            ) : (
+              <ItineraryGridPresentation
+                dates={gridDates}
+                entriesByDate={groupedEntries.upcoming}
+                compact={activeView === "month"}
+                renderEntry={(entry) => (
+                  <button key={entry.item.id} type="button" onClick={entry.item.source === "itinerary" ? () => onEdit(entry.item.id) : undefined} disabled={entry.item.source !== "itinerary"} className="w-full truncate rounded-lg border border-white/10 bg-white/[0.08] px-2 py-1 text-left text-[10px] font-bold text-white">
+                    {entry.timeLabel} {entry.item.title}
+                  </button>
+                )}
+              />
+            )}
             <div ref={loadMoreRef} className="h-1" />
           </div>
         </ItineraryCalendarFrame>

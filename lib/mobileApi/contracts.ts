@@ -93,6 +93,69 @@ export type MobileItineraryItem = Pick<
   accommodation_hold_kind?: "check_in" | "check_out" | null;
   is_flight_departure_buffer?: boolean;
   people: MobileItineraryPerson[];
+  cost?: number | null;
+  currency?: string | null;
+  formatted_address?: string | null;
+  google_place_id?: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
+  timezone_source?: string | null;
+  url?: string | null;
+  ticket_website?: string | null;
+  location_website?: string | null;
+  trip_leg_id?: string | null;
+  audienceSelections?: string[];
+};
+
+export type MobileItineraryMutationInput = {
+  title: string;
+  categoryId?: string | null;
+  category?: string | null;
+  status?: "tentative" | "confirmed";
+  itemDate: string;
+  endDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  timezone?: string | null;
+  timezoneSource?: string | null;
+  location?: string | null;
+  formattedAddress?: string | null;
+  googlePlaceId?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  url?: string | null;
+  ticketWebsite?: string | null;
+  locationWebsite?: string | null;
+  notes?: string | null;
+  isPrivate?: boolean;
+  audienceMode?: "everyone" | "custom" | "just_me";
+  participants?: {
+    memberIds?: string[];
+    invitationIds?: string[];
+    familyMemberIds?: string[];
+    guestNames?: string[];
+  };
+  tripLegId?: string | null;
+  cost?: number | string | null;
+  currency?: string | null;
+  splitMethod?: "equal" | "exact" | "percentage" | "just_me";
+  includedParticipants?: string[];
+  coverImageUrl?: string | null;
+  removeCover?: boolean;
+};
+
+export type MobileItineraryEditorResponse = {
+  trip: Pick<MobileTripSummary, "id" | "title" | "start_date" | "end_date">;
+  item: MobileItineraryItem | null;
+  categories: Array<{
+    id: string;
+    name: string;
+    color_key: string | null;
+  }>;
+};
+
+export type MobileItineraryMutationResponse = {
+  item: MobileItineraryItem;
 };
 
 export type MobileTripsResponse = {
