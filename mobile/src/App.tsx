@@ -23,6 +23,11 @@ import { ItineraryItemEditorScreen } from "./screens/ItineraryItemEditorScreen";
 import { TravelImportsScreen } from "./screens/TravelImportsScreen";
 import { TravelImportReviewScreen } from "./screens/TravelImportReviewScreen";
 import { FriendProfileScreen } from "./screens/FriendProfileScreen";
+import { EventsScreen } from "./screens/EventsScreen";
+import { EventDetailScreen } from "./screens/EventDetailScreen";
+import { MyEventsScreen } from "./screens/MyEventsScreen";
+import { EventTicketScreen } from "./screens/EventTicketScreen";
+import { EventCheckoutScreen } from "./screens/EventCheckoutScreen";
 import { MobileApiClient } from "./lib/apiClient";
 import { getMobileEnvironment } from "./lib/environment";
 import type {
@@ -255,6 +260,41 @@ export default function App() {
         onProfile={() => push({ name: "profile" })}
         onAccountClosed={returnToLogin}
       />
+    ) : route.name === "events" ? (
+      <EventsScreen
+        apiClient={apiClient}
+        onEvent={(eventId) => push({ name: "event", eventId })}
+        onMyEvents={() => push({ name: "my-events" })}
+      />
+    ) : route.name === "event" ? (
+      <EventDetailScreen
+        apiClient={apiClient}
+        eventId={route.eventId}
+        onCheckout={(orderId, result) =>
+          push({ name: "event-checkout", orderId, result })
+        }
+        onMyEvents={() => replace({ name: "my-events" })}
+      />
+    ) : route.name === "my-events" ? (
+      <MyEventsScreen
+        apiClient={apiClient}
+        onBrowse={() => push({ name: "events" })}
+        onEvent={(eventId) => push({ name: "event", eventId })}
+        onTicket={(ticketId) => push({ name: "event-ticket", ticketId })}
+      />
+    ) : route.name === "event-ticket" ? (
+      <EventTicketScreen
+        apiClient={apiClient}
+        ticketId={route.ticketId}
+        onBack={() => back({ name: "my-events" })}
+      />
+    ) : route.name === "event-checkout" ? (
+      <EventCheckoutScreen
+        apiClient={apiClient}
+        orderId={route.orderId}
+        resultHint={route.result}
+        onMyEvents={() => replace({ name: "my-events" })}
+      />
     ) : route.name === "notifications" ? (
       <NotificationHistoryScreen
         apiClient={apiClient}
@@ -440,6 +480,7 @@ export default function App() {
       ) : null}
       <MobileAppChrome
         apiClient={apiClient}
+        activeRootRoute={route.name}
         trips={availableTrips}
         activeTripId={selectedTripId}
         activeTripView={selectedTripId ? activeTripView : null}
@@ -465,6 +506,8 @@ export default function App() {
         onTravelImports={() => push({ name: "travel-imports" })}
         onProfile={() => push({ name: "profile" })}
         onSettings={() => push({ name: "settings" })}
+        onEvents={() => push({ name: "events" })}
+        onMyEvents={() => push({ name: "my-events" })}
         onCreateTrip={() => push({ name: "trip-create" })}
         onCreateIdea={
           selectedTripId

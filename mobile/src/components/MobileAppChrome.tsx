@@ -48,6 +48,7 @@ import type { MobileApiClient } from "../lib/apiClient";
 
 type MobileAppChromeProps = {
   apiClient: MobileApiClient;
+  activeRootRoute?: string;
   trips: Array<Pick<MobileTripSummary, "id" | "title">>;
   activeTripId: string | null;
   activeTripView:
@@ -79,6 +80,8 @@ type MobileAppChromeProps = {
   onTravelImports?: () => void;
   onProfile?: () => void;
   onSettings?: () => void;
+  onEvents: () => void;
+  onMyEvents: () => void;
   onCreateTrip?: () => void;
   onCreateIdea?: () => void;
   onCreateExpense?: () => void;
@@ -160,6 +163,7 @@ function DestinationItem({
 
 export function MobileAppChrome({
   apiClient,
+  activeRootRoute = "",
   trips,
   activeTripId,
   activeTripView,
@@ -181,6 +185,8 @@ export function MobileAppChrome({
   onTravelImports,
   onProfile = () => undefined,
   onSettings = () => undefined,
+  onEvents,
+  onMyEvents,
   onCreateTrip,
   onCreateIdea,
   onCreateExpense,
@@ -305,8 +311,21 @@ export function MobileAppChrome({
     ...(isSuperAdmin
       ? [{ label: "News Feed", icon: Newspaper } satisfies MenuDestination]
       : []),
-    BASE_DESTINATIONS[0],
-    BASE_DESTINATIONS[1],
+    {
+      ...BASE_DESTINATIONS[0],
+      supported: true,
+      active: activeRootRoute === "events" || activeRootRoute === "event",
+      action: () => { closeMenus(); onEvents(); },
+    },
+    {
+      ...BASE_DESTINATIONS[1],
+      supported: true,
+      active:
+        activeRootRoute === "my-events" ||
+        activeRootRoute === "event-ticket" ||
+        activeRootRoute === "event-checkout",
+      action: () => { closeMenus(); onMyEvents(); },
+    },
     ...(isEventOrganizer
       ? [{ label: "Manage Events", icon: UsersRound } satisfies MenuDestination]
       : []),

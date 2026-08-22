@@ -7,23 +7,26 @@ const read = (path: string) =>
 
 describe("events payment lifecycle", () => {
   const checkout = read("app/api/events/[eventId]/register/route.ts");
+  const attendeeDomain = read("lib/events/attendee.ts");
   const webhook = read("app/api/events/stripe/webhook/route.ts");
   const success = read("app/events/checkout/success/page.tsx");
+  const mobileCheckout = read("app/api/mobile/v1/event-orders/[orderId]/route.ts");
 
   it("calculates Checkout line items from reserved database snapshots", () => {
-    expect(checkout).toContain('"reserve_event_order"');
-    expect(checkout).toContain(
+    expect(checkout).toContain("registerAttendeeForEvent");
+    expect(attendeeDomain).toContain('"reserve_event_order"');
+    expect(attendeeDomain).toContain(
       "event_order_items(ticket_name_snapshot,unit_price_minor",
     );
-    expect(checkout).toContain(
+    expect(attendeeDomain).toContain(
       "unit_price_minor + item.unit_fee_minor + item.unit_tax_minor",
     );
-    expect(checkout).toContain(
+    expect(attendeeDomain).toContain(
       "idempotencyKey: `vaivia-event-order-${orderRow.id}`",
     );
-    expect(checkout).toContain("expires_at:");
-    expect(checkout).not.toContain("destination:");
-    expect(checkout).not.toContain("transfer_data");
+    expect(attendeeDomain).toContain("expires_at:");
+    expect(attendeeDomain).not.toContain("destination:");
+    expect(attendeeDomain).not.toContain("transfer_data");
   });
 
   it("verifies the raw Stripe webhook and handles replay-safe lifecycle events", () => {
@@ -54,5 +57,7 @@ describe("events payment lifecycle", () => {
     expect(success).toContain('select("status")');
     expect(success).not.toContain("finalize_event_order");
     expect(success).not.toContain("event_tickets");
+    expect(mobileCheckout).toContain("loadCheckoutStatus");
+    expect(mobileCheckout).not.toContain("finalize_event_order");
   });
 });

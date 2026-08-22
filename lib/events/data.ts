@@ -109,6 +109,31 @@ export async function getPublicEventBySlug(slug: string) {
   return { event, ticketTypes: (tiers || []) as unknown as EventTicketType[] };
 }
 
+export async function getPublicEventByIdentifier(identifier: string) {
+  const service = createServiceRoleClient();
+  const safeIdentifier = identifier.trim().slice(0, 160);
+  if (!safeIdentifier) return null;
+  const query = service
+    .from("events")
+    .select(PUBLIC_EVENT_FIELDS)
+    .eq("status", "published")
+    .eq("visibility", "public")
+    .is("deleted_at", null)
+    .or(`publish_at.is.null,publish_at.lte.${new Date().toISOString()}`);
+  const { data, error } = /^[0-9a-f-]{36}$/i.test(safeIdentifier)
+    ? await query.eq("id", safeIdentifier).maybeSingle()
+    : await query.eq("slug", safeIdentifier).maybeSingle();
+  if (error || !data) return null;
+  const [event] = await attachCoverUrls([data as unknown as EventSummary]);
+  const { data: tiers } = await service
+    .from("event_ticket_types")
+    .select("*")
+    .eq("event_id", event.id)
+    .in("state", ["active", "sold_out"])
+    .order("display_order");
+  return { event, ticketTypes: (tiers || []) as unknown as EventTicketType[] };
+}
+
 export async function getManagedEvent(eventId: string) {
   const service = createServiceRoleClient();
   const [{ data: event }, { data: privateDetails }, { data: ticketTypes }] =

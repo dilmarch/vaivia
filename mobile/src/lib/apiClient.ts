@@ -28,6 +28,12 @@ import type {
   MobileSocialProfileResponse,
   MobileTravelImportReviewResponse,
   MobileTravelImportsResponse,
+  MobileEventCheckoutStatusResponse,
+  MobileEventDetailResponse,
+  MobileEventRegistrationResponse,
+  MobileEventsResponse,
+  MobileEventTicketResponse,
+  MobileMyEventsResponse,
 } from "@/lib/mobileApi/contracts";
 
 export class MobileApiError extends Error {
@@ -411,6 +417,91 @@ export class MobileApiClient {
     return this.getJson<MobileTripsResponse>("/api/mobile/v1/trips", {
       signal,
     });
+  }
+
+  getEvents(
+    filters: Record<string, string | number | undefined> = {},
+    signal?: AbortSignal,
+  ) {
+    const query = new URLSearchParams();
+    for (const [name, value] of Object.entries(filters)) {
+      if (value !== undefined && String(value).trim()) query.set(name, String(value));
+    }
+    return this.getJson<MobileEventsResponse>(
+      `/api/mobile/v1/events${query.size ? `?${query.toString()}` : ""}`,
+      { signal },
+    );
+  }
+
+  getEvent(eventId: string, signal?: AbortSignal) {
+    return this.getJson<MobileEventDetailResponse>(
+      `/api/mobile/v1/events/${encodeURIComponent(eventId)}`,
+      { signal },
+    );
+  }
+
+  setEventSaved(eventId: string, saved: boolean, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<{ eventId: string; saved: boolean }>(
+      `/api/mobile/v1/events/${encodeURIComponent(eventId)}`,
+      { saved },
+      options,
+    );
+  }
+
+  registerEvent(
+    eventId: string,
+    input: {
+      mode: "rsvp" | "tickets";
+      attendeeName?: string;
+      idempotencyKey?: string;
+      selections?: Array<{ ticketTypeId: string; quantity: number }>;
+    },
+    options: MobileApiJsonRequestOptions = {},
+  ) {
+    return this.postJson<MobileEventRegistrationResponse>(
+      `/api/mobile/v1/events/${encodeURIComponent(eventId)}`,
+      input,
+      options,
+    );
+  }
+
+  cancelEventRsvp(eventId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ eventId: string; cancelled: true }>(
+      `/api/mobile/v1/events/${encodeURIComponent(eventId)}`,
+      undefined,
+      options,
+    );
+  }
+
+  getMyEvents(signal?: AbortSignal) {
+    return this.getJson<MobileMyEventsResponse>("/api/mobile/v1/my-events", { signal });
+  }
+
+  getEventTicket(ticketId: string, signal?: AbortSignal) {
+    return this.getJson<MobileEventTicketResponse>(
+      `/api/mobile/v1/event-tickets/${encodeURIComponent(ticketId)}`,
+      { signal },
+    );
+  }
+
+  getEventCheckoutStatus(orderId: string, signal?: AbortSignal) {
+    return this.getJson<MobileEventCheckoutStatusResponse>(
+      `/api/mobile/v1/event-orders/${encodeURIComponent(orderId)}`,
+      { signal },
+    );
+  }
+
+  async downloadAppleWalletPass(ticketId: string, signal?: AbortSignal) {
+    const response = await this.requestAuthenticated(
+      `/api/mobile/v1/event-tickets/${encodeURIComponent(ticketId)}/apple-wallet`,
+      { method: "GET", signal },
+    );
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      const parsed = parseErrorResponse(body, response.status);
+      throw new MobileApiError(parsed.message, response.status, parsed.code);
+    }
+    return response.blob();
   }
 
   getHome(signal?: AbortSignal) {

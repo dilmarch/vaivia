@@ -11,7 +11,7 @@ const config: CapacitorConfig = {
     contentInset: "never",
     preferredContentMode: "mobile",
     allowsLinkPreview: false,
-    includePlugins: ["@capacitor/app"],
+    includePlugins: ["@capacitor/app", "@capacitor/browser"],
   },
 };
 

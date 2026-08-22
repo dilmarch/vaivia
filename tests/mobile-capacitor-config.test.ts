@@ -8,7 +8,10 @@ describe("Capacitor iOS configuration", () => {
     expect(capacitorConfig.server?.url).toBeUndefined();
   });
 
-  it("keeps native plugins limited to app lifecycle in phase 1", () => {
-    expect(capacitorConfig.ios?.includePlugins).toEqual(["@capacitor/app"]);
+  it("keeps native plugins limited to lifecycle and secure hosted checkout", () => {
+    expect(capacitorConfig.ios?.includePlugins).toEqual([
+      "@capacitor/app",
+      "@capacitor/browser",
+    ]);
   });
 });

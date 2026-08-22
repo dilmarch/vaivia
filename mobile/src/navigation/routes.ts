@@ -38,6 +38,13 @@ export type MobileRoute =
   | { name: "settings"; section?: string }
   | { name: "events" }
   | { name: "event"; eventId: string }
+  | { name: "my-events" }
+  | { name: "event-ticket"; ticketId: string }
+  | {
+      name: "event-checkout";
+      orderId: string;
+      result?: "pending" | "success" | "cancelled";
+    }
   | {
       name: "trip";
       tripId: string;
@@ -114,11 +121,25 @@ export function parseMobileRoute(value: unknown): MobileRoute | null {
     return { name: "travel-import", importId: value.importId };
   }
   if (value.name === "events") return { name: "events" };
+  if (value.name === "my-events") return { name: "my-events" };
   if (value.name === "settings") {
     return { name: "settings", section: optionalString(value.section) };
   }
   if (value.name === "event" && isNonEmptyString(value.eventId)) {
     return { name: "event", eventId: value.eventId };
+  }
+  if (value.name === "event-ticket" && isNonEmptyString(value.ticketId)) {
+    return { name: "event-ticket", ticketId: value.ticketId };
+  }
+  if (value.name === "event-checkout" && isNonEmptyString(value.orderId)) {
+    return {
+      name: "event-checkout",
+      orderId: value.orderId,
+      result:
+        value.result === "success" || value.result === "cancelled" || value.result === "pending"
+          ? value.result
+          : undefined,
+    };
   }
   if (
     value.name === "trip" &&
@@ -152,6 +173,11 @@ export function isImplementedMobileRoute(route: MobileRoute) {
     route.name === "travel-imports" ||
     route.name === "travel-import" ||
     route.name === "settings" ||
+    route.name === "events" ||
+    route.name === "event" ||
+    route.name === "my-events" ||
+    route.name === "event-ticket" ||
+    route.name === "event-checkout" ||
     route.name === "trip"
   );
 }
@@ -188,6 +214,14 @@ export function mobileRouteToPath(route: MobileRoute) {
       return "/events";
     case "event":
       return `/events/${encodeURIComponent(route.eventId)}`;
+    case "my-events":
+      return "/my-events";
+    case "event-ticket":
+      return `/my-events/tickets/${encodeURIComponent(route.ticketId)}`;
+    case "event-checkout": {
+      const query = route.result ? `?result=${route.result}` : "";
+      return `/events/checkout/${encodeURIComponent(route.orderId)}${query}`;
+    }
     case "trip": {
       const base = `/trips/${encodeURIComponent(route.tripId)}/${route.view}`;
       return route.itemId
@@ -220,6 +254,13 @@ export function resolveMobilePath(pathname: string): MobileRoute | null {
   if (parts[0] === "events" && parts.length === 2) {
     return parseMobileRoute({ name: "event", eventId: parts[1] });
   }
+  if (parts[0] === "my-events" && parts.length === 1) return { name: "my-events" };
+  if (parts[0] === "my-events" && parts[1] === "tickets" && parts.length === 3) {
+    return parseMobileRoute({ name: "event-ticket", ticketId: parts[2] });
+  }
+  if (parts[0] === "events" && parts[1] === "checkout" && parts.length === 3) {
+    return parseMobileRoute({ name: "event-checkout", orderId: parts[2] });
+  }
   if (parts[0] === "imports" && parts.length === 2) {
     return parseMobileRoute({ name: "travel-import", importId: parts[1] });
   }
@@ -241,6 +282,23 @@ export function resolveMobilePath(pathname: string): MobileRoute | null {
     return { name: "trip-create" };
   }
   return null;
+}
+
+export function resolveMobileAppUrl(rawUrl: string): MobileRoute | null {
+  try {
+    const url = new URL(rawUrl);
+    if (url.protocol !== "com.dreamhaus.vaivia:") return null;
+    const path = `/${[url.hostname, ...url.pathname.split("/").filter(Boolean)].filter(Boolean).join("/")}`;
+    const route = resolveMobilePath(path);
+    if (route?.name !== "event-checkout") return route;
+    const result = url.searchParams.get("result");
+    return {
+      ...route,
+      result: result === "success" || result === "cancelled" ? result : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function readStoredMobileRoute(storage: Storage): MobileRoute {

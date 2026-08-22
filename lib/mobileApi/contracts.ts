@@ -20,10 +20,52 @@ import type {
   SplitMethod,
 } from "@/lib/budget";
 import type { DashboardData } from "@/lib/dashboard/contracts";
+import type { EventSummary, EventTicketType } from "@/lib/events/types";
 
 type TripRow = Tables<"trips">;
 type ItineraryItemRow = Tables<"itinerary_items">;
 type NotificationRow = Tables<"notifications">;
+
+export type MobileEventSummary = EventSummary & { priceLabel: string };
+
+export type MobileEventsResponse = {
+  events: MobileEventSummary[];
+  count: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type MobileEventDetailResponse = {
+  event: EventSummary;
+  ticketTypes: EventTicketType[];
+  saved: boolean;
+};
+
+export type MobileEventRegistrationResponse =
+  | { mode: "rsvp"; rsvp: Json }
+  | { mode: "free"; orderId: string }
+  | { mode: "paid"; orderId: string; checkoutUrl: string };
+
+export type MobileMyEventsResponse = {
+  tickets: Array<Record<string, Json | null>>;
+  rsvps: Array<Record<string, Json | null>>;
+  saved: Array<Record<string, Json | null>>;
+};
+
+export type MobileEventTicketResponse = {
+  ticket: Record<string, Json | null>;
+  privateDetails: { online_url: string | null } | null;
+  qrDataUrl: string | null;
+  appleWalletAvailable: boolean;
+};
+
+export type MobileEventCheckoutStatusResponse = {
+  orderId: string;
+  status: string;
+  ready: boolean;
+  ticketIds: string[];
+};
 
 export type MobileTripSummary = Pick<
   TripRow,

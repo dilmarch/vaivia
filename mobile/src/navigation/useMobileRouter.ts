@@ -1,5 +1,6 @@
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DEFAULT_MOBILE_ROUTE,
@@ -9,6 +10,7 @@ import {
   readMobileHistoryEntry,
   readStoredMobileRoute,
   routesMatch,
+  resolveMobileAppUrl,
   writeStoredMobileRoute,
   type MobileRoute,
 } from "./routes";
@@ -156,6 +158,28 @@ export function useMobileRouter() {
       if (listener) void listener.remove();
     };
   }, [goBack]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let listener: PluginListenerHandle | null = null;
+    let disposed = false;
+    void CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+      const callbackRoute = resolveMobileAppUrl(url);
+      if (callbackRoute) {
+        if (callbackRoute.name === "event-checkout") {
+          void Browser.close().catch(() => undefined);
+        }
+        navigate(callbackRoute);
+      }
+    }).then((handle) => {
+      if (disposed) void handle.remove();
+      else listener = handle;
+    });
+    return () => {
+      disposed = true;
+      if (listener) void listener.remove();
+    };
+  }, [navigate]);
 
   return { route, push: navigate, replace, back: goBack, reset };
 }

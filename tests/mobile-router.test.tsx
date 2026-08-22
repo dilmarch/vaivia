@@ -10,6 +10,7 @@ import {
   readMobileHistoryEntry,
   readStoredMobileRoute,
   resolveMobilePath,
+  resolveMobileAppUrl,
 } from "@/mobile/src/navigation/routes";
 import { useMobileRouter } from "@/mobile/src/navigation/useMobileRouter";
 
@@ -58,6 +59,9 @@ describe("mobile route model", () => {
       name: "event",
       eventId: "event-1",
     });
+    expect(parseMobileRoute({ name: "my-events" })).toEqual({ name: "my-events" });
+    expect(parseMobileRoute({ name: "event-ticket", ticketId: "ticket-1" })).toEqual({ name: "event-ticket", ticketId: "ticket-1" });
+    expect(parseMobileRoute({ name: "event-checkout", orderId: "order-1", result: "success" })).toEqual({ name: "event-checkout", orderId: "order-1", result: "success" });
   });
 
   it("round-trips future deep-link paths through the route representation", () => {
@@ -72,6 +76,9 @@ describe("mobile route model", () => {
       name: "event",
       eventId: "event/one",
     });
+    expect(resolveMobilePath("/my-events/tickets/ticket%2Fone")).toEqual({ name: "event-ticket", ticketId: "ticket/one" });
+    expect(resolveMobileAppUrl("com.dreamhaus.vaivia://events/checkout/order-1?result=success")).toEqual({ name: "event-checkout", orderId: "order-1", result: "success" });
+    expect(resolveMobileAppUrl("https://evil.example/events/checkout/order-1?result=success")).toBeNull();
     expect(resolveMobilePath("/trips/new")).toEqual({ name: "trip-create" });
     expect(resolveMobilePath("/trips/trip%2Fone/manage")).toEqual({
       name: "trip-manage",

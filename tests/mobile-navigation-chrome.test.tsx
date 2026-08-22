@@ -67,6 +67,8 @@ function renderChrome(overrides: Partial<ComponentProps<typeof MobileAppChrome>>
     onNotificationHistory: vi.fn(),
     onProfile: vi.fn(),
     onSettings: vi.fn(),
+    onEvents: vi.fn(),
+    onMyEvents: vi.fn(),
     onCreateTrip: vi.fn(),
     onSignOut: vi.fn().mockResolvedValue(undefined),
     ...overrides,
@@ -127,12 +129,22 @@ describe("mobile navigation chrome parity", () => {
     },
   );
 
-  it("opens the complete base and more menus while disabling unavailable routes", () => {
-    renderChrome();
+  it("opens the complete base and more menus while enabling attendee event routes", () => {
+    const { props } = renderChrome();
 
     fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
-    expect(screen.getByRole("button", { name: "Events coming soon" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "My Events coming soon" })).toBeDisabled();
+    const events = screen.getByRole("button", { name: "Events" });
+    expect(events).toBeEnabled();
+    fireEvent.click(events);
+    expect(props.onEvents).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
+    const myEvents = screen.getByRole("button", { name: "My Events" });
+    expect(myEvents).toBeEnabled();
+    fireEvent.click(myEvents);
+    expect(props.onMyEvents).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open trip views" }));
     expect(
       screen.getByRole("button", { name: "Ask Concierge coming soon" }),
     ).toBeDisabled();
