@@ -406,7 +406,7 @@ export async function GET(request: Request, { params }: RouteContext) {
       .order("expense_date", { ascending: false }),
     context.supabase
       .from("trip_ideas")
-      .select("id,trip_id,created_by,title,description,category,tags,days_of_week,availability_start_date,availability_end_date,time_of_day,opens_at,closes_at,location,formatted_address,google_place_id,location_city,location_region,location_country,location_country_code,is_24_hours,ticket_policy,age_policy,dress_code,is_private,is_archived,attended,created_at,updated_at")
+      .select("id,trip_id,created_by,title,description,category,tags,days_of_week,availability_start_date,availability_end_date,time_of_day,opens_at,closes_at,location,formatted_address,google_place_id,location_lat,location_lng,location_city,location_region,location_country,location_country_code,location_postal_code,timezone,timezone_source,url,estimated_cost,currency,trip_leg_id,is_24_hours,ticket_policy,age_policy,dress_code,is_private,is_archived,attended,created_at,updated_at")
       .eq("trip_id", trip.id)
       .order("created_at", { ascending: true }),
     context.supabase
@@ -1391,6 +1391,15 @@ export async function GET(request: Request, { params }: RouteContext) {
     itinerary: mobileItinerary,
     itineraryTimezones,
     ideas,
+    ideaNotepadLocations: visibleLegs
+      .filter((leg) => leg.leg_type !== "accommodation")
+      .map((leg) => ({
+        key: `leg:${leg.id}`,
+        tripLegId: leg.id,
+        label: leg.city_name || leg.name,
+        city: leg.city_name || leg.name,
+        countryCode: leg.country_code || null,
+      })),
     budget: {
       budget: mobileBudget,
       lineItems: mobileBudgetLineItems,

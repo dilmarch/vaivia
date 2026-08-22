@@ -5,6 +5,7 @@ import type {
   TripAudienceParticipantKind,
 } from "@/lib/tripAudience";
 import type { TripIdea } from "@/lib/tripIdeas";
+import type { NotepadLocation } from "@/lib/notepadEntries";
 import type { TripFoodItem } from "@/lib/tripFood";
 import type { GovernmentTravelAdvisoryResult } from "@/lib/governmentTravelAdvisoryShared";
 import type { TripDestinationRecord } from "@/lib/tripDestinations";
@@ -286,10 +287,45 @@ export type MobileTripDetailResponse = {
   itinerary: MobileItineraryItem[];
   itineraryTimezones: string[];
   ideas: TripIdea[];
+  ideaNotepadLocations?: NotepadLocation[];
   budget: MobileTripBudgetData;
   stays?: MobileTripStaysData;
   food?: MobileTripFoodData;
   healthSafety?: MobileTripHealthSafetyData;
+};
+
+export type MobileIdeaMutationInput = {
+  title?: string | null;
+  description?: string | null;
+  category?: string | null;
+  tags?: string[];
+  daysOfWeek?: string[];
+  availabilityStartDate?: string | null;
+  availabilityEndDate?: string | null;
+  timeOfDay?: string[];
+  opensAt?: string | null;
+  closesAt?: string | null;
+  location?: string | null;
+  formattedAddress?: string | null;
+  googlePlaceId?: string | null;
+  locationLat?: number | null;
+  locationLng?: number | null;
+  locationCity?: string | null;
+  locationRegion?: string | null;
+  locationCountry?: string | null;
+  locationCountryCode?: string | null;
+  locationPostalCode?: string | null;
+  timezone?: string | null;
+  timezoneSource?: string | null;
+  url?: string | null;
+  estimatedCost?: number | string | null;
+  currency?: string | null;
+  is24Hours?: boolean;
+  ticketPolicy?: string | null;
+  agePolicy?: string | null;
+  dressCode?: string | null;
+  isPrivate?: boolean;
+  tripLegId?: string | null;
 };
 
 export type MobileTripFoodData = {

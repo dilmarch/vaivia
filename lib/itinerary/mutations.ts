@@ -68,6 +68,7 @@ export type ItineraryMutationInput = {
   includedParticipants?: string[];
   coverImageUrl?: string | null;
   removeCover?: boolean;
+  sourceIdeaId?: string | null;
 };
 
 function clean(value: unknown, max: number) {
@@ -174,6 +175,7 @@ function normalizeInput(input: ItineraryMutationInput) {
     includedParticipants: unique(input.includedParticipants),
     coverImageUrl: safeUrl(input.coverImageUrl),
     removeCover: Boolean(input.removeCover),
+    sourceIdeaId: clean(input.sourceIdeaId, 80) || null,
   };
 }
 
@@ -313,6 +315,7 @@ export async function createItineraryItemForUser({ supabase, userId, tripId, inp
     is_private: normalized.isPrivate,
     audience_mode: normalized.audience.audienceMode,
     trip_leg_id: tripLegId,
+    source_idea_id: normalized.sourceIdeaId,
     ...cover.payload,
   };
   const { data, error } = await supabase.from("itinerary_items").insert(payload).select("*").single();

@@ -79,7 +79,7 @@ type MobileAppChromeProps = {
   onProfile?: () => void;
   onSettings?: () => void;
   onCreateTrip?: () => void;
-  onCreateItineraryItem?: () => void;
+  onCreateIdea?: () => void;
   onCreateExpense?: () => void;
   onSignOut: () => Promise<void>;
 };
@@ -178,7 +178,7 @@ export function MobileAppChrome({
   onProfile = () => undefined,
   onSettings = () => undefined,
   onCreateTrip,
-  onCreateItineraryItem,
+  onCreateIdea,
   onCreateExpense,
   onSignOut,
 }: MobileAppChromeProps) {
@@ -630,14 +630,14 @@ export function MobileAppChrome({
                     label={label}
                     disabled={
                       (label === "Add trip" && !onCreateTrip) ||
-                      (label === "Add things to do" && !onCreateItineraryItem) ||
+                      (label === "Add things to do" && !onCreateIdea) ||
                       (label === "Add expense" && !onCreateExpense) ||
                       (label !== "Add trip" && label !== "Add things to do" && label !== "Add expense")
                     }
                     onPress={label === "Add trip" && onCreateTrip ? () => {
                       closeMenus(); onCreateTrip();
-                    } : label === "Add things to do" && onCreateItineraryItem ? () => {
-                      closeMenus(); onCreateItineraryItem();
+                    } : label === "Add things to do" && onCreateIdea ? () => {
+                      closeMenus(); onCreateIdea();
                     } : label === "Add expense" && onCreateExpense ? () => {
                       closeMenus(); onCreateExpense();
                     } : undefined}

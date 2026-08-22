@@ -18,6 +18,7 @@ import type {
   MobileBudgetMutationInput,
   MobileExpenseMutationInput,
   MobileSettlementMutationInput,
+  MobileIdeaMutationInput,
 } from "@/lib/mobileApi/contracts";
 
 export class MobileApiError extends Error {
@@ -418,6 +419,34 @@ export class MobileApiClient {
       `/api/mobile/v1/trips/${encodeURIComponent(tripId)}`,
       { signal },
     );
+  }
+
+  createIdea(tripId: string, input: MobileIdeaMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ idea: unknown }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/ideas`, input, options);
+  }
+
+  createIdeasFromNotepad(tripId: string, entries: string[], locations: Array<Record<string, unknown>>, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<{ ideas: unknown[] }>(`/api/mobile/v1/trips/${encodeURIComponent(tripId)}/ideas`, { operation: "bulk", entries, locations }, options);
+  }
+
+  updateIdea(tripId: string, ideaId: string, input: MobileIdeaMutationInput, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<{ idea: unknown }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`, { ...input, tripId }, options);
+  }
+
+  deleteIdea(tripId: string, ideaId: string, options: MobileApiJsonRequestOptions = {}) {
+    return this.deleteJson<{ deleted: true; ideaId: string }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`, { tripId }, options);
+  }
+
+  setIdeaAttended(tripId: string, ideaId: string, attended: boolean, options: MobileApiJsonRequestOptions = {}) {
+    return this.patchJson<{ idea: unknown }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}`, { tripId, operation: "attended", attended }, options);
+  }
+
+  toggleIdeaReaction(tripId: string, ideaId: string, reaction: "heart" | "thumbs_up" | "thumbs_down", options: MobileApiJsonRequestOptions = {}) {
+    return this.putJson<{ reaction: "heart" | "thumbs_up" | "thumbs_down" | null }>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}/reaction`, { tripId, reaction }, options);
+  }
+
+  addIdeaToItinerary(tripId: string, ideaId: string, input: { itemDate: string; startTime?: string | null; endTime?: string | null; timezone?: string | null; timezoneSource?: string | null }, options: MobileApiJsonRequestOptions = {}) {
+    return this.postJson<MobileItineraryMutationResponse>(`/api/mobile/v1/ideas/${encodeURIComponent(ideaId)}/itinerary`, { ...input, tripId }, options);
   }
 
   createBudget(tripId: string, input: MobileBudgetMutationInput, options: MobileApiJsonRequestOptions = {}) {

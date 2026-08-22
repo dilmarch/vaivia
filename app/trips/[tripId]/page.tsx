@@ -73,14 +73,10 @@ import {
 } from "@/lib/itineraryCategories";
 import {
     attachIdeaReactions,
-    normalizeIdeaAgePolicy,
     normalizeIdeaReaction,
-    normalizeIdeaTicketPolicy,
     normalizeTripIdea,
     type IdeaReactionUserProfile,
     type TripIdeaReactionRecord,
-    toIdeaDayValue,
-    toIdeaTimeOfDayValue,
 } from "@/lib/tripIdeas";
 import { assertDateRangeOrdered } from "@/lib/dateRange";
 import { syncTripDestinationsFromForm } from "@/lib/tripDestinations";
@@ -100,6 +96,16 @@ import {
     parseItineraryFormData,
     updateItineraryItemForUser,
 } from "@/lib/itinerary/mutations";
+import {
+    addIdeaToItineraryForUser,
+    createIdeaForUser,
+    createIdeasFromNotepadForUser,
+    deleteIdeaForUser,
+    parseIdeaFormData,
+    setIdeaAttendedForUser,
+    toggleIdeaReactionForUser,
+    updateIdeaForUser,
+} from "@/lib/ideas/mutations";
 import { moveTripItem } from "@/app/actions/moveTripItem";
 import { deleteTripLeg, upsertTripLeg } from "@/app/actions/tripLegs";
 import { loadActiveMemberTrips, type SharedTrip } from "@/lib/sharedTrips";
@@ -114,7 +120,6 @@ import { removeTripMemberAsOwner } from "@/lib/tripMemberRemoval";
 import { maybeCreatePassportStampForTransportationArrival } from "@/lib/passportArrivalStamps";
 import {
     resolveTripLegIdForDate,
-    resolveTripLegIdForLocation,
 } from "@/lib/tripLegs";
 import { sortTripLegLocations } from "@/lib/tripLegLocationOrdering";
 import {
@@ -263,42 +268,6 @@ type TripUpdatePayload = {
     cover_image_photographer_url?: string | null;
     countdown_target_itinerary_item_id?: string | null;
     notes: string;
-};
-
-type TripIdeaPayload = {
-    created_by: string;
-    trip_id: string;
-    title: string;
-    description: string | null;
-    category: string;
-    tags: string[];
-    days_of_week: string[];
-    availability_start_date: string | null;
-    availability_end_date: string | null;
-    time_of_day: string[];
-    opens_at: string | null;
-    closes_at: string | null;
-    location: string | null;
-    formatted_address: string | null;
-    google_place_id: string | null;
-    location_lat: number | null;
-    location_lng: number | null;
-    location_city: string | null;
-    location_region: string | null;
-    location_country: string | null;
-    location_country_code: string | null;
-    location_postal_code: string | null;
-    location_website: string | null;
-    ticket_website: string | null;
-    is_24_hours: boolean;
-    ticket_policy: string;
-    age_policy: string | null;
-    dress_code: string | null;
-    other_notes: string | null;
-    trip_leg_id?: string | null;
-    is_private?: boolean;
-    is_archived?: boolean;
-    attended?: boolean;
 };
 
 function getFlagEmoji(countryCode?: string | null) {
@@ -905,180 +874,6 @@ async function replaceTripItemParticipants({
     });
 }
 
-async function insertTripIdeaPayloadWithFallback(payload: TripIdeaPayload) {
-    const supabase = await createClient();
-    const optionalColumns = new Set([
-        "location",
-        "formatted_address",
-        "google_place_id",
-        "location_lat",
-        "location_lng",
-        "location_city",
-        "location_region",
-        "location_country",
-        "location_country_code",
-        "location_postal_code",
-        "location_website",
-        "ticket_website",
-        "is_24_hours",
-        "ticket_policy",
-        "age_policy",
-        "dress_code",
-        "other_notes",
-        "attended",
-        "availability_start_date",
-        "availability_end_date",
-    ]);
-    let attempt: Record<string, unknown> = { ...payload };
-    let lastError: {
-        code?: string;
-        message?: string;
-        details?: string;
-        hint?: string;
-    } | null = null;
-
-    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
-        const { error } = await supabase.from("trip_ideas").insert(attempt);
-
-        if (!error) return null;
-
-        lastError = error;
-
-        if (error.code !== "42703" && error.code !== "PGRST204") break;
-
-        const missingColumn = getMissingColumnName(error);
-        if (
-            !missingColumn ||
-            !(missingColumn in attempt) ||
-            isProtectedVisibilityColumn(missingColumn) ||
-            !optionalColumns.has(missingColumn)
-        ) {
-            break;
-        }
-
-        console.warn(
-            `Trip ideas table is missing optional column "${missingColumn}". Retrying without it.`,
-            error
-        );
-
-        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
-        void _removedColumn;
-        attempt = nextAttempt;
-    }
-
-    return lastError;
-}
-
-async function insertTripIdeaPayloadsWithFallback(payloads: TripIdeaPayload[]) {
-    if (payloads.length === 0) return null;
-
-    const supabase = await createClient();
-    const optionalColumns = new Set([
-        "location",
-        "formatted_address",
-        "google_place_id",
-        "location_lat",
-        "location_lng",
-        "location_city",
-        "location_region",
-        "location_country",
-        "location_country_code",
-        "location_postal_code",
-        "location_website",
-        "ticket_website",
-        "is_24_hours",
-        "ticket_policy",
-        "age_policy",
-        "dress_code",
-        "other_notes",
-        "attended",
-        "availability_start_date",
-        "availability_end_date",
-    ]);
-    let attempt = payloads.map((payload) => ({ ...payload })) as Array<
-        Record<string, unknown>
-    >;
-    let lastError: {
-        code?: string;
-        message?: string;
-        details?: string;
-        hint?: string;
-    } | null = null;
-
-    for (let index = 0; index < Object.keys(payloads[0]).length + 8; index += 1) {
-        const { error } = await supabase.from("trip_ideas").insert(attempt);
-        if (!error) return null;
-
-        lastError = error;
-        if (error.code !== "42703" && error.code !== "PGRST204") break;
-
-        const missingColumn = getMissingColumnName(error);
-        if (
-            !missingColumn ||
-            !(missingColumn in attempt[0]) ||
-            isProtectedVisibilityColumn(missingColumn) ||
-            !optionalColumns.has(missingColumn)
-        ) {
-            break;
-        }
-
-        console.warn(
-            `Trip ideas table is missing optional column "${missingColumn}". Retrying batch without it.`,
-            error
-        );
-        attempt = attempt.map(({ [missingColumn]: _removedColumn, ...row }) => {
-            void _removedColumn;
-            return row;
-        });
-    }
-
-    return lastError;
-}
-
-async function updateTripIdeaPayloadWithFallback(
-    payload: Record<string, unknown>,
-    ideaId: string,
-    tripId: string
-) {
-    const supabase = await createClient();
-    let attempt = { ...payload };
-    let lastError: {
-        code?: string;
-        message?: string;
-        details?: string;
-        hint?: string;
-    } | null = null;
-
-    for (let index = 0; index < Object.keys(payload).length + 8; index += 1) {
-        const { error } = await supabase
-            .from("trip_ideas")
-            .update(attempt)
-            .eq("id", ideaId)
-            .eq("trip_id", tripId);
-
-        if (!error) return null;
-
-        lastError = error;
-
-        if (error.code !== "42703" && error.code !== "PGRST204") break;
-
-        const missingColumn = getMissingColumnName(error);
-        if (!missingColumn || !(missingColumn in attempt)) break;
-        if (isProtectedVisibilityColumn(missingColumn)) break;
-
-        console.warn(
-            `Trip ideas table is missing optional column "${missingColumn}". Retrying update without it.`,
-            error
-        );
-
-        const { [missingColumn]: _removedColumn, ...nextAttempt } = attempt;
-        void _removedColumn;
-        attempt = nextAttempt;
-    }
-
-    return lastError;
-}
-
 async function updateTransportationPayloadWithFallback(
     payload: TransportationItemPayload,
     itemId: string,
@@ -1251,110 +1046,6 @@ function buildCountdownTargetOptions(items: ItineraryCalendarItem[]) {
                 (isTransportation ? "Transportation" : "Activity"),
         };
     });
-}
-
-function parseFormStringArray(formData: FormData, name: string) {
-    return formData
-        .getAll(name)
-        .map((value) => String(value).trim())
-        .filter(Boolean);
-}
-
-function parseTagsInput(value: string) {
-    return value
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean);
-}
-
-function getIdeaPayload(formData: FormData, userId: string): TripIdeaPayload {
-    const tags = parseTagsInput((formData.get("tags") as string) || "");
-    const requestedTitle = ((formData.get("title") as string) || "").trim();
-    const location = ((formData.get("location") as string) || "").trim();
-    const formattedAddress = (
-        (formData.get("formatted_address") as string) || ""
-    ).trim();
-    const daysOfWeek = [
-        ...parseFormStringArray(formData, "days_of_week"),
-        ...parseFormStringArray(formData, "days_available"),
-    ].map(toIdeaDayValue);
-    const is24Hours =
-        formData.get("is_24_hours") === "on" ||
-        formData.get("is_24_hours") === "true";
-    const ticketPolicy = normalizeIdeaTicketPolicy(
-        formData.get("ticket_policy") || formData.get("ticket_type")
-    );
-    const agePolicy = normalizeIdeaAgePolicy(formData.get("age_policy"));
-    const dressCode = ((formData.get("dress_code") as string) || "").trim();
-    const availabilityStartDate = String(
-        formData.get("availability_start_date") || ""
-    ).trim();
-    const availabilityEndDate = String(
-        formData.get("availability_end_date") || ""
-    ).trim();
-
-    if (
-        availabilityStartDate &&
-        availabilityEndDate &&
-        availabilityEndDate < availabilityStartDate
-    ) {
-        throw new Error("The activity idea end date must be on or after its start date.");
-    }
-
-    return {
-        created_by: userId,
-        trip_id: formData.get("trip_id") as string,
-        title: requestedTitle || location || formattedAddress || "Activity idea",
-        description: ((formData.get("description") as string) || "").trim() || null,
-        category: (formData.get("category") as string) || "Other",
-        tags,
-        days_of_week: [...new Set(daysOfWeek)],
-        availability_start_date: availabilityStartDate || null,
-        availability_end_date: availabilityEndDate || null,
-        time_of_day: [
-            ...new Set(
-                parseFormStringArray(formData, "time_of_day").map(
-                    toIdeaTimeOfDayValue
-                )
-            ),
-        ],
-        opens_at: (formData.get("opens_at") as string) || null,
-        closes_at: (formData.get("closes_at") as string) || null,
-        location: location || null,
-        formatted_address: formattedAddress || null,
-        google_place_id:
-            ((formData.get("google_place_id") as string) || "").trim() || null,
-        location_lat: formData.get("location_lat")
-            ? Number(formData.get("location_lat"))
-            : null,
-        location_lng: formData.get("location_lng")
-            ? Number(formData.get("location_lng"))
-            : null,
-        location_city:
-            ((formData.get("location_city") as string) || "").trim() || null,
-        location_region:
-            ((formData.get("location_region") as string) || "").trim() || null,
-        location_country:
-            ((formData.get("location_country") as string) || "").trim() || null,
-        location_country_code:
-            ((formData.get("location_country_code") as string) || "").trim() ||
-            null,
-        location_postal_code:
-            ((formData.get("location_postal_code") as string) || "").trim() ||
-            null,
-        location_website:
-            ((formData.get("location_website") as string) || "").trim() || null,
-        ticket_website:
-            ((formData.get("ticket_website") as string) || "").trim() || null,
-        is_24_hours: is24Hours,
-        ticket_policy: ticketPolicy,
-        age_policy: agePolicy,
-        dress_code: dressCode || null,
-        other_notes: ((formData.get("other_notes") as string) || "").trim() || null,
-        is_private:
-            formData.get("is_private") === "on" ||
-            formData.get("is_private") === "true",
-    };
 }
 
 function parseTripDate(dateString?: string | null) {
@@ -2117,14 +1808,32 @@ async function createItineraryItem(formData: FormData) {
 
     const sharedTripId = String(formData.get("trip_id") || "");
     if (sharedTripId) {
-        await createItineraryItemForUser({
-            supabase,
-            userId: user.id,
-            tripId: sharedTripId,
-            input: parseItineraryFormData(formData),
-            coverFormData: formData,
-            sourceFormData: formData,
-        });
+        const sharedInput = parseItineraryFormData(formData);
+        const sourceIdeaId = String(formData.get("idea_id") || "").trim();
+        if (sourceIdeaId) {
+            await addIdeaToItineraryForUser({
+                supabase,
+                userId: user.id,
+                tripId: sharedTripId,
+                ideaId: sourceIdeaId,
+                input: {
+                    itemDate: sharedInput.itemDate,
+                    startTime: sharedInput.startTime,
+                    endTime: sharedInput.endTime,
+                    timezone: sharedInput.timezone,
+                    timezoneSource: sharedInput.timezoneSource,
+                },
+            });
+        } else {
+            await createItineraryItemForUser({
+                supabase,
+                userId: user.id,
+                tripId: sharedTripId,
+                input: sharedInput,
+                coverFormData: formData,
+                sourceFormData: formData,
+            });
+        }
         if (shouldPreserveItineraryView(formData)) {
             revalidateItineraryPaths(sharedTripId);
             return;
@@ -3747,68 +3456,18 @@ async function removeTripFamilyMember(formData: FormData) {
 
 async function createTripIdea(formData: FormData) {
     "use server";
-
     const supabase = await createClient();
-
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
-    const payload = getIdeaPayload(formData, user.id);
-    payload.trip_leg_id = await resolveTripLegIdForLocation({
+    if (!user) redirect("/auth/login");
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const idea = await createIdeaForUser({
         supabase,
-        tripId: payload.trip_id,
-        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
-        city: payload.location_city,
-        region: payload.location_region,
-        country: payload.location_country,
-        countryCode: payload.location_country_code,
+        userId: user.id,
+        tripId,
+        input: parseIdeaFormData(formData),
     });
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", payload.trip_id)
-        .single();
-
-    if (tripError || !trip) {
-        console.error("Error confirming trip for idea:", tripError);
-        throw new Error("Could not create trip idea");
-    }
-
-    const error = await insertTripIdeaPayloadWithFallback(payload);
-
-    if (error) {
-        console.error("Error creating trip idea:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            payload,
-        });
-        throw new Error(
-            `Could not create trip idea: ${
-                error.message ?? "Unknown Supabase error"
-            }`
-        );
-    }
-
-    if (!payload.is_private) {
-        await supabase.rpc("notify_trip_members", {
-            target_trip_id: payload.trip_id,
-            notification_type: "trip_item_added",
-            notification_title: "Trip idea added",
-            notification_body: `${payload.title || "An idea"} was added to the trip.`,
-            notification_metadata: {
-                itemType: "trip_idea",
-            },
-        });
-    }
-
     await markOnboardingStepCompleted({
         supabase,
         userId: user.id,
@@ -3819,221 +3478,70 @@ async function createTripIdea(formData: FormData) {
     redirect(
         getTransportationReturnPath(
             formData,
-            payload.trip_id,
-            `/trips/${payload.trip_id}?tab=ideas`
+            idea.trip_id,
+            `/trips/${idea.trip_id}?tab=ideas`
         )
     );
 }
 
 async function createTripIdeasFromNotepad(formData: FormData) {
     "use server";
-
     const supabase = await createClient();
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
     if (!user) redirect("/auth/login");
-
     const tripId = String(formData.get("trip_id") || "").trim();
     const titles = splitNotepadLines(String(formData.get("entries") || "")).slice(
         0,
         30
     );
     const locations = parseNotepadLocations(formData.get("locations")).slice(0, 10);
-
-    if (!tripId || titles.length === 0 || locations.length === 0) {
-        throw new Error("Choose at least one trip city and enter at least one idea.");
-    }
-
-    if (titles.length * locations.length > 100) {
-        throw new Error("Create no more than 100 idea cards at a time.");
-    }
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", tripId)
-        .single();
-
-    if (tripError || !trip) throw new Error("Could not create trip ideas.");
-
-    const requestedTripLegIds = locations
-        .map((location) => location.tripLegId)
-        .filter(Boolean) as string[];
-    const validTripLegIds = new Set<string>();
-
-    if (requestedTripLegIds.length > 0) {
-        const { data: tripLegRows } = await supabase
-            .from("trip_legs")
-            .select("id")
-            .eq("trip_id", tripId)
-            .in("id", requestedTripLegIds);
-        (tripLegRows || []).forEach((row) => validTripLegIds.add(row.id));
-    }
-
-    const payloads = locations.flatMap((location) =>
-        titles.map(
-            (title): TripIdeaPayload => ({
-                created_by: user.id,
-                trip_id: tripId,
-                title,
-                description: null,
-                category: "Other",
-                tags: [],
-                days_of_week: [],
-                availability_start_date: null,
-                availability_end_date: null,
-                time_of_day: [],
-                opens_at: null,
-                closes_at: null,
-                location: location.label,
-                formatted_address: null,
-                google_place_id: location.googlePlaceId || null,
-                location_lat: null,
-                location_lng: null,
-                location_city: location.city || location.label,
-                location_region: null,
-                location_country: location.country || null,
-                location_country_code: location.countryCode || null,
-                location_postal_code: null,
-                location_website: null,
-                ticket_website: null,
-                is_24_hours: false,
-                ticket_policy: "any",
-                age_policy: "all_ages",
-                dress_code: null,
-                other_notes: null,
-                trip_leg_id:
-                    location.tripLegId && validTripLegIds.has(location.tripLegId)
-                        ? location.tripLegId
-                        : null,
-                is_private: false,
-                is_archived: false,
-                attended: false,
-            })
-        )
-    );
-    const insertError = await insertTripIdeaPayloadsWithFallback(payloads);
-    if (insertError) {
-        console.error("Error creating notepad idea cards:", insertError);
-        throw new Error("Could not create all idea cards.");
-    }
-
-    await supabase.rpc("notify_trip_members", {
-        target_trip_id: tripId,
-        notification_type: "trip_item_added",
-        notification_title: "Trip ideas added",
-        notification_body: `${titles.length * locations.length} ideas were added from the trip notepad.`,
-        notification_metadata: { itemType: "trip_idea" },
+    await createIdeasFromNotepadForUser({
+        supabase,
+        userId: user.id,
+        tripId,
+        input: { entries: titles, locations },
     });
-
     revalidateItineraryPaths(tripId);
     redirect(`/trips/${tripId}?tab=ideas`);
 }
 
 async function updateTripIdea(formData: FormData) {
     "use server";
-
     const supabase = await createClient();
-
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
-    const ideaId = formData.get("idea_id") as string;
-    const payload = getIdeaPayload(formData, user.id);
-    payload.trip_leg_id = await resolveTripLegIdForLocation({
+    if (!user) redirect("/auth/login");
+    const ideaId = String(formData.get("idea_id") || "").trim();
+    const tripId = String(formData.get("trip_id") || "").trim();
+    await updateIdeaForUser({
         supabase,
-        tripId: payload.trip_id,
-        explicitTripLegId: String(formData.get("trip_leg_id") || ""),
-        city: payload.location_city,
-        region: payload.location_region,
-        country: payload.location_country,
-        countryCode: payload.location_country_code,
-    });
-    const { created_by: _createdBy, trip_id: _tripId, ...updatePayload } = payload;
-    void _createdBy;
-    void _tripId;
-
-    const { data: trip, error: tripError } = await supabase
-        .from("trips")
-        .select("id")
-        .eq("id", payload.trip_id)
-        .single();
-
-    if (tripError || !trip) {
-        console.error("Error confirming trip for idea update:", tripError);
-        throw new Error("Could not update trip idea");
-    }
-
-    const error = await updateTripIdeaPayloadWithFallback(
-        {
-            ...updatePayload,
-            updated_at: new Date().toISOString(),
-        },
+        userId: user.id,
+        tripId,
         ideaId,
-        payload.trip_id
-    );
-
-    if (error) {
-        console.error("Error updating trip idea:", error);
-        throw new Error("Could not update trip idea");
-    }
-
+        input: parseIdeaFormData(formData),
+    });
     redirect(
         getTransportationReturnPath(
             formData,
-            payload.trip_id,
-            `/trips/${payload.trip_id}?tab=ideas`
+            tripId,
+            `/trips/${tripId}?tab=ideas`
         )
     );
 }
 
 async function deleteTripIdea(formData: FormData) {
     "use server";
-
     const supabase = await createClient();
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
-    const tripId = String(formData.get("trip_id") || "");
-    const ideaId = String(formData.get("idea_id") || "");
-
-    if (!tripId || !ideaId) {
-        throw new Error("Could not delete trip idea");
-    }
-
-    const { data: deletedIdea, error } = await supabase
-        .from("trip_ideas")
-        .delete()
-        .eq("id", ideaId)
-        .eq("trip_id", tripId)
-        .select("id")
-        .maybeSingle();
-
-    if (error || !deletedIdea) {
-        console.error("Error deleting trip idea:", {
-            message: error?.message || "No matching idea was deleted",
-            code: error?.code,
-            details: error?.details,
-            hint: error?.hint,
-            tripId,
-            ideaId,
-            userId: user.id,
-        });
-        throw new Error("Could not delete trip idea");
-    }
-
+    if (!user) redirect("/auth/login");
+    const tripId = String(formData.get("trip_id") || "").trim();
+    const ideaId = String(formData.get("idea_id") || "").trim();
+    await deleteIdeaForUser({ supabase, userId: user.id, tripId, ideaId });
     redirect(
         getTransportationReturnPath(
             formData,
@@ -4085,50 +3593,15 @@ async function saveTripNotes(formData: FormData) {
 
 async function toggleTripIdeaAttended(formData: FormData) {
     "use server";
-
     const supabase = await createClient();
-
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
+    if (!user) redirect("/auth/login");
     const tripId = String(formData.get("trip_id") || "");
     const ideaId = String(formData.get("idea_id") || "");
     const attended = String(formData.get("attended") || "") === "true";
-    const payload = {
-        attended,
-        updated_at: new Date().toISOString(),
-    };
-
-    if (!tripId || !ideaId) {
-        throw new Error("Could not update trip idea attended status");
-    }
-
-    const { error } = await supabase
-        .from("trip_ideas")
-        .update(payload)
-        .eq("id", ideaId)
-        .eq("trip_id", tripId);
-
-    if (error) {
-        console.error("Error updating trip idea attended status:", {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            hint: error.hint,
-            payload,
-        });
-        throw new Error(
-            `Could not update trip idea attended status: ${
-                error.message ?? "Unknown Supabase error"
-            }`
-        );
-    }
-
+    await setIdeaAttendedForUser({ supabase, userId: user.id, tripId, ideaId, attended });
     revalidatePath(`/trips/${tripId}`);
 }
 
@@ -4142,101 +3615,18 @@ function getDefaultItineraryView(
 
 async function toggleTripIdeaReaction(formData: FormData) {
     "use server";
-
     const supabase = await createClient();
-
     const {
         data: { user },
     } = await supabase.auth.getUser();
-
-    if (!user) {
-        redirect("/auth/login");
-    }
-
+    if (!user) redirect("/auth/login");
     const tripId = String(formData.get("trip_id") || "");
     const ideaId = String(formData.get("idea_id") || "");
     const reaction = normalizeIdeaReaction(formData.get("reaction"));
-
     if (!tripId || !ideaId || !reaction) {
         throw new Error("Could not update idea reaction: missing reaction data");
     }
-
-    const { data: existingReaction, error: existingReactionError } = await supabase
-        .from("trip_idea_reactions")
-        .select("id,reaction")
-        .eq("trip_id", tripId)
-        .eq("idea_id", ideaId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-    if (existingReactionError) {
-        console.error("Error loading idea reaction:", {
-            message: existingReactionError.message,
-            code: existingReactionError.code,
-            details: existingReactionError.details,
-            hint: existingReactionError.hint,
-        });
-        throw new Error(
-            `Could not update idea reaction: ${
-                existingReactionError.message || "Unknown Supabase error"
-            }`
-        );
-    }
-
-    if (
-        existingReaction &&
-        normalizeIdeaReaction(
-            (existingReaction as { reaction?: unknown }).reaction
-        ) === reaction
-    ) {
-        const { error } = await supabase
-            .from("trip_idea_reactions")
-            .delete()
-            .eq("trip_id", tripId)
-            .eq("idea_id", ideaId)
-            .eq("user_id", user.id);
-
-        if (error) {
-            console.error("Error deleting idea reaction:", {
-                message: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint,
-            });
-            throw new Error(
-                `Could not update idea reaction: ${
-                    error.message || "Unknown Supabase error"
-                }`
-            );
-        }
-    } else {
-        const payload = {
-            trip_id: tripId,
-            idea_id: ideaId,
-            user_id: user.id,
-            reaction,
-            updated_at: new Date().toISOString(),
-        };
-        const { error } = await supabase
-            .from("trip_idea_reactions")
-            .upsert(payload, { onConflict: "idea_id,user_id" });
-
-        if (error) {
-            console.error("Error upserting idea reaction:", {
-                message: error.message,
-                code: error.code,
-                details: error.details,
-                hint: error.hint,
-                payload,
-            });
-            throw new Error(
-                `Could not update idea reaction: ${
-                    error.message || "Unknown Supabase error"
-                }`
-            );
-        }
-    }
-
+    await toggleIdeaReactionForUser({ supabase, userId: user.id, tripId, ideaId, reaction });
     revalidatePath(`/trips/${tripId}`);
 }
 

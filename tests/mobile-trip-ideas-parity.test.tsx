@@ -135,8 +135,8 @@ describe("mobile Trip Ideas strict visual parity", () => {
       );
       expect(screen.getByText("Private")).toBeInTheDocument();
       expect(screen.getByTitle("Alex Rivera")).toHaveTextContent("AR");
-      expect(screen.getByRole("button", { name: "Edit Visit the Biodome" })).toBeDisabled();
-      expect(screen.getAllByRole("button", { name: "Add to itinerary" })[0]).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Edit Visit the Biodome" })).toBeEnabled();
+      expect(screen.getAllByRole("button", { name: "Add to itinerary" })[0]).toBeEnabled();
       expect(screen.getByRole("link", { name: "Venue" })).toHaveAttribute(
         "href",
         "https://example.com/venue",
@@ -174,5 +174,33 @@ describe("mobile Trip Ideas strict visual parity", () => {
     await waitFor(() => {
       expect(screen.getByText(/Add a restaurant, museum/)).toBeInTheDocument();
     });
+  });
+
+  it("submits the shared create flow once and returns to the ideas list", async () => {
+    const onEditorClose = vi.fn();
+    const createIdea = vi.fn().mockResolvedValue({ idea: { id: "idea-new" } });
+    const apiClient = {
+      getTrip: vi.fn().mockResolvedValue(detail),
+      createIdea,
+    } as unknown as MobileApiClient;
+    render(
+      <TripIdeasScreen
+        apiClient={apiClient}
+        tripId="trip-1"
+        editorAction="new"
+        onEditorClose={onEditorClose}
+      />,
+    );
+    await screen.findByRole("heading", { name: "Add thing to do" });
+    fireEvent.change(screen.getByLabelText("Location"), { target: { value: "Old Montreal" } });
+    fireEvent.change(screen.getByLabelText(/Name/), { target: { value: "Walking tour" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add thing to do" }));
+    await waitFor(() => expect(createIdea).toHaveBeenCalledTimes(1));
+    expect(createIdea).toHaveBeenCalledWith(
+      "trip-1",
+      expect.objectContaining({ title: "Walking tour", location: "Old Montreal" }),
+      expect.objectContaining({ idempotencyKey: expect.any(String) }),
+    );
+    await waitFor(() => expect(onEditorClose).toHaveBeenCalledTimes(1));
   });
 });

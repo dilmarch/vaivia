@@ -158,6 +158,12 @@ export type TripIdea = {
     location_postal_code?: string | null;
     location_website?: string | null;
     ticket_website?: string | null;
+    url?: string | null;
+    estimated_cost?: number | null;
+    currency?: string | null;
+    timezone?: string | null;
+    timezone_source?: string | null;
+    trip_leg_id?: string | null;
     is_24_hours?: boolean;
     ticket_policy?: IdeaTicketPolicy | string | null;
     ticket_type?: string | null;
@@ -428,11 +434,26 @@ export function normalizeTripIdea(record: Record<string, unknown>): TripIdea {
         location_website:
             typeof record.location_website === "string"
                 ? record.location_website
+                : typeof record.url === "string"
+                  ? record.url
                 : null,
         ticket_website:
             typeof record.ticket_website === "string"
                 ? record.ticket_website
                 : null,
+        url: typeof record.url === "string" ? record.url : null,
+        estimated_cost:
+            typeof record.estimated_cost === "number"
+                ? record.estimated_cost
+                : record.estimated_cost === null || record.estimated_cost === undefined
+                  ? null
+                  : Number(record.estimated_cost),
+        currency: typeof record.currency === "string" ? record.currency : null,
+        timezone: typeof record.timezone === "string" ? record.timezone : null,
+        timezone_source:
+            typeof record.timezone_source === "string" ? record.timezone_source : null,
+        trip_leg_id:
+            typeof record.trip_leg_id === "string" ? record.trip_leg_id : null,
         is_24_hours: Boolean(record.is_24_hours),
         ticket_policy: normalizeIdeaTicketPolicy(
             record.ticket_policy ?? record.ticket_type

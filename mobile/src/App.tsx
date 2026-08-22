@@ -236,7 +236,13 @@ export default function App() {
         />
       )
     ) : activeTripView === "ideas" ? (
-      <TripIdeasScreen apiClient={apiClient} tripId={selectedTripId} />
+      <TripIdeasScreen
+        apiClient={apiClient}
+        tripId={selectedTripId}
+        editorAction={route.name === "trip" ? route.itemId : undefined}
+        onEditorAction={(itemId) => push({ name: "trip", tripId: selectedTripId, view: "ideas", itemId })}
+        onEditorClose={() => back({ name: "trip", tripId: selectedTripId, view: "ideas" })}
+      />
     ) : activeTripView === "budget" ? (
       <TripBudgetScreen
         apiClient={apiClient}
@@ -321,7 +327,7 @@ export default function App() {
         onProfile={() => push({ name: "profile" })}
         onSettings={() => push({ name: "settings" })}
         onCreateTrip={() => push({ name: "trip-create" })}
-        onCreateItineraryItem={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "itinerary", itemId: "new" }) : undefined}
+        onCreateIdea={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "ideas", itemId: "new" }) : undefined}
         onCreateExpense={selectedTripId ? () => push({ name: "trip", tripId: selectedTripId, view: "budget", itemId: "add-expense" }) : undefined}
         onSignOut={async () => {
           await returnToLogin();
