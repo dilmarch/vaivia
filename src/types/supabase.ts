@@ -4500,6 +4500,74 @@ export type Database = {
         }
         Relationships: []
       }
+      user_immunization_doses: {
+        Row: {
+          administered_on: string | null
+          created_at: string
+          dose_number: number
+          id: string
+          immunization_id: string
+          location: string | null
+          updated_at: string
+        }
+        Insert: {
+          administered_on?: string | null
+          created_at?: string
+          dose_number: number
+          id?: string
+          immunization_id: string
+          location?: string | null
+          updated_at?: string
+        }
+        Update: {
+          administered_on?: string | null
+          created_at?: string
+          dose_number?: number
+          id?: string
+          immunization_id?: string
+          location?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_immunization_doses_immunization_id_fkey"
+            columns: ["immunization_id"]
+            isOneToOne: false
+            referencedRelation: "user_immunizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_immunizations: {
+        Row: {
+          created_at: string
+          disease: string
+          doses_required: number
+          id: string
+          immunization_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          disease: string
+          doses_required: number
+          id?: string
+          immunization_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          disease?: string
+          doses_required?: number
+          id?: string
+          immunization_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_notification_preferences: {
         Row: {
           created_at: string
@@ -5735,6 +5803,16 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      save_user_immunization: {
+        Args: {
+          target_disease: string
+          target_doses: Json
+          target_doses_required: number
+          target_immunization_id?: string
+          target_immunization_name: string
+        }
+        Returns: string
       }
       seed_default_user_categories: {
         Args: { target_user_id: string }

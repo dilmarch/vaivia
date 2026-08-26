@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/src/types/supabase";
 
 export const DATA_EXPORT_BUCKET = "user-data-exports";
-export const DATA_EXPORT_SCHEMA_VERSION = "2026-07-14.1";
+export const DATA_EXPORT_SCHEMA_VERSION = "2026-08-26.1";
 export const DATA_EXPORT_EXPIRY_DAYS = 7;
 export const DATA_EXPORT_RATE_LIMIT_HOURS = 24;
 export const RECENT_AUTH_MAX_AGE_MINUTES = 30;
@@ -384,6 +384,7 @@ export async function buildUserDataExportZip({
             sanitize: sanitizePushSubscription,
         },
         { label: "passport_stamps", table: "user_passport_stamps", column: "user_id", value: userId },
+        { label: "immunizations", table: "user_immunizations", column: "user_id", value: userId },
         { label: "passport_stamp_shares_sent", table: "user_passport_stamp_shares", column: "sender_user_id", value: userId },
         { label: "passport_stamp_shares_received", table: "user_passport_stamp_shares", column: "recipient_user_id", value: userId },
         { label: "scratch_map_countries", table: "user_scratch_map_countries", column: "user_id", value: userId },
@@ -410,6 +411,24 @@ export async function buildUserDataExportZip({
     const datasets = await Promise.all(
         ownDatasets.map((dataset) => selectRows(supabase, dataset))
     );
+
+    const immunizationIds =
+        datasets
+            .find((dataset) => dataset.label === "immunizations")
+            ?.rows.map((row) => String(row.id || ""))
+            .filter(Boolean) || [];
+    const immunizationDoses =
+        immunizationIds.length > 0
+            ? await (supabase as unknown as RuntimeTableClient)
+                  .from("user_immunization_doses")
+                  .select("*")
+                  .in("immunization_id", immunizationIds)
+            : { data: [], error: null };
+    datasets.push({
+        label: "immunization_doses",
+        rows: (immunizationDoses.data || []) as JsonRecord[],
+        warning: immunizationDoses.error?.message,
+    });
 
     const { data: accessibleTrips, error: tripsError } = await supabase
         .from("trips")

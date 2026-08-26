@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import AnimatedModal from "@/components/AnimatedModal";
 import ScratchMap from "@/components/maps/ScratchMap";
 import PassportStampCard from "@/components/PassportStamp";
+import ImmunizationPassport from "@/components/ImmunizationPassport";
 import {
     isVaiviaThemeMode,
     type VaiviaThemeMode,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/countries/country-codes";
 import { createClient } from "@/lib/supabase/client";
 import { ProfileHeaderPresentation } from "@/components/account/ProfileHeaderPresentation";
+import type { ImmunizationPassportEntry } from "@/lib/immunizationPassport";
 
 export type UserProfile = {
     id: string;
@@ -70,6 +72,7 @@ type AccountMenuProps = {
     joinedAt?: string | null;
     profile?: Partial<UserProfile> | null;
     preferences?: Partial<UserPreferences> | null;
+    immunizations?: ImmunizationPassportEntry[];
     variant?:
         | "top"
         | "sidebar-profile"
@@ -923,6 +926,7 @@ export default function AccountMenu({
     joinedAt,
     profile,
     preferences,
+    immunizations = [],
     variant = "top",
 }: AccountMenuProps) {
     const router = useRouter();
@@ -4395,6 +4399,10 @@ export default function AccountMenu({
                             </p>
                         )}
                     </section>
+
+                    {isProfilePage && profile?.role === "super_admin" ? (
+                        <ImmunizationPassport initialEntries={immunizations} />
+                    ) : null}
 
                     <section className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-4 shadow-xl shadow-black/20">
                         <div className="flex flex-wrap items-end justify-between gap-3">
