@@ -133,6 +133,12 @@ import {
     updateTransportationPayloadWithFallback as persistTransportationUpdateWithFallback,
 } from "@/lib/transport/mutations";
 import {
+    getCanonicalFlightPersistenceFields,
+    getTransportationAirlineCode,
+    getTransportationAirlineName,
+    getTransportationFlightNumber,
+} from "@/lib/transport/flightFields";
+import {
     getTripHref,
     getTripItineraryHref,
     resolveTripRouteParam,
@@ -887,9 +893,9 @@ function normalizeTransportationItem(
         "destination",
         "to_location",
     ]);
-    const flightNumber = getStringValue(item, ["flight_number", "transport_number"]);
-    const airlineName = getStringValue(item, ["airline_name", "provider_name"]);
-    const airlineCode = getStringValue(item, ["airline_code", "provider_code"]);
+    const flightNumber = getTransportationFlightNumber(item);
+    const airlineName = getTransportationAirlineName(item);
+    const airlineCode = getTransportationAirlineCode(item);
     const reservationCode = getStringValue(item, ["reservation_code"]);
     const title =
         storedTitle ||
@@ -2455,6 +2461,11 @@ async function createTransportationItem(formData: FormData) {
                           airline_name: leg.airlineName || airlineName || null,
                           airline_code: legAirlineCode || null,
                           flight_number: legFlightNumber || null,
+                          ...getCanonicalFlightPersistenceFields({
+                              airlineName: leg.airlineName || airlineName,
+                              airlineCode: legAirlineCode,
+                              flightNumber: legFlightNumber,
+                          }),
                           reservation_code: reservationCode || null,
                           cost: leg.cost
                               ? Number(String(leg.cost).replace(/,/g, ""))
@@ -2534,6 +2545,11 @@ async function createTransportationItem(formData: FormData) {
                       airline_name: airlineName || null,
                       airline_code: effectiveAirlineCode || null,
                       flight_number: effectiveFlightNumber || null,
+                      ...getCanonicalFlightPersistenceFields({
+                          airlineName,
+                          airlineCode: effectiveAirlineCode,
+                          flightNumber: effectiveFlightNumber,
+                      }),
                       reservation_code: reservationCode || null,
                       cost: transportationCost
                           ? Number(String(transportationCost).replace(/,/g, ""))
@@ -2859,6 +2875,11 @@ async function updateTransportationItem(formData: FormData) {
         airline_name: airlineName || null,
         airline_code: effectiveAirlineCode || null,
         flight_number: effectiveFlightNumber || null,
+        ...getCanonicalFlightPersistenceFields({
+            airlineName,
+            airlineCode: effectiveAirlineCode,
+            flightNumber: effectiveFlightNumber,
+        }),
         reservation_code: reservationCode || null,
         cost: transportationCost
             ? Number(String(transportationCost).replace(/,/g, ""))

@@ -27,6 +27,12 @@ import {
     parseItineraryFormData,
     updateItineraryItemForUser,
 } from "@/lib/itinerary/mutations";
+import {
+    getTransportationDbType,
+    getTransportationModeLabel,
+} from "@/lib/transportationModes";
+import { updateTransportationPayloadWithFallback } from "@/lib/transport/mutations";
+import { getCanonicalFlightPersistenceFields } from "@/lib/transport/flightFields";
 
 type PageProps = {
     params: Promise<{
@@ -377,6 +383,7 @@ async function updateTransportationItem(formData: FormData) {
     const itemId = rawItemId.replace("transportation:", "");
     const departureLocation = formData.get("departure_location") as string;
     const arrivalLocation = formData.get("arrival_location") as string;
+    const mode = String(formData.get("transportation_mode") || "");
     const itemDate = formData.get("item_date") as string;
     const endDate = formData.get("end_date") as string;
     const startTime = formData.get("start_time") as string;
@@ -397,13 +404,14 @@ async function updateTransportationItem(formData: FormData) {
     const isPrivate =
         formData.get("is_private") === "on" ||
         formData.get("is_private") === "true";
-    const title = flightNumber
+    const title = mode === "airplane" && flightNumber
         ? `${flightNumber} ${departureLocation || ""} to ${arrivalLocation || ""}`.trim()
-        : `Airplane: ${departureLocation || "Departure"} to ${
+        : `${getTransportationModeLabel(mode)}: ${departureLocation || "Departure"} to ${
               arrivalLocation || "Arrival"
           }`;
     const payload: TransportationItemUpdatePayload = {
         title,
+        transport_type: getTransportationDbType(mode),
         status: status || "tentative",
         item_date: itemDate || null,
         date: itemDate || null,
@@ -423,6 +431,11 @@ async function updateTransportationItem(formData: FormData) {
         airline_name: airlineName || null,
         airline_code: airlineCode || null,
         flight_number: flightNumber || null,
+        ...getCanonicalFlightPersistenceFields({
+            airlineName,
+            airlineCode,
+            flightNumber,
+        }),
         reservation_code: reservationCode || null,
         cost: transportationCost
             ? Number(String(transportationCost).replace(/,/g, ""))
@@ -435,11 +448,12 @@ async function updateTransportationItem(formData: FormData) {
         notes,
     };
 
-    const { error } = await supabase
-        .from("transportation_items")
-        .update(payload)
-        .eq("id", itemId)
-        .eq("trip_id", tripId);
+    const error = await updateTransportationPayloadWithFallback({
+        supabase,
+        payload,
+        itemId,
+        tripId,
+    });
 
     if (error) {
         console.error("Error updating transportation item:", error);

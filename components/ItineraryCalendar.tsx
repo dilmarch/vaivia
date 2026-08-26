@@ -55,6 +55,7 @@ import {
 import { getIataAirportCode } from "@/lib/airportCodes";
 import { getAirlineCodeFromFlightNumber } from "@/lib/airlineIcons";
 import { stripStructuredFlightNotes } from "@/lib/flightNotes";
+import { getFlightTitleLabel } from "@/lib/transport/flightFields";
 import { addVaiviaUtmAttribution } from "@/lib/outboundLinks";
 import {
     getLocalTimezone,
@@ -1022,10 +1023,12 @@ function getFlightDisplayData(item: ItineraryCalendarItem): FlightDisplayData | 
     ]
         .filter(Boolean)
         .join(" → ");
-    const titleLabel =
-        [airlineName, flightNumber].filter(Boolean).join(" ") ||
-        [airlineCode, flightNumber].filter(Boolean).join(" ") ||
-        item.title;
+    const titleLabel = getFlightTitleLabel({
+        airlineName,
+        airlineCode,
+        flightNumber,
+        title: item.title,
+    });
 
     return {
         airlineName,

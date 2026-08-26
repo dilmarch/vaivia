@@ -184,4 +184,59 @@ describe("transportation form fields", () => {
       document.querySelector('input[name="transportation_mode"]'),
     ).toHaveValue("subway");
   });
+
+  it("prefills canonical Supabase flight fields without dropping the flight number", () => {
+    render(
+      <TransportationEditForm
+        tripId="trip-1"
+        itemId="transportation-1"
+        submitAction={vi.fn()}
+        initialItem={{
+          transport_type: "flight",
+          departure_date: "2026-10-03",
+          departure_time: "14:40:00",
+          arrival_date: "2026-10-03",
+          arrival_time: "16:50:00",
+          transport_number: "JX717",
+          provider_name: "STARLUX Airlines",
+          provider_code: "JX",
+        }}
+      />,
+    );
+
+    expect(document.querySelector('input[name="flight_number"]')).toHaveValue(
+      "JX717",
+    );
+    expect(document.querySelector('input[name="airline_name"]')).toHaveValue(
+      "STARLUX Airlines",
+    );
+    expect(document.querySelector('input[name="airline_code"]')).toHaveValue(
+      "JX",
+    );
+    expect(document.querySelector('input[name="item_date"]')).toHaveValue(
+      "2026-10-03",
+    );
+    expect(document.querySelector('input[name="start_time"]')).toHaveValue(
+      "14:40",
+    );
+  });
+
+  it("recovers a legacy flight number from the saved title before editing", () => {
+    render(
+      <TransportationEditForm
+        tripId="trip-1"
+        itemId="transportation-1"
+        submitAction={vi.fn()}
+        initialItem={{
+          transport_type: "flight",
+          title: "JX717 Taiwan Taoyuan to Hanoi",
+          provider_code: "JX",
+        }}
+      />,
+    );
+
+    expect(document.querySelector('input[name="flight_number"]')).toHaveValue(
+      "JX717",
+    );
+  });
 });

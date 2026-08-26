@@ -18,6 +18,11 @@ import type {
     TransportationTraveler,
     TransportationTravelerOptions,
 } from "@/lib/travelers";
+import {
+    getTransportationAirlineCode,
+    getTransportationAirlineName,
+    getTransportationFlightNumber,
+} from "@/lib/transport/flightFields";
 
 const TRANSPORTATION_STATUS_OPTIONS = [
     { value: "planned", label: "Planned" },
@@ -47,10 +52,15 @@ type TransportationEditFormProps = {
         transportation_mode?: string | null;
         transport_type?: string | null;
         status?: string | null;
+        title?: string | null;
         item_date?: string | null;
+        departure_date?: string | null;
         end_date?: string | null;
+        arrival_date?: string | null;
         start_time?: string | null;
+        departure_time?: string | null;
         end_time?: string | null;
+        arrival_time?: string | null;
         departure_location?: string | null;
         arrival_location?: string | null;
         departure_timezone?: string | null;
@@ -58,8 +68,11 @@ type TransportationEditFormProps = {
         departure_terminal?: string | null;
         arrival_terminal?: string | null;
         flight_number?: string | null;
+        transport_number?: string | null;
         airline_name?: string | null;
+        provider_name?: string | null;
         airline_code?: string | null;
+        provider_code?: string | null;
         reservation_code?: string | null;
         cost?: number | null;
         currency?: string | null;
@@ -105,10 +118,18 @@ export default function TransportationEditForm({
     const [arrivalTimezone, setArrivalTimezone] = useState(
         initialItem.arrival_timezone || ""
     );
-    const [departureDate, setDepartureDate] = useState(initialItem.item_date || "");
-    const [departureTime, setDepartureTime] = useState(initialItem.start_time || "");
-    const [arrivalDate, setArrivalDate] = useState(initialItem.end_date || "");
-    const [arrivalTime, setArrivalTime] = useState(initialItem.end_time || "");
+    const [departureDate, setDepartureDate] = useState(
+        initialItem.item_date || initialItem.departure_date || ""
+    );
+    const [departureTime, setDepartureTime] = useState(
+        initialItem.start_time || initialItem.departure_time || ""
+    );
+    const [arrivalDate, setArrivalDate] = useState(
+        initialItem.end_date || initialItem.arrival_date || ""
+    );
+    const [arrivalTime, setArrivalTime] = useState(
+        initialItem.end_time || initialItem.arrival_time || ""
+    );
     const [audienceMode, setAudienceMode] = useState<TripAudienceMode>(
         initialItem.audience_mode || "everyone"
     );
@@ -122,6 +143,9 @@ export default function TransportationEditForm({
             : initialItem.transport_type) ||
         "";
     const isAirplane = transportationMode === "airplane";
+    const initialFlightNumber = getTransportationFlightNumber(initialItem);
+    const initialAirlineName = getTransportationAirlineName(initialItem);
+    const initialAirlineCode = getTransportationAirlineCode(initialItem);
     const duration = getZonedDurationLabel({
         startDate: departureDate,
         startTime: departureTime,
@@ -335,7 +359,7 @@ export default function TransportationEditForm({
                             Flight number
                             <input
                                 name="flight_number"
-                                defaultValue={initialItem.flight_number || ""}
+                                defaultValue={initialFlightNumber}
                                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                             />
                         </label>
@@ -343,7 +367,7 @@ export default function TransportationEditForm({
                             Airline
                             <input
                                 name="airline_name"
-                                defaultValue={initialItem.airline_name || ""}
+                                defaultValue={initialAirlineName}
                                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                             />
                         </label>
@@ -351,7 +375,7 @@ export default function TransportationEditForm({
                             Airline code
                             <input
                                 name="airline_code"
-                                defaultValue={initialItem.airline_code || ""}
+                                defaultValue={initialAirlineCode}
                                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900"
                             />
                         </label>
@@ -434,8 +458,8 @@ export default function TransportationEditForm({
                         targetTrips={moveTargetTrips}
                         moveAction={moveItemAction}
                         itemLabel={
-                            initialItem.flight_number ||
-                            initialItem.airline_name ||
+                            initialFlightNumber ||
+                            initialAirlineName ||
                             "transportation"
                         }
                         className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
