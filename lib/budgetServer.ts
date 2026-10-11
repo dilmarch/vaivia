@@ -359,7 +359,7 @@ export async function loadBudgetParticipantsWithClient(
                 .eq("status", "active"),
             supabase
                 .from("trip_invitations")
-                .select("id,invitee_email,invitee_username,status")
+                .select("id,invited_email,invited_username,status")
                 .eq("trip_id", tripId)
                 .eq("status", "pending"),
             supabase
@@ -446,7 +446,7 @@ export async function loadBudgetParticipantsWithClient(
         (invitationRows || []) as Record<string, unknown>[]
     ).map((invitation) => {
         const label = String(
-            invitation.invitee_username || invitation.invitee_email || "Pending invite"
+            invitation.invited_username || invitation.invited_email || "Pending invite"
         );
         return {
             id: String(invitation.id),
