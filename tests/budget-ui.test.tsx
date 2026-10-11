@@ -329,6 +329,115 @@ describe("expense entry", () => {
 });
 
 describe("expense reporting", () => {
+    it("shows shared spending by member and excludes just-me expenses", () => {
+        const sharedExpense: TripExpense = {
+            id: "expense-shared",
+            trip_id: "trip-a",
+            expense_date: "2026-07-19",
+            description: "Hotel",
+            category: "accommodations",
+            amount: 300,
+            currency: "CAD",
+            reporting_currency: "CAD",
+            exchange_rate_used: 1,
+            exchange_rate_is_manual: false,
+            amount_in_reporting_currency: 300,
+            paid_by_user_id: "user-a",
+            split_method: "equal",
+            source_type: "manual",
+        };
+        const privateExpense: TripExpense = {
+            ...sharedExpense,
+            id: "expense-private",
+            description: "Solo ticket",
+            amount: 75,
+            amount_in_reporting_currency: 75,
+            split_method: "just_me",
+        };
+
+        render(
+            <BudgetFeatureClient
+                tripId="trip-a"
+                tripTitle="Japan"
+                budget={null}
+                lineItems={[]}
+                expenses={[sharedExpense, privateExpense]}
+                participants={participants}
+                defaultCurrency="CAD"
+                mode="expenses"
+            />
+        );
+
+        const alexCard = screen.getByRole("article", {
+            name: "Alex shared expenses paid",
+        });
+        const blairCard = screen.getByRole("article", {
+            name: "Blair shared expenses paid",
+        });
+        expect(within(alexCard).getByText("CA$300.00")).toBeInTheDocument();
+        expect(within(blairCard).getByText("CA$0.00")).toBeInTheDocument();
+        expect(within(alexCard).queryByText("CA$375.00")).not.toBeInTheDocument();
+    });
+
+    it("resolves user-id and trip-member-id aliases to the member name", () => {
+        const expense: TripExpense = {
+            id: "expense-a",
+            trip_id: "trip-a",
+            expense_date: "2026-07-19",
+            description: "Museum",
+            category: "entertainment",
+            amount: 100,
+            currency: "CAD",
+            reporting_currency: "CAD",
+            exchange_rate_used: 1,
+            exchange_rate_is_manual: false,
+            amount_in_reporting_currency: 100,
+            paid_by_trip_member_id: "member-a",
+            split_method: "equal",
+            source_type: "manual",
+        };
+
+        render(
+            <BudgetFeatureClient
+                tripId="trip-a"
+                tripTitle="Japan"
+                budget={null}
+                lineItems={[]}
+                expenses={[expense]}
+                splits={[
+                    {
+                        id: "split-a",
+                        expense_id: "expense-a",
+                        trip_id: "trip-a",
+                        participant_kind: "member",
+                        trip_member_id: "member-a",
+                        split_amount: 50,
+                        currency: "CAD",
+                        amount_in_reporting_currency: 50,
+                        is_included: true,
+                    },
+                    {
+                        id: "split-b",
+                        expense_id: "expense-a",
+                        trip_id: "trip-a",
+                        participant_kind: "member",
+                        user_id: "user-b",
+                        split_amount: 50,
+                        currency: "CAD",
+                        amount_in_reporting_currency: 50,
+                        is_included: true,
+                    },
+                ]}
+                participants={participants}
+                defaultCurrency="CAD"
+                mode="expenses"
+            />
+        );
+
+        expect(screen.getByText("Blair owes Me")).toBeInTheDocument();
+        expect(screen.queryByText(/Someone owes/)).not.toBeInTheDocument();
+    });
+
     it("shows payer and paid-for avatars and keeps exchange rate optional", () => {
         const expense: TripExpense = {
             id: "expense-a",

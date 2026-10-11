@@ -148,6 +148,26 @@ function participantValue(participant: BudgetParticipant) {
   return `guest:${participant.guestName || participant.label}`;
 }
 
+function participantValues(participant: BudgetParticipant) {
+  const values = new Set([participantValue(participant)]);
+  if (participant.kind === "member" && participant.tripMemberId) {
+    values.add(`member:${participant.tripMemberId}`);
+  }
+  if (participant.kind === "member" && participant.userId) {
+    values.add(`member_user:${participant.userId}`);
+  }
+  return values;
+}
+
+function getParticipantFromValue(
+  value: string,
+  participants: BudgetParticipant[],
+) {
+  return participants.find((participant) =>
+    participantValues(participant).has(value),
+  );
+}
+
 function getBudgetParticipantLabel(participant?: BudgetParticipant | null) {
   if (!participant) return null;
   return participant.isCurrentUser ? "Me" : participant.label;
@@ -269,9 +289,7 @@ function getParticipantLabelFromValue(
   value: string,
   participants: BudgetParticipant[],
 ) {
-  const participant = participants.find(
-    (option) => participantValue(option) === value,
-  );
+  const participant = getParticipantFromValue(value, participants);
   const participantLabel = getBudgetParticipantLabel(participant);
   if (participantLabel) return participantLabel;
   if (value.startsWith("guest:")) return value.replace(/^guest:/, "") || "Guest";
@@ -294,15 +312,25 @@ export function calculateBudgetSettlements({
     { value: string; label: string; amount: number }
   >();
   const expenseById = new Map(expenses.map((expense) => [expense.id, expense]));
+  const canonicalValueByAlias = new Map<string, string>();
+  participants.forEach((participant) => {
+    const canonicalValue = participantValue(participant);
+    participantValues(participant).forEach((value) => {
+      canonicalValueByAlias.set(value, canonicalValue);
+    });
+  });
+  const canonicalizeValue = (value: string) =>
+    canonicalValueByAlias.get(value) || value;
   const ensureBalance = (value: string) => {
-    if (!balances.has(value)) {
-      balances.set(value, {
-        value,
-        label: getParticipantLabelFromValue(value, participants),
+    const canonicalValue = canonicalizeValue(value);
+    if (!balances.has(canonicalValue)) {
+      balances.set(canonicalValue, {
+        value: canonicalValue,
+        label: getParticipantLabelFromValue(canonicalValue, participants),
         amount: 0,
       });
     }
-    return balances.get(value)!;
+    return balances.get(canonicalValue)!;
   };
 
   participants.forEach((participant) => ensureBalance(participantValue(participant)));
@@ -358,6 +386,37 @@ export function calculateBudgetSettlements({
     if (creditor.amount < 0.01) creditorIndex += 1;
   }
   return settlements;
+}
+
+function calculateSharedSpendingByMember({
+  expenses,
+  participants,
+}: {
+  expenses: TripExpense[];
+  participants: BudgetParticipant[];
+}) {
+  const members = participants.filter(
+    (participant) => participant.kind === "member",
+  );
+  const totals = new Map(
+    members.map((participant) => [participantValue(participant), 0]),
+  );
+
+  expenses.forEach((expense) => {
+    if (expense.split_method === "just_me") return;
+    const payer = getPayerParticipant(expense, participants);
+    if (!payer || payer.kind !== "member") return;
+    const value = participantValue(payer);
+    totals.set(
+      value,
+      (totals.get(value) || 0) + getExpenseReportingAmount(expense),
+    );
+  });
+
+  return members.map((participant) => ({
+    participant,
+    amount: totals.get(participantValue(participant)) || 0,
+  }));
 }
 
 function BudgetTabsPresentation({
@@ -420,6 +479,36 @@ function SummaryCard({
         {value}
       </p>
     </div>
+  );
+}
+
+function SharedSpendingCard({
+  participant,
+  amount,
+  reportingCurrency,
+}: {
+  participant: BudgetParticipant;
+  amount: number;
+  reportingCurrency: string;
+}) {
+  return (
+    <article
+      aria-label={`${participant.label} shared expenses paid`}
+      className="rounded-[1.5rem] border border-white/10 bg-white/[0.06] p-5 shadow-xl shadow-black/20"
+    >
+      <div className="flex items-center gap-3">
+        <ParticipantAvatar participant={participant} label={participant.label} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-black text-white">
+            {participant.label}
+          </p>
+          <p className="text-xs font-bold text-slate-400">Shared expenses paid</p>
+        </div>
+      </div>
+      <p className="mt-4 text-2xl font-black tracking-tight text-lime-200">
+        {formatCurrency(amount, reportingCurrency)}
+      </p>
+    </article>
   );
 }
 
@@ -927,6 +1016,10 @@ function ExpensesDashboardPresentation({
     (sum, expense) => sum + getExpenseReportingAmount(expense),
     0,
   );
+  const sharedSpendingByMember = calculateSharedSpendingByMember({
+    expenses,
+    participants,
+  });
   const settlements = calculateBudgetSettlements({
     expenses,
     splits,
@@ -969,6 +1062,32 @@ function ExpensesDashboardPresentation({
         />
         <SummaryCard label="Expenses" value={String(expenses.length)} />
       </div>
+      {sharedSpendingByMember.length > 0 ? (
+        <section aria-labelledby="shared-spending-heading">
+          <div>
+            <h2
+              id="shared-spending-heading"
+              className="text-lg font-black text-white"
+            >
+              Shared spending by member
+            </h2>
+            <p className="mt-1 text-sm font-semibold text-slate-400">
+              Amount each member paid toward shared expenses. Just me expenses
+              are excluded.
+            </p>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {sharedSpendingByMember.map(({ participant, amount }) => (
+              <SharedSpendingCard
+                key={participant.id}
+                participant={participant}
+                amount={amount}
+                reportingCurrency={reportingCurrency}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
       <RunningTotalPresentation
         settlements={settlements}
         participants={participants}
