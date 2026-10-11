@@ -538,6 +538,104 @@ export async function getExchangeRateWithClient(
     return { rate, provider: "frankfurter" };
 }
 
+export async function convertExpenseDataToReportingCurrency({
+    supabase,
+    expenses,
+    splits,
+    settlements = [],
+    reportingCurrency,
+}: {
+    supabase: UntypedSupabaseClient;
+    expenses: TripExpense[];
+    splits: TripExpenseSplit[];
+    settlements?: TripExpenseSettlement[];
+    reportingCurrency: string;
+}) {
+    const targetCurrency = normalizeCurrency(reportingCurrency);
+    const ratePromises = new Map<string, Promise<number>>();
+
+    const rateForCurrency = (date: string, sourceCurrency: string) => {
+        if (sourceCurrency === targetCurrency) return Promise.resolve(1);
+        const key = `${date}:${sourceCurrency}:${targetCurrency}`;
+        if (!ratePromises.has(key)) {
+            ratePromises.set(
+                key,
+                getExchangeRateWithClient(supabase, {
+                    date,
+                    fromCurrency: sourceCurrency,
+                    toCurrency: targetCurrency,
+                }).then((result) => result.rate),
+            );
+        }
+        return ratePromises.get(key)!;
+    };
+
+    const rateForExpense = (expense: TripExpense) => {
+        if (expense.reporting_currency === targetCurrency) {
+            return Promise.resolve(Number(expense.exchange_rate_used || 1));
+        }
+        return rateForCurrency(
+            expense.transaction_date || expense.expense_date,
+            normalizeCurrency(expense.original_currency || expense.currency),
+        );
+    };
+
+    const rates = new Map<string, number>();
+    await Promise.all(
+        expenses.map(async (expense) => {
+            rates.set(expense.id, await rateForExpense(expense));
+        }),
+    );
+
+    const convertedExpenses = expenses.map((expense) => {
+        const rate = rates.get(expense.id) || 1;
+        const originalAmount = Number(expense.original_amount ?? expense.amount);
+        return {
+            ...expense,
+            amount: originalAmount,
+            currency: normalizeCurrency(expense.original_currency || expense.currency),
+            reporting_currency: targetCurrency,
+            exchange_rate_used: rate,
+            exchange_rate_is_manual:
+                expense.reporting_currency === targetCurrency &&
+                expense.exchange_rate_is_manual,
+            amount_in_reporting_currency:
+                Math.round(originalAmount * rate * 100) / 100,
+        };
+    });
+
+    const expenseById = new Map(convertedExpenses.map((expense) => [expense.id, expense]));
+    const convertedSplits = splits.map((split) => {
+        const expense = expenseById.get(split.expense_id);
+        if (!expense) return split;
+        return {
+            ...split,
+            currency: expense.currency,
+            amount_in_reporting_currency:
+                Math.round(Number(split.split_amount || 0) * expense.exchange_rate_used * 100) /
+                100,
+        };
+    });
+
+    const convertedSettlements = await Promise.all(
+        settlements.map(async (settlement) => {
+            const sourceCurrency = normalizeCurrency(settlement.reporting_currency);
+            const rate = await rateForCurrency(settlement.settled_on, sourceCurrency);
+            return {
+                ...settlement,
+                amount: Math.round(Number(settlement.amount || 0) * rate * 100) / 100,
+                reporting_currency: targetCurrency,
+            };
+        }),
+    );
+
+    return {
+        expenses: convertedExpenses,
+        splits: convertedSplits,
+        settlements: convertedSettlements,
+    };
+}
+
 export function getDefaultBudgetLineItems(currency: string) {
     return DEFAULT_BUDGET_CATEGORIES.map((category, index) => ({
         name: category.name,

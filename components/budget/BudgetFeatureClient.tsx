@@ -1464,8 +1464,7 @@ function ExpensesDashboard(props: BudgetFeatureProps) {
     const [settlementDialog, setSettlementDialog] = useState<{
         suggestedSettlement?: BudgetSettlement;
     } | null>(null);
-    const reportingCurrency =
-        budget?.reporting_currency || defaultCurrency || "CAD";
+    const reportingCurrency = defaultCurrency || "CAD";
     const routeSegment = tripRouteSegment || tripId;
 
     useEffect(() => {

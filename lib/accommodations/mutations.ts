@@ -131,11 +131,33 @@ export function normalizeStayMutationInput(input: MobileStayMutationInput) {
 
 function budgetForm(input: MobileStayMutationInput) {
   const form = new FormData();
-  form.set("split_method", "equal");
-  for (const id of unique(input.participants?.memberIds)) form.append("audience_member_ids", id);
-  for (const id of unique(input.participants?.invitationIds)) form.append("audience_invitation_ids", id);
-  for (const id of unique(input.participants?.familyMemberIds)) form.append("audience_family_member_ids", id);
-  for (const name of unique(input.participants?.guestNames, 25)) form.append("audience_guest_names", name);
+  const audienceParticipants = [
+    ...unique(input.participants?.memberIds).map((id) => `member:${id}`),
+    ...unique(input.participants?.invitationIds).map((id) => `invitation:${id}`),
+    ...unique(input.participants?.familyMemberIds).map((id) => `family_member:${id}`),
+    ...unique(input.participants?.guestNames, 25).map((name) => `guest:${name}`),
+  ];
+  const includedParticipants = unique(input.includedParticipants);
+  const selectedParticipants = includedParticipants.length > 0
+    ? includedParticipants
+    : audienceParticipants;
+
+  form.set("split_method", input.splitMethod || "equal");
+  if (input.paidBy) form.set("paid_by", input.paidBy);
+  selectedParticipants.forEach((value) => {
+    form.append("included_participants", value);
+    const separator = value.indexOf(":");
+    const kind = value.slice(0, separator);
+    const id = value.slice(separator + 1);
+    const amount = input.splitAmounts?.[value];
+    const percentage = input.splitPercentages?.[value];
+    if (amount !== null && amount !== undefined && amount !== "") {
+      form.set(`split_amount_${kind}_${id}`, String(amount));
+    }
+    if (percentage !== null && percentage !== undefined && percentage !== "") {
+      form.set(`split_percentage_${kind}_${id}`, String(percentage));
+    }
+  });
   return form;
 }
 async function replaceParticipants(supabase: StayClient, tripId: string, itemId: string, parsedAudience: ParsedTripAudience, planning: boolean) {
@@ -193,6 +215,16 @@ export function parseStayMutationInput(value: unknown): MobileStayMutationInput 
 
 export function stayMutationInputFromFormData(form: FormData): MobileStayMutationInput {
   const strings = (name: string) => form.getAll(name).map(String);
+  const includedParticipants = strings("included_participants");
+  const splitValues = (prefix: "split_amount" | "split_percentage") =>
+    Object.fromEntries(
+      includedParticipants.map((value) => {
+        const separator = value.indexOf(":");
+        const kind = value.slice(0, separator);
+        const id = value.slice(separator + 1);
+        return [value, String(form.get(`${prefix}_${kind}_${id}`) || "")];
+      }),
+    );
   return {
     hotelName: String(form.get("hotel_name") || ""),
     accommodationType: String(form.get("accommodation_type") || "other"),
@@ -222,6 +254,11 @@ export function stayMutationInputFromFormData(form: FormData): MobileStayMutatio
     isPrivate: form.get("is_private") === "true" || form.get("is_private") === "on",
     audienceMode: form.get("audience_mode") === "custom" || form.get("audience_mode") === "just_me" ? String(form.get("audience_mode")) as "custom" | "just_me" : "everyone",
     participants: { memberIds: strings("audience_member_ids"), invitationIds: strings("audience_invitation_ids"), familyMemberIds: strings("audience_family_member_ids"), guestNames: strings("audience_guest_names") },
+    splitMethod: String(form.get("split_method") || "equal") as MobileStayMutationInput["splitMethod"],
+    paidBy: String(form.get("paid_by") || ""),
+    includedParticipants,
+    splitAmounts: splitValues("split_amount"),
+    splitPercentages: splitValues("split_percentage"),
     notes: String(form.get("notes") || ""),
     tripLegId: String(form.get("trip_leg_id") || ""),
   };

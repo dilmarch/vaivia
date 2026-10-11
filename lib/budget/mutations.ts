@@ -189,7 +189,16 @@ async function requireTripAccess(supabase: BudgetSupabase, tripId: string, userI
   if (!member) throw new BudgetMutationError("You cannot change this trip.", "forbidden", 403);
 }
 
-function operationFailure(message: string) {
+function operationFailure(message: string, error?: unknown) {
+  if (error && typeof error === "object") {
+    const detail = error as { code?: unknown; message?: unknown; details?: unknown; hint?: unknown };
+    console.error(message, {
+      code: detail.code,
+      message: detail.message,
+      details: detail.details,
+      hint: detail.hint,
+    });
+  }
   return new BudgetMutationError(message, "operation_failed", 500);
 }
 
@@ -501,7 +510,6 @@ export async function createExpenseForUser({ supabase, userId, tripId, input, re
     manual_exchange_rate: normalized.manualRate > 0 ? normalized.manualRate : null,
     exchange_rate_used: normalized.rate,
     exchange_rate_is_manual: normalized.manualRate > 0,
-    amount_in_reporting_currency: roundBudgetMoney(normalized.amount * normalized.rate),
     split_method: normalized.splitMethod,
     source_type: normalized.sourceType,
     transportation_item_id: normalized.transportationItemId,
@@ -511,7 +519,7 @@ export async function createExpenseForUser({ supabase, userId, tripId, input, re
     created_by: userId,
     ...payerColumns(normalized.payer, participants),
   }).select("*").single();
-  if (error || !data) throw operationFailure("Could not create expense.");
+  if (error || !data) throw operationFailure("Could not create expense.", error);
   try {
     const splits = await writeSplits(supabase, tripId, data.id, normalized);
     if (receipt && receipt.size > 0) {
@@ -554,7 +562,6 @@ export async function updateExpenseForUser({ supabase, userId, tripId, expenseId
     manual_exchange_rate: normalized.manualRate > 0 ? normalized.manualRate : null,
     exchange_rate_used: normalized.rate,
     exchange_rate_is_manual: normalized.manualRate > 0,
-    amount_in_reporting_currency: roundBudgetMoney(normalized.amount * normalized.rate),
     split_method: normalized.splitMethod,
     source_type: normalized.sourceType,
     transportation_item_id: normalized.transportationItemId,
@@ -569,7 +576,7 @@ export async function updateExpenseForUser({ supabase, userId, tripId, expenseId
     ...payerColumns(normalized.payer, participants),
     updated_at: new Date().toISOString(),
   }).eq("id", expenseId).eq("trip_id", tripId).select("*").single();
-  if (error || !data) throw operationFailure("Could not update expense.");
+  if (error || !data) throw operationFailure("Could not update expense.", error);
   const { error: deleteError } = await supabase.from("trip_expense_splits").delete().eq("expense_id", expenseId).eq("trip_id", tripId);
   if (deleteError) throw operationFailure("Could not update expense splits.");
   const splits = await writeSplits(supabase, tripId, expenseId, normalized);

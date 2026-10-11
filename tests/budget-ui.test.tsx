@@ -329,6 +329,72 @@ describe("expense entry", () => {
 });
 
 describe("expense reporting", () => {
+    it("shows payer and paid-for avatars and keeps exchange rate optional", () => {
+        const expense: TripExpense = {
+            id: "expense-a",
+            trip_id: "trip-a",
+            expense_date: "2026-07-19",
+            description: "Museum",
+            category: "entertainment",
+            amount: 100,
+            currency: "CAD",
+            reporting_currency: "CAD",
+            exchange_rate_used: 1,
+            exchange_rate_is_manual: false,
+            amount_in_reporting_currency: 100,
+            paid_by_trip_member_id: "member-a",
+            split_method: "equal",
+            source_type: "manual",
+        };
+
+        render(
+            <BudgetFeatureClient
+                tripId="trip-a"
+                tripTitle="Japan"
+                budget={null}
+                lineItems={[]}
+                expenses={[expense]}
+                splits={[
+                    {
+                        id: "split-a",
+                        expense_id: "expense-a",
+                        trip_id: "trip-a",
+                        participant_kind: "member",
+                        trip_member_id: "member-a",
+                        split_amount: 50,
+                        currency: "CAD",
+                        amount_in_reporting_currency: 50,
+                        is_included: true,
+                    },
+                    {
+                        id: "split-b",
+                        expense_id: "expense-a",
+                        trip_id: "trip-a",
+                        participant_kind: "member",
+                        trip_member_id: "member-b",
+                        split_amount: 50,
+                        currency: "CAD",
+                        amount_in_reporting_currency: 50,
+                        is_included: true,
+                    },
+                ]}
+                participants={participants}
+                defaultCurrency="CAD"
+                mode="expenses"
+            />
+        );
+
+        const table = screen.getByRole("table");
+        expect(within(table).getByRole("columnheader", { name: "CAD" })).toBeInTheDocument();
+        expect(within(table).queryByRole("columnheader", { name: "Rate" })).not.toBeInTheDocument();
+        expect(within(table).getByLabelText("Paid by Me")).toBeInTheDocument();
+        expect(within(table).getByLabelText("Paid for Me, Blair")).toBeInTheDocument();
+
+        fireEvent.click(screen.getByText("Filter columns"));
+        fireEvent.click(screen.getByRole("checkbox", { name: "Exchange rate" }));
+        expect(within(table).getByRole("columnheader", { name: "Rate" })).toBeInTheDocument();
+    });
+
     it("uses VAIVIA-styled participant menus in the settle up modal", async () => {
         const expense: TripExpense = {
             id: "expense-a",

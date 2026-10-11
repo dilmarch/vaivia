@@ -4,6 +4,7 @@ import TripPageHero from "@/components/TripPageHero";
 import { CurrencyHeroSummaryPresentation } from "@/components/budget/BudgetPresentation";
 import {
     asUntypedSupabase,
+    convertExpenseDataToReportingCurrency,
     loadBudgetParticipants,
     loadTripBudgetData,
     loadTripExpenseData,
@@ -63,6 +64,14 @@ async function loadExpensesPageData(tripRouteParam: string) {
         loadBudgetParticipants(tripId, user.id),
     ]);
 
+    const convertedExpenseData = await convertExpenseDataToReportingCurrency({
+        supabase: db,
+        expenses: expenseData.expenses,
+        splits: expenseData.splits,
+        settlements: expenseData.settlements,
+        reportingCurrency: defaultCurrency,
+    });
+
     return {
         tripId,
         tripTitle: trip.title || trip.destination || "Trip",
@@ -72,9 +81,9 @@ async function loadExpensesPageData(tripRouteParam: string) {
         budget: budgetData.budget,
         lineItems: budgetData.lineItems,
         expenseCategories: budgetData.categories,
-        expenses: expenseData.expenses,
-        splits: expenseData.splits,
-        settlementPayments: expenseData.settlements,
+        expenses: convertedExpenseData.expenses,
+        splits: convertedExpenseData.splits,
+        settlementPayments: convertedExpenseData.settlements,
     };
 }
 
@@ -91,7 +100,7 @@ export default async function TripExpensesPage({ params }: PageProps) {
                 summaryContent={
                     <CurrencyHeroSummaryPresentation
                         currency={
-                            data.budget?.reporting_currency || data.defaultCurrency
+                            data.defaultCurrency
                         }
                     />
                 }

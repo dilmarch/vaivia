@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 import {
   Banknote,
   ChartPie,
@@ -9,6 +9,7 @@ import {
   Pencil,
   Plus,
   Receipt,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 import {
@@ -98,6 +99,15 @@ const EXPENSE_CHART_COLORS = [
   "#60a5fa",
   "#a3e635",
 ];
+
+const EXPENSE_COLUMN_OPTIONS = [
+  ["date", "Date"],
+  ["category", "Category"],
+  ["original", "Original currency"],
+  ["rate", "Exchange rate"],
+  ["paidFor", "Paid for"],
+  ["paidBy", "Paid by"],
+] as const;
 
 export function CurrencyHeroSummaryPresentation({
   currency,
@@ -879,7 +889,6 @@ function ExpensesDashboardPresentation({
 }) {
   const {
     tripTitle,
-    budget,
     lineItems,
     expenses,
     splits = [],
@@ -887,7 +896,33 @@ function ExpensesDashboardPresentation({
     participants,
     defaultCurrency,
   } = data;
-  const reportingCurrency = budget?.reporting_currency || defaultCurrency || "CAD";
+  const reportingCurrency = defaultCurrency || "CAD";
+  const [visibleColumns, setVisibleColumns] = useState({
+    date: true,
+    category: true,
+    original: true,
+    rate: false,
+    paidFor: true,
+    paidBy: true,
+  });
+  const participantByValue = useMemo(
+    () => new Map(participants.map((participant) => [participantValue(participant), participant])),
+    [participants],
+  );
+  const splitsByExpenseId = useMemo(() => {
+    const byExpenseId = new Map<string, TripExpenseSplit[]>();
+    splits.forEach((split) => {
+      if (!split.is_included) return;
+      const rows = byExpenseId.get(split.expense_id) || [];
+      rows.push(split);
+      byExpenseId.set(split.expense_id, rows);
+    });
+    return byExpenseId;
+  }, [splits]);
+  const lineItemNameByCategoryId = useMemo(
+    () => new Map(lineItems.map((item) => [item.category_id, item.name])),
+    [lineItems],
+  );
   const totalSpent = expenses.reduce(
     (sum, expense) => sum + getExpenseReportingAmount(expense),
     0,
@@ -955,17 +990,47 @@ function ExpensesDashboardPresentation({
         </div>
       ) : (
         <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] shadow-2xl shadow-black/30">
+          <div className="flex justify-end border-b border-white/10 p-4">
+            <details className="group relative">
+              <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-xs font-black text-white transition hover:border-lime-300/30 hover:bg-white/[0.14] [&::-webkit-details-marker]:hidden">
+                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                Filter columns
+              </summary>
+              <div className="absolute right-0 z-20 mt-2 w-56 space-y-1 rounded-2xl border border-white/10 bg-[#160b20] p-2 shadow-2xl shadow-black/50">
+                {EXPENSE_COLUMN_OPTIONS.map(([key, label]) => (
+                  <label
+                    key={key}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm font-bold text-slate-200 transition hover:bg-white/[0.08]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleColumns[key]}
+                      onChange={(event) =>
+                        setVisibleColumns((current) => ({
+                          ...current,
+                          [key]: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4 accent-lime-300"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </details>
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-[1080px] w-full text-left">
               <thead className="bg-white/[0.04] text-xs font-black uppercase tracking-[0.16em] text-slate-400">
                 <tr>
-                  <th className="px-5 py-3">Date</th>
+                  {visibleColumns.date ? <th className="px-5 py-3">Date</th> : null}
                   <th className="px-5 py-3">Description</th>
-                  <th className="px-5 py-3">Category</th>
-                  <th className="px-5 py-3">Original</th>
-                  <th className="px-5 py-3">Rate</th>
-                  <th className="px-5 py-3">Reporting</th>
-                  <th className="px-5 py-3">Paid by</th>
+                  {visibleColumns.category ? <th className="px-5 py-3">Category</th> : null}
+                  {visibleColumns.original ? <th className="px-5 py-3">Original</th> : null}
+                  {visibleColumns.rate ? <th className="px-5 py-3">Rate</th> : null}
+                  <th className="px-5 py-3">{reportingCurrency}</th>
+                  {visibleColumns.paidFor ? <th className="px-5 py-3">Paid for</th> : null}
+                  {visibleColumns.paidBy ? <th className="px-5 py-3">Paid by</th> : null}
                   <th className="px-5 py-3">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -975,47 +1040,85 @@ function ExpensesDashboardPresentation({
                 {expenses.map((expense) => {
                   const payer = getPayerParticipant(expense, participants);
                   const payerLabel = getPayerLabel(expense, participants);
+                  const expenseSplits = splitsByExpenseId.get(expense.id) || [];
                   return (
                     <tr key={expense.id} className="text-white">
-                      <td className="px-5 py-4 font-semibold text-lime-100">
-                        {expense.expense_date}
-                      </td>
+                      {visibleColumns.date ? (
+                        <td className="px-5 py-4 font-semibold text-lime-100">
+                          {expense.expense_date}
+                        </td>
+                      ) : null}
                       <td className="px-5 py-4">
                         <span className="font-bold">{expense.description}</span>
                         <span className="mt-1 block text-xs uppercase tracking-wide text-slate-500">
                           {expense.source_type.replace("_", " ")}
                         </span>
                       </td>
-                      <td className="px-5 py-4">
-                        {lineItems.find(
-                          (item) => item.category_id === expense.budget_category_id,
-                        )?.name || DEFAULT_EXPENSE_CATEGORY_LABELS[expense.category]}
-                      </td>
-                      <td className="px-5 py-4">
-                        {formatCurrency(expense.amount, expense.currency)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="font-mono">
-                          {expense.exchange_rate_used}
-                        </span>
-                        {expense.exchange_rate_is_manual ? (
-                          <span className="ml-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">
-                            Manual
+                      {visibleColumns.category ? (
+                        <td className="px-5 py-4">
+                          {lineItemNameByCategoryId.get(expense.budget_category_id) ||
+                            DEFAULT_EXPENSE_CATEGORY_LABELS[expense.category]}
+                        </td>
+                      ) : null}
+                      {visibleColumns.original ? (
+                        <td className="px-5 py-4">
+                          {formatCurrency(
+                            expense.original_amount ?? expense.amount,
+                            expense.original_currency || expense.currency,
+                          )}
+                        </td>
+                      ) : null}
+                      {visibleColumns.rate ? (
+                        <td className="px-5 py-4">
+                          <span className="font-mono">
+                            {expense.exchange_rate_used}
                           </span>
-                        ) : null}
-                      </td>
+                          {expense.exchange_rate_is_manual ? (
+                            <span className="ml-2 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-1 text-[10px] font-black uppercase text-amber-100">
+                              Manual
+                            </span>
+                          ) : null}
+                        </td>
+                      ) : null}
                       <td className="px-5 py-4 font-black">
                         {formatCurrency(
                           getExpenseReportingAmount(expense),
-                          expense.reporting_currency,
+                          reportingCurrency,
                         )}
                       </td>
-                      <td className="px-5 py-4">
-                        <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/50 py-1.5 pl-1.5 pr-3 text-sm font-black text-white">
-                          <ParticipantAvatar participant={payer} label={payerLabel} />
-                          <span className="max-w-36 truncate">{payerLabel}</span>
-                        </span>
-                      </td>
+                      {visibleColumns.paidFor ? (
+                        <td className="px-5 py-4">
+                          <div
+                            className="flex -space-x-2"
+                            aria-label={`Paid for ${expenseSplits.map((split) => getParticipantLabelFromValue(getParticipantValueForSplit(split), participants)).join(", ") || "no one"}`}
+                          >
+                            {expenseSplits.map((split) => {
+                              const value = getParticipantValueForSplit(split);
+                              const participant = participantByValue.get(value);
+                              const label =
+                                getBudgetParticipantLabel(participant) ||
+                                (value.startsWith("guest:")
+                                  ? value.replace(/^guest:/, "") || "Guest"
+                                  : "Someone");
+                              return (
+                                <span key={split.id} title={label}>
+                                  <ParticipantAvatar
+                                    participant={participant}
+                                    label={label}
+                                  />
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                      ) : null}
+                      {visibleColumns.paidBy ? (
+                        <td className="px-5 py-4">
+                          <span aria-label={`Paid by ${payerLabel}`} title={payerLabel}>
+                            <ParticipantAvatar participant={payer} label={payerLabel} />
+                          </span>
+                        </td>
+                      ) : null}
                       <td className="px-5 py-4">
                         <div className="flex flex-wrap gap-2">
                           <ExpenseActionButton

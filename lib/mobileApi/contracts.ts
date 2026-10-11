@@ -509,6 +509,11 @@ export type MobileStayMutationInput = {
   isPrivate?: boolean;
   audienceMode?: "everyone" | "custom" | "just_me";
   participants?: MobileMutationParticipants;
+  splitMethod?: SplitMethod;
+  paidBy?: string | null;
+  includedParticipants?: string[];
+  splitAmounts?: Record<string, string | number | null>;
+  splitPercentages?: Record<string, string | number | null>;
   notes?: string | null;
   tripLegId?: string | null;
 };

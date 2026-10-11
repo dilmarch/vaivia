@@ -5,6 +5,7 @@ import {
     getExpenseReportingAmount,
     type TripExpense,
 } from "@/lib/budget";
+import { convertExpenseDataToReportingCurrency } from "@/lib/budgetServer";
 
 function expense(
     overrides: Partial<TripExpense> & Pick<TripExpense, "amount" | "exchange_rate_used">
@@ -65,5 +66,73 @@ describe("expense reporting currency", () => {
             }).spent
         ).toBe(-30);
         expect(calculateCategoryActuals([refund]).transportation).toBe(-30);
+    });
+
+    it("keeps expenses and splits aligned to the selected home currency", async () => {
+        const foreignExpense = expense({
+            id: "expense-a",
+            amount: 100,
+            original_amount: 100,
+            original_currency: "GBP",
+            reporting_currency: "USD",
+            exchange_rate_used: 1.25,
+            amount_in_reporting_currency: 125,
+        });
+        const query = {
+            select: () => query,
+            eq: () => query,
+            maybeSingle: async () => ({
+                data: { rate: 1.75 },
+                error: null,
+            }),
+        };
+
+        const converted = await convertExpenseDataToReportingCurrency({
+            supabase: {
+                from: () => query,
+            } as never,
+            expenses: [foreignExpense],
+            splits: [
+                {
+                    id: "split-a",
+                    expense_id: "expense-a",
+                    trip_id: "trip-a",
+                    participant_kind: "member",
+                    user_id: "user-a",
+                    split_amount: 50,
+                    currency: "GBP",
+                    amount_in_reporting_currency: 62.5,
+                    is_included: true,
+                },
+            ],
+            settlements: [
+                {
+                    id: "settlement-a",
+                    trip_id: "trip-a",
+                    paid_by_participant_value: "member:a",
+                    received_by_participant_value: "member:b",
+                    amount: 10,
+                    reporting_currency: "GBP",
+                    settled_on: "2026-09-15",
+                    created_by: "user-a",
+                },
+            ],
+            reportingCurrency: "CAD",
+        });
+
+        expect(converted.expenses[0]).toMatchObject({
+            currency: "GBP",
+            reporting_currency: "CAD",
+            exchange_rate_used: 1.75,
+            amount_in_reporting_currency: 175,
+        });
+        expect(converted.splits[0]).toMatchObject({
+            currency: "GBP",
+            amount_in_reporting_currency: 87.5,
+        });
+        expect(converted.settlements[0]).toMatchObject({
+            amount: 17.5,
+            reporting_currency: "CAD",
+        });
     });
 });
