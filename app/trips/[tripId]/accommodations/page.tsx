@@ -30,6 +30,7 @@ import TripMembersPanel, {
     type TripHeaderMember,
 } from "@/components/TripMembersPanel";
 import {
+    type AccommodationExpenseAllocation,
     type TripAccommodation,
 } from "@/lib/accommodations";
 import {
@@ -594,6 +595,8 @@ async function updateAccommodation(formData: FormData) {
     }
 
     revalidatePath(`/trips/${tripId}/accommodations`);
+    revalidatePath(`/trips/${tripId}/budget`);
+    revalidatePath(`/trips/${tripId}/budget/expenses`);
     return { ok: true as const };
 }
 
@@ -618,6 +621,8 @@ async function deleteAccommodation(formData: FormData) {
     });
 
     revalidatePath(`/trips/${tripId}/accommodations`);
+    revalidatePath(`/trips/${tripId}/budget`);
+    revalidatePath(`/trips/${tripId}/budget/expenses`);
 }
 
 async function promoteAccommodationOption(formData: FormData) {
@@ -748,6 +753,8 @@ async function promoteAccommodationOption(formData: FormData) {
 
     revalidatePath(`/trips/${tripId}`);
     revalidatePath(`/trips/${tripId}/accommodations`);
+    revalidatePath(`/trips/${tripId}/budget`);
+    revalidatePath(`/trips/${tripId}/budget/expenses`);
     return { ok: true as const };
 }
 
@@ -1065,6 +1072,136 @@ export default async function TripAccommodationsPage({
             userId: user.id,
         });
     }
+
+    const { data: accommodationExpenseRows, error: accommodationExpenseError } =
+        await supabase
+            .from("trip_expenses")
+            .select(
+                "id,accommodation_id,split_method,paid_by_trip_member_id,paid_by_user_id,paid_by_invitation_id,paid_by_family_member_id,paid_by_guest_name"
+            )
+            .eq("trip_id", tripId)
+            .eq("source_type", "accommodation")
+            .is("deleted_at", null);
+
+    if (accommodationExpenseError) {
+        console.warn("Could not load stay expense allocations:", {
+            message: accommodationExpenseError.message,
+            code: accommodationExpenseError.code,
+            details: accommodationExpenseError.details,
+            hint: accommodationExpenseError.hint,
+            tripId,
+        });
+    }
+
+    const linkedExpenseRows = (accommodationExpenseRows || []) as Array<{
+        id: string;
+        accommodation_id: string | null;
+        split_method: string;
+        paid_by_trip_member_id: string | null;
+        paid_by_user_id: string | null;
+        paid_by_invitation_id: string | null;
+        paid_by_family_member_id: string | null;
+        paid_by_guest_name: string | null;
+    }>;
+    const linkedExpenseIds = linkedExpenseRows.map((expense) => expense.id);
+    const { data: accommodationSplitRows, error: accommodationSplitError } =
+        linkedExpenseIds.length > 0
+            ? await supabase
+                  .from("trip_expense_splits")
+                  .select(
+                      "expense_id,participant_kind,trip_member_id,user_id,invitation_id,family_member_id,guest_name,split_amount,split_percentage,is_included"
+                  )
+                  .eq("trip_id", tripId)
+                  .eq("is_included", true)
+                  .in("expense_id", linkedExpenseIds)
+            : { data: [], error: null };
+
+    if (accommodationSplitError) {
+        console.warn("Could not load stay expense splits:", {
+            message: accommodationSplitError.message,
+            code: accommodationSplitError.code,
+            details: accommodationSplitError.details,
+            hint: accommodationSplitError.hint,
+            tripId,
+        });
+    }
+
+    const tripMemberIdByUserId = new Map(
+        memberRows
+            .filter((member) => Boolean(member.id) && Boolean(member.user_id))
+            .map((member) => [member.user_id as string, member.id as string])
+    );
+    const participantValueFromRow = (row: {
+        trip_member_id?: string | null;
+        user_id?: string | null;
+        invitation_id?: string | null;
+        family_member_id?: string | null;
+        guest_name?: string | null;
+    }) => {
+        if (row.trip_member_id) return `member:${row.trip_member_id}`;
+        if (row.user_id) {
+            const tripMemberId = tripMemberIdByUserId.get(row.user_id);
+            return tripMemberId
+                ? `member:${tripMemberId}`
+                : `member_user:${row.user_id}`;
+        }
+        if (row.invitation_id) return `invitation:${row.invitation_id}`;
+        if (row.family_member_id) return `family_member:${row.family_member_id}`;
+        return row.guest_name ? `guest:${row.guest_name}` : "";
+    };
+    const expenseSplitsByExpenseId = new Map<
+        string,
+        AccommodationExpenseAllocation["splits"]
+    >();
+    (
+        (accommodationSplitRows || []) as Array<{
+            expense_id: string;
+            trip_member_id: string | null;
+            user_id: string | null;
+            invitation_id: string | null;
+            family_member_id: string | null;
+            guest_name: string | null;
+            split_amount: number | string;
+            split_percentage: number | string | null;
+        }>
+    ).forEach((split) => {
+        const participantValue = participantValueFromRow(split);
+        if (!participantValue) return;
+        const rows = expenseSplitsByExpenseId.get(split.expense_id) || [];
+        rows.push({
+            participantValue,
+            amount: Number(split.split_amount || 0),
+            percentage:
+                split.split_percentage === null
+                    ? null
+                    : Number(split.split_percentage),
+        });
+        expenseSplitsByExpenseId.set(split.expense_id, rows);
+    });
+    const expenseAllocations: AccommodationExpenseAllocation[] =
+        linkedExpenseRows.flatMap((expense) => {
+            if (!expense.accommodation_id) return [];
+            const payerValue = participantValueFromRow({
+                trip_member_id: expense.paid_by_trip_member_id,
+                user_id: expense.paid_by_user_id,
+                invitation_id: expense.paid_by_invitation_id,
+                family_member_id: expense.paid_by_family_member_id,
+                guest_name: expense.paid_by_guest_name,
+            });
+            const splitMethod = ["just_me", "equal", "exact", "percentage"].includes(
+                expense.split_method
+            )
+                ? (expense.split_method as AccommodationExpenseAllocation["splitMethod"])
+                : "equal";
+            return [
+                {
+                    accommodationId: expense.accommodation_id,
+                    splitMethod,
+                    payerValue,
+                    splits: expenseSplitsByExpenseId.get(expense.id) || [],
+                },
+            ];
+        });
 
     const { data: accommodationParticipantRows, error: participantRowsError } =
         await supabase
@@ -1864,6 +2001,7 @@ export default async function TripAccommodationsPage({
                                 (accommodationParticipantRows || []) as AccommodationCoverageParticipant[]
                             }
                             currentUserTripMemberId={currentUserTripMemberId}
+                            expenseAllocations={expenseAllocations}
                         />
                     </>
                 ) : (

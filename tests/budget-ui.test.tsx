@@ -114,6 +114,32 @@ describe("expense entry", () => {
         });
     });
 
+    it("restores a stay expense payer and exact split values", () => {
+        const { container } = render(
+            <form>
+                <CostAllocationFields
+                    amount="100"
+                    participants={audienceOptions}
+                    currentUserTripMemberId="member-a"
+                    initialSplitMethod="exact"
+                    initialPayerValue="member:member-b"
+                    initialSelectedParticipantValues={["member:member-a"]}
+                    initialSplitAmounts={{ "member:member-a": 100 }}
+                />
+            </form>
+        );
+
+        const form = container.querySelector("form");
+        expect(form).not.toBeNull();
+        const values = new FormData(form!);
+        expect(values.get("paid_by")).toBe("member:member-b");
+        expect(values.get("split_method")).toBe("exact");
+        expect(values.getAll("included_participants")).toEqual([
+            "member:member-a",
+        ]);
+        expect(values.get("split_amount_member_member-a")).toBe("100");
+    });
+
     it("selects every trip participant when equal split is chosen in add expense", () => {
         render(
             <AddExpenseModal
@@ -447,6 +473,9 @@ describe("expense reporting", () => {
 
         expect(screen.getByText("Blair owes Me")).toBeInTheDocument();
         expect(screen.queryByText(/Someone owes/)).not.toBeInTheDocument();
+        expect(
+            within(screen.getByRole("table")).getByTitle("Blair")
+        ).toBeInTheDocument();
     });
 
     it("shows payer and paid-for avatars and keeps exchange rate optional", () => {

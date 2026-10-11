@@ -424,7 +424,7 @@ async function normalizeExpenseInput(
   const { participants, values } = await allowedParticipants(supabase, tripId, userId);
   const current = participants.find((participant) => participant.isCurrentUser);
   const currentValue = current ? participantValue(current) : `member_user:${userId}`;
-  const payerValue = splitMethod === "just_me" ? currentValue : clean(input.paidBy, 500);
+  const payerValue = clean(input.paidBy, 500) || currentValue;
   if (!values.has(payerValue)) throw new BudgetMutationError("Choose a current trip participant as payer.", "validation_error", 422, { paidBy: ["Choose a current trip participant."] });
   const requestedSplits = splitMethod === "just_me" ? [{ participantValue: currentValue }] : (input.splits || []).slice(0, 100);
   if (!requestedSplits.length) throw new BudgetMutationError("Select at least one person to split this expense.", "validation_error", 422, { splits: ["Select at least one person."] });

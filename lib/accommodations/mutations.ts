@@ -178,7 +178,16 @@ export async function createStayForUser({ supabase, userId, tripId, input }: { s
   try { await replaceParticipants(supabase, tripId, data.id, normalized.parsedAudience, Boolean(normalized.payload.is_planning_option)); }
   catch (error) { await supabase.from("trip_accommodations").delete().eq("id", data.id).eq("trip_id", tripId); throw error; }
   if (!normalized.payload.is_planning_option) {
-    try { await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: data.id, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input) }); } catch { /* Preserve the stay if optional budget sync fails. */ }
+    try {
+      await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: data.id, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input) });
+    } catch (error) {
+      console.error("Stay created without its linked expense:", {
+        tripId,
+        stayId: data.id,
+        userId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
   return data;
 }
@@ -192,7 +201,21 @@ export async function updateStayForUser({ supabase, userId, tripId, stayId, inpu
   if (error || !data) throw new StayMutationError("Could not update stay.", "operation_failed", 500);
   await replaceParticipants(supabase, tripId, stayId, normalized.parsedAudience, Boolean(normalized.payload.is_planning_option));
   if (!normalized.payload.is_planning_option) {
-    try { await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: stayId, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input) }); } catch { /* Preserve the stay if optional budget sync fails. */ }
+    try {
+      await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: stayId, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input) });
+    } catch (error) {
+      console.error("Stay updated without its linked expense:", {
+        tripId,
+        stayId,
+        userId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw new StayMutationError(
+        "The stay was updated, but its linked expense could not be updated. Save again to retry.",
+        "operation_failed",
+        500,
+      );
+    }
   }
   return data;
 }
@@ -203,9 +226,41 @@ export async function promoteStayForUser(options: Parameters<typeof updateStayFo
 
 export async function deleteStayForUser({ supabase, userId, tripId, stayId }: { supabase: StayClient; userId: string; tripId: string; stayId: string }) {
   await requireTripAccess(supabase, tripId, userId);
+  const { data: linkedExpenses, error: linkedExpenseError } = await supabase
+    .from("trip_expenses")
+    .select("id")
+    .eq("trip_id", tripId)
+    .eq("source_type", "accommodation")
+    .eq("accommodation_id", stayId)
+    .is("deleted_at", null);
+  if (linkedExpenseError) throw new StayMutationError("Could not load the linked expense.", "operation_failed", 500);
   const { data, error } = await supabase.from("trip_accommodations").delete().eq("id", stayId).eq("trip_id", tripId).select("id").maybeSingle();
   if (error) throw new StayMutationError("Could not delete stay.", "operation_failed", 500);
   if (!data) throw new StayMutationError("Stay not found.", "not_found", 404);
+  const linkedExpenseIds = (linkedExpenses || []).map((expense) => expense.id);
+  if (linkedExpenseIds.length > 0) {
+    const { error: expenseError } = await supabase
+      .from("trip_expenses")
+      .update({
+        deleted_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .in("id", linkedExpenseIds)
+      .eq("trip_id", tripId);
+    if (expenseError) {
+      console.error("Stay deleted without removing its linked expense:", {
+        tripId,
+        stayId,
+        linkedExpenseIds,
+        message: expenseError.message,
+      });
+      throw new StayMutationError(
+        "The stay was deleted, but its linked expense could not be removed.",
+        "operation_failed",
+        500,
+      );
+    }
+  }
   return { deleted: true as const, stayId };
 }
 

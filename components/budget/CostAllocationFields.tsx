@@ -12,6 +12,8 @@ type CostAllocationFieldsProps = {
     initialSplitMethod?: SplitMethod;
     initialSelectedParticipantValues?: string[];
     initialPayerValue?: string | null;
+    initialSplitAmounts?: Record<string, number | string | null | undefined>;
+    initialSplitPercentages?: Record<string, number | string | null | undefined>;
     tone?: "dark" | "light";
 };
 
@@ -83,7 +85,7 @@ const splitMethodOptions: Array<{
     {
         value: "just_me",
         label: "Just me",
-        description: "Paid by you and assigned only to you.",
+        description: "Assigned only to you, no matter who paid.",
     },
     {
         value: "equal",
@@ -109,6 +111,8 @@ export default function CostAllocationFields({
     initialSplitMethod = "just_me",
     initialSelectedParticipantValues = [],
     initialPayerValue = null,
+    initialSplitAmounts = {},
+    initialSplitPercentages = {},
     tone = "dark",
 }: CostAllocationFieldsProps) {
     const [splitMethod, setSplitMethod] =
@@ -386,6 +390,9 @@ export default function CostAllocationFields({
                                                 "split_amount",
                                                 participant
                                             )}
+                                            defaultValue={
+                                                initialSplitAmounts[value] ?? ""
+                                            }
                                             inputMode="decimal"
                                             placeholder="0.00"
                                             className={`rounded-xl border px-3 py-2 text-right text-xs font-bold outline-none ${inputClass}`}
@@ -396,6 +403,9 @@ export default function CostAllocationFields({
                                                 "split_percentage",
                                                 participant
                                             )}
+                                            defaultValue={
+                                                initialSplitPercentages[value] ?? ""
+                                            }
                                             inputMode="decimal"
                                             placeholder="%"
                                             className={`rounded-xl border px-3 py-2 text-right text-xs font-bold outline-none ${inputClass}`}

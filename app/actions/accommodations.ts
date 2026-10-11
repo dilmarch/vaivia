@@ -42,5 +42,7 @@ export async function createAccommodation(
 
     revalidatePath(`/trips/${tripId}`);
     revalidatePath(`/trips/${tripId}/accommodations`);
+    revalidatePath(`/trips/${tripId}/budget`);
+    revalidatePath(`/trips/${tripId}/budget/expenses`);
     return { ok: true };
 }

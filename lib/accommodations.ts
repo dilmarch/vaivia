@@ -1,3 +1,5 @@
+import type { SplitMethod } from "@/lib/budget";
+
 export const ACCOMMODATION_TYPE_OPTIONS = [
     { value: "hotel", label: "Hotel" },
     { value: "motel", label: "Motel" },
@@ -22,6 +24,17 @@ export type AccommodationStatus =
 export type AccommodationActionResult =
     | { ok: true }
     | { ok: false; error: string };
+
+export type AccommodationExpenseAllocation = {
+    accommodationId: string;
+    splitMethod: SplitMethod;
+    payerValue: string;
+    splits: Array<{
+        participantValue: string;
+        amount: number;
+        percentage: number | null;
+    }>;
+};
 
 export type TripAccommodation = {
     id: string;

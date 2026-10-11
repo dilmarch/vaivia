@@ -61,7 +61,7 @@ const splitMethodOptions: Array<{
     {
         value: "just_me",
         label: "Just me",
-        description: "Paid by you and assigned only to you.",
+        description: "Assigned only to you, no matter who paid.",
     },
     {
         value: "equal",
@@ -94,6 +94,27 @@ function participantValue(participant: BudgetParticipant) {
         return `family_member:${participant.familyMemberId}`;
     }
     return `guest:${participant.guestName || participant.label}`;
+}
+
+function participantValues(participant: BudgetParticipant) {
+    const values = new Set([participantValue(participant)]);
+    if (participant.kind === "member" && participant.tripMemberId) {
+        values.add(`member:${participant.tripMemberId}`);
+    }
+    if (participant.kind === "member" && participant.userId) {
+        values.add(`member_user:${participant.userId}`);
+    }
+    return values;
+}
+
+function resolveParticipantValue(
+    value: string,
+    participants: BudgetParticipant[]
+) {
+    const participant = participants.find((candidate) =>
+        participantValues(candidate).has(value)
+    );
+    return participant ? participantValue(participant) : value;
 }
 
 function getBudgetParticipantLabel(participant?: BudgetParticipant | null) {
@@ -723,7 +744,10 @@ export function AddExpenseModal({
         participants[0] ||
         null;
     const savedSplitValues = new Set(
-        expenseSplits.map(getParticipantValueForSplit).filter(Boolean)
+        expenseSplits
+            .map(getParticipantValueForSplit)
+            .filter(Boolean)
+            .map((value) => resolveParticipantValue(value, participants))
     );
     const hasSavedSplits = savedSplitValues.size > 0;
     const allParticipantValues = participants.map(participantValue);
@@ -746,7 +770,7 @@ export function AddExpenseModal({
         }
     );
     const payerDefault =
-        getExpensePayerValue(expense) ||
+        resolveParticipantValue(getExpensePayerValue(expense), participants) ||
         (currentUserParticipant ? participantValue(currentUserParticipant) : "");
     const [selectedPayer, setSelectedPayer] = useState(payerDefault);
     const resolvedDate =
@@ -1127,7 +1151,10 @@ export function AddExpenseModal({
                                                 defaultValue={
                                                     expenseSplits.find(
                                                         (split) =>
-                                                            getParticipantValueForSplit(split) ===
+                                                            resolveParticipantValue(
+                                                                getParticipantValueForSplit(split),
+                                                                participants
+                                                            ) ===
                                                             value
                                                     )?.split_amount || ""
                                                 }
@@ -1141,7 +1168,10 @@ export function AddExpenseModal({
                                                 defaultValue={
                                                     expenseSplits.find(
                                                         (split) =>
-                                                            getParticipantValueForSplit(split) ===
+                                                            resolveParticipantValue(
+                                                                getParticipantValueForSplit(split),
+                                                                participants
+                                                            ) ===
                                                             value
                                                     )?.split_percentage || ""
                                                 }

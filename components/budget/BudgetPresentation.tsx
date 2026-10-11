@@ -996,7 +996,14 @@ function ExpensesDashboardPresentation({
     paidBy: true,
   });
   const participantByValue = useMemo(
-    () => new Map(participants.map((participant) => [participantValue(participant), participant])),
+    () =>
+      new Map(
+        participants.flatMap((participant) =>
+          Array.from(participantValues(participant)).map(
+            (value) => [value, participant] as const,
+          ),
+        ),
+      ),
     [participants],
   );
   const splitsByExpenseId = useMemo(() => {

@@ -30,6 +30,7 @@ import {
     ACCOMMODATION_STATUS_OPTIONS,
     ACCOMMODATION_TYPE_OPTIONS,
     type AccommodationActionResult,
+    type AccommodationExpenseAllocation,
     type AccommodationType,
     type TripAccommodation,
 } from "@/lib/accommodations";
@@ -50,6 +51,7 @@ type AccommodationManagerProps = {
     audienceOptions?: TripAudienceOption[];
     audienceParticipants?: AccommodationAudienceParticipant[];
     currentUserTripMemberId?: string | null;
+    expenseAllocations?: AccommodationExpenseAllocation[];
 };
 
 type PlaceFields = Pick<
@@ -394,6 +396,7 @@ function AccommodationForm({
     audienceOptions = [],
     audienceParticipants = [],
     currentUserTripMemberId = null,
+    expenseAllocation = null,
     variant = "trip",
     onClose,
 }: {
@@ -405,6 +408,7 @@ function AccommodationForm({
     audienceOptions?: TripAudienceOption[];
     audienceParticipants?: AccommodationAudienceParticipant[];
     currentUserTripMemberId?: string | null;
+    expenseAllocation?: AccommodationExpenseAllocation | null;
     variant?: AccommodationFormVariant;
     onClose: () => void;
 }) {
@@ -436,6 +440,18 @@ function AccommodationForm({
               currentUserTripMemberId,
           })
         : [];
+    const initialSplitAmounts = Object.fromEntries(
+        (expenseAllocation?.splits || []).map((split) => [
+            split.participantValue,
+            split.amount,
+        ])
+    );
+    const initialSplitPercentages = Object.fromEntries(
+        (expenseAllocation?.splits || []).map((split) => [
+            split.participantValue,
+            split.percentage,
+        ])
+    );
 
     function handlePlaceSelect(place: google.maps.places.PlaceResult) {
         if (!place.place_id) {
@@ -824,6 +840,15 @@ function AccommodationForm({
                         amount={costAmount}
                         participants={audienceOptions}
                         currentUserTripMemberId={currentUserTripMemberId}
+                        initialSplitMethod={expenseAllocation?.splitMethod}
+                        initialSelectedParticipantValues={
+                            expenseAllocation?.splits.map(
+                                (split) => split.participantValue
+                            )
+                        }
+                        initialPayerValue={expenseAllocation?.payerValue}
+                        initialSplitAmounts={initialSplitAmounts}
+                        initialSplitPercentages={initialSplitPercentages}
                         tone="dark"
                     />
                 </div>
@@ -925,6 +950,7 @@ function AccommodationModal({
     audienceOptions,
     audienceParticipants,
     currentUserTripMemberId,
+    expenseAllocation,
     variant = "trip",
     onClose,
 }: {
@@ -937,6 +963,7 @@ function AccommodationModal({
     audienceOptions?: TripAudienceOption[];
     audienceParticipants?: AccommodationAudienceParticipant[];
     currentUserTripMemberId?: string | null;
+    expenseAllocation?: AccommodationExpenseAllocation | null;
     variant?: AccommodationFormVariant;
     onClose: () => void;
 }) {
@@ -985,6 +1012,7 @@ function AccommodationModal({
                         audienceOptions={audienceOptions}
                         audienceParticipants={audienceParticipants}
                         currentUserTripMemberId={currentUserTripMemberId}
+                        expenseAllocation={expenseAllocation}
                         variant={variant}
                         onClose={requestClose}
                     />
@@ -1068,6 +1096,7 @@ export default function AccommodationManager({
     audienceOptions = [],
     audienceParticipants = [],
     currentUserTripMemberId = null,
+    expenseAllocations = [],
 }: AccommodationManagerProps) {
     const pathname = usePathname();
     const router = useRouter();
@@ -1160,6 +1189,15 @@ export default function AccommodationManager({
                     audienceOptions={audienceOptions}
                     audienceParticipants={audienceParticipants}
                     currentUserTripMemberId={currentUserTripMemberId}
+                    expenseAllocation={
+                        modalMode.type === "edit"
+                            ? expenseAllocations.find(
+                                  (allocation) =>
+                                      allocation.accommodationId ===
+                                      modalMode.accommodation.id
+                              ) || null
+                            : null
+                    }
                     onClose={() => setModalMode(null)}
                 />
             ) : null}

@@ -33,6 +33,18 @@ function participantValue(participant: BudgetParticipant) {
   return `guest:${participant.guestName || participant.label}`;
 }
 
+function participantValues(participant: BudgetParticipant) {
+  const values = new Set([participantValue(participant)]);
+  if (participant.kind === "member" && participant.tripMemberId) values.add(`member:${participant.tripMemberId}`);
+  if (participant.kind === "member" && participant.userId) values.add(`member_user:${participant.userId}`);
+  return values;
+}
+
+function resolveParticipantValue(value: string, participants: BudgetParticipant[]) {
+  const participant = participants.find((candidate) => participantValues(candidate).has(value));
+  return participant ? participantValue(participant) : value;
+}
+
 function splitParticipantValue(split: TripExpenseSplit) {
   if (split.trip_member_id) return `member:${split.trip_member_id}`;
   if (split.user_id) return `member_user:${split.user_id}`;
@@ -134,7 +146,10 @@ export function ExpenseEditorPresentation({ tripId, reportingCurrency, lineItems
   const currentParticipant = participants.find((participant) => participant.isCurrentUser) || participants[0];
   const currentValue = currentParticipant ? participantValue(currentParticipant) : "";
   const [splitMethod, setSplitMethod] = useState<SplitMethod>(expense?.split_method || "just_me");
-  const savedValues = useMemo(() => new Set((expenseSplits || []).map(splitParticipantValue)), [expenseSplits]);
+  const savedValues = useMemo(
+    () => new Set((expenseSplits || []).map(splitParticipantValue).map((value) => resolveParticipantValue(value, participants))),
+    [expenseSplits, participants],
+  );
   const [selected, setSelected] = useState(() => new Set(
     expense?.split_method === "just_me"
       ? currentValue ? [currentValue] : []
@@ -157,8 +172,8 @@ export function ExpenseEditorPresentation({ tripId, reportingCurrency, lineItems
       <div className="grid gap-4 sm:grid-cols-2"><Field label="Date"><input name="expenseDate" type="date" defaultValue={expense?.transaction_date || expense?.expense_date || getLocalDateKey()} className={inputClass} /></Field><Field label="Budget category"><select name="budgetCategoryId" defaultValue={expense?.budget_category_id || ""} className={inputClass}><option value="" className="bg-slate-950">Other</option>{lineItems.map((line) => <option key={line.id} value={line.category_id || ""} className="bg-slate-950">{line.name}</option>)}</select></Field></div>
       <input type="hidden" name="category" value={lineItems.find((line) => line.category_id === expense?.budget_category_id)?.linked_expense_category || expense?.category || "other"} />
       <div className="grid gap-4 sm:grid-cols-3"><Field label="Amount"><input name="amount" required inputMode="decimal" defaultValue={expense?.original_amount ?? expense?.amount ?? ""} className={inputClass} /></Field><Field label="Currency"><select name="currency" defaultValue={expense?.original_currency || expense?.currency || reportingCurrency} className={inputClass}>{COMMON_CURRENCIES.map((currency) => <option key={currency} value={currency} className="bg-slate-950">{currency}</option>)}</select></Field><Field label="Manual rate"><input name="manualExchangeRate" inputMode="decimal" defaultValue={expense?.manual_exchange_rate || ""} placeholder="Automatic" className={inputClass} /></Field></div>
-      <div className="grid gap-4 sm:grid-cols-2"><Field label="Paid by"><select name="paidBy" defaultValue={expensePayerValue(expense) || currentValue} disabled={splitMethod === "just_me"} className={inputClass}>{participants.map((participant) => <option key={participant.id} value={participantValue(participant)} className="bg-slate-950">{participant.isCurrentUser ? "Me" : participant.label}</option>)}</select></Field><Field label="Split method"><select value={splitMethod} onChange={(event) => setSplitMethod(event.target.value as SplitMethod)} className={inputClass}><option value="just_me" className="bg-slate-950">Just me</option><option value="equal" className="bg-slate-950">Equal split</option><option value="exact" className="bg-slate-950">Exact amounts</option><option value="percentage" className="bg-slate-950">Percentages</option></select></Field></div>
-      {splitMethod !== "just_me" ? <div className="space-y-2 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4"><p className="text-sm font-black text-white">Split participants</p>{participants.map((participant) => { const value = participantValue(participant); const saved = (expenseSplits || []).find((split) => splitParticipantValue(split) === value); return <label key={participant.id} className="grid grid-cols-[auto_1fr_7rem] items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3"><input type="checkbox" checked={selected.has(value)} onChange={() => setSelected((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; })} /><span className="text-sm font-bold text-white">{participant.isCurrentUser ? "Me" : participant.label}</span>{splitMethod === "exact" ? <input name={`amount:${value}`} aria-label={`${participant.label} amount`} defaultValue={saved?.split_amount ?? ""} inputMode="decimal" className={inputClass} /> : splitMethod === "percentage" ? <input name={`percentage:${value}`} aria-label={`${participant.label} percentage`} defaultValue={saved?.split_percentage ?? ""} inputMode="decimal" className={inputClass} /> : <span />}</label>; })}</div> : null}
+      <div className="grid gap-4 sm:grid-cols-2"><Field label="Paid by"><select name="paidBy" defaultValue={resolveParticipantValue(expensePayerValue(expense), participants) || currentValue} className={inputClass}>{participants.map((participant) => <option key={participant.id} value={participantValue(participant)} className="bg-slate-950">{participant.isCurrentUser ? "Me" : participant.label}</option>)}</select></Field><Field label="Split method"><select value={splitMethod} onChange={(event) => setSplitMethod(event.target.value as SplitMethod)} className={inputClass}><option value="just_me" className="bg-slate-950">Just me</option><option value="equal" className="bg-slate-950">Equal split</option><option value="exact" className="bg-slate-950">Exact amounts</option><option value="percentage" className="bg-slate-950">Percentages</option></select></Field></div>
+      {splitMethod !== "just_me" ? <div className="space-y-2 rounded-[1.5rem] border border-white/10 bg-white/[0.04] p-4"><p className="text-sm font-black text-white">Split participants</p>{participants.map((participant) => { const value = participantValue(participant); const saved = (expenseSplits || []).find((split) => resolveParticipantValue(splitParticipantValue(split), participants) === value); return <label key={participant.id} className="grid grid-cols-[auto_1fr_7rem] items-center gap-3 rounded-2xl border border-white/10 bg-slate-950/50 p-3"><input type="checkbox" checked={selected.has(value)} onChange={() => setSelected((current) => { const next = new Set(current); if (next.has(value)) next.delete(value); else next.add(value); return next; })} /><span className="text-sm font-bold text-white">{participant.isCurrentUser ? "Me" : participant.label}</span>{splitMethod === "exact" ? <input name={`amount:${value}`} aria-label={`${participant.label} amount`} defaultValue={saved?.split_amount ?? ""} inputMode="decimal" className={inputClass} /> : splitMethod === "percentage" ? <input name={`percentage:${value}`} aria-label={`${participant.label} percentage`} defaultValue={saved?.split_percentage ?? ""} inputMode="decimal" className={inputClass} /> : <span />}</label>; })}</div> : null}
       <Field label="Notes"><textarea name="notes" defaultValue={expense?.notes || ""} rows={3} className={inputClass} /></Field>
       {errorMessage ? <p role="alert" className="rounded-2xl border border-red-300/20 bg-red-950/60 p-3 text-sm font-bold text-red-100">{errorMessage}</p> : null}
       <div className="vaivia-modal-footer sticky bottom-0 -mx-6 vaivia-modal-actions"><button type="submit" disabled={isSubmitting} className="vaivia-modal-button-primary disabled:opacity-60">{isSubmitting ? "Saving…" : "Save expense"}</button></div>

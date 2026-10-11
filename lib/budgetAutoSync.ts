@@ -49,6 +49,13 @@ function parseParticipantValue(value?: FormDataEntryValue | string | null) {
     const kind = participantValue.slice(0, separatorIndex);
     const id = participantValue.slice(separatorIndex + 1);
 
+    if (kind === "member_user" && id) {
+        return {
+            kind: "member" as BudgetParticipantKind,
+            id: `user:${id}`,
+        };
+    }
+
     if (
         kind !== "member" &&
         kind !== "invitation" &&
@@ -60,6 +67,16 @@ function parseParticipantValue(value?: FormDataEntryValue | string | null) {
 
     if (!id) return null;
     return { kind: kind as BudgetParticipantKind, id };
+}
+
+export function resolveAutoExpensePayer(
+    formData: FormData | undefined,
+    userId: string
+) {
+    return parseParticipantValue(formData?.get("paid_by")) || {
+        kind: "member" as BudgetParticipantKind,
+        id: `user:${userId}`,
+    };
 }
 
 function participantColumns(participant: {
@@ -88,6 +105,16 @@ function participantColumns(participant: {
     }
 
     return { participant_kind: "guest", guest_name: participant.id };
+}
+
+function participantFormKey(participant: {
+    kind: BudgetParticipantKind;
+    id: string;
+}) {
+    if (participant.kind === "member" && participant.id.startsWith("user:")) {
+        return `member_user_${participant.id.replace(/^user:/, "")}`;
+    }
+    return `${participant.kind}_${participant.id}`;
 }
 
 function getSplitMethod(value?: FormDataEntryValue | string | null): SplitMethod {
@@ -190,7 +217,9 @@ async function replaceAutoExpenseSplits({
         splitAmounts = splitEvenly(amount, selectedParticipants.length);
     } else if (splitMethod === "exact") {
         splitAmounts = selectedParticipants.map((participant) =>
-            parseMoney(formData?.get(`split_amount_${participant.kind}_${participant.id}`))
+            parseMoney(
+                formData?.get(`split_amount_${participantFormKey(participant)}`)
+            )
         );
         const total = roundMoney(splitAmounts.reduce((sum, value) => sum + value, 0));
         if (Math.abs(total - amount) > 0.01) {
@@ -199,7 +228,9 @@ async function replaceAutoExpenseSplits({
     } else {
         splitPercentages = selectedParticipants.map((participant) =>
             parseMoney(
-                formData?.get(`split_percentage_${participant.kind}_${participant.id}`)
+                formData?.get(
+                    `split_percentage_${participantFormKey(participant)}`
+                )
             )
         );
         const percentageTotal = roundMoney(
@@ -350,13 +381,7 @@ export async function syncAutoBudgetExpense({
         tripId,
         sourceType,
     });
-    const paidBy =
-        getSplitMethod(formData?.get("split_method")) === "just_me"
-            ? { kind: "member" as BudgetParticipantKind, id: `user:${userId}` }
-            : parseParticipantValue(formData?.get("paid_by")) || {
-                  kind: "member" as BudgetParticipantKind,
-                  id: `user:${userId}`,
-              };
+    const paidBy = resolveAutoExpensePayer(formData, userId);
 
     const payload: Record<string, unknown> = {
         trip_id: tripId,
