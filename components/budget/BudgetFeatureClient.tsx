@@ -2,7 +2,7 @@
 
 import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import AnimatedModal from "@/components/AnimatedModal";
 import {
@@ -696,6 +696,7 @@ export function AddExpenseModal({
     itineraryEventId?: string | null;
     accommodationId?: string | null;
 }) {
+    const router = useRouter();
     const [splitMethod, setSplitMethod] = useState<SplitMethod>(
         expense?.split_method || "just_me"
     );
@@ -858,6 +859,7 @@ export function AddExpenseModal({
                     action={async (formData) => {
                         await formAction(formData);
                         requestClose();
+                        router.refresh();
                     }}
                     className={budgetModalBodyClass}
                 >

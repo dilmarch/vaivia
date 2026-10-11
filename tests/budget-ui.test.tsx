@@ -17,6 +17,7 @@ import type { BudgetParticipant, TripExpense } from "@/lib/budget";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 
 const routerPush = vi.fn();
+const routerRefresh = vi.fn();
 const { createExpenseCategoryMock, updateExpenseMock } = vi.hoisted(() => ({
     createExpenseCategoryMock: vi.fn(),
     updateExpenseMock: vi.fn(),
@@ -27,7 +28,7 @@ vi.mock("next/navigation", () => ({
     useRouter: () => ({
         push: routerPush,
         replace: vi.fn(),
-        refresh: vi.fn(),
+        refresh: routerRefresh,
     }),
     useSearchParams: () => new URLSearchParams(),
 }));
@@ -87,6 +88,7 @@ function jsonResponse(body: unknown) {
 
 beforeEach(() => {
     routerPush.mockClear();
+    routerRefresh.mockClear();
     createExpenseCategoryMock.mockReset();
     updateExpenseMock.mockReset();
 });
@@ -195,6 +197,7 @@ describe("expense entry", () => {
 
         fireEvent.submit(form!);
         await waitFor(() => expect(updateExpenseMock).toHaveBeenCalledOnce());
+        expect(routerRefresh).toHaveBeenCalledOnce();
         const submitted = updateExpenseMock.mock.calls[0]?.[0] as FormData;
         expect(submitted.get("paid_by")).toBe("member:member-b");
         expect(submitted.get("accommodation_id")).toBe("stay-a");
