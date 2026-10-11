@@ -17,8 +17,9 @@ import type { BudgetParticipant, TripExpense } from "@/lib/budget";
 import type { TripAudienceOption } from "@/lib/tripAudience";
 
 const routerPush = vi.fn();
-const { createExpenseCategoryMock } = vi.hoisted(() => ({
+const { createExpenseCategoryMock, updateExpenseMock } = vi.hoisted(() => ({
     createExpenseCategoryMock: vi.fn(),
+    updateExpenseMock: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -38,7 +39,7 @@ vi.mock("@/app/actions/budget", () => ({
     createExpenseSettlement: vi.fn(),
     deleteExpense: vi.fn(),
     updateBudget: vi.fn(),
-    updateExpense: vi.fn(),
+    updateExpense: updateExpenseMock,
 }));
 
 const audienceOptions: TripAudienceOption[] = [
@@ -87,6 +88,7 @@ function jsonResponse(body: unknown) {
 beforeEach(() => {
     routerPush.mockClear();
     createExpenseCategoryMock.mockReset();
+    updateExpenseMock.mockReset();
 });
 
 afterEach(() => {
@@ -138,6 +140,102 @@ describe("expense entry", () => {
             "member:member-a",
         ]);
         expect(values.get("split_amount_member_member-a")).toBe("100");
+    });
+
+    it("submits the payer selected in the expense editor", async () => {
+        updateExpenseMock.mockResolvedValueOnce(undefined);
+        const expense: TripExpense = {
+            id: "expense-a",
+            trip_id: "trip-a",
+            expense_date: "2026-09-30",
+            description: "Hotel",
+            category: "accommodations",
+            amount: 100,
+            currency: "CAD",
+            reporting_currency: "CAD",
+            exchange_rate_used: 1,
+            exchange_rate_is_manual: false,
+            amount_in_reporting_currency: 100,
+            paid_by_trip_member_id: "member-a",
+            split_method: "just_me",
+            source_type: "accommodation",
+            accommodation_id: "stay-a",
+        };
+
+        render(
+            <AddExpenseModal
+                tripId="trip-a"
+                reportingCurrency="CAD"
+                participants={participants}
+                mode="edit"
+                expense={expense}
+                expenseSplits={[
+                    {
+                        id: "split-a",
+                        expense_id: expense.id,
+                        trip_id: "trip-a",
+                        participant_kind: "member",
+                        trip_member_id: "member-a",
+                        user_id: "user-a",
+                        split_amount: 100,
+                        currency: "CAD",
+                        amount_in_reporting_currency: 100,
+                        is_included: true,
+                    },
+                ]}
+                onClose={vi.fn()}
+            />
+        );
+
+        const dialog = screen.getByRole("dialog", { name: "Edit expense" });
+        fireEvent.click(within(dialog).getByRole("radio", { name: "Blair" }));
+        const form = dialog.querySelector("form");
+        expect(form).not.toBeNull();
+        expect(new FormData(form!).get("paid_by")).toBe("member:member-b");
+
+        fireEvent.submit(form!);
+        await waitFor(() => expect(updateExpenseMock).toHaveBeenCalledOnce());
+        const submitted = updateExpenseMock.mock.calls[0]?.[0] as FormData;
+        expect(submitted.get("paid_by")).toBe("member:member-b");
+        expect(submitted.get("accommodation_id")).toBe("stay-a");
+    });
+
+    it("unlinks duplicated source expenses from their stay", () => {
+        const expense: TripExpense = {
+            id: "expense-a",
+            trip_id: "trip-a",
+            expense_date: "2026-09-30",
+            description: "Hotel",
+            category: "accommodations",
+            amount: 100,
+            currency: "CAD",
+            reporting_currency: "CAD",
+            exchange_rate_used: 1,
+            exchange_rate_is_manual: false,
+            amount_in_reporting_currency: 100,
+            paid_by_trip_member_id: "member-a",
+            split_method: "just_me",
+            source_type: "accommodation",
+            accommodation_id: "stay-a",
+        };
+
+        render(
+            <AddExpenseModal
+                tripId="trip-a"
+                reportingCurrency="CAD"
+                participants={participants}
+                mode="duplicate"
+                expense={expense}
+                onClose={vi.fn()}
+            />
+        );
+
+        const form = screen.getByRole("dialog", { name: "Duplicate expense" })
+            .querySelector("form");
+        expect(form).not.toBeNull();
+        const values = new FormData(form!);
+        expect(values.get("source_type")).toBe("manual");
+        expect(values.get("accommodation_id")).toBe("");
     });
 
     it("selects every trip participant when equal split is chosen in add expense", () => {

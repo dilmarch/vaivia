@@ -18,7 +18,10 @@ import {
   calculateCategoryActuals,
   formatCurrency,
   formatPercent,
+  getBudgetParticipantValue as participantValue,
+  getBudgetParticipantValues as participantValues,
   getExpenseReportingAmount,
+  resolveBudgetParticipant,
   type BudgetParticipant,
   type ExpenseCategory,
   type TripBudget,
@@ -132,40 +135,11 @@ export function CurrencyHeroSummaryPresentation({
   );
 }
 
-function participantValue(participant: BudgetParticipant) {
-  if (participant.kind === "member" && participant.tripMemberId) {
-    return `member:${participant.tripMemberId}`;
-  }
-  if (participant.kind === "member" && participant.userId) {
-    return `member_user:${participant.userId}`;
-  }
-  if (participant.kind === "invitation" && participant.invitationId) {
-    return `invitation:${participant.invitationId}`;
-  }
-  if (participant.kind === "family_member" && participant.familyMemberId) {
-    return `family_member:${participant.familyMemberId}`;
-  }
-  return `guest:${participant.guestName || participant.label}`;
-}
-
-function participantValues(participant: BudgetParticipant) {
-  const values = new Set([participantValue(participant)]);
-  if (participant.kind === "member" && participant.tripMemberId) {
-    values.add(`member:${participant.tripMemberId}`);
-  }
-  if (participant.kind === "member" && participant.userId) {
-    values.add(`member_user:${participant.userId}`);
-  }
-  return values;
-}
-
 function getParticipantFromValue(
   value: string,
   participants: BudgetParticipant[],
 ) {
-  return participants.find((participant) =>
-    participantValues(participant).has(value),
-  );
+  return resolveBudgetParticipant(value, participants) || undefined;
 }
 
 function getBudgetParticipantLabel(participant?: BudgetParticipant | null) {

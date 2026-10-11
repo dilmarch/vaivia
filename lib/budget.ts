@@ -44,6 +44,46 @@ export type BudgetParticipant = {
     isCurrentUser?: boolean;
 };
 
+export function getBudgetParticipantValue(participant: BudgetParticipant) {
+    if (participant.kind === "member" && participant.tripMemberId) {
+        return `member:${participant.tripMemberId}`;
+    }
+    if (participant.kind === "member" && participant.userId) {
+        return `member_user:${participant.userId}`;
+    }
+    if (participant.kind === "invitation" && participant.invitationId) {
+        return `invitation:${participant.invitationId}`;
+    }
+    if (participant.kind === "family_member" && participant.familyMemberId) {
+        return `family_member:${participant.familyMemberId}`;
+    }
+    return `guest:${participant.guestName || participant.label}`;
+}
+
+export function getBudgetParticipantValues(participant: BudgetParticipant) {
+    const values = new Set([getBudgetParticipantValue(participant)]);
+    if (participant.kind === "member" && participant.tripMemberId) {
+        values.add(`member:${participant.tripMemberId}`);
+    }
+    if (participant.kind === "member" && participant.userId) {
+        values.add(`member_user:${participant.userId}`);
+    }
+    return values;
+}
+
+export function resolveBudgetParticipant(
+    value: string | null | undefined,
+    participants: BudgetParticipant[]
+) {
+    const normalizedValue = String(value || "").trim();
+    if (!normalizedValue) return null;
+    return (
+        participants.find((participant) =>
+            getBudgetParticipantValues(participant).has(normalizedValue)
+        ) || null
+    );
+}
+
 export type TripBudget = {
     id: string;
     trip_id: string;

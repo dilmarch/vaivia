@@ -129,7 +129,7 @@ export function normalizeStayMutationInput(input: MobileStayMutationInput) {
   };
 }
 
-function budgetForm(input: MobileStayMutationInput) {
+function budgetForm(input: MobileStayMutationInput, userId: string) {
   const form = new FormData();
   const audienceParticipants = [
     ...unique(input.participants?.memberIds).map((id) => `member:${id}`),
@@ -143,7 +143,7 @@ function budgetForm(input: MobileStayMutationInput) {
     : audienceParticipants;
 
   form.set("split_method", input.splitMethod || "equal");
-  if (input.paidBy) form.set("paid_by", input.paidBy);
+  form.set("paid_by", input.paidBy || `member_user:${userId}`);
   selectedParticipants.forEach((value) => {
     form.append("included_participants", value);
     const separator = value.indexOf(":");
@@ -179,14 +179,30 @@ export async function createStayForUser({ supabase, userId, tripId, input }: { s
   catch (error) { await supabase.from("trip_accommodations").delete().eq("id", data.id).eq("trip_id", tripId); throw error; }
   if (!normalized.payload.is_planning_option) {
     try {
-      await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: data.id, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input) });
+      await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: data.id, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input, userId) });
     } catch (error) {
-      console.error("Stay created without its linked expense:", {
+      console.error("Rolling back stay after linked expense failure:", {
         tripId,
         stayId: data.id,
         userId,
         message: error instanceof Error ? error.message : String(error),
       });
+      await supabase
+        .from("trip_item_participants")
+        .delete()
+        .eq("trip_id", tripId)
+        .eq("item_type", "accommodation")
+        .eq("item_id", data.id);
+      await supabase
+        .from("trip_accommodations")
+        .delete()
+        .eq("id", data.id)
+        .eq("trip_id", tripId);
+      throw new StayMutationError(
+        "Could not create the stay because its linked expense could not be saved.",
+        "operation_failed",
+        500,
+      );
     }
   }
   return data;
@@ -194,28 +210,73 @@ export async function createStayForUser({ supabase, userId, tripId, input }: { s
 
 export async function updateStayForUser({ supabase, userId, tripId, stayId, input }: { supabase: StayClient; userId: string; tripId: string; stayId: string; input: MobileStayMutationInput }) {
   await requireTripAccess(supabase, tripId, userId);
-  const existing = await supabase.from("trip_accommodations").select("id").eq("id", stayId).eq("trip_id", tripId).maybeSingle();
+  const [existing, previousParticipants] = await Promise.all([
+    supabase.from("trip_accommodations").select("*").eq("id", stayId).eq("trip_id", tripId).maybeSingle(),
+    supabase
+      .from("trip_item_participants")
+      .select("*")
+      .eq("trip_id", tripId)
+      .eq("item_type", "accommodation")
+      .eq("item_id", stayId),
+  ]);
   if (existing.error || !existing.data) throw new StayMutationError("Stay not found.", "not_found", 404);
+  if (previousParticipants.error) throw new StayMutationError("Could not load the stay assignments.", "operation_failed", 500);
+  const existingStay = existing.data;
   const normalized = normalizeStayMutationInput(input);
   const { data, error } = await supabase.from("trip_accommodations").update(normalized.payload).eq("id", stayId).eq("trip_id", tripId).select("*").single();
   if (error || !data) throw new StayMutationError("Could not update stay.", "operation_failed", 500);
-  await replaceParticipants(supabase, tripId, stayId, normalized.parsedAudience, Boolean(normalized.payload.is_planning_option));
-  if (!normalized.payload.is_planning_option) {
-    try {
-      await syncAutoBudgetExpense({ supabase, userId, tripId, sourceType: "accommodation", sourceId: stayId, amount: normalized.cost, currency: normalized.payload.currency, expenseDate: normalized.payload.check_in_date, description: normalized.payload.hotel_name || "Stay", formData: budgetForm(input) });
-    } catch (error) {
-      console.error("Stay updated without its linked expense:", {
-        tripId,
-        stayId,
-        userId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      throw new StayMutationError(
-        "The stay was updated, but its linked expense could not be updated. Save again to retry.",
-        "operation_failed",
-        500,
-      );
+
+  try {
+    await replaceParticipants(supabase, tripId, stayId, normalized.parsedAudience, Boolean(normalized.payload.is_planning_option));
+    await syncAutoBudgetExpense({
+      supabase,
+      userId,
+      tripId,
+      sourceType: "accommodation",
+      sourceId: stayId,
+      amount: normalized.payload.is_planning_option ? 0 : normalized.cost,
+      currency: normalized.payload.currency,
+      expenseDate: normalized.payload.check_in_date,
+      description: normalized.payload.hotel_name || "Stay",
+      formData: budgetForm(input, userId),
+    });
+  } catch (syncError) {
+    const previousStayPayload = Object.fromEntries(
+      Object.keys(normalized.payload).map((key) => [
+        key,
+        existingStay[key as keyof typeof existingStay],
+      ]),
+    ) as Database["public"]["Tables"]["trip_accommodations"]["Update"];
+    const [{ error: restoreStayError }, { error: clearParticipantsError }] = await Promise.all([
+      supabase.from("trip_accommodations").update(previousStayPayload).eq("id", stayId).eq("trip_id", tripId),
+      supabase
+        .from("trip_item_participants")
+        .delete()
+        .eq("trip_id", tripId)
+        .eq("item_type", "accommodation")
+        .eq("item_id", stayId),
+    ]);
+    let restoreParticipantsError = null;
+    if (!clearParticipantsError && (previousParticipants.data || []).length > 0) {
+      const restored = await supabase.from("trip_item_participants").insert(previousParticipants.data || []);
+      restoreParticipantsError = restored.error;
     }
+    console.error("Rolled back stay after linked expense sync failure:", {
+      tripId,
+      stayId,
+      userId,
+      message: syncError instanceof Error ? syncError.message : String(syncError),
+      restoreStayError,
+      clearParticipantsError,
+      restoreParticipantsError,
+    });
+    throw new StayMutationError(
+      restoreStayError || clearParticipantsError || restoreParticipantsError
+        ? "The stay and its linked expense could not be synchronized. Reload before trying again."
+        : "The stay was not changed because its linked expense could not be updated.",
+      "operation_failed",
+      500,
+    );
   }
   return data;
 }

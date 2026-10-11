@@ -6,7 +6,9 @@ import AnimatedModal from "@/components/AnimatedModal";
 import {
   COMMON_CURRENCIES,
   DEFAULT_BUDGET_CATEGORIES,
+  getBudgetParticipantValue as participantValue,
   getLocalDateKey,
+  resolveBudgetParticipant,
   type BudgetParticipant,
   type ExpenseCategory,
   type SplitMethod,
@@ -25,23 +27,8 @@ export type BudgetMutationView = "create-budget" | "edit-budget" | "add-expense"
 
 const inputClass = "w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm font-semibold text-white outline-none transition [color-scheme:dark] placeholder:text-slate-500 focus:border-lime-300/40 focus:bg-white/[0.12]";
 
-function participantValue(participant: BudgetParticipant) {
-  if (participant.kind === "member" && participant.tripMemberId) return `member:${participant.tripMemberId}`;
-  if (participant.kind === "member" && participant.userId) return `member_user:${participant.userId}`;
-  if (participant.kind === "invitation" && participant.invitationId) return `invitation:${participant.invitationId}`;
-  if (participant.kind === "family_member" && participant.familyMemberId) return `family_member:${participant.familyMemberId}`;
-  return `guest:${participant.guestName || participant.label}`;
-}
-
-function participantValues(participant: BudgetParticipant) {
-  const values = new Set([participantValue(participant)]);
-  if (participant.kind === "member" && participant.tripMemberId) values.add(`member:${participant.tripMemberId}`);
-  if (participant.kind === "member" && participant.userId) values.add(`member_user:${participant.userId}`);
-  return values;
-}
-
 function resolveParticipantValue(value: string, participants: BudgetParticipant[]) {
-  const participant = participants.find((candidate) => participantValues(candidate).has(value));
+  const participant = resolveBudgetParticipant(value, participants);
   return participant ? participantValue(participant) : value;
 }
 

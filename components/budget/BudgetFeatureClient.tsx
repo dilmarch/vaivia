@@ -23,6 +23,8 @@ import {
 import {
     COMMON_CURRENCIES,
     DEFAULT_BUDGET_CATEGORIES,
+    getBudgetParticipantValue as participantValue,
+    resolveBudgetParticipant,
     getLocalDateKey,
     type BudgetParticipant,
     type ExpenseCategory,
@@ -80,40 +82,11 @@ const splitMethodOptions: Array<{
     },
 ];
 
-function participantValue(participant: BudgetParticipant) {
-    if (participant.kind === "member" && participant.tripMemberId) {
-        return `member:${participant.tripMemberId}`;
-    }
-    if (participant.kind === "member" && participant.userId) {
-        return `member_user:${participant.userId}`;
-    }
-    if (participant.kind === "invitation" && participant.invitationId) {
-        return `invitation:${participant.invitationId}`;
-    }
-    if (participant.kind === "family_member" && participant.familyMemberId) {
-        return `family_member:${participant.familyMemberId}`;
-    }
-    return `guest:${participant.guestName || participant.label}`;
-}
-
-function participantValues(participant: BudgetParticipant) {
-    const values = new Set([participantValue(participant)]);
-    if (participant.kind === "member" && participant.tripMemberId) {
-        values.add(`member:${participant.tripMemberId}`);
-    }
-    if (participant.kind === "member" && participant.userId) {
-        values.add(`member_user:${participant.userId}`);
-    }
-    return values;
-}
-
 function resolveParticipantValue(
     value: string,
     participants: BudgetParticipant[]
 ) {
-    const participant = participants.find((candidate) =>
-        participantValues(candidate).has(value)
-    );
+    const participant = resolveBudgetParticipant(value, participants);
     return participant ? participantValue(participant) : value;
 }
 
@@ -813,12 +786,20 @@ export function AddExpenseModal({
                       is_default: false,
                       is_archived: false,
                   }));
-    const resolvedSourceType = expense?.source_type || defaultSourceType;
+    const resolvedSourceType = isDuplicate
+        ? "manual"
+        : expense?.source_type || defaultSourceType;
     const resolvedTransportationItemId =
-        expense?.transportation_item_id || transportationItemId || "";
+        isDuplicate
+            ? ""
+            : expense?.transportation_item_id || transportationItemId || "";
     const resolvedItineraryEventId =
-        expense?.itinerary_event_id || itineraryEventId || "";
-    const resolvedAccommodationId = expense?.accommodation_id || accommodationId || "";
+        isDuplicate
+            ? ""
+            : expense?.itinerary_event_id || itineraryEventId || "";
+    const resolvedAccommodationId = isDuplicate
+        ? ""
+        : expense?.accommodation_id || accommodationId || "";
 
     function chooseSplitMethod(nextSplitMethod: SplitMethod) {
         setSplitMethod(nextSplitMethod);
@@ -999,7 +980,6 @@ export function AddExpenseModal({
                             <span className="text-xs font-black uppercase tracking-[0.18em] text-lime-200">
                                 Paid by
                             </span>
-                            <input type="hidden" name="paid_by" value={selectedPayer} />
                             <div className="mt-2 flex flex-wrap gap-2">
                                 {participants.map((participant) => {
                                     const value = participantValue(participant);
@@ -1009,16 +989,23 @@ export function AddExpenseModal({
                                         participant.label;
 
                                     return (
-                                        <button
+                                        <label
                                             key={value}
-                                            type="button"
-                                            onClick={() => setSelectedPayer(value)}
                                             className={`inline-flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-left text-sm font-black transition ${
                                                 isSelected
                                                     ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)]"
                                                     : "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.1]"
                                             }`}
                                         >
+                                            <input
+                                                type="radio"
+                                                name="paid_by"
+                                                value={value}
+                                                aria-label={label}
+                                                checked={isSelected}
+                                                onChange={() => setSelectedPayer(value)}
+                                                className="sr-only"
+                                            />
                                             <ParticipantAvatar
                                                 participant={participant}
                                                 label={label}
@@ -1026,7 +1013,7 @@ export function AddExpenseModal({
                                             <span className="max-w-40 truncate">
                                                 {label}
                                             </span>
-                                        </button>
+                                        </label>
                                     );
                                 })}
                             </div>

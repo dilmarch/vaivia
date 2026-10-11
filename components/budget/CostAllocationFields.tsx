@@ -226,29 +226,35 @@ export default function CostAllocationFields({
                     <span className={`text-xs font-black uppercase tracking-[0.18em] ${labelClass}`}>
                         Paid by
                     </span>
-                    <input type="hidden" name="paid_by" value={selectedPayer} />
                     <div className="flex flex-wrap gap-2">
                         {options.map((participant) => {
+                            const value = participantValue(participant);
                             const label = getParticipantLabel(
                                 participant,
                                 currentUserTripMemberId
                             );
+                            const isSelected = selectedPayer === value;
 
                             return (
-                                <button
-                                    key={participantValue(participant)}
-                                    type="button"
-                                    onClick={() =>
-                                        setSelectedPayer(participantValue(participant))
-                                    }
+                                <label
+                                    key={value}
                                     className={`inline-flex items-center gap-2 rounded-full border py-1.5 pl-1.5 pr-3 text-left text-sm font-black transition ${
-                                        selectedPayer === participantValue(participant)
+                                        isSelected
                                             ? "border-lime-300/50 bg-lime-300 text-slate-950 shadow-[0_0_22px_rgba(var(--vaivia-neon-rgb),0.18)]"
                                             : isDark
                                               ? "border-white/10 bg-slate-950/50 text-white hover:border-lime-300/30 hover:bg-white/[0.1]"
                                               : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-100"
                                     }`}
                                 >
+                                    <input
+                                        type="radio"
+                                        name="paid_by"
+                                        value={value}
+                                        aria-label={label}
+                                        checked={isSelected}
+                                        onChange={() => setSelectedPayer(value)}
+                                        className="sr-only"
+                                    />
                                     <ParticipantAvatar
                                         participant={participant}
                                         label={label}
@@ -256,7 +262,7 @@ export default function CostAllocationFields({
                                     <span className="max-w-40 truncate">
                                         {label}
                                     </span>
-                                </button>
+                                </label>
                             );
                         })}
                     </div>

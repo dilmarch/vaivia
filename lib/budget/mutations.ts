@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_BUDGET_CATEGORIES,
   EXPENSE_CATEGORIES,
+  getBudgetParticipantValue,
+  getBudgetParticipantValues,
   getLocalDateKey,
   normalizeCurrency,
   normalizeExpenseCategory,
@@ -145,11 +147,7 @@ export function calculateBudgetSplitAmounts(
 }
 
 export function participantValue(participant: BudgetParticipant) {
-  if (participant.kind === "member" && participant.tripMemberId) return `member:${participant.tripMemberId}`;
-  if (participant.kind === "member" && participant.userId) return `member_user:${participant.userId}`;
-  if (participant.kind === "invitation" && participant.invitationId) return `invitation:${participant.invitationId}`;
-  if (participant.kind === "family_member" && participant.familyMemberId) return `family_member:${participant.familyMemberId}`;
-  return `guest:${participant.guestName || participant.label}`;
+  return getBudgetParticipantValue(participant);
 }
 
 function parseParticipant(value: unknown): ParsedParticipant | null {
@@ -162,11 +160,15 @@ function parseParticipant(value: unknown): ParsedParticipant | null {
   return { kind: kind as BudgetParticipantKind, id };
 }
 
-function participantColumns(participant: ParsedParticipant) {
+function participantColumns(participant: ParsedParticipant, participants: BudgetParticipant[]) {
   if (participant.kind === "member") {
-    return participant.id.startsWith("user:")
-      ? { participant_kind: "member", user_id: participant.id.slice(5) }
-      : { participant_kind: "member", trip_member_id: participant.id };
+    if (participant.id.startsWith("user:")) {
+      const userId = participant.id.slice(5);
+      const match = participants.find((candidate) => candidate.userId === userId);
+      return { participant_kind: "member", user_id: userId, trip_member_id: match?.tripMemberId || null };
+    }
+    const match = participants.find((candidate) => candidate.tripMemberId === participant.id);
+    return { participant_kind: "member", trip_member_id: participant.id, user_id: match?.userId || null };
   }
   if (participant.kind === "invitation") return { participant_kind: "invitation", invitation_id: participant.id };
   if (participant.kind === "family_member") return { participant_kind: "family_member", family_member_id: participant.id };
@@ -381,7 +383,17 @@ export async function updateBudgetForUser({
 
 async function allowedParticipants(supabase: BudgetSupabase, tripId: string, userId: string) {
   const participants = await loadBudgetParticipantsWithClient(asUntypedSupabase(supabase), tripId, userId);
-  return { participants, values: new Set(participants.map(participantValue)) };
+  const participantByValue = new Map<string, BudgetParticipant>();
+  participants.forEach((participant) => {
+    getBudgetParticipantValues(participant).forEach((value) => {
+      participantByValue.set(value, participant);
+    });
+  });
+  return {
+    participants,
+    participantByValue,
+    values: new Set(participantByValue.keys()),
+  };
 }
 
 async function resolveBudgetCategory(supabase: BudgetSupabase, tripId: string, categoryId: string, fallback: ExpenseCategory) {
@@ -421,23 +433,26 @@ async function normalizeExpenseInput(
     }
   }
   const splitMethod: SplitMethod = ["just_me", "exact", "percentage"].includes(String(input.splitMethod)) ? input.splitMethod as SplitMethod : "equal";
-  const { participants, values } = await allowedParticipants(supabase, tripId, userId);
+  const { participants, participantByValue } = await allowedParticipants(supabase, tripId, userId);
   const current = participants.find((participant) => participant.isCurrentUser);
   const currentValue = current ? participantValue(current) : `member_user:${userId}`;
-  const payerValue = clean(input.paidBy, 500) || currentValue;
-  if (!values.has(payerValue)) throw new BudgetMutationError("Choose a current trip participant as payer.", "validation_error", 422, { paidBy: ["Choose a current trip participant."] });
+  const payerValue = clean(input.paidBy, 500);
+  const payerParticipant = participantByValue.get(payerValue);
+  if (!payerValue || !payerParticipant) throw new BudgetMutationError("Choose a current trip participant as payer.", "validation_error", 422, { paidBy: ["Choose a current trip participant."] });
   const requestedSplits = splitMethod === "just_me" ? [{ participantValue: currentValue }] : (input.splits || []).slice(0, 100);
   if (!requestedSplits.length) throw new BudgetMutationError("Select at least one person to split this expense.", "validation_error", 422, { splits: ["Select at least one person."] });
   const seen = new Set<string>();
   const parsedSplits = requestedSplits.map((split) => {
     const value = clean(split.participantValue, 500);
-    const participant = parseParticipant(value);
-    if (!participant || !values.has(value) || seen.has(value)) throw new BudgetMutationError("Choose current trip participants for this split.", "validation_error", 422, { splits: ["Choose each participant once."] });
-    seen.add(value);
+    const matchedParticipant = participantByValue.get(value);
+    const canonicalValue = matchedParticipant ? participantValue(matchedParticipant) : "";
+    const participant = parseParticipant(canonicalValue);
+    if (!participant || seen.has(canonicalValue)) throw new BudgetMutationError("Choose current trip participants for this split.", "validation_error", 422, { splits: ["Choose each participant once."] });
+    seen.add(canonicalValue);
     return { participant, amount: money(split.amount), percentage: money(split.percentage) };
   });
   const { amounts, percentages } = calculateBudgetSplitAmounts(amount, splitMethod, parsedSplits);
-  const payer = parseParticipant(payerValue)!;
+  const payer = parseParticipant(participantValue(payerParticipant))!;
   return {
     expenseDate,
     description,
@@ -450,6 +465,7 @@ async function normalizeExpenseInput(
     rate,
     splitMethod,
     payer,
+    participants,
     sourceType: input.sourceType || "manual",
     transportationItemId: clean(input.transportationItemId, 80) || null,
     itineraryEventId: clean(input.itineraryEventId, 80) || null,
@@ -465,7 +481,11 @@ async function normalizeExpenseInput(
 
 function payerColumns(participant: ParsedParticipant, participants: BudgetParticipant[]) {
   if (participant.kind === "member") {
-    if (participant.id.startsWith("user:")) return { paid_by_user_id: participant.id.slice(5) };
+    if (participant.id.startsWith("user:")) {
+      const userId = participant.id.slice(5);
+      const match = participants.find((candidate) => candidate.userId === userId);
+      return { paid_by_user_id: userId, paid_by_trip_member_id: match?.tripMemberId || null };
+    }
     const match = participants.find((candidate) => candidate.tripMemberId === participant.id);
     return { paid_by_trip_member_id: participant.id, paid_by_user_id: match?.userId || null };
   }
@@ -478,7 +498,7 @@ async function writeSplits(supabase: BudgetSupabase, tripId: string, expenseId: 
   const rows = normalized.splits.map((split) => ({
     expense_id: expenseId,
     trip_id: tripId,
-    ...participantColumns(split.participant),
+    ...participantColumns(split.participant, normalized.participants),
     split_amount: split.amount,
     split_percentage: split.percentage,
     currency: normalized.currency,
@@ -543,11 +563,15 @@ export async function createExpenseForUser({ supabase, userId, tripId, input, re
 
 export async function updateExpenseForUser({ supabase, userId, tripId, expenseId, input }: { supabase: BudgetSupabase; userId: string; tripId: string; expenseId: string; input: ExpenseMutationInput }) {
   await requireTripAccess(supabase, tripId, userId);
-  const { data: current } = await supabase.from("trip_expenses").select("id").eq("id", expenseId).eq("trip_id", tripId).is("deleted_at", null).maybeSingle();
+  const [{ data: current }, { data: previousSplits, error: previousSplitsError }] = await Promise.all([
+    supabase.from("trip_expenses").select("*").eq("id", expenseId).eq("trip_id", tripId).is("deleted_at", null).maybeSingle(),
+    supabase.from("trip_expense_splits").select("*").eq("expense_id", expenseId).eq("trip_id", tripId),
+  ]);
   if (!current) throw new BudgetMutationError("Expense not found.", "not_found", 404);
+  if (previousSplitsError) throw operationFailure("Could not load existing expense splits.", previousSplitsError);
   const normalized = await normalizeExpenseInput(supabase, tripId, userId, input);
   const { participants } = await allowedParticipants(supabase, tripId, userId);
-  const { data, error } = await supabase.from("trip_expenses").update({
+  const updatePayload = {
     expense_date: normalized.expenseDate,
     transaction_date: normalized.expenseDate,
     description: normalized.description,
@@ -575,12 +599,36 @@ export async function updateExpenseForUser({ supabase, userId, tripId, expenseId
     paid_by_guest_name: null,
     ...payerColumns(normalized.payer, participants),
     updated_at: new Date().toISOString(),
-  }).eq("id", expenseId).eq("trip_id", tripId).select("*").single();
+  };
+  const restoreExpense = async () => {
+    const previousPayload = Object.fromEntries(
+      Object.keys(updatePayload).map((key) => [key, current[key as keyof typeof current]]),
+    ) as Database["public"]["Tables"]["trip_expenses"]["Update"];
+    const { error: restoreError } = await supabase
+      .from("trip_expenses")
+      .update(previousPayload)
+      .eq("id", expenseId)
+      .eq("trip_id", tripId);
+    if (restoreError) console.error("Could not restore expense after split failure:", { expenseId, tripId, restoreError });
+  };
+  const { data, error } = await supabase.from("trip_expenses").update(updatePayload).eq("id", expenseId).eq("trip_id", tripId).select("*").single();
   if (error || !data) throw operationFailure("Could not update expense.", error);
   const { error: deleteError } = await supabase.from("trip_expense_splits").delete().eq("expense_id", expenseId).eq("trip_id", tripId);
-  if (deleteError) throw operationFailure("Could not update expense splits.");
-  const splits = await writeSplits(supabase, tripId, expenseId, normalized);
-  return { expense: normalizeExpense(data as Record<string, unknown>), splits };
+  if (deleteError) {
+    await restoreExpense();
+    throw operationFailure("Could not update expense splits.", deleteError);
+  }
+  try {
+    const splits = await writeSplits(supabase, tripId, expenseId, normalized);
+    return { expense: normalizeExpense(data as Record<string, unknown>), splits };
+  } catch (splitError) {
+    if ((previousSplits || []).length > 0) {
+      const { error: restoreSplitsError } = await supabase.from("trip_expense_splits").insert(previousSplits || []);
+      if (restoreSplitsError) console.error("Could not restore expense splits after failure:", { expenseId, tripId, restoreSplitsError });
+    }
+    await restoreExpense();
+    throw splitError;
+  }
 }
 
 export async function duplicateExpenseForUser({ supabase, userId, tripId, expenseId }: { supabase: BudgetSupabase; userId: string; tripId: string; expenseId: string }) {

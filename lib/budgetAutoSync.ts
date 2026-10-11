@@ -1,8 +1,11 @@
 import {
     getLocalDateKey,
+    getBudgetParticipantValue,
     normalizeCurrency,
     normalizeExpenseCategory,
     parseMoney,
+    resolveBudgetParticipant,
+    type BudgetParticipant,
     type BudgetParticipantKind,
     type SplitMethod,
 } from "@/lib/budget";
@@ -10,6 +13,7 @@ import {
     asUntypedSupabase,
     getActiveReportingCurrency,
     getExchangeRate,
+    loadBudgetParticipantsWithClient,
     type UntypedSupabaseClient,
 } from "@/lib/budgetServer";
 
@@ -79,42 +83,56 @@ export function resolveAutoExpensePayer(
     };
 }
 
-function participantColumns(participant: {
-    kind: BudgetParticipantKind;
-    id: string;
-}) {
+function participantColumns(participant: BudgetParticipant) {
     if (participant.kind === "member") {
-        if (participant.id.startsWith("user:")) {
-            return {
-                participant_kind: "member",
-                user_id: participant.id.replace(/^user:/, ""),
-            };
-        }
-        return { participant_kind: "member", trip_member_id: participant.id };
+        return {
+            participant_kind: "member",
+            trip_member_id: participant.tripMemberId || null,
+            user_id: participant.userId || null,
+        };
     }
 
     if (participant.kind === "invitation") {
-        return { participant_kind: "invitation", invitation_id: participant.id };
+        return {
+            participant_kind: "invitation",
+            invitation_id: participant.invitationId || participant.id,
+        };
     }
 
     if (participant.kind === "family_member") {
         return {
             participant_kind: "family_member",
-            family_member_id: participant.id,
+            family_member_id: participant.familyMemberId || participant.id,
         };
     }
 
-    return { participant_kind: "guest", guest_name: participant.id };
+    return {
+        participant_kind: "guest",
+        guest_name: participant.guestName || participant.label,
+    };
 }
 
-function participantFormKey(participant: {
-    kind: BudgetParticipantKind;
-    id: string;
-}) {
-    if (participant.kind === "member" && participant.id.startsWith("user:")) {
-        return `member_user_${participant.id.replace(/^user:/, "")}`;
+function payerColumns(participant: BudgetParticipant) {
+    if (participant.kind === "member") {
+        return {
+            paid_by_trip_member_id: participant.tripMemberId || null,
+            paid_by_user_id: participant.userId || null,
+        };
     }
-    return `${participant.kind}_${participant.id}`;
+    if (participant.kind === "invitation") {
+        return { paid_by_invitation_id: participant.invitationId || participant.id };
+    }
+    if (participant.kind === "family_member") {
+        return {
+            paid_by_family_member_id:
+                participant.familyMemberId || participant.id,
+        };
+    }
+    return { paid_by_guest_name: participant.guestName || participant.label };
+}
+
+function participantFormKey(value: string) {
+    return value.replace(":", "_");
 }
 
 function getSplitMethod(value?: FormDataEntryValue | string | null): SplitMethod {
@@ -182,7 +200,8 @@ async function replaceAutoExpenseSplits({
     currency,
     exchangeRateUsed,
     formData,
-    userId,
+    participants,
+    currentParticipant,
 }: {
     supabase: UntypedSupabaseClient;
     expenseId: string;
@@ -191,22 +210,37 @@ async function replaceAutoExpenseSplits({
     currency: string;
     exchangeRateUsed: number;
     formData?: FormData;
-    userId: string;
+    participants: BudgetParticipant[];
+    currentParticipant: BudgetParticipant;
 }) {
     const formParticipants =
         formData
             ?.getAll("included_participants")
-            .map(parseParticipantValue)
-            .filter((participant): participant is NonNullable<typeof participant> =>
-                Boolean(participant)
+            .map((value) => ({
+                formValue: String(value || "").trim(),
+                participant: resolveBudgetParticipant(String(value || ""), participants),
+            }))
+            .filter(
+                (entry): entry is { formValue: string; participant: BudgetParticipant } =>
+                    Boolean(entry.formValue && entry.participant)
             ) || [];
     const splitMethod = getSplitMethod(formData?.get("split_method"));
     const selectedParticipants =
         splitMethod === "just_me"
-            ? [{ kind: "member" as BudgetParticipantKind, id: `user:${userId}` }]
+            ? [
+                  {
+                      formValue: getBudgetParticipantValue(currentParticipant),
+                      participant: currentParticipant,
+                  },
+              ]
             : formParticipants.length > 0
               ? formParticipants
-              : [{ kind: "member" as BudgetParticipantKind, id: `user:${userId}` }];
+              : [
+                    {
+                        formValue: getBudgetParticipantValue(currentParticipant),
+                        participant: currentParticipant,
+                    },
+                ];
 
     let splitAmounts: number[] = [];
     let splitPercentages: Array<number | null> = selectedParticipants.map(() => null);
@@ -216,9 +250,9 @@ async function replaceAutoExpenseSplits({
     } else if (splitMethod === "equal") {
         splitAmounts = splitEvenly(amount, selectedParticipants.length);
     } else if (splitMethod === "exact") {
-        splitAmounts = selectedParticipants.map((participant) =>
+        splitAmounts = selectedParticipants.map(({ formValue }) =>
             parseMoney(
-                formData?.get(`split_amount_${participantFormKey(participant)}`)
+                formData?.get(`split_amount_${participantFormKey(formValue)}`)
             )
         );
         const total = roundMoney(splitAmounts.reduce((sum, value) => sum + value, 0));
@@ -226,10 +260,10 @@ async function replaceAutoExpenseSplits({
             throw new Error("Exact split amounts must add up to the cost total.");
         }
     } else {
-        splitPercentages = selectedParticipants.map((participant) =>
+        splitPercentages = selectedParticipants.map(({ formValue }) =>
             parseMoney(
                 formData?.get(
-                    `split_percentage_${participantFormKey(participant)}`
+                    `split_percentage_${participantFormKey(formValue)}`
                 )
             )
         );
@@ -247,6 +281,20 @@ async function replaceAutoExpenseSplits({
         );
     }
 
+    const { data: previousSplitRows, error: previousSplitError } = await supabase
+        .from("trip_expense_splits")
+        .select("*")
+        .eq("expense_id", expenseId)
+        .eq("trip_id", tripId);
+
+    if (previousSplitError) {
+        throw new Error(
+            `Could not load existing auto budget splits: ${
+                previousSplitError.message ?? "Unknown Supabase error"
+            }`
+        );
+    }
+
     const { error: deleteError } = await supabase
         .from("trip_expense_splits")
         .delete()
@@ -261,7 +309,7 @@ async function replaceAutoExpenseSplits({
         );
     }
 
-    const rows = selectedParticipants.map((participant, index) => ({
+    const rows = selectedParticipants.map(({ participant }, index) => ({
         expense_id: expenseId,
         trip_id: tripId,
         ...participantColumns(participant),
@@ -279,6 +327,18 @@ async function replaceAutoExpenseSplits({
         .insert(rows);
 
     if (insertError) {
+        if ((previousSplitRows || []).length > 0) {
+            const { error: restoreError } = await supabase
+                .from("trip_expense_splits")
+                .insert(previousSplitRows || []);
+            if (restoreError) {
+                console.error("Could not restore auto budget splits after failure:", {
+                    expenseId,
+                    tripId,
+                    restoreError,
+                });
+            }
+        }
         throw new Error(
             `Could not create auto budget splits: ${
                 insertError.message ?? "Unknown Supabase error"
@@ -381,7 +441,22 @@ export async function syncAutoBudgetExpense({
         tripId,
         sourceType,
     });
-    const paidBy = resolveAutoExpensePayer(formData, userId);
+    const participants = await loadBudgetParticipantsWithClient(db, tripId, userId);
+    const currentParticipant = participants.find(
+        (participant) => participant.isCurrentUser
+    );
+    if (!currentParticipant) {
+        throw new Error("Could not identify the current trip participant.");
+    }
+    const submittedPayerValue = String(formData?.get("paid_by") || "").trim();
+    const paidBy = submittedPayerValue
+        ? resolveBudgetParticipant(submittedPayerValue, participants)
+        : formData && sourceType === "accommodation"
+          ? null
+          : currentParticipant;
+    if (!paidBy) {
+        throw new Error("Choose a current trip participant as payer.");
+    }
 
     const payload: Record<string, unknown> = {
         trip_id: tripId,
@@ -416,20 +491,7 @@ export async function syncAutoBudgetExpense({
     payload.paid_by_invitation_id = null;
     payload.paid_by_family_member_id = null;
     payload.paid_by_guest_name = null;
-
-    if (paidBy.kind === "member") {
-        if (paidBy.id.startsWith("user:")) {
-            payload.paid_by_user_id = paidBy.id.replace(/^user:/, "");
-        } else {
-            payload.paid_by_trip_member_id = paidBy.id;
-        }
-    } else if (paidBy.kind === "invitation") {
-        payload.paid_by_invitation_id = paidBy.id;
-    } else if (paidBy.kind === "family_member") {
-        payload.paid_by_family_member_id = paidBy.id;
-    } else {
-        payload.paid_by_guest_name = paidBy.id;
-    }
+    Object.assign(payload, payerColumns(paidBy));
 
     let expenseId = existingExpense?.id ? String(existingExpense.id) : "";
 
@@ -467,14 +529,52 @@ export async function syncAutoBudgetExpense({
         expenseId = String(data.id);
     }
 
-    await replaceAutoExpenseSplits({
-        supabase: db,
-        expenseId,
-        tripId,
-        amount: normalizedAmount,
-        currency: normalizedCurrency,
-        exchangeRateUsed: exchangeRate.rate,
-        formData,
-        userId,
-    });
+    try {
+        await replaceAutoExpenseSplits({
+            supabase: db,
+            expenseId,
+            tripId,
+            amount: normalizedAmount,
+            currency: normalizedCurrency,
+            exchangeRateUsed: exchangeRate.rate,
+            formData,
+            participants,
+            currentParticipant,
+        });
+    } catch (error) {
+        if (existingExpense?.id) {
+            const previousPayload = Object.fromEntries(
+                Object.keys(payload).map((key) => [key, existingExpense[key]])
+            );
+            const { error: restoreError } = await db
+                .from("trip_expenses")
+                .update(previousPayload)
+                .eq("id", existingExpense.id)
+                .eq("trip_id", tripId);
+            if (restoreError) {
+                console.error("Could not restore auto budget expense after failure:", {
+                    expenseId,
+                    tripId,
+                    restoreError,
+                });
+            }
+        } else {
+            const { error: cleanupError } = await db
+                .from("trip_expenses")
+                .update({
+                    deleted_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                })
+                .eq("id", expenseId)
+                .eq("trip_id", tripId);
+            if (cleanupError) {
+                console.error("Could not clean up incomplete auto budget expense:", {
+                    expenseId,
+                    tripId,
+                    cleanupError,
+                });
+            }
+        }
+        throw error;
+    }
 }

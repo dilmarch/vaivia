@@ -280,7 +280,11 @@ export async function loadTripBudgetData(tripId: string) {
 
 export async function loadTripExpenseData(tripId: string) {
     const supabase = await createUntypedSupabaseClient();
-    const [{ data: expenseRows }, { data: splitRows }, { data: settlementRows }] =
+    const [
+        { data: expenseRows, error: expenseError },
+        { data: splitRows, error: splitError },
+        { data: settlementRows, error: settlementError },
+    ] =
         await Promise.all([
         supabase
             .from("trip_expenses")
@@ -298,6 +302,17 @@ export async function loadTripExpenseData(tripId: string) {
             .eq("trip_id", tripId)
             .order("settled_on", { ascending: false }),
     ]);
+
+    const loadError = expenseError || splitError || settlementError;
+    if (loadError) {
+        console.error("Could not load complete trip expense data:", {
+            tripId,
+            expenseError,
+            splitError,
+            settlementError,
+        });
+        throw new Error("Could not load complete trip expense data.");
+    }
 
     const expenses = ((expenseRows || []) as Record<string, unknown>[]).map(
         normalizeExpense
@@ -325,7 +340,12 @@ export async function loadBudgetParticipantsWithClient(
     tripId: string,
     userId: string
 ) {
-    const [{ data: tripRows }, { data: memberRows }, { data: invitationRows }, { data: familyRows }] =
+    const [
+        { data: tripRows, error: tripError },
+        { data: memberRows, error: memberError },
+        { data: invitationRows, error: invitationError },
+        { data: familyRows, error: familyError },
+    ] =
         await Promise.all([
             supabase
                 .from("trips")
@@ -348,6 +368,19 @@ export async function loadBudgetParticipantsWithClient(
                 .eq("trip_id", tripId),
         ]);
 
+    const participantLoadError =
+        tripError || memberError || invitationError || familyError;
+    if (participantLoadError) {
+        console.error("Could not load complete budget participant data:", {
+            tripId,
+            tripError,
+            memberError,
+            invitationError,
+            familyError,
+        });
+        throw new Error("Could not load complete budget participant data.");
+    }
+
     const ownerUserId =
         typeof tripRows?.user_id === "string" ? tripRows.user_id : null;
     const memberRecords = ((memberRows || []) as Array<{
@@ -362,10 +395,17 @@ export async function loadBudgetParticipantsWithClient(
 
     let profiles = new Map<string, Record<string, unknown>>();
     if (memberUserIds.length > 0) {
-        const { data: profileRows } = await supabase
+        const { data: profileRows, error: profileError } = await supabase
             .from("connected_public_user_profiles")
             .select("id,first_name,last_name,username,avatar_url")
             .in("id", memberUserIds);
+        if (profileError) {
+            console.error("Could not load budget participant profiles:", {
+                tripId,
+                profileError,
+            });
+            throw new Error("Could not load budget participant profiles.");
+        }
         profiles = new Map(
             ((profileRows || []) as Record<string, unknown>[]).map((profile) => [
                 String(profile.id),
