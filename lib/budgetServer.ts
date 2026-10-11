@@ -299,13 +299,16 @@ export async function loadTripExpenseData(tripId: string) {
             .order("settled_on", { ascending: false }),
     ]);
 
+    const expenses = ((expenseRows || []) as Record<string, unknown>[]).map(
+        normalizeExpense
+    );
+    const activeExpenseIds = new Set(expenses.map((expense) => expense.id));
+
     return {
-        expenses: ((expenseRows || []) as Record<string, unknown>[]).map(
-            normalizeExpense
-        ),
-        splits: ((splitRows || []) as Record<string, unknown>[]).map(
-            normalizeExpenseSplit
-        ),
+        expenses,
+        splits: ((splitRows || []) as Record<string, unknown>[])
+            .map(normalizeExpenseSplit)
+            .filter((split) => activeExpenseIds.has(split.expense_id)),
         settlements: ((settlementRows || []) as Record<string, unknown>[]).map(
             normalizeExpenseSettlement
         ),

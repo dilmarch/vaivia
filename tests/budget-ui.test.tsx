@@ -427,6 +427,17 @@ describe("expense reporting", () => {
                         amount_in_reporting_currency: 50,
                         is_included: true,
                     },
+                    {
+                        id: "orphaned-split",
+                        expense_id: "soft-deleted-expense",
+                        trip_id: "trip-a",
+                        participant_kind: "member",
+                        user_id: "user-a",
+                        split_amount: 5000,
+                        currency: "CAD",
+                        amount_in_reporting_currency: 5000,
+                        is_included: true,
+                    },
                 ]}
                 participants={participants}
                 defaultCurrency="CAD"

@@ -341,6 +341,7 @@ export function calculateBudgetSettlements({
     }
   });
   splits.forEach((split) => {
+    if (!expenseById.has(split.expense_id)) return;
     const value = getParticipantValueForSplit(split);
     if (value) {
       ensureBalance(value).amount -= getSplitReportingAmount(split, expenseById);
