@@ -33,12 +33,16 @@ export default function OrganizerEventCreateModal({
               </span>
               <div>
                 <p className="vaivia-modal-eyebrow">Organizer studio</p>
-                <h1 id="create-event-modal-title" className="vaivia-modal-title">
+                <h1
+                  id="create-event-modal-title"
+                  className="vaivia-modal-title"
+                >
                   Add event
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-300">
-                  Create the event as a draft, then add tickets and publish it when
-                  everything is ready.
+                  Create one RSVP event and save it as a draft, publish it now,
+                  or schedule its publication. Ticketed events start as drafts
+                  so you can add ticket tiers first.
                 </p>
               </div>
             </div>
@@ -51,11 +55,7 @@ export default function OrganizerEventCreateModal({
               <X className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
-          <OrganizerEventEditor
-            event={event}
-            modal
-            onCancel={requestClose}
-          />
+          <OrganizerEventEditor event={event} modal onCancel={requestClose} />
         </>
       )}
     </AnimatedModal>

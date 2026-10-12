@@ -62,6 +62,30 @@ function parseCapacity(value: string) {
   return number;
 }
 
+type EventPublicationStatus = "draft" | "published" | "scheduled";
+
+function publicationStatus(formData: FormData): EventPublicationStatus {
+  const requested = text(formData, "status");
+  return requested === "published" || requested === "scheduled"
+    ? requested
+    : "draft";
+}
+
+function logEventMutationError(operation: string, error: unknown) {
+  const details = error as {
+    code?: unknown;
+    message?: unknown;
+    details?: unknown;
+    hint?: unknown;
+  };
+  console.error(`[events] ${operation} failed`, {
+    code: details?.code,
+    message: details?.message,
+    details: details?.details,
+    hint: details?.hint,
+  });
+}
+
 function eventPayload(formData: FormData, ownerUserId: string) {
   const title = text(formData, "title");
   const timezone = text(formData, "timezone") || "UTC";
@@ -75,13 +99,17 @@ function eventPayload(formData: FormData, ownerUserId: string) {
     throw new Error("End time must be after the start time.");
   const slug = slugifyEventTitle(text(formData, "slug") || title);
   if (!slug) throw new Error("Enter a valid event slug.");
-  const requestedStatus =
-    text(formData, "status") === "scheduled" ? "scheduled" : "draft";
-  const publishAt = nullableText(formData, "publish_at_local")
-    ? localDateTimeToUtc(text(formData, "publish_at_local"), timezone)
-    : null;
+  const requestedStatus = publicationStatus(formData);
+  const publishAt =
+    requestedStatus === "scheduled" &&
+    nullableText(formData, "publish_at_local")
+      ? localDateTimeToUtc(text(formData, "publish_at_local"), timezone)
+      : null;
   if (requestedStatus === "scheduled" && !publishAt) {
     throw new Error("Choose a publication time before scheduling this event.");
+  }
+  if (publishAt && new Date(publishAt) <= new Date()) {
+    throw new Error("Scheduled publication must be in the future.");
   }
 
   return {
@@ -135,18 +163,22 @@ export async function createEvent(
     const auth = await requireEventOrganizer();
     const payload = eventPayload(formData, auth.user.id);
     if (
-      payload.status === "scheduled" &&
+      payload.status !== "draft" &&
       payload.registration_mode === "ticketed"
     ) {
       return {
         ok: false,
         message:
-          "Create the ticketed event as a draft, add a ticket tier, then schedule it.",
+          "Create the ticketed event as a draft, add a ticket tier, then publish or schedule it.",
       };
     }
     const { data: event, error } = await auth.supabase
       .from("events")
-      .insert(payload)
+      .insert({
+        ...payload,
+        published_at:
+          payload.status === "published" ? new Date().toISOString() : null,
+      })
       .select("id")
       .single();
     if (error || !event) {
@@ -172,6 +204,7 @@ export async function createEvent(
   } catch (error) {
     if ((error as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT"))
       throw error;
+    logEventMutationError("create", error);
     return {
       ok: false,
       message:
@@ -189,7 +222,7 @@ export async function updateEvent(
     const auth = await requireEventManager(eventId);
     const { data: currentEvent } = await auth.supabase
       .from("events")
-      .select("status")
+      .select("status,published_at")
       .eq("id", eventId)
       .single();
     if (!currentEvent) throw new Error("Event not found.");
@@ -198,11 +231,15 @@ export async function updateEvent(
       text(formData, "owner_user_id") || auth.user.id,
     );
     delete (payload as Partial<typeof payload>).owner_user_id;
-    if (!["draft", "scheduled"].includes(currentEvent.status)) {
+    const publicationCanChange = ["draft", "scheduled"].includes(
+      currentEvent.status,
+    );
+    if (!publicationCanChange) {
       payload.status = currentEvent.status as typeof payload.status;
     }
     if (
-      payload.status === "scheduled" &&
+      publicationCanChange &&
+      payload.status !== "draft" &&
       payload.registration_mode === "ticketed"
     ) {
       const { count } = await auth.supabase
@@ -213,13 +250,22 @@ export async function updateEvent(
       if (!count) {
         return {
           ok: false,
-          message: "Add an active ticket tier before scheduling publication.",
+          message:
+            "Add an active ticket tier before publishing or scheduling publication.",
         };
       }
     }
+    const updatePayload = {
+      ...payload,
+      published_at: publicationCanChange
+        ? payload.status === "published"
+          ? new Date().toISOString()
+          : null
+        : currentEvent.published_at,
+    };
     const { error } = await auth.supabase
       .from("events")
-      .update(payload)
+      .update(updatePayload)
       .eq("id", eventId);
     if (error) {
       if (error.code === "23505")
@@ -242,6 +288,7 @@ export async function updateEvent(
     revalidatePath("/events");
     return { ok: true, message: "Event saved.", eventId };
   } catch (error) {
+    logEventMutationError("update", error);
     return {
       ok: false,
       message: error instanceof Error ? error.message : "Could not save event.",
@@ -276,12 +323,17 @@ export async function setEventLifecycle(formData: FormData) {
   const now = new Date().toISOString();
   const update =
     action === "publish"
-      ? { status: "published", published_at: now, cancelled_at: null }
+      ? {
+          status: "published",
+          publish_at: null,
+          published_at: now,
+          cancelled_at: null,
+        }
       : action === "cancel"
         ? { status: "cancelled", cancelled_at: now }
         : action === "archive"
           ? { status: "archived", archived_at: now }
-          : { status: "draft" };
+          : { status: "draft", publish_at: null };
   const { error } = await auth.supabase
     .from("events")
     .update(update)

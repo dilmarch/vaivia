@@ -23,7 +23,9 @@ const initialState: EventActionState = { ok: false, message: "" };
 
 function field(value: unknown) {
   if (typeof value === "string") return value;
-  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : "";
 }
 
 function splitLocalDateTime(value: unknown) {
@@ -74,6 +76,9 @@ export default function OrganizerEventEditor({
   );
   const [registrationMode, setRegistrationMode] = useState(
     field(event?.registration_mode) || "rsvp",
+  );
+  const [publicationStatus, setPublicationStatus] = useState(
+    field(event?.status) || "draft",
   );
   const initialStart = splitLocalDateTime(event?.starts_at_local);
   const initialEnd = splitLocalDateTime(event?.ends_at_local);
@@ -151,7 +156,11 @@ export default function OrganizerEventEditor({
       const response = await fetch("/api/timezone", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lat: latitude, lng: longitude, date: startDate }),
+        body: JSON.stringify({
+          lat: latitude,
+          lng: longitude,
+          date: startDate,
+        }),
       });
       if (!response.ok) return;
       const result = (await response.json()) as { timeZoneId?: unknown };
@@ -176,7 +185,9 @@ export default function OrganizerEventEditor({
       search: place.name || place.formatted_address || current.search,
       name: place.name || current.name,
       addressLine:
-        getStreetAddress(place) || place.formatted_address || current.addressLine,
+        getStreetAddress(place) ||
+        place.formatted_address ||
+        current.addressLine,
       city: city || current.city,
       region:
         getAddressComponent(place, "administrative_area_level_1") ||
@@ -390,8 +401,8 @@ export default function OrganizerEventEditor({
                   </span>
                 ) : (
                   <span className="mt-2 block text-xs font-semibold text-slate-500">
-                    Choose a Google suggestion to validate the venue and fill its
-                    address.
+                    Choose a Google suggestion to validate the venue and fill
+                    its address.
                   </span>
                 )}
               </label>
@@ -484,16 +495,8 @@ export default function OrganizerEventEditor({
                 name="google_place_id"
                 value={venue.googlePlaceId}
               />
-              <input
-                type="hidden"
-                name="latitude"
-                value={venue.latitude}
-              />
-              <input
-                type="hidden"
-                name="longitude"
-                value={venue.longitude}
-              />
+              <input type="hidden" name="latitude" value={venue.latitude} />
+              <input type="hidden" name="longitude" value={venue.longitude} />
             </>
           )}
         </div>
@@ -516,10 +519,14 @@ export default function OrganizerEventEditor({
               <span className={label}>Status</span>
               <select
                 name="status"
-                defaultValue={field(event?.status) || "draft"}
+                value={publicationStatus}
+                onChange={(event) =>
+                  setPublicationStatus(event.currentTarget.value)
+                }
                 className={input}
               >
                 <option value="draft">Draft</option>
+                <option value="published">Published now</option>
                 <option value="scheduled">Scheduled publication</option>
               </select>
             </label>
@@ -557,29 +564,41 @@ export default function OrganizerEventEditor({
               className={input}
             />
           </label>
-          <label>
-            <span className={label}>Publication date (optional)</span>
-            <DateInput
-              name="publish_at_date"
-              value={publishDate}
-              onChange={(event) => setPublishDate(event.currentTarget.value)}
-              className={input}
-            />
-          </label>
-          <label>
-            <span className={label}>Publication time (optional)</span>
-            <TimeInput
-              name="publish_at_time"
-              value={publishTime}
-              onChange={(event) => setPublishTime(event.currentTarget.value)}
-              className={input}
-            />
-          </label>
+          {publicationStatus === "scheduled" ? (
+            <>
+              <label>
+                <span className={label}>Publication date</span>
+                <DateInput
+                  name="publish_at_date"
+                  required
+                  value={publishDate}
+                  onChange={(event) =>
+                    setPublishDate(event.currentTarget.value)
+                  }
+                  className={input}
+                />
+              </label>
+              <label>
+                <span className={label}>Publication time</span>
+                <TimeInput
+                  name="publish_at_time"
+                  required
+                  value={publishTime}
+                  onChange={(event) =>
+                    setPublishTime(event.currentTarget.value)
+                  }
+                  className={input}
+                />
+              </label>
+            </>
+          ) : null}
           <input
             type="hidden"
             name="publish_at_local"
             value={
-              publishDate && publishTime ? `${publishDate}T${publishTime}` : ""
+              publicationStatus === "scheduled" && publishDate && publishTime
+                ? `${publishDate}T${publishTime}`
+                : ""
             }
           />
         </div>
@@ -765,7 +784,13 @@ export default function OrganizerEventEditor({
           ) : (
             <Save className="h-4 w-4" />
           )}
-          {event?.id ? "Save event" : "Create draft"}
+          {event?.id
+            ? "Save event"
+            : publicationStatus === "published"
+              ? "Publish event"
+              : publicationStatus === "scheduled"
+                ? "Schedule event"
+                : "Create draft"}
         </button>
       </div>
     </form>

@@ -16,6 +16,9 @@ const hardening = read(
 const indexes = read(
   "supabase/migrations/20260720103821_index_event_foreign_keys.sql",
 );
+const insertReturningPolicy = read(
+  "supabase/migrations/20261012031821_fix_event_insert_returning_policy.sql",
+);
 
 describe("events database model", () => {
   it("keeps events separate from Trips with the complete normalized model", () => {
@@ -109,5 +112,17 @@ describe("events database model", () => {
     expect(indexes).toContain("event_order_items_ticket_type_idx");
     expect(indexes).toContain("event_tickets_order_idx");
     expect(indexes).toContain("event_webhook_events_order_idx");
+  });
+
+  it("lets organizers read their new event during insert returning", () => {
+    expect(insertReturningPolicy).toContain(
+      "owner_user_id = (select auth.uid())",
+    );
+    expect(insertReturningPolicy).toContain(
+      "and (select public.is_event_organizer())",
+    );
+    expect(insertReturningPolicy).toContain(
+      "or public.event_user_can_view(id, (select auth.uid()))",
+    );
   });
 });

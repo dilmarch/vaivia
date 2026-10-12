@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import EventRegistrationPanel from "@/components/events/EventRegistrationPanel";
 import OrganizerEventCreateModal from "@/components/events/OrganizerEventCreateModal";
@@ -118,18 +118,39 @@ describe("organizer event editor", () => {
     expect(
       screen.getByRole("textbox", { name: /Find the venue or address/i }),
     ).toHaveAttribute("placeholder", "Search Google for a venue or address");
-    expect(screen.getAllByRole("button", { name: "Open calendar" })).toHaveLength(
-      3,
-    );
+    expect(
+      screen.getAllByRole("button", { name: "Open calendar" }),
+    ).toHaveLength(2);
     expect(
       screen.getAllByRole("button", { name: "Open time selector" }),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(document.querySelector('input[type="datetime-local"]')).toBeNull();
-    expect(
-      document.querySelector('input[name="starts_at_local"]'),
-    ).toHaveValue("2026-09-24T17:40");
+    expect(document.querySelector('input[name="starts_at_local"]')).toHaveValue(
+      "2026-09-24T17:40",
+    );
     expect(
       screen.getByRole("button", { name: "Close add event modal" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Create draft" }),
+    ).toBeInTheDocument();
+
+    const status = screen.getByRole("combobox", { name: "Status" });
+    expect(status).toHaveTextContent("Draft");
+    expect(status).toHaveTextContent("Published now");
+    expect(status).toHaveTextContent("Scheduled publication");
+
+    fireEvent.change(status, { target: { value: "published" } });
+    expect(
+      screen.getByRole("button", { name: "Publish event" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Publication date")).not.toBeInTheDocument();
+
+    fireEvent.change(status, { target: { value: "scheduled" } });
+    expect(
+      screen.getByRole("button", { name: "Schedule event" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Publication date")).toBeInTheDocument();
+    expect(screen.getByText("Publication time")).toBeInTheDocument();
   });
 });
