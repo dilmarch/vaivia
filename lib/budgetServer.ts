@@ -547,20 +547,24 @@ export async function getExchangeRateWithClient(
         return { rate: toNumber(cached.rate), provider: "frankfurter" };
     }
 
-    const endpoint = useLatestEndpoint ? "latest" : rateDate;
-    const url = `https://api.frankfurter.app/${endpoint}?from=${encodeURIComponent(
-        base
-    )}&to=${encodeURIComponent(target)}`;
+    const url = new URL(
+        `https://api.frankfurter.dev/v2/rate/${encodeURIComponent(
+            base
+        )}/${encodeURIComponent(target)}`
+    );
+    if (!useLatestEndpoint) url.searchParams.set("date", rateDate);
     const response = await fetch(url, { cache: "no-store" });
 
     if (!response.ok) {
-        throw new Error("Could not fetch exchange rate");
+        throw new Error(
+            `Could not fetch exchange rate (provider returned ${response.status})`
+        );
     }
 
     const payload = (await response.json()) as {
-        rates?: Record<string, number>;
+        rate?: number;
     };
-    const rate = payload.rates?.[target];
+    const rate = payload.rate;
 
     if (!rate || !Number.isFinite(rate)) {
         throw new Error("Exchange rate was not available");
